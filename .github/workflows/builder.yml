@@ -48,9 +48,29 @@ jobs:
           echo "::add-matcher::.github/actionlint-matcher.json"
           actionlint -color
 
+  test:
+    name: Test Config 🧪
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: Validate build config
+        run: node scripts/validate-build-config.cjs
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
   sentinel:
     name: Sentinel 👁️
-    needs: [lint-code, lint-actions]
+    needs: [lint-code, lint-actions, test]
     if: always()
     runs-on: ubuntu-slim
     permissions: {}
@@ -74,7 +94,7 @@ jobs:
       matrix:
         include:
           - os: linux
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
             targets: "--linux AppImage deb rpm"
           - os: macos
             runner: macos-latest
