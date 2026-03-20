@@ -130,7 +130,7 @@ jobs:
       - name: Compile TypeScript
         run: npm run build
       - name: Build distributables
-        run: npx electron-builder ${{ matrix.targets }}
+        run: npx electron-builder --publish never ${{ matrix.targets }}
       - name: Upload artefacts
         uses: actions/upload-artifact@v4
         with:
