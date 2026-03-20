@@ -1,12 +1,18 @@
-# Sidra 🍎
+<h1 align="center">
+  <img src="build/icon.png" width="256" height="256" alt="Sidra">
+  <br />
+  Sidra
+</h1>
 
-An elegant Apple Music desktop client. No frippery, just quality. A better class of Cider 🍎
+<p align="center"><b>An elegant Apple Music desktop client. No frippery, just quality. A better class of Cider 🍎</b></p>
+<p align="center">
+<img alt="GitHub all releases" src="https://img.shields.io/github/downloads/wimpysworld/sidra/total?logo=github&label=Downloads">
+</p>
 
-An elegant Apple Music desktop app for Linux, macOS and Windows. Sidra wraps `music.apple.com` in a [CastLabs Electron](https://github.com/castlabs/electron-releases) shell and bridges MusicKit.js events to native platform media controls. Apple maintains the UI, lossless audio just works, and authentication is a non-issue - it is identical to signing in at music.apple.com in Chrome.
+<p align="center">Made with 💝 for 🐧🍏🪟</p>
 
-**Linux**: full MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus, Wayland native.
-**macOS**: Now Playing widget via Chromium's built-in mediaSession bridge.
-**Windows**: GSMTC media flyout via Chromium's built-in mediaSession bridge.
+Sidra wraps `music.apple.com` in a [CastLabs Electron](https://github.com/castlabs/electron-releases) shell and bridges MusicKit.js events to native platform media controls.
+Apple maintains the UI, audio just works, and authentication is a non-issue.
 
 ---
 
@@ -21,13 +27,13 @@ An elegant Apple Music desktop app for Linux, macOS and Windows. Sidra wraps `mu
 
 - Apple Music desktop client with Widevine DRM
 - Persistent login
-- Linux:
+- **Linux**:
   - Wayland and X11 support
-  - Bi-directional MPRIS support (*planned*)
-- macOS:
-  - Now Playing (Control Centre, Lock Screen, media keys) (*planned*)
-- Windows
-  - GSMTC (media flyout, taskbar controls, media keys) (*planned*)
+  - Full bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus (*planned*)
+- **macOS**:
+  - Now Playing widget via Chromium's built-in mediaSession bridge (*planned*)
+- **Windows**:
+  - GSMTC media flyout via Chromium's built-in mediaSession bridge (*planned*)
 - Discord Rich Presence (*planned*)
 - Desktop Notifications (*planned*)
 - System tray (*planned*)
