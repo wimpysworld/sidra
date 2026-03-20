@@ -1,0 +1,145 @@
+name: Builder 👷
+
+on:
+  push:
+    branches: [main]
+    tags: ["*.*.*"]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 9 * * 0" # Weekly
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint Code 🧹
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: Type-check
+        run: npx tsc --noEmit
+
+  lint-actions:
+    name: Lint Action ⚙️
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: freerangebytes/setup-actionlint@v0.1.1
+      - name: Run actionlint
+        run: |
+          echo "::add-matcher::.github/actionlint-matcher.json"
+          actionlint -color
+
+  sentinel:
+    name: Sentinel 👁️
+    needs: [lint-code, lint-actions]
+    if: always()
+    runs-on: ubuntu-slim
+    permissions: {}
+    steps:
+      - name: Check results
+        run: |
+          results='${{ toJSON(needs.*.result) }}'
+          echo "Job results: ${results}"
+          if echo "${results}" | jq -e 'any(. == "failure" or . == "cancelled")' > /dev/null 2>&1; then
+            echo "One or more jobs failed or were cancelled"
+            exit 1
+          fi
+          echo "All jobs passed"
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: [sentinel]
+    if: needs.sentinel.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+            targets: "--linux AppImage deb rpm"
+          - os: macos
+            runner: macos-latest
+            targets: "--mac dmg"
+          - os: windows
+            runner: windows-latest
+            targets: "--win nsis"
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Cache Electron and electron-builder binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Install RPM tools
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Build distributables
+        run: npx electron-builder ${{ matrix.targets }}
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidra-${{ matrix.os }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.dmg
+            release/*.exe
+          retention-days: 7
+
+  release:
+    name: Release 📦
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release/
+          merge-multiple: true
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.dmg
+            release/*.exe
