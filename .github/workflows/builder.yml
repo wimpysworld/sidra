@@ -112,7 +112,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: Cache Electron and electron-builder binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/electron
@@ -132,7 +132,7 @@ jobs:
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
       - name: Upload artefacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sidra-${{ matrix.os }}
           path: |
@@ -152,7 +152,7 @@ jobs:
       contents: write
     steps:
       - name: Download all build artefacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release/
           merge-multiple: true
