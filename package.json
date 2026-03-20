@@ -1,0 +1,21 @@
+{
+  "name": "sidra",
+  "version": "0.1.0",
+  "description": "Minimal Apple Music desktop client",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "author": "Martin Wimpress",
+  "license": "BlueOak-1.0.0",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "github:castlabs/electron-releases#v40.7.0+wvcus",
+    "typescript": "^5.x"
+  },
+  "dependencies": {
+    "electron-log": "^5.x"
+  }
+}
