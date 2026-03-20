@@ -21,8 +21,13 @@
     "electron-log": "^5.x"
   },
   "build": {
-    "appId": "com.wimpysworld.sidra",
+    "appId": "world.wimpys.sidra",
     "productName": "Sidra",
+    "copyright": "Copyright (c) Martin Wimpress",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "icon": "build/icon.png",
+    "files": ["dist/**/*"],
     "directories": {
       "output": "release"
     },
@@ -30,13 +35,47 @@
       "mirror": "https://github.com/castlabs/electron-releases/releases/download/v"
     },
     "linux": {
-      "target": ["AppImage", "deb", "rpm"]
+      "target": ["AppImage", "deb", "rpm"],
+      "category": "Audio",
+      "executableName": "sidra",
+      "desktop": {
+        "StartupWMClass": "sidra"
+      }
+    },
+    "deb": {
+      "maintainer": "Martin Wimpress <code@wimpress.io>",
+      "homepage": "https://github.com/wimpysworld/sidra",
+      "priority": "optional"
+    },
+    "rpm": {
+      "vendor": "Martin Wimpress",
+      "homepage": "https://github.com/wimpysworld/sidra"
     },
     "mac": {
-      "target": ["dmg"]
+      "target": ["dmg"],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.music",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "background": "build/background.png",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "iconSize": 80,
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     },
     "win": {
-      "target": ["nsis"]
+      "target": ["nsis"],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "deleteAppDataOnUninstall": false
     }
   }
 }

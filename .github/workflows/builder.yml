@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  lint-code:
     name: Lint Code 🧹
     runs-on: ubuntu-slim
     permissions:
