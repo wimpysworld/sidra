@@ -92,7 +92,7 @@ Sidra is the Spanish word for cider, specifically the traditional dry cider from
 
 The project uses a Nix flake with direnv for a reproducible dev environment. Run `direnv allow` in the project root to activate it. `just` is the task runner - see [`justfile`](justfile) for available tasks.
 
-The project uses pnpm and TypeScript. The shell is [CastLabs Electron](https://github.com/castlabs/electron-releases) (`wvcus` variant) rather than standard Electron - this is non-negotiable for Widevine DRM support on Linux.
+The project uses npm and TypeScript. The shell is [CastLabs Electron](https://github.com/castlabs/electron-releases) (`wvcus` variant) rather than standard Electron - this is non-negotiable for Widevine DRM support on Linux.
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
 

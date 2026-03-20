@@ -73,7 +73,7 @@ Standard Electron also won't work. CastLabs Electron is non-negotiable for Linux
 | macOS controls | Chromium `mediaSession` → MPNowPlayingInfoCenter | Built-in bridge, identity via bundle name |
 | Config | `electron-store` | Persistent config (window bounds, settings) |
 | Build | `electron-builder` | AppImage + deb + rpm (Linux), DMG (macOS), NSIS (Windows) |
-| Package manager | pnpm | Consistent with Cider v1 approach |
+| Package manager | npm | Simplest option; avoids pnpm's strict semver parsing issues with CastLabs `+wvcus` tag |
 
 ---
 

@@ -11,7 +11,7 @@ No code has been written yet. This document describes the target architecture.
 | Shell | CastLabs Electron (`castlabs/electron-releases`, wvcus) | Widevine CDM for DRM playback |
 | Language | TypeScript | Application code |
 | Renderer | `music.apple.com` | Apple maintains the UI |
-| Package manager | pnpm | Dependency management |
+| Package manager | npm | Dependency management |
 | Build | electron-builder | Platform installers (AppImage, deb, rpm, DMG, NSIS) |
 | Dev environment | Nix flake + direnv | Reproducible tooling |
 
