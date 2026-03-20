@@ -2,8 +2,6 @@
 
 Apple Music with less Cider, no music interupptions, lean code, and no hangover.
 
-> 🚧 **Work in progress** - no code yet. This README describes what Sidra will be. 🚧
-
 Apple Music as a desktop app. Sidra wraps `music.apple.com` in a [CastLabs Electron](https://github.com/castlabs/electron-releases) shell and bridges MusicKit.js events to native platform media controls. Apple maintains the UI, lossless audio just works, and authentication is a non-issue - it is identical to signing in at music.apple.com in Chrome.
 
 **Linux**: full MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus, Wayland native.
@@ -88,11 +86,51 @@ Sidra is the Spanish word for cider, specifically the traditional dry cider from
 
 ## Development
 
-> Build instructions will be added once the initial implementation is in place.
+### Prerequisites
 
-The project uses a Nix flake with direnv for a reproducible dev environment. Run `direnv allow` in the project root to activate it. `just` is the task runner - see [`justfile`](justfile) for available tasks.
+- [Nix](https://nixos.org/) with flakes enabled
+- [direnv](https://direnv.net/) (optional, but recommended)
 
 The project uses npm and TypeScript. The shell is [CastLabs Electron](https://github.com/castlabs/electron-releases) (`wvcus` variant) rather than standard Electron - this is non-negotiable for Widevine DRM support on Linux.
+
+### Quick start
+
+```bash
+direnv allow          # or: nix develop
+just install          # install npm dependencies
+just run              # build and launch
+```
+
+Sign in with your Apple Music account on first launch. Your session persists across relaunches.
+
+### Available recipes
+
+| Recipe | Description |
+|--------|-------------|
+| `just install` | Install npm dependencies |
+| `just build` | Compile TypeScript to `dist/` |
+| `just run` | Build and launch the app |
+| `just run-fast` | Launch without rebuilding (pair with `just watch`) |
+| `just watch` | Rebuild on file changes |
+| `just lint` | Run actionlint and TypeScript type-check |
+| `just clean` | Remove `dist/` build artefacts |
+| `just logs` | Show log file location and tail recent entries |
+
+### Debug and diagnostics
+
+| Recipe | Description |
+|--------|-------------|
+| `just run-debug` | Launch with `ELECTRON_LOG_LEVEL=debug` (verbose file logging) |
+| `just run-devtools` | Launch with DevTools open for inspecting CSS and DOM |
+| `just run-inspect` | Launch with both debug logging and DevTools |
+| `just logs` | Tail `~/.config/sidra/logs/main.log` |
+
+### Typical dev loop
+
+1. `just watch` in one terminal to auto-rebuild on changes
+2. `just run-fast` in another to launch without rebuilding
+3. `just run-devtools` to inspect CSS injection or DOM state
+4. `just logs` to review structured log output
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
 
