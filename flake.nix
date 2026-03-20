@@ -1,16 +1,13 @@
 {
-  description = "Sidra - minimal Apple Music desktop client";
+  description = "Sidra - elegant Apple Music desktop client without the frippery";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nix-packages.url = "github:wimpysworld/nix-packages";
-    nix-packages.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
     {
       nixpkgs,
-      nix-packages,
       ...
     }:
     let
@@ -26,7 +23,6 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          tailorPkgs = nix-packages.packages.${system} or { };
         in
         {
           default = pkgs.mkShell {
@@ -38,8 +34,7 @@
                 gh
                 just
                 nodejs # 24.x Active LTS, matches Electron 40's bundled Node
-              ]
-              ++ (if tailorPkgs ? tailor then [ tailorPkgs.tailor ] else [ ]);
+              ];
 
             # CastLabs Electron (installed via npm) is a prebuilt binary that
             # expects libraries in standard FHS paths. On NixOS we must set

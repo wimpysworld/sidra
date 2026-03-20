@@ -1,25 +1,5 @@
 {
   "nodes": {
-    "nix-packages": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1773451063,
-        "narHash": "sha256-Xs8IeZEOz/GwJUpzjZtT++cTzMS77Y2JBFYWhBrKePA=",
-        "owner": "wimpysworld",
-        "repo": "nix-packages",
-        "rev": "0d0202d884c5af5f69b3a3b0482ed02e8b99a31c",
-        "type": "github"
-      },
-      "original": {
-        "owner": "wimpysworld",
-        "repo": "nix-packages",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1773821835,
@@ -38,7 +18,6 @@
     },
     "root": {
       "inputs": {
-        "nix-packages": "nix-packages",
         "nixpkgs": "nixpkgs"
       }
     }
