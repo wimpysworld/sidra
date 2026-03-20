@@ -10,6 +10,7 @@
     "watch": "tsc --watch"
   },
   "author": "Martin Wimpress",
+  "homepage": "https://github.com/wimpysworld/sidra",
   "license": "BlueOak-1.0.0",
   "type": "commonjs",
   "devDependencies": {
@@ -37,19 +38,14 @@
     "linux": {
       "target": ["AppImage", "deb", "rpm"],
       "category": "Audio",
-      "executableName": "sidra",
-      "desktop": {
-        "StartupWMClass": "sidra"
-      }
+      "executableName": "sidra"
     },
     "deb": {
       "maintainer": "Martin Wimpress <code@wimpress.io>",
-      "homepage": "https://github.com/wimpysworld/sidra",
       "priority": "optional"
     },
     "rpm": {
-      "vendor": "Martin Wimpress",
-      "homepage": "https://github.com/wimpysworld/sidra"
+      "vendor": "Martin Wimpress"
     },
     "mac": {
       "target": ["dmg"],
