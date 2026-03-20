@@ -2,10 +2,6 @@
 default:
     @just --list
 
-# Alter tailor swatches
-alter:
-    @tailor alter
-
 # Install project dependencies
 install:
     npm install
@@ -52,7 +48,3 @@ logs:
     @echo "Log file: ~/.config/sidra/logs/main.log"
     @tail -50 ~/.config/sidra/logs/main.log 2>/dev/null || echo "No log file yet. Run the app first."
 
-# Check what tailor would change and measure
-measure:
-    @tailor baste
-    @tailor measure

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, components, session } from 'electron';
+import { app, BrowserWindow, components, session, shell } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 
@@ -101,10 +101,19 @@ app.whenReady().then(async () => {
     mainLog.error('page load failed:', errorCode, errorDescription);
   });
 
-  // Open external links in the system browser
+  // Open external links in the system browser (only http/https)
   win.webContents.setWindowOpenHandler(({ url }) => {
-    mainLog.debug('external navigation blocked, opening in browser:', url);
-    require('electron').shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        mainLog.debug('opening external URL in browser:', url);
+        shell.openExternal(url);
+      } else {
+        mainLog.warn('blocked external URL with disallowed protocol:', url);
+      }
+    } catch {
+      mainLog.warn('blocked malformed external URL:', url);
+    }
     return { action: 'deny' };
   });
 

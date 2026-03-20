@@ -4,7 +4,7 @@
   "description": "Minimal Apple Music desktop client",
   "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "npm run build && electron .",
     "build": "tsc",
     "watch": "tsc --watch"
   },
