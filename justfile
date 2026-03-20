@@ -39,6 +39,10 @@ lint:
     @actionlint
     npx tsc --noEmit
 
+# Validate electron-builder configuration
+test:
+    @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
+
 # Clean build artefacts
 clean:
     rm -rf dist/

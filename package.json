@@ -9,7 +9,7 @@
     "dist": "electron-builder",
     "watch": "tsc --watch"
   },
-  "author": "Martin Wimpress",
+  "author": "Martin Wimpress <code@wimpress.io>",
   "homepage": "https://github.com/wimpysworld/sidra",
   "license": "BlueOak-1.0.0",
   "type": "commonjs",
