@@ -1,11 +1,12 @@
 {
   "name": "sidra",
   "version": "0.1.0",
-  "description": "Minimal Apple Music desktop client",
+  "description": "An elegant Apple Music desktop client. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
   "scripts": {
     "start": "npm run build && electron .",
     "build": "tsc",
+    "dist": "electron-builder",
     "watch": "tsc --watch"
   },
   "author": "Martin Wimpress",
@@ -13,9 +14,29 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "github:castlabs/electron-releases#v40.7.0+wvcus",
+    "electron-builder": "^26.8.2",
     "typescript": "^5.x"
   },
   "dependencies": {
     "electron-log": "^5.x"
+  },
+  "build": {
+    "appId": "com.wimpysworld.sidra",
+    "productName": "Sidra",
+    "directories": {
+      "output": "release"
+    },
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/v"
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "rpm"]
+    },
+    "mac": {
+      "target": ["dmg"]
+    },
+    "win": {
+      "target": ["nsis"]
+    }
   }
 }
