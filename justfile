@@ -5,9 +5,47 @@ default:
 # Install project dependencies
 install:
     npm install
+    @just _fix-frameworks
+
+# Restore macOS framework symlinks broken by extract-zip during npm install
+[macos]
+[private]
+_fix-frameworks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    frameworks_dir="node_modules/electron/dist/Electron.app/Contents/Frameworks"
+    if [ ! -d "$frameworks_dir" ]; then
+        exit 0
+    fi
+    for fw in "$frameworks_dir"/*.framework; do
+        if [ -d "$fw/Versions/A" ] && [ ! -L "$fw/Versions/Current" ]; then
+            ln -sf A "$fw/Versions/Current"
+            name=$(basename "$fw" .framework)
+            # Symlink the main binary
+            if [ -e "$fw/Versions/A/$name" ] && [ ! -L "$fw/$name" ]; then
+                ln -sf "Versions/Current/$name" "$fw/$name"
+            fi
+            # Symlink Resources if present
+            if [ -d "$fw/Versions/A/Resources" ] && [ ! -L "$fw/Resources" ]; then
+                ln -sf "Versions/Current/Resources" "$fw/Resources"
+            fi
+            # Symlink Libraries if present
+            if [ -d "$fw/Versions/A/Libraries" ] && [ ! -L "$fw/Libraries" ]; then
+                ln -sf "Versions/Current/Libraries" "$fw/Libraries"
+            fi
+            # Symlink Helpers if present
+            if [ -d "$fw/Versions/A/Helpers" ] && [ ! -L "$fw/Helpers" ]; then
+                ln -sf "Versions/Current/Helpers" "$fw/Helpers"
+            fi
+        fi
+    done
+
+[linux]
+[private]
+_fix-frameworks:
 
 # Build TypeScript to dist/
-build:
+build: _fix-frameworks
     npx tsc
 
 # Run the app (builds first)
