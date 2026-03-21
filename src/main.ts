@@ -22,7 +22,7 @@ const splashLog = log.scope('splash');
 // --- Platform switches: must run before app.whenReady() ---
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations');
-  app.commandLine.appendSwitch('disable-features', 'MediaSessionService');
+  app.commandLine.appendSwitch('disable-features', 'MediaSessionService,WaylandWpColorManagerV1');
   mainLog.info('Linux platform switches applied');
 }
 
