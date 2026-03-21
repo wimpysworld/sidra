@@ -97,7 +97,15 @@ For `just run` (dev mode), `just install` and `just build` both invoke `_sign-ev
 
 ### User-Agent
 
-All platforms send a Linux Chrome UA (`X11; Linux x86_64`) to Apple Music. This bypasses Apple's stricter server-side DRM enforcement applied to macOS clients. Linux works without this but the consistent UA avoids platform-detection divergence.
+All platforms send a platform-accurate Chrome UA (`chromeUA()` in `src/main.ts`), stripping Electron identifiers that Apple Music detects and blocks. The `Sec-CH-UA-Platform` Client Hint is sent on every request and must match the UA platform token — a Linux UA on macOS creates a detectable inconsistency. Chrome version is pinned to `144.0.0.0` to match the CastLabs ECS Chromium build.
+
+| Platform | UA platform token |
+|----------|------------------|
+| macOS | `Macintosh; Intel Mac OS X 10_15_7` |
+| Windows | `Windows NT 10.0; Win64; x64` |
+| Linux | `X11; Linux x86_64` |
+
+The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this value to reduce fingerprinting surface.
 
 ## Conventions
 
