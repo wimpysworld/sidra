@@ -130,6 +130,9 @@ jobs:
       - name: Install RPM tools
         if: matrix.os == 'linux'
         run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm version "${{ github.ref_name }}" --no-git-tag-version
       - name: Compile TypeScript
         run: npm run build
       - name: Build distributables
@@ -157,6 +160,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Commit version bump
+        run: |
+          VERSION="${{ github.ref_name }}"
+          npm version "$VERSION" --no-git-tag-version
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "release: v$VERSION"
+          git push origin main
       - name: Download all build artefacts
         uses: actions/download-artifact@v8
         with:
