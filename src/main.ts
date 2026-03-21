@@ -165,6 +165,7 @@ app.whenReady().then(async () => {
   session.defaultSession.setUserAgent(chromeUA());
 
   const win = new BrowserWindow({
+    title: 'Sidra',
     width: 1280,
     height: 800,
     show: false,
@@ -204,6 +205,11 @@ app.whenReady().then(async () => {
       details.requestHeaders['User-Agent'] = chromeUA();
     }
     callback({ requestHeaders: details.requestHeaders });
+  });
+
+  // Prevent the web page title from overriding the window title
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
   });
 
   win.webContents.on('did-finish-load', () => {
