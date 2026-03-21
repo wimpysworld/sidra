@@ -216,6 +216,10 @@ app.whenReady().then(async () => {
     resolveCssReady();
   });
 
+  win.webContents.once('did-fail-load', () => {
+    resolveCssReady();
+  });
+
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     mainLog.error('page load failed:', errorCode, errorDescription);
   });
