@@ -124,6 +124,9 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install dependencies
         run: npm ci
+      - name: Install uv
+        if: matrix.os == 'macos'
+        uses: astral-sh/setup-uv@v5
       - name: Install RPM tools
         if: matrix.os == 'linux'
         run: sudo apt-get update && sudo apt-get install -y rpm
@@ -131,6 +134,9 @@ jobs:
         run: npm run build
       - name: Build distributables
         run: npx electron-builder --publish never ${{ matrix.targets }}
+        env:
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:

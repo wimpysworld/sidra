@@ -47,11 +47,16 @@
     "rpm": {
       "vendor": "Martin Wimpress"
     },
+    "afterPack": "build/afterPack.cjs",
     "mac": {
       "target": ["dmg"],
       "icon": "build/icon.icns",
       "category": "public.app-category.music",
-      "darkModeSupport": true
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "background": "build/background.png",

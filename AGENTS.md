@@ -2,8 +2,6 @@
 
 Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls.
 
-No code has been written yet. This document describes the target architecture.
-
 ## Technology stack
 
 | Component | Technology | Purpose |
@@ -69,6 +67,37 @@ Run `direnv allow` in the project root to activate the Nix dev shell automatical
 | Lint | `just lint` | Run actionlint against GitHub Actions workflows |
 | Measure | `just measure` | Dry-run tailor and report style metrics |
 | Alter | `just alter` | Apply tailor style changes |
+
+## Widevine VMP signing
+
+Widevine enforces VMP (Verified Media Path) production signing on macOS and Windows. Linux does not support VMP and development keys are accepted there. Without production signing, Apple Music returns "Something went wrong" after login on macOS and Windows.
+
+CastLabs ECS ships with development VMP keys. Production signing requires a free [CastLabs EVS](https://github.com/castlabs/electron-releases/wiki/EVS) account.
+
+### One-time setup
+
+```bash
+uvx --from castlabs-evs evs-account signup
+```
+
+Credentials are stored at `~/.config/evs/config.json`. The account is portable - use `evs-account reauth` on any new machine.
+
+### Build pipeline
+
+`build/afterPack.cjs` runs `evs-vmp sign-pkg` via `uvx` as an electron-builder `afterPack` hook on `darwin` and `win32`. This must execute before macOS code-signing (i.e. `afterPack`, not `afterSign`).
+
+For `just run` (dev mode), `just install` and `just build` both invoke `_sign-evs`, which signs `node_modules/electron/dist` directly so the local Electron binary has production VMP keys.
+
+### Credentials
+
+| Context | Method |
+|---------|--------|
+| Local machine | `~/.config/evs/config.json` populated by `evs-account signup` or `reauth`; or set `EVS_ACCOUNT_NAME` + `EVS_PASSWD` env vars (e.g. via sops-nix) |
+| GitHub Actions | `EVS_ACCOUNT_NAME` and `EVS_PASSWD` repository secrets; passed to the "Build distributables" step in `builder.yml` |
+
+### User-Agent
+
+All platforms send a Linux Chrome UA (`X11; Linux x86_64`) to Apple Music. This bypasses Apple's stricter server-side DRM enforcement applied to macOS clients. Linux works without this but the consistent UA avoids platform-detection divergence.
 
 ## Conventions
 

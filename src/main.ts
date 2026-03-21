@@ -25,10 +25,15 @@ if (process.platform === 'linux') {
   mainLog.info('Linux platform switches applied');
 }
 
-// Chrome UA to avoid Apple blocking Electron's default UA
-// Version should match the Chromium version bundled with CastLabs Electron
+// Always send a Linux Chrome UA regardless of platform.
+// Apple Music does not enforce production Widevine on Linux clients;
+// spoofing a Linux UA bypasses DRM enforcement that blocks playback on macOS.
+// Chromium 144 matches CastLabs Electron v40.7.0+wvcus.
 const CHROME_UA =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36';
+
+// Set fallback UA before app.whenReady() so any early requests use it
+app.userAgentFallback = CHROME_UA;
 
 const APPLE_MUSIC_URL = 'https://music.apple.com';
 
@@ -64,6 +69,9 @@ app.whenReady().then(async () => {
   await components.whenReady();
   mainLog.info('Widevine CDM ready, status:', components.status());
 
+  // Set UA on the default session (updates navigator.userAgentData Client Hints)
+  session.defaultSession.setUserAgent(CHROME_UA);
+
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -78,16 +86,24 @@ app.whenReady().then(async () => {
     },
   });
 
-  // Spoof user-agent on all requests
-  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = CHROME_UA;
-    callback({ requestHeaders: details.requestHeaders });
+  // Stale service workers from music.apple.com persist between launches in the
+  // persist: partition and intercept requests, serving invalid cached responses.
+  // Clear service workers and HTTP cache before loading, preserving auth cookies.
+  const ses = session.fromPartition('persist:sidra');
+  await ses.clearData({
+    dataTypes: ['serviceWorkers', 'cache'],
+    origins: ['https://music.apple.com'],
   });
 
-  // Also set it on the window's session (persistent partition)
-  const ses = win.webContents.session;
+  // Set UA on the persist:sidra session used by the window
+  ses.setUserAgent(CHROME_UA);
+
+  // Strip Electron and app name tokens from outgoing request headers
   ses.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = CHROME_UA;
+    const ua = details.requestHeaders['User-Agent'];
+    if (ua && ua !== CHROME_UA) {
+      details.requestHeaders['User-Agent'] = CHROME_UA;
+    }
     callback({ requestHeaders: details.requestHeaders });
   });
 
@@ -124,7 +140,7 @@ app.whenReady().then(async () => {
   }
 
   mainLog.info('loading Apple Music...');
-  win.loadURL(APPLE_MUSIC_URL);
+  win.loadURL(APPLE_MUSIC_URL, { userAgent: CHROME_UA });
 });
 
 app.on('window-all-closed', () => {

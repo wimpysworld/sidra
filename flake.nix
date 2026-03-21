@@ -34,6 +34,9 @@
                 gh
                 just
                 nodejs # 24.x Active LTS, matches Electron 40's bundled Node
+              ]
+              ++ lib.optionals stdenv.isDarwin [
+                uv # required for EVS VMP signing via uvx
               ];
 
             # CastLabs Electron (installed via npm) is a prebuilt binary that

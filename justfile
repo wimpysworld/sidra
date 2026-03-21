@@ -6,6 +6,7 @@ default:
 install:
     npm install
     @just _fix-frameworks
+    @just _sign-evs
 
 # Restore macOS framework symlinks broken by extract-zip during npm install
 [macos]
@@ -44,8 +45,23 @@ _fix-frameworks:
 [private]
 _fix-frameworks:
 
+# Apply CastLabs EVS VMP signing to local Electron binary
+[macos]
+[private]
+_sign-evs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d "node_modules/electron/dist/Electron.app" ]; then
+        exit 0
+    fi
+    uvx --from castlabs-evs evs-vmp sign-pkg node_modules/electron/dist
+
+[linux]
+[private]
+_sign-evs:
+
 # Build TypeScript to dist/
-build: _fix-frameworks
+build: _fix-frameworks _sign-evs
     npx tsc
 
 # Run the app (builds first)
@@ -84,6 +100,21 @@ test:
 # Clean build artefacts
 clean:
     rm -rf dist/
+
+# Clear all Sidra user data and caches
+[macos]
+clear:
+    rm -rf ~/Library/Application\ Support/Sidra
+    rm -rf ~/Library/Caches/Sidra
+    rm -rf ~/Library/Logs/Sidra
+    @echo "Sidra data cleared"
+
+# Clear all Sidra user data and caches
+[linux]
+clear:
+    rm -rf ~/.config/sidra
+    rm -rf ~/.cache/sidra
+    @echo "Sidra data cleared"
 
 # Build a package for the current platform
 package: build
