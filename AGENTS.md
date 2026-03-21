@@ -15,12 +15,15 @@ Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` di
 
 ## Runtime dependencies
 
-Four total:
+Current:
+
+- `electron-store` - Persistent configuration
+- `electron-log` - Logging
+
+Planned (not yet in `package.json`):
 
 - `dbus-next` - MPRIS D-Bus service (Linux)
 - `@xhayper/discord-rpc` - Discord Rich Presence
-- `electron-store` - Persistent configuration
-- `electron-log` - Logging
 
 ## Project structure (target)
 
@@ -63,8 +66,27 @@ Run `direnv allow` in the project root to activate the Nix dev shell automatical
 
 | Recipe | Command | Purpose |
 |---|---|---|
-| List recipes | `just` | Show all available recipes |
-| Lint | `just lint` | Run actionlint against GitHub Actions workflows |
+| Install | `just install` | Install npm dependencies |
+| Build | `just build` | Compile TypeScript to `dist/` |
+| Run | `just run` | Build and launch the app |
+| Run fast | `just run-fast` | Launch without rebuilding (pair with `just watch`) |
+| Watch | `just watch` | Rebuild on file changes |
+| Lint | `just lint` | Run actionlint and TypeScript type-check |
+| Clean | `just clean` | Remove `dist/` build artefacts |
+| Logs | `just logs` | Show log file location and tail recent entries |
+
+### Debug and diagnostics
+
+| Recipe | Command | Purpose |
+|---|---|---|
+| Debug | `just run-debug` | Launch with `ELECTRON_LOG_LEVEL=debug` (verbose file logging) |
+| DevTools | `just run-devtools` | Launch with DevTools open for inspecting CSS and DOM |
+| Inspect | `just run-inspect` | Launch with both debug logging and DevTools |
+
+### Style tooling
+
+| Recipe | Command | Purpose |
+|---|---|---|
 | Measure | `just measure` | Dry-run tailor and report style metrics |
 | Alter | `just alter` | Apply tailor style changes |
 
@@ -152,6 +174,7 @@ When adding new persistent settings, add typed getter/setter pairs to `config.ts
 
 ## Architecture notes
 
+- Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.executeJavaScript()` calling methods on `window.__sidra`
 - Chromium's built-in `MediaSessionService` must be disabled on Linux to avoid conflicting MPRIS registrations; Sidra registers its own `org.mpris.MediaPlayer2.sidra` service via dbus-next
 - macOS and Windows use Chromium's native mediaSession bridges (no extra libraries)
 - Authentication is handled entirely by Apple's web flow; use `persist:sidra` partition for cookie persistence

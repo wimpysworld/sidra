@@ -11,48 +11,44 @@
 
 <p align="center">Made with 💝 for 🐧🍏🪟</p>
 
-Sidra wraps `music.apple.com` in a [CastLabs Electron](https://github.com/castlabs/electron-releases) shell and bridges MusicKit.js events to native platform media controls.
-Apple maintains the UI, audio just works, and authentication is a non-issue.
-
----
-
-## Requirements
-
-- An Apple Music subscription (all platforms)
-- Linux, macOS or Windows
+Most Apple Music desktop clients break the audio, mangle the playback controls, or bury you under a custom UI that Apple never signed off on - the problem is worst on Linux.
+Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of the way, and let the audio through untouched.
+Runs on Linux, macOS, and Windows. Apple owns the interface and keeps it current - Sidra inherits every improvement automatically.
 
 ---
 
 ## Features
 
+Sidra is under active development; several features in this list are not yet implemented.
+
 - Apple Music desktop client
 - Lossless audio on macOS and Windows via CastLabs EVS production VMP signing
 - Persistent login
-- Localised Apple Music storefront on launch, detected from OS region with user preference persisted across restarts
-- Localised desktop app interface in 31 languages
+- Localised Apple Music storefront
+- Localised interface in 31 languages
 - **Linux**:
   - Standard Widevine DRM via CastLabs Electron
   - Wayland and X11 support
-  - Full bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus (*planned*)
+  - Full bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus
 - **macOS**:
   - Full Widevine DRM with EVS production VMP signing
-  - Now Playing widget via Chromium's built-in mediaSession bridge (*planned*)
+  - Now Playing widget via Chromium's built-in mediaSession bridge
 - **Windows**:
   - Full Widevine DRM with EVS production VMP signing
-  - GSMTC media flyout via Chromium's built-in mediaSession bridge (*planned*)
-- Discord Rich Presence (*planned*)
-- Desktop Notifications (*planned*)
-- System tray (*planned*)
-  - Media controls
+  - GSMTC media flyout via Chromium's built-in mediaSession bridge
+- Discord Rich Presence
+- Desktop Notifications
+- System tray
   - Settings
-- Last.fm scrobbling (*planned*)
-- AirPlay casting (*planned*)
+- Last.fm scrobbling
+- AirPlay casting
 
 ---
 
 ## How It Works
 
-Sidra loads `music.apple.com` directly inside CastLabs Electron (required for Widevine DRM on Linux - no other shell supports this). A lightweight hook script is injected after page load that taps `MusicKit.getInstance()` events and forwards them over Electron IPC to the main process, which distributes them to platform integrations.
+Sidra loads `music.apple.com` directly inside CastLabs Electron (required for Widevine DRM on Linux - no other shell supports this).
+A lightweight hook script is injected after page load that taps `MusicKit.getInstance()` events and forwards them over Electron IPC to the main process, which distributes them to platform integrations.
 
 ```
 music.apple.com
@@ -67,35 +63,57 @@ music.apple.com
 
 Controls flow in reverse: MPRIS method calls reach `window.__sidra` via `webContents.executeJavaScript()`, which calls the appropriate MusicKit method directly.
 
-Four runtime dependencies. The codebase is tightly focused and as lean as possible.
-
----
-
-## Why Not Cider?
-
-[Cider](https://github.com/ciderapp/Cider) builds a full custom UI on top of MusicKit.js - thousands of components, custom authentication, a plugin marketplace, and its own audio engine. That scope creates real problems.
-
-**Audio quality.** Cider hardcodes a 96kHz `AudioContext` ([`audio.js` lines 54-57](https://github.com/ciderapp/Cider/blob/953bb5a9e26080bba2bb20438f0ddf38b0a8b260/src/renderer/audio/audio.js#L54-L57), comment: *"Don't ever remove the sample rate arg. Ask Maikiwi."*). Apple Music delivers AAC at 44.1/48kHz. Every sample is resampled up to 96kHz, then back down to the hardware rate - twice, unnecessarily. All audio then routes through a DSP chain of up to seven processing stages (EQ, convolvers, bass enhancement, spatial effects) regardless of whether Audio Lab features are enabled. The "Cider Adrenaline Processor" is marketed as making lossy audio "sound lossless"; it is biquad EQ shaping and cannot reconstruct discarded information. The [top answer on this Reddit thread](https://www.reddit.com/r/AppleMusic/comments/w6asti/poor_sound_quality_on_cider/) is "turn off Audio Lab." Sidra never creates an `AudioContext`; audio flows untouched from Apple's CDN through Chromium's media stack to the OS.
-
-**Reliability.** Authentication perpetually reports failure even after succeeding, forcing repeated re-authentication. Tracks stop unexpectedly. Volume resets mid-session. MPRIS volume on Linux has never worked reliably - Cider's non-linear audio engine means the system volume curve feels broken, and changes via MPRIS are not reflected in the app. [Volume normalisation causes freezes](https://github.com/ciderapp/Cider-2/issues/1172). Playback state in Cider regularly diverges from what Apple Music knows about.
-
-**Complexity.** The settings UI accumulates features without coherent design. Frippery over reliability.
-
-Sidra has no UI to maintain, no audio engine to go wrong. Apple ships updates silently.
+The codebase is tightly focused and as lean as possible.
 
 ---
 
 ## Why Sidra?
 
-The immediate reason was Linux. Every existing Apple Music client for Linux either lacks MPRIS entirely, implements it badly, or wrecks the audio in the process. Media keys should work. Desktop notifications should fire. Volume should track. None of that is exotic, and none of it should require a custom audio engine to achieve.
+I used Cider for years, but as time passed and the weight of features grew the core experience degraded.
 
-The second reason is corporate macOS. Devices enrolled in MDM can block authentication with personal Apple IDs, which means the native Apple Music app simply refuses to let you sign in. Sidra authenticates at the application layer - it is a browser session, nothing more - so MDM policy never sees it. If you can reach music.apple.com in Chrome, you can use Sidra.
+The audio was the first thing I noticed. Cider hardcodes a 96kHz `AudioContext`, so every track - delivered by Apple at 44.1 or 48kHz - is resampled up to 96kHz, then back down to whatever the hardware expects. Twice, unnecessarily. On top of that, all audio routes through a multi-stage DSP chain regardless of whether you have touched any Audio Lab settings. The "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless; it is biquad EQ shaping and cannot recover discarded information.
+The most common advice in community threads was simply to turn Audio Lab off.
+
+Reliability followed the same pattern.
+Authentication reported failure even after succeeding.
+Tracks stopped for no reason. Volume reset mid-session.
+On Linux, MPRIS volume never worked properly - Cider's audio engine sits between the system volume curve and the actual output, so changes via media controls were inconsistent or ignored entirely.
+Playback state drifted from what Apple Music knew about.
+These were not new bugs; they persisted across versions because the architecture that caused them was load-bearing.
+
+None of this was Cider's fault in any personal sense.
+It is an ambitious project and the ambition is the problem: a custom UI, custom auth, a plugin marketplace, and a custom audio engine all create surface area where things go wrong.
+The settings UI kept accumulating features without ever resolving the underlying instability.
+
+I got to the point where I wanted something that just worked.
+That meant going back to the source.
+
+**The immediate reason was Linux.**
+Every existing Apple Music client for Linux either lacks MPRIS entirely, implements it badly, or wrecks the audio in the process.
+Media keys should work.
+Desktop notifications should fire.
+Volume should track.
+None of that is exotic, and none of it should require a custom audio engine to achieve.
+
+**The second reason is corporate macOS.**
+Devices enrolled in MDM can block authentication with personal Apple IDs, which means the native Apple Music app simply refuses to let you sign in.
+Sidra authenticates at the application layer - little more than a glorified browser session - so MDM policy never sees it.
+If you can reach music.apple.com in Chrome, you can use Sidra.
 
 The third reason is a friend who wanted a decent Apple Music client for Windows that was not Cider.
 
-The fourth reason became apparent once it was working: stripping away the abstraction layers improved the sound. Less processing, less resampling, less interference between Apple's CDN and your ears. The tagline is not ironic.
+The fourth reason became apparent once it was working: wrapping `music.apple.com` directly means none of those failure modes exist.
+Apple's audio pipeline, Apple's auth, Apple's UI.
+Sidra never creates an `AudioContext` - audio flows untouched from Apple Music through Chromium's media stack to the OS.
+Authentication is Apple's web flow; it cannot get out of sync with Apple's servers.
+The interface updates automatically whenever Apple ships a change.
+Stripping away the abstraction layers improved the sound.
+Less processing, less resampling, less interference between the music library and your ears.
 
-Sidra is the Spanish word for cider, specifically the traditional dry cider from Asturias in northern Spain. The name came from a trip to the region for UbuCon Europe 2018, where the local sidra made a lasting impression. It seemed a fitting name for a leaner, more honest alternative to the other one.
+Sidra is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat.
+The name came from a trip to the region for UbuCon Europe 2018.
+No additives, no artifice, nothing between the apple and the glass.
+That felt right.
 
 ---
 
