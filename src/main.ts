@@ -85,6 +85,9 @@ function extractStorefrontFromURL(url: string): { storefront: string; language: 
       return null;
     }
     const storefront = segments[0];
+    if (!/^[a-z]{2}$/.test(storefront)) {
+      return null;
+    }
     const language = parsed.searchParams.get('l');
     return { storefront, language };
   } catch {
