@@ -25,15 +25,25 @@ if (process.platform === 'linux') {
   mainLog.info('Linux platform switches applied');
 }
 
-// Always send a Linux Chrome UA regardless of platform.
-// Apple Music does not enforce production Widevine on Linux clients;
-// spoofing a Linux UA bypasses DRM enforcement that blocks playback on macOS.
-// Chromium 144 matches CastLabs Electron v40.7.0+wvcus.
-const CHROME_UA =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36';
+// Use a platform-accurate Chrome UA, stripping Electron identifiers that
+// Apple Music detects and blocks. The platform component must be truthful
+// to match Sec-CH-UA-Platform Client Hints sent on every request.
+// Chrome version 144.0.0.0 matches the Chromium build in CastLabs ECS v40.7.0+wvcus.
+function chromeUA(): string {
+  const version = '144.0.0.0';
+  const webkit = 'AppleWebKit/537.36 (KHTML, like Gecko)';
+  const safari = 'Safari/537.36';
+  if (process.platform === 'darwin') {
+    return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ${webkit} Chrome/${version} ${safari}`;
+  }
+  if (process.platform === 'win32') {
+    return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) ${webkit} Chrome/${version} ${safari}`;
+  }
+  return `Mozilla/5.0 (X11; Linux x86_64) ${webkit} Chrome/${version} ${safari}`;
+}
 
 // Set fallback UA before app.whenReady() so any early requests use it
-app.userAgentFallback = CHROME_UA;
+app.userAgentFallback = chromeUA();
 
 const APPLE_MUSIC_URL = 'https://music.apple.com';
 
@@ -70,7 +80,7 @@ app.whenReady().then(async () => {
   mainLog.info('Widevine CDM ready, status:', components.status());
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
-  session.defaultSession.setUserAgent(CHROME_UA);
+  session.defaultSession.setUserAgent(chromeUA());
 
   const win = new BrowserWindow({
     width: 1280,
@@ -96,13 +106,13 @@ app.whenReady().then(async () => {
   });
 
   // Set UA on the persist:sidra session used by the window
-  ses.setUserAgent(CHROME_UA);
+  ses.setUserAgent(chromeUA());
 
   // Strip Electron and app name tokens from outgoing request headers
   ses.webRequest.onBeforeSendHeaders((details, callback) => {
     const ua = details.requestHeaders['User-Agent'];
-    if (ua && ua !== CHROME_UA) {
-      details.requestHeaders['User-Agent'] = CHROME_UA;
+    if (ua && ua !== chromeUA()) {
+      details.requestHeaders['User-Agent'] = chromeUA();
     }
     callback({ requestHeaders: details.requestHeaders });
   });
@@ -140,7 +150,7 @@ app.whenReady().then(async () => {
   }
 
   mainLog.info('loading Apple Music...');
-  win.loadURL(APPLE_MUSIC_URL, { userAgent: CHROME_UA });
+  win.loadURL(APPLE_MUSIC_URL, { userAgent: chromeUA() });
 });
 
 app.on('window-all-closed', () => {

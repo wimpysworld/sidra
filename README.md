@@ -25,14 +25,18 @@ Apple maintains the UI, audio just works, and authentication is a non-issue.
 
 ## Features
 
-- Apple Music desktop client with Widevine DRM
+- Apple Music desktop client
+- Lossless audio on macOS and Windows via CastLabs EVS production VMP signing
 - Persistent login
 - **Linux**:
+  - Standard Widevine DRM via CastLabs Electron
   - Wayland and X11 support
   - Full bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus (*planned*)
 - **macOS**:
+  - Full Widevine DRM with EVS production VMP signing
   - Now Playing widget via Chromium's built-in mediaSession bridge (*planned*)
 - **Windows**:
+  - Full Widevine DRM with EVS production VMP signing
   - GSMTC media flyout via Chromium's built-in mediaSession bridge (*planned*)
 - Discord Rich Presence (*planned*)
 - Desktop Notifications (*planned*)
