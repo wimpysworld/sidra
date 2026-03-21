@@ -125,7 +125,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Install uv
-        if: matrix.os == 'macos'
+        if: matrix.os == 'macos' || matrix.os == 'windows'
         uses: astral-sh/setup-uv@v5
       - name: Install RPM tools
         if: matrix.os == 'linux'
