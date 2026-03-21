@@ -1,4 +1,4 @@
-import { app, BrowserWindow, components, session, shell } from 'electron';
+import { app, BrowserWindow, components, Menu, session, shell } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 
@@ -133,6 +133,20 @@ const STYLE_FIX_CSS = `
 
 app.whenReady().then(async () => {
   mainLog.info('app ready, waiting for Widevine CDM...');
+
+  const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
+  if (process.platform === 'darwin') {
+    menuTemplate.push({ role: 'appMenu' });
+  }
+  menuTemplate.push({ role: 'editMenu' });
+  if (process.env.SIDRA_DEVTOOLS === '1') {
+    menuTemplate.push({
+      label: 'View',
+      submenu: [{ role: 'toggleDevTools' }],
+    });
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+  mainLog.info('application menu set');
 
   // Show a splash screen while the Widevine CDM downloads/initialises
   const splash = new BrowserWindow({
