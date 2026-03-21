@@ -20,7 +20,8 @@
     "typescript": "^5.x"
   },
   "dependencies": {
-    "electron-log": "^5.x"
+    "electron-log": "^5.x",
+    "electron-store": "^10.x"
   },
   "build": {
     "appId": "world.wimpys.sidra",

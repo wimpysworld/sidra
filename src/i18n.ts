@@ -282,6 +282,16 @@ export function getLocalizedString(
 
 // --- Public API (uses Electron app internally) ---
 
+export function getStorefront(): string {
+  const code = app.getLocaleCountryCode().toLowerCase();
+  if (code) {
+    i18nLog.debug(`storefront detected from locale: ${code}`);
+    return code;
+  }
+  i18nLog.debug('storefront fallback: us');
+  return 'us';
+}
+
 export function getLoadingText(): { text: string; lang: string } {
   const langs = app.getPreferredSystemLanguages();
   for (const lang of langs) {

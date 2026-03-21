@@ -2,7 +2,8 @@ import { app, BrowserWindow, components, Menu, session, shell, Tray } from 'elec
 import path from 'path';
 import log from 'electron-log/main';
 import { createTray } from './tray';
-import { getLoadingText } from './i18n';
+import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
+import { getStorefront, setStorefront, getLanguage, setLanguage } from './config';
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -51,7 +52,61 @@ app.userAgentFallback = chromeUA();
 // Prevent garbage collection of tray icon
 let appTray: Tray | null = null;
 
-const APPLE_MUSIC_URL = 'https://music.apple.com';
+function buildAppleMusicURL(): string {
+  let storefront = getStorefront();
+  let source: string;
+
+  if (storefront !== undefined) {
+    source = 'persisted';
+  } else {
+    storefront = getLocaleStorefront();
+    source = storefront === 'us' ? 'fallback' : 'detected';
+  }
+
+  mainLog.info(`storefront resolved: ${storefront} (${source})`);
+
+  let url = `https://music.apple.com/${storefront}/new`;
+  const language = getLanguage();
+  if (language !== undefined && language !== null) {
+    url += `?l=${language}`;
+  }
+
+  return url;
+}
+
+function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== 'music.apple.com') {
+      return null;
+    }
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length === 0) {
+      return null;
+    }
+    const storefront = segments[0];
+    const language = parsed.searchParams.get('l');
+    return { storefront, language };
+  } catch {
+    return null;
+  }
+}
+
+function handleStorefrontNavigation(url: string): void {
+  const result = extractStorefrontFromURL(url);
+  if (!result) {
+    return;
+  }
+
+  const currentStorefront = getStorefront();
+  const currentLanguage = getLanguage();
+
+  if (result.storefront !== currentStorefront || result.language !== currentLanguage) {
+    setStorefront(result.storefront);
+    setLanguage(result.language);
+    mainLog.info(`storefront changed: ${result.storefront} (language: ${result.language})`);
+  }
+}
 
 // CSS to hide "Get the app" and "Open in Music" banners.
 // Selectors confirmed across three independent Electron wrappers
@@ -195,6 +250,9 @@ app.whenReady().then(async () => {
     mainLog.error('page load failed:', errorCode, errorDescription);
   });
 
+  win.webContents.on('did-navigate', (_event, url) => handleStorefrontNavigation(url));
+  win.webContents.on('did-navigate-in-page', (_event, url) => handleStorefrontNavigation(url));
+
   // Open external links in the system browser (only http/https)
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
@@ -218,7 +276,7 @@ app.whenReady().then(async () => {
   }
 
   mainLog.info('loading Apple Music...');
-  win.loadURL(APPLE_MUSIC_URL, { userAgent: chromeUA() });
+  win.loadURL(buildAppleMusicURL(), { userAgent: chromeUA() });
 });
 
 app.on('window-all-closed', () => {

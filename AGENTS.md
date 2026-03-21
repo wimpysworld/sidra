@@ -113,6 +113,43 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 - British English spelling
 - The codebase is tightly focused and as lean as possible
 
+## Internationalisation (i18n)
+
+`src/i18n.ts` handles all locale detection and translated strings for Sidra's own UI. Apple Music's web UI localises itself independently.
+
+### Locale detection
+
+- `app.getPreferredSystemLanguages()` returns a BCP 47 ordered list (e.g. `['en-GB', 'en']`)
+- `getLoadingText()` walks the list and matches against the `LOADING_TEXT` record - exact tag first, then base language (e.g. `en-GB` → `en`)
+- `getStorefront()` uses `app.getLocaleCountryCode()` to extract the region code independently of language (e.g. returns `GB` regardless of whether the language is `en`, `cy`, or `gd`), then lowercases it for use as an Apple Music storefront path segment
+
+### Adding translations
+
+`LOADING_TEXT` in `src/i18n.ts` is the only translation surface in Sidra's own code. Keys are BCP 47 language tags. Add an entry to the record - no other change is required. Currently 31 languages are supported.
+
+```typescript
+export const LOADING_TEXT: Record<string, string> = {
+  'en': 'Loading...',
+  'fr': 'Chargement...',
+  // add new entries here
+};
+```
+
+Prefer specific regional tags only when the translation differs from the base language variant (e.g. `zh-CN` vs `zh-TW`). Use the base tag (e.g. `fr`) for languages where one translation covers all regions.
+
+## Configuration
+
+`src/config.ts` is a typed wrapper around `electron-store`. It exposes typed getter/setter pairs and is the single location for all persistent application state.
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `storefront` | `string` | Apple Music storefront code (e.g. `gb`, `us`) |
+| `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
+
+Getters return `undefined` when no value has been persisted - absence of a key is intentional and drives the storefront fallback chain in `main.ts`. Do not add default values to the store schema.
+
+When adding new persistent settings, add typed getter/setter pairs to `config.ts` following the existing pattern. Do not use `electron-store` directly elsewhere in the codebase.
+
 ## Architecture notes
 
 - Chromium's built-in `MediaSessionService` must be disabled on Linux to avoid conflicting MPRIS registrations; Sidra registers its own `org.mpris.MediaPlayer2.sidra` service via dbus-next
