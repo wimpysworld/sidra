@@ -1,6 +1,8 @@
-import { app, BrowserWindow, components, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, components, Menu, session, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
+import { createTray } from './tray';
+import { getLoadingText } from './i18n';
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -46,61 +48,8 @@ function chromeUA(): string {
 // Set fallback UA before app.whenReady() so any early requests use it
 app.userAgentFallback = chromeUA();
 
-// --- Localised splash text ---
-const LOADING_TEXT: Record<string, string> = {
-  'en': 'Loading...',
-  'zh-CN': '加载中…',
-  'zh-SG': '加载中…',
-  'zh-TW': '載入中…',
-  'zh-HK': '載入中…',
-  'es': 'Cargando...',
-  'hi': 'लोड हो रहा है...',
-  'ar': 'جارٍ التحميل...',
-  'fr': 'Chargement...',
-  'pt': 'A carregar...',
-  'de': 'Wird geladen...',
-  'ru': 'Загрузка...',
-  'ja': '読み込み中…',
-  'ko': '로딩 중...',
-  'it': 'Caricamento...',
-  'nl': 'Laden...',
-  'pl': 'Ładowanie...',
-  'tr': 'Yükleniyor...',
-  'sv': 'Läser in...',
-  'da': 'Indlæser...',
-  'fi': 'Ladataan...',
-  'nb': 'Laster...',
-  'no': 'Laster...',
-  'cs': 'Načítání...',
-  'ro': 'Se încarcă...',
-  'hu': 'Betöltés...',
-  'el': 'Φόρτωση...',
-  'th': 'กำลังโหลด...',
-  'id': 'Memuat...',
-  'ms': 'Memuatkan...',
-  'uk': 'Завантаження...',
-  'vi': 'Đang tải...',
-  'he': 'טוען...',
-};
-
-function getLoadingText(): { text: string; lang: string } {
-  const langs = app.getPreferredSystemLanguages();
-  for (const lang of langs) {
-    // Exact match first (e.g. zh-TW)
-    if (LOADING_TEXT[lang]) {
-      splashLog.debug(`resolved locale: ${lang} (exact)`);
-      return { text: LOADING_TEXT[lang], lang };
-    }
-    // Language-only match (e.g. zh from zh-TW)
-    const base = lang.split('-')[0];
-    if (LOADING_TEXT[base]) {
-      splashLog.debug(`resolved locale: ${base} (from ${lang})`);
-      return { text: LOADING_TEXT[base], lang: base };
-    }
-  }
-  splashLog.debug('resolved locale: en (fallback)');
-  return { text: LOADING_TEXT['en'], lang: 'en' };
-}
+// Prevent garbage collection of tray icon
+let appTray: Tray | null = null;
 
 const APPLE_MUSIC_URL = 'https://music.apple.com';
 
@@ -147,6 +96,8 @@ app.whenReady().then(async () => {
   }
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
   mainLog.info('application menu set');
+
+  appTray = createTray();
 
   // Show a splash screen while the Widevine CDM downloads/initialises
   const splash = new BrowserWindow({

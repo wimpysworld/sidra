@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #1a0a10;
+  overflow: hidden;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #e0d0d8;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.icon {
+  width: 128px;
+  height: 128px;
+  margin-bottom: 20px;
+  -webkit-user-drag: none;
+  -webkit-app-region: no-drag;
+}
+.name {
+  font-size: 22px;
+  font-weight: 600;
+  color: #f0e0e8;
+  margin-bottom: 4px;
+}
+.version {
+  font-size: 13px;
+  color: rgba(218, 165, 32, 0.7);
+  margin-bottom: 16px;
+}
+.description {
+  font-size: 13px;
+  color: #b0a0a8;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+.copyright {
+  font-size: 11px;
+  color: #807078;
+  margin-bottom: 4px;
+}
+.license {
+  font-size: 11px;
+  color: #807078;
+}
+.close-btn {
+  margin-top: 20px;
+  padding: 6px 24px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #e0d0d8;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+</style>
+</head>
+<body>
+<img class="icon" id="icon" src="" alt="Sidra">
+<div class="name" id="name">Sidra</div>
+<div class="version" id="version"></div>
+<div class="description" id="description"></div>
+<div class="copyright" id="copyright"></div>
+<div class="license" id="license"></div>
+<button class="close-btn" id="close-btn"></button>
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var icon = params.get('icon') || '';
+  var name = params.get('name') || 'Sidra';
+  var version = params.get('version') || '';
+  var description = params.get('description') || '';
+  var author = params.get('author') || '';
+  var license = params.get('license') || '';
+  var aboutText = params.get('about') || 'About ' + name;
+  var closeText = params.get('close') || 'Close';
+  var versionPrefix = params.get('versionPrefix') || 'Version';
+  var copyrightSuffix = params.get('copyrightSuffix') || 'All rights reserved.';
+  var licensePrefix = params.get('licensePrefix') || 'Licensed under';
+
+  document.title = aboutText;
+
+  if (icon) {
+    document.getElementById('icon').src = 'file://' + icon;
+  }
+  document.getElementById('name').textContent = name;
+  document.getElementById('version').textContent = versionPrefix + ' ' + version;
+  document.getElementById('description').textContent = description;
+  document.getElementById('copyright').textContent = '\u00A9 2026 ' + author + '. ' + copyrightSuffix;
+  document.getElementById('license').textContent = licensePrefix + ' ' + license;
+  document.getElementById('close-btn').textContent = closeText;
+  document.querySelector('.close-btn').addEventListener('click', function() { window.close(); });
+</script>
+</body>
+</html>
