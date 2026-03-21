@@ -17,6 +17,7 @@ if (process.env.ELECTRON_LOG_LEVEL) {
 }
 
 const mainLog = log.scope('main');
+const splashLog = log.scope('splash');
 
 // --- Platform switches: must run before app.whenReady() ---
 if (process.platform === 'linux') {
@@ -76,7 +77,30 @@ const STYLE_FIX_CSS = `
 
 app.whenReady().then(async () => {
   mainLog.info('app ready, waiting for Widevine CDM...');
-  await components.whenReady();
+
+  // Show a splash screen while the Widevine CDM downloads/initialises
+  const splash = new BrowserWindow({
+    width: 300,
+    height: 350,
+    frame: false,
+    resizable: false,
+    center: true,
+    skipTaskbar: true,
+    backgroundColor: '#1a0a10',
+    show: false,
+  });
+  let minDisplay: Promise<void>;
+  splash.once('ready-to-show', () => {
+    splash.show();
+    splashLog.info('splash shown');
+    minDisplay = new Promise(resolve => setTimeout(resolve, 500));
+  });
+  splash.loadFile(path.join(__dirname, 'splash.html'));
+  splashLog.info('splash created');
+
+  await Promise.all([components.whenReady(), minDisplay!]);
+  splashLog.info('splash closed');
+  splash.close();
   mainLog.info('Widevine CDM ready, status:', components.status());
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
