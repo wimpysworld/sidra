@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "start": "npm run build && electron .",
-    "build": "tsc",
+    "build": "tsc && shx cp src/splash.html dist/",
     "dist": "electron-builder",
     "watch": "tsc --watch"
   },
@@ -16,6 +16,7 @@
   "devDependencies": {
     "electron": "github:castlabs/electron-releases#v40.7.0+wvcus",
     "electron-builder": "^26.8.2",
+    "shx": "^0.4.0",
     "typescript": "^5.x"
   },
   "dependencies": {
