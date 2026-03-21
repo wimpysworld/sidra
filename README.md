@@ -28,6 +28,8 @@ Apple maintains the UI, audio just works, and authentication is a non-issue.
 - Apple Music desktop client
 - Lossless audio on macOS and Windows via CastLabs EVS production VMP signing
 - Persistent login
+- Localised Apple Music storefront on launch, detected from OS region with user preference persisted across restarts
+- Localised desktop app interface in 31 languages
 - **Linux**:
   - Standard Widevine DRM via CastLabs Electron
   - Wayland and X11 support

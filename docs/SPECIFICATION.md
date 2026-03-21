@@ -18,6 +18,7 @@ The codebase is tightly focused and as lean as possible. Four runtime dependenci
 - [Platform Media Controls](#platform-media-controls)
 - [MPRIS Specification](#mpris-specification)
 - [Volume Sync](#volume-sync)
+- [Region and Storefront](#region-and-storefront)
 - [Authentication](#authentication)
 - [Discord Rich Presence](#discord-rich-presence)
 - [Track Change Notifications](#track-change-notifications)
@@ -421,6 +422,34 @@ Also update `navigator.mediaSession` volume whenever MusicKit volume changes - `
 
 ---
 
+## Region and Storefront
+
+Loading bare `https://music.apple.com` causes Apple's server to 301-redirect all clients to `/us/new`, regardless of location. Users outside the US see the wrong catalogue on every launch.
+
+### Storefront detection
+
+`app.getLocaleCountryCode()` returns the OS region as an uppercase ISO 3166-1 alpha-2 code (e.g. `GB`, `CH`). Lowercasing this value produces the Apple Music storefront path segment directly. No validation against Apple's API is required - Apple's server redirects any unrecognised storefront code to `/us/new` with a clean 301, so the failure mode is identical to the current bare-URL behaviour.
+
+Fallback chain at startup:
+
+```
+1. Read persisted storefront from electron-store
+2. If found → use it
+3. If not found → app.getLocaleCountryCode().toLowerCase()
+4. If empty string (LC_ALL=C, unset locale) → 'us'
+5. Build URL: https://music.apple.com/{storefront}/new[?l={language}]
+```
+
+### Persistence
+
+`electron-store` holds two keys: `storefront` (e.g. `gb`) and `language` (BCP 47 tag from the `?l=` parameter, e.g. `fr`, or `null`). A `did-navigate` and `did-navigate-in-page` listener on `win.webContents` parses the URL after each navigation. When the storefront or language changes, the new values are written to the store. Same-storefront navigation does not trigger a write.
+
+### Storefront codes
+
+Apple Music storefront codes are ISO 3166-1 alpha-2 codes lowercased (e.g. `gb`, `us`, `ch`). Apple supports 167+ storefronts. The `?l=` parameter accepts BCP 47 language tags from each storefront's `supportedLanguageTags` list and controls UI localisation only - the storefront determines catalogue availability.
+
+---
+
 ## Authentication
 
 Non-issue by design. Cider's auth breaks because it uses MusicKit.js with a developer token it controls and the OAuth user-token flow. Sidra loads `music.apple.com` - Apple handles authentication entirely. Identical to opening Chrome and navigating to `music.apple.com`.
@@ -559,6 +588,8 @@ Notifications are toggleable via an `electron-store` boolean setting (default: o
 | MPRIS repeat/shuffle | Two-way | `repeatModeDidChange` + `shuffleModeDidChange` |
 | Discord Rich Presence | `@xhayper/discord-rpc` | With debounce + pause timeout + retry |
 | Track change notifications | Electron `Notification` | With artwork, suppressable in settings |
+| Regional storefront detection | `app.getLocaleCountryCode()` → `/gb/new`, `/ch/new` etc. | Fallback chain: persisted → detected → `us` |
+| Storefront preference persistence | `electron-store` + `did-navigate` listener | Survives restarts; language parameter preserved |
 | User-agent spoofing | `webRequest.onBeforeSendHeaders` | Standard Chrome UA |
 | Window state persistence | `electron-store` | Bounds, maximised state |
 | Wayland support | `--enable-features=UseOzonePlatform` | Auto-detected via platform check |
