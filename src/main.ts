@@ -103,11 +103,16 @@ function handleStorefrontNavigation(url: string): void {
 
   const currentStorefront = getStorefront();
   const currentLanguage = getLanguage();
+  const nextLanguage = result.language ?? currentLanguage ?? null;
 
-  if (result.storefront !== currentStorefront || result.language !== currentLanguage) {
-    setStorefront(result.storefront);
-    setLanguage(result.language);
-    mainLog.info(`storefront changed: ${result.storefront} (language: ${result.language})`);
+  if (result.storefront !== currentStorefront || nextLanguage !== currentLanguage) {
+    if (result.storefront !== currentStorefront) {
+      setStorefront(result.storefront);
+    }
+    if (nextLanguage !== currentLanguage) {
+      setLanguage(nextLanguage);
+    }
+    mainLog.info(`storefront changed: ${result.storefront} (language: ${nextLanguage})`);
   }
 }
 

@@ -125,7 +125,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 ### Adding translations
 
-`LOADING_TEXT` in `src/i18n.ts` is the only translation surface in Sidra's own code. Keys are BCP 47 language tags. Add an entry to the record - no other change is required. Currently 31 languages are supported.
+`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 7 records with 31 languages each: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`. When adding a language, add an entry to every record.
 
 ```typescript
 export const LOADING_TEXT: Record<string, string> = {
