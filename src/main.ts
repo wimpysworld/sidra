@@ -46,6 +46,62 @@ function chromeUA(): string {
 // Set fallback UA before app.whenReady() so any early requests use it
 app.userAgentFallback = chromeUA();
 
+// --- Localised splash text ---
+const LOADING_TEXT: Record<string, string> = {
+  'en': 'Loading...',
+  'zh-CN': '加载中…',
+  'zh-SG': '加载中…',
+  'zh-TW': '載入中…',
+  'zh-HK': '載入中…',
+  'es': 'Cargando...',
+  'hi': 'लोड हो रहा है...',
+  'ar': 'جارٍ التحميل...',
+  'fr': 'Chargement...',
+  'pt': 'A carregar...',
+  'de': 'Wird geladen...',
+  'ru': 'Загрузка...',
+  'ja': '読み込み中…',
+  'ko': '로딩 중...',
+  'it': 'Caricamento...',
+  'nl': 'Laden...',
+  'pl': 'Ładowanie...',
+  'tr': 'Yükleniyor...',
+  'sv': 'Läser in...',
+  'da': 'Indlæser...',
+  'fi': 'Ladataan...',
+  'nb': 'Laster...',
+  'no': 'Laster...',
+  'cs': 'Načítání...',
+  'ro': 'Se încarcă...',
+  'hu': 'Betöltés...',
+  'el': 'Φόρτωση...',
+  'th': 'กำลังโหลด...',
+  'id': 'Memuat...',
+  'ms': 'Memuatkan...',
+  'uk': 'Завантаження...',
+  'vi': 'Đang tải...',
+  'he': 'טוען...',
+};
+
+function getLoadingText(): { text: string; lang: string } {
+  const langs = app.getPreferredSystemLanguages();
+  for (const lang of langs) {
+    // Exact match first (e.g. zh-TW)
+    if (LOADING_TEXT[lang]) {
+      splashLog.debug(`resolved locale: ${lang} (exact)`);
+      return { text: LOADING_TEXT[lang], lang };
+    }
+    // Language-only match (e.g. zh from zh-TW)
+    const base = lang.split('-')[0];
+    if (LOADING_TEXT[base]) {
+      splashLog.debug(`resolved locale: ${base} (from ${lang})`);
+      return { text: LOADING_TEXT[base], lang: base };
+    }
+  }
+  splashLog.debug('resolved locale: en (fallback)');
+  return { text: LOADING_TEXT['en'], lang: 'en' };
+}
+
 const APPLE_MUSIC_URL = 'https://music.apple.com';
 
 // CSS to hide "Get the app" and "Open in Music" banners.
@@ -98,7 +154,8 @@ app.whenReady().then(async () => {
     splash.show();
     setTimeout(resolveMinDisplay, 500);
   });
-  splash.loadFile(path.join(__dirname, 'splash.html'));
+  const { text: loadingText, lang: loadingLang } = getLoadingText();
+  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
   splashLog.info('splash created');
 
   await components.whenReady();
