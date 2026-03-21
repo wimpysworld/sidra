@@ -141,17 +141,8 @@ release VERSION:
         echo "Error: must be on main branch (currently on $branch)" >&2
         exit 1
     fi
-    if [[ -n "$(git status --porcelain)" ]]; then
-        echo "Error: working tree is dirty" >&2
-        exit 1
-    fi
-
-    npm version "{{VERSION}}" --no-git-tag-version
-
-    git add package.json package-lock.json
-    git commit -m "release: v{{VERSION}}"
     git tag "{{VERSION}}"
 
-    echo "Release {{VERSION}} prepared. Push with:"
+    echo "Release {{VERSION}} tagged. Push with:"
     echo "  git push origin main {{VERSION}}"
 
