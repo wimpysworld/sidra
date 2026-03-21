@@ -89,18 +89,19 @@ app.whenReady().then(async () => {
     backgroundColor: '#1a0a10',
     show: false,
   });
-  let minDisplay: Promise<void>;
+  let resolveMinDisplay!: () => void;
+  const minDisplay = new Promise<void>(resolve => { resolveMinDisplay = resolve; });
+  let resolveCssReady!: () => void;
+  const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
   splash.once('ready-to-show', () => {
-    splash.show();
     splashLog.info('splash shown');
-    minDisplay = new Promise(resolve => setTimeout(resolve, 500));
+    splash.show();
+    setTimeout(resolveMinDisplay, 500);
   });
   splash.loadFile(path.join(__dirname, 'splash.html'));
   splashLog.info('splash created');
 
-  await Promise.all([components.whenReady(), minDisplay!]);
-  splashLog.info('splash closed');
-  splash.close();
+  await components.whenReady();
   mainLog.info('Widevine CDM ready, status:', components.status());
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
@@ -109,6 +110,7 @@ app.whenReady().then(async () => {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
     webPreferences: {
@@ -118,6 +120,12 @@ app.whenReady().then(async () => {
       contextIsolation: true,
       plugins: true,
     },
+  });
+
+  Promise.all([minDisplay, cssReady]).then(() => {
+    splashLog.info('splash closed');
+    splash.close();
+    win.show();
   });
 
   // Stale service workers from music.apple.com persist between launches in the
@@ -145,6 +153,10 @@ app.whenReady().then(async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.insertCSS(STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
+  });
+
+  win.webContents.once('did-finish-load', () => {
+    resolveCssReady();
   });
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
