@@ -450,22 +450,30 @@ MPRIS sets volume
 ### Main process (MPRIS integration)
 
 ```typescript
-let mprisInitiatedVolumeChange = false;
+let pendingVolume: number | null = null;
+let volumeSuppressionTimer: ReturnType<typeof setTimeout> | null = null;
+const VOLUME_SUPPRESSION_MS = 500; // 2× the 250ms musicKitHook poll interval
 
 // MPRIS → UI
-mprisPlayer.on('volume', (volume: string) => {
-  const v = Math.min(1, Math.max(0, parseFloat(volume)));
-  mprisInitiatedVolumeChange = true;
+player.on('volume', (volume: number) => {
+  const v = Math.min(1, Math.max(0, volume));
+  pendingVolume = v;
+  if (volumeSuppressionTimer) clearTimeout(volumeSuppressionTimer);
+  volumeSuppressionTimer = setTimeout(() => { pendingVolume = null; }, VOLUME_SUPPRESSION_MS);
   win.webContents.executeJavaScript(`window.__sidra.setVolume(${v})`);
-  setTimeout(() => { mprisInitiatedVolumeChange = false; }, 200);
 });
 
 // UI → MPRIS
-ipcMain.on('volumeDidChange', (_event, volume: number) => {
-  if (mprisInitiatedVolumeChange) return; // swallow the echo
-  mprisPlayer.volume = volume;
+player.on('volumeDidChange', (volume: number) => {
+  if (pendingVolume !== null && Math.abs(volume - pendingVolume) < 0.01) {
+    pendingVolume = null; // echo suppressed
+    return;
+  }
+  // update MPRIS Volume property and emit PropertiesChanged
 });
 ```
+
+The suppression timeout is 500ms (2× the 250ms `musicKitHook.js` poll interval). The epsilon comparison (0.01) absorbs floating-point rounding without masking genuine user-initiated changes.
 
 Also update `navigator.mediaSession` volume whenever MusicKit volume changes - `music.apple.com` does not always do this itself.
 
