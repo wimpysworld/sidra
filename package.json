@@ -2,7 +2,7 @@
   "name": "sidra",
   "version": "0.0.0",
   "_version_note": "Placeholder; stamped from git tag by CI before each build",
-  "description": "An elegant Apple Music desktop client. No frippery, just quality. A better class of Cider 🍎",
+  "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
   "scripts": {
     "start": "npm run build && electron .",

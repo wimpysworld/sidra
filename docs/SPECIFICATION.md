@@ -195,7 +195,7 @@ Events flow from the renderer (MusicKit hook script) to the main process (player
 |---|---|---|
 | `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Notifications |
 | `nowPlayingItemDidChange` | `{ name, albumName, artistName, durationInMillis, artworkUrl, genreNames, trackId }` or `null` | MPRIS, Discord, Notifications |
-| `playbackTimeDidChange` | Position in microseconds | MPRIS |
+| `playbackTimeDidChange` | Position in microseconds | MPRIS, Discord (position only) |
 | `repeatModeDidChange` | Mode integer (0/1/2) | MPRIS |
 | `shuffleModeDidChange` | Mode integer | MPRIS |
 | `volumeDidChange` | Volume float (0.0-1.0) | MPRIS |
@@ -567,63 +567,34 @@ The actual variable names must be verified against `music.apple.com`'s live CSS.
 
 ## Discord Rich Presence
 
-Uses `@xhayper/discord-rpc`. Requires creating a Discord Application at discord.com/developers for a Client ID and uploading Sidra branding assets.
+Uses `@xhayper/discord-rpc`. Discord Application Client ID: `1485248818688688318`. Sidra branding assets (`sidra_logo`) are uploaded to the Discord Developer Portal.
 
 Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmdesktop/ytmdesktop/blob/development/src/main/integrations/discord-presence/index.ts)
 
 ### Behaviour
 
 - **Activity type**: `ActivityType.Listening` ("Listening to" status text)
-- **Details**: Track name (truncated to 128 chars)
-- **State**: Artist name (truncated to 128 chars)
-- **Artwork**: Apple Music CDN URLs work directly as `large_image` if under 256 chars (typical range: 80-130 chars). Fall back to a Discord-hosted `sidra_logo` asset if over the limit.
-- **Timestamps**: When playing, set `start` and `end` to show elapsed/remaining. Omit when paused.
-- **Debounce**: 1s debounce on updates to coalesce rapid events (track change + position update landing together).
+- **Details**: Track name (truncated to 128 chars, padded to 2 chars minimum - Discord rejects shorter strings)
+- **State**: `by ArtistName` (truncated to 128 chars, padded to 2 chars minimum)
+- **Artwork**: Apple Music CDN URLs work directly as `largeImageKey` if under 256 chars (typical range: 80-130 chars). Fall back to a Discord-hosted `sidra_logo` asset if over the limit.
+- **Timestamps**: When playing, calculate `startTimestamp` and `endTimestamp` from current position at send time. Omit when paused.
+- **Buttons**: Two buttons - "Sidra" (links to GitHub repo) and "Play on Apple Music" (links to track URL when available).
+- **Debounce**: 1s debounce on updates to coalesce rapid events (track change + playback state landing together). `scheduleUpdate()` resets the debounce timer; `sendActivity()` calculates timestamps fresh from the cached position.
 - **Pause timeout**: Clear activity after 30s paused (ytmdesktop pattern) - courtesy to users who do not want to broadcast a paused state.
-- **Retry**: Reconnect with backoff on Discord IPC disconnection.
+- **Retry**: Reconnect with exponential backoff (2s base, 60s cap) on Discord IPC disconnection.
+- **Toggle**: `discord.enabled` in `electron-store` (default: true). Tray menu toggle; when disabled, clears activity immediately.
 
-```typescript
-class DiscordPresence {
-  private readonly CLIENT_ID = 'YOUR_SIDRA_CLIENT_ID';
-  private client: Client;
-  private debounceTimeout: NodeJS.Timeout | null = null;
-  private pauseTimeout: NodeJS.Timeout | null = null;
-  private retries = 0;
+### `playbackTimeDidChange` pitfall
 
-  private updateActivity(metadata: TrackMetadata, positionSecs: number, isPlaying: boolean) {
-    if (this.debounceTimeout) clearTimeout(this.debounceTimeout);
-    this.debounceTimeout = setTimeout(() => {
-      const durationSecs = metadata.durationInMillis / 1000;
+`playbackTimeDidChange` fires every ~250ms (MusicKit polling). Integrations must NOT call `scheduleUpdate()` (or any debounced function) from this event - doing so resets the debounce timer on every tick, preventing the debounced callback from ever executing. The Discord integration stores the updated position only; timestamps are calculated from the cached position when `sendActivity()` fires.
 
-      this.client.user?.setActivity({
-        type: ActivityType.Listening,
-        details: truncate(metadata.name, 128),
-        state: `by ${truncate(metadata.artistName, 128)}`,
-        assets: {
-          large_image: metadata.artworkUrl.length <= 256
-            ? metadata.artworkUrl
-            : 'sidra_logo',
-          large_text: truncate(metadata.albumName, 128),
-          small_image: 'sidra_logo',
-          small_text: 'Sidra',
-        },
-        timestamps: isPlaying ? {
-          start: Date.now() - (positionSecs * 1000),
-          end: Date.now() + ((durationSecs - positionSecs) * 1000),
-        } : undefined,
-      });
-      this.debounceTimeout = null;
-    }, 1000);
+### Event subscriptions
 
-    clearTimeout(this.pauseTimeout);
-    if (!isPlaying) {
-      this.pauseTimeout = setTimeout(() => {
-        this.client.user?.clearActivity();
-      }, 30_000);
-    }
-  }
-}
-```
+| Event | Action |
+|---|---|
+| `nowPlayingItemDidChange` | Cache metadata, cancel pause timer, `scheduleUpdate()` |
+| `playbackStateDidChange` | Update `isPlaying`, manage pause timer, `scheduleUpdate()` |
+| `playbackTimeDidChange` | Store position only (no `scheduleUpdate()`) |
 
 ---
 
