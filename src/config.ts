@@ -6,6 +6,7 @@ interface StoreSchema {
   storefront: string;
   language: string | null;
   'notifications.enabled': boolean;
+  'discord.enabled': boolean;
 }
 
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
@@ -54,4 +55,16 @@ export function getNotificationsEnabled(): boolean {
 export function setNotificationsEnabled(enabled: boolean): void {
   store.set('notifications.enabled', enabled);
   configLog.info('notifications.enabled set:', enabled);
+}
+
+export function getDiscordEnabled(): boolean {
+  if (!store.has('discord.enabled')) {
+    return true;  // default on
+  }
+  return store.get('discord.enabled');
+}
+
+export function setDiscordEnabled(enabled: boolean): void {
+  store.set('discord.enabled', enabled);
+  configLog.info('discord.enabled set:', enabled);
 }

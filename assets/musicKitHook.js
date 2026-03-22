@@ -31,6 +31,7 @@
         audioTraits: item.attributes?.audioTraits,
         trackNumber: item.attributes.trackNumber,
         targetBitrate: mk.bitrate,
+        url: item.attributes.url,
       });
     });
 

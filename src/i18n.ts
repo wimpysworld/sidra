@@ -153,6 +153,43 @@ export const NOTIFICATIONS_TEXT: Record<string, string> = {
   'he': 'התראות',
 };
 
+// --- "Discord Rich Presence" ---
+export const DISCORD_TEXT: Record<string, string> = {
+  'en': 'Discord Rich Presence',
+  'zh-CN': 'Discord 动态状态',
+  'zh-SG': 'Discord 动态状态',
+  'zh-TW': 'Discord 動態狀態',
+  'zh-HK': 'Discord 動態狀態',
+  'es': 'Presencia enriquecida de Discord',
+  'hi': 'Discord रिच प्रेज़ेंस',
+  'ar': 'حالة Discord التفصيلية',
+  'fr': 'Présence enrichie Discord',
+  'pt': 'Presença avançada do Discord',
+  'de': 'Discord Rich Presence',
+  'ru': 'Статус Discord',
+  'ja': 'Discord Rich Presence',
+  'ko': 'Discord Rich Presence',
+  'it': 'Presenza avanzata Discord',
+  'nl': 'Discord Rich Presence',
+  'pl': 'Discord Rich Presence',
+  'tr': 'Discord Zengin Durum',
+  'sv': 'Discord Rich Presence',
+  'da': 'Discord Rich Presence',
+  'fi': 'Discord Rich Presence',
+  'nb': 'Discord Rich Presence',
+  'no': 'Discord Rich Presence',
+  'cs': 'Discord Rich Presence',
+  'ro': 'Prezență avansată Discord',
+  'hu': 'Discord Rich Presence',
+  'el': 'Discord Rich Presence',
+  'th': 'Discord Rich Presence',
+  'id': 'Discord Rich Presence',
+  'ms': 'Discord Rich Presence',
+  'uk': 'Статус Discord',
+  'vi': 'Discord Rich Presence',
+  'he': 'Discord Rich Presence',
+};
+
 // --- "Close" ---
 export const CLOSE_TEXT: Record<string, string> = {
   'en': 'Close',
@@ -356,14 +393,15 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
   const about = aboutTemplate.replace('{name}', productName);
   const quit = getLocalizedString(QUIT_TEXT, langs);
   const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
-  return { about, quit, notifications };
+  const discord = getLocalizedString(DISCORD_TEXT, langs);
+  return { about, quit, notifications, discord };
 }
 
 export function getAboutStrings(): {

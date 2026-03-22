@@ -8,6 +8,7 @@ import { getAssetPath } from './paths';
 import { Player } from './player';
 import { createTray } from './tray';
 import { init as initNotifications } from './integrations/notifications';
+import { init as initDiscordPresence } from './integrations/discord-presence';
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -236,6 +237,7 @@ app.whenReady().then(async () => {
   });
 
   initNotifications(player, () => win);
+  initDiscordPresence(player);
 
   Promise.all([minDisplay, cssReady]).then(() => {
     splashLog.info('splash closed');

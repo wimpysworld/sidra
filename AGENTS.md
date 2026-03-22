@@ -179,8 +179,13 @@ When adding new persistent settings, add typed getter/setter pairs to `config.ts
 ## Architecture notes
 
 - Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.executeJavaScript()` calling methods on `window.__sidra`
+- `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime; it must be listed in `asarUnpack` in the electron-builder config or AppImage builds will crash on startup
 - Chromium's built-in `MediaSessionService` must be disabled on Linux to avoid conflicting MPRIS registrations; Sidra registers its own `org.mpris.MediaPlayer2.sidra` service via dbus-next
 - macOS and Windows use Chromium's native mediaSession bridges (no extra libraries)
 - Authentication is handled entirely by Apple's web flow; use `persist:sidra` partition for cookie persistence
 - Volume sync between MPRIS and MusicKit uses a suppression flag to prevent feedback loops
 - `volumeDidChange` on the MusicKit instance does not fire when the music.apple.com volume slider is used - the slider writes directly to `HTMLMediaElement.volume`, bypassing MusicKit's setter; the hook script polls `mk.volume` every 250ms as a fallback alongside the event listener
+- `Notification.isSupported()` returns `false` in CastLabs Electron even when the platform fully supports notifications; do not gate on it - listen for the `failed` event instead to surface OS-level rejection
+- `app.setAppUserModelId()` must be called before `app.whenReady()` on Windows for both GSMTC identity and desktop notifications to work
+- Use `app.getPath('cache')` for artwork storage (not `os.tmpdir()`); the cache directory is not guaranteed to exist so call `fs.mkdirSync(..., { recursive: true })` before writing
+- On NixOS, `libnotify` must be in `LD_LIBRARY_PATH` or `Notification.show()` will silently do nothing; ensure it is in the Nix dev shell
