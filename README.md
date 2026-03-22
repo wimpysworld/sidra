@@ -4,7 +4,7 @@
   Sidra
 </h1>
 
-<p align="center"><b>An elegant Apple Music desktop client. No frippery, just quality. A better class of Cider 🍎</b></p>
+<p align="center"><b>An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎</b></p>
 <p align="center">
 <img alt="GitHub all releases" src="https://img.shields.io/github/downloads/wimpysworld/sidra/total?logo=github&label=Downloads">
 </p>
@@ -23,8 +23,7 @@ Sidra is under active development; several features in this list are not yet imp
 
 - Apple Music desktop client
 - Lossless audio on macOS and Windows via CastLabs EVS production VMP signing
-- Persistent login
-- Localised Apple Music storefront
+- Persistent login with localised Apple Music storefront
 - Localised interface in 31 languages
 - **Linux**:
   - Standard Widevine DRM via CastLabs Electron
@@ -36,11 +35,9 @@ Sidra is under active development; several features in this list are not yet imp
 - **Windows**:
   - Full Widevine DRM with EVS production VMP signing
   - GSMTC media flyout via Chromium's built-in mediaSession bridge
-- Discord Rich Presence
 - Desktop Notifications
-- System tray
-  - Settings
-- Last.fm scrobbling
+- Discord Rich Presence
+- Application Indicator (tray)
 - AirPlay casting
 
 ---

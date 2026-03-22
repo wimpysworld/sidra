@@ -19,9 +19,6 @@ Current:
 
 - `electron-store` - Persistent configuration
 - `electron-log` - Logging
-
-Planned (not yet in `package.json`):
-
 - `dbus-next` - MPRIS D-Bus service (Linux)
 - `@xhayper/discord-rpc` - Discord Rich Presence
 
@@ -151,7 +148,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 ### Adding translations
 
-`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 7 records with 33 languages each: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`. When adding a language, add an entry to every record.
+`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 9 records with 33 languages each: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`. When adding a language, add an entry to every record.
 
 ```typescript
 export const LOADING_TEXT: Record<string, string> = {
@@ -171,6 +168,8 @@ Prefer specific regional tags only when the translation differs from the base la
 |-----|------|---------|
 | `storefront` | `string` | Apple Music storefront code (e.g. `gb`, `us`) |
 | `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
+| `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
+| `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: true) |
 
 Getters return `undefined` when no value has been persisted - absence of a key is intentional and drives the storefront fallback chain in `main.ts`. Do not add default values to the store schema.
 
@@ -189,3 +188,4 @@ When adding new persistent settings, add typed getter/setter pairs to `config.ts
 - `app.setAppUserModelId()` must be called before `app.whenReady()` on Windows for both GSMTC identity and desktop notifications to work
 - Use `app.getPath('cache')` for artwork storage (not `os.tmpdir()`); the cache directory is not guaranteed to exist so call `fs.mkdirSync(..., { recursive: true })` before writing
 - On NixOS, `libnotify` must be in `LD_LIBRARY_PATH` or `Notification.show()` will silently do nothing; ensure it is in the Nix dev shell
+- `playbackTimeDidChange` fires every ~250ms (MusicKit polling); integrations must NOT call a debounced update function from this event or the debounce timer resets continuously and never expires - only store the updated position, then let other events trigger the debounced send
