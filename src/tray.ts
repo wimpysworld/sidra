@@ -6,7 +6,15 @@ import { getTrayStrings, getAboutStrings } from './i18n';
 const trayLog = log.scope('tray');
 
 const pkg = require(path.join(__dirname, '..', 'package.json'));
-const iconsDir = path.join(__dirname, '..', 'assets', 'icons');
+
+function getAssetPath(...parts: string[]): string {
+  const base = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked')
+    : path.join(__dirname, '..');
+  return path.join(base, ...parts);
+}
+
+const iconsDir = getAssetPath('assets', 'icons');
 
 function getLinuxTrayIconPath(): string {
   // Dark theme = white icon (dark.png); light theme = black icon (light.png)
@@ -56,7 +64,7 @@ function showAboutWindow(): void {
     aboutWindow = null;
   });
 
-  const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+  const iconPath = getAssetPath('assets', 'sidra-logo.png');
   const author = typeof pkg.author === 'string'
     ? pkg.author.replace(/\s*<[^>]+>/, '')
     : (pkg.author?.name ?? '');

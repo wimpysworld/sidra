@@ -29,9 +29,15 @@
     "copyright": "Copyright (c) Martin Wimpress",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "asar": true,
+    "asarUnpack": [
+      "assets/icons/**",
+      "assets/sidra-logo.png"
+    ],
     "icon": "build/icon.png",
     "files": [
-      "dist/**/*"
+      "dist/**/*",
+      "assets/**/*",
+      "!assets/source/**"
     ],
     "directories": {
       "output": "release"

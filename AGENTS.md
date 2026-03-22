@@ -43,10 +43,13 @@ sidra/
 ├── assets/
 │   ├── musicKitHook.js      — Injected into music.apple.com
 │   ├── styleFix.css         — Suppress "Get the app" banners
-│   └── icons/
+│   ├── icons/
+│   └── source/              — Gimp XCF masters and SVG source files
 ├── package.json
 └── tsconfig.json
 ```
+
+`assets/source/` contains Gimp XCF masters and SVG source files tracked in git but excluded from packaging. Distributable assets live directly in `assets/` or `assets/icons/`.
 
 ## Configuration files
 
