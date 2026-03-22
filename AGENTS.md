@@ -33,6 +33,7 @@ sidra/
 │   ├── main.ts              — Bootstrap, Widevine, window, IPC hub
 │   ├── preload.ts           — contextBridge IPC exposure
 │   ├── config.ts            — electron-store wrapper
+│   ├── paths.ts             — Shared `getAssetPath()` utility
 │   ├── player.ts            — EventEmitter for playback state
 │   └── integrations/
 │       ├── integration.ts   — IIntegration interface
@@ -182,3 +183,4 @@ When adding new persistent settings, add typed getter/setter pairs to `config.ts
 - macOS and Windows use Chromium's native mediaSession bridges (no extra libraries)
 - Authentication is handled entirely by Apple's web flow; use `persist:sidra` partition for cookie persistence
 - Volume sync between MPRIS and MusicKit uses a suppression flag to prevent feedback loops
+- `volumeDidChange` on the MusicKit instance does not fire when the music.apple.com volume slider is used - the slider writes directly to `HTMLMediaElement.volume`, bypassing MusicKit's setter; the hook script polls `mk.volume` every 250ms as a fallback alongside the event listener

@@ -197,6 +197,40 @@ Events flow from the renderer (MusicKit hook script) to the main process (player
 | `shuffleModeDidChange` | Mode integer | MPRIS |
 | `volumeDidChange` | Volume float (0.0-1.0) | MPRIS |
 
+### MusicKit.js Enum Values
+
+MusicKit.js exposes enums as integer values. These are the concrete mappings observed at runtime:
+
+**`MusicKit.PlaybackStates`:**
+
+| Value | State |
+|---|---|
+| 0 | none |
+| 1 | loading |
+| 2 | playing |
+| 3 | paused |
+| 4 | stopped |
+| 5 | ended |
+| 6 | seeking |
+| 7 | waiting |
+| 8 | stalled |
+| 9 | completed |
+
+**`MusicKit.PlayerRepeatMode`:**
+
+| Value | Mode |
+|---|---|
+| 0 | none |
+| 1 | one |
+| 2 | all |
+
+**`MusicKit.PlayerShuffleMode`:**
+
+| Value | Mode |
+|---|---|
+| 0 | off |
+| 1 | songs |
+
 ### Main → Renderer (via `webContents.executeJavaScript`)
 
 Integrations call back into the renderer through the `window.__sidra` control object:
@@ -285,6 +319,13 @@ Injected into `music.apple.com` after page load via `webContents.executeJavaScri
   }, 500);
 })();
 ```
+
+### Audio Quality Metadata Caveats
+
+MusicKit.js does not expose the actual codec, bitrate, or sample rate of the audio stream. Quality negotiation happens at the HLS/CDN level, invisible to JavaScript. The available properties are misleading if taken at face value:
+
+- `item.attributes.audioTraits` (e.g. `['lossless', 'lossy-stereo']`) indicates what formats the track *supports*, not what is currently playing. Values observed: `atmos`, `lossless`, `lossy-stereo`, `hi-res-lossless`.
+- `mk.bitrate` reflects the *target* bitrate preference (`MusicKit.PlaybackBitrate.HIGH` = 256, `STANDARD` = 64), not actual playback quality. Apple's own documentation states it "does not necessarily represent the actual bit rate of the item being played". Log it as `targetBitrate` to make the semantics explicit.
 
 ---
 
@@ -422,6 +463,10 @@ ipcMain.on('volumeDidChange', (_event, volume: number) => {
 ```
 
 Also update `navigator.mediaSession` volume whenever MusicKit volume changes - `music.apple.com` does not always do this itself.
+
+### Volume Event Workaround
+
+The `music.apple.com` volume slider writes directly to `HTMLMediaElement.volume`, bypassing MusicKit's setter. As a result, `volumeDidChange` never fires on user-initiated slider changes. The workaround is to poll `mk.volume` at 250ms intervals and send IPC only when the value changes. Keep `addEventListener('volumeDidChange', ...)` in place for programmatic volume changes (e.g. from `window.__sidra.setVolume()`).
 
 ---
 
