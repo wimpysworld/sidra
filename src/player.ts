@@ -3,6 +3,19 @@ import log from 'electron-log/main';
 
 const playerLog = log.scope('player');
 
+const PLAYBACK_STATES: Record<number, string> = {
+  0: 'none',
+  1: 'loading',
+  2: 'playing',
+  3: 'paused',
+  4: 'stopped',
+  5: 'ended',
+  6: 'seeking',
+  7: 'waiting',
+  8: 'stalled',
+  9: 'completed',
+};
+
 export class Player extends EventEmitter {
   private lastTimeLogAt = 0;
 
@@ -11,7 +24,9 @@ export class Player extends EventEmitter {
   }
 
   handlePlaybackStateDidChange(payload: unknown): void {
-    playerLog.debug('playbackStateDidChange:', payload);
+    const p = payload as { status: boolean; state: number } | null;
+    const stateName = p != null ? (PLAYBACK_STATES[p.state] ?? String(p.state)) : null;
+    playerLog.debug('playbackStateDidChange:', { ...p, state: stateName });
     this.emit('playbackStateDidChange', payload);
   }
 
