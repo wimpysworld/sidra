@@ -221,6 +221,8 @@ export function init(player: Player): void {
     if (typeof payload === 'number') {
       currentPositionUs = payload;
     }
-    scheduleUpdate();
+    // Do not call scheduleUpdate() here: playbackTimeDidChange fires
+    // continuously and would perpetually reset the debounce timer,
+    // preventing sendActivity() from ever executing.
   });
 }
