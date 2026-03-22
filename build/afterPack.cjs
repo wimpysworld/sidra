@@ -17,6 +17,11 @@ exports.default = async function afterPack(context) {
     return;
   }
 
+  if (!process.env.EVS_ACCOUNT_NAME || !process.env.EVS_PASSWD) {
+    console.log('EVS: Skipping VMP signing (credentials not available).');
+    return;
+  }
+
   const { execSync } = require('child_process');
 
   console.log('EVS: Signing package with production VMP keys...');
