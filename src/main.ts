@@ -1,9 +1,12 @@
-import { app, BrowserWindow, components, Menu, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { createTray } from './tray';
-import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getStorefront, setStorefront, getLanguage, setLanguage } from './config';
+import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
+import { getAssetPath } from './paths';
+import { Player } from './player';
+import { createTray } from './tray';
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -161,6 +164,14 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
   mainLog.info('application menu set');
 
+  const player = new Player();
+  ipcMain.on('playbackStateDidChange', (_event, data) => player.handlePlaybackStateDidChange(data));
+  ipcMain.on('nowPlayingItemDidChange', (_event, data) => player.handleNowPlayingItemDidChange(data));
+  ipcMain.on('playbackTimeDidChange', (_event, data) => player.handlePlaybackTimeDidChange(data));
+  ipcMain.on('repeatModeDidChange', (_event, data) => player.handleRepeatModeDidChange(data));
+  ipcMain.on('shuffleModeDidChange', (_event, data) => player.handleShuffleModeDidChange(data));
+  ipcMain.on('volumeDidChange', (_event, data) => player.handleVolumeDidChange(data));
+
   appTray = createTray();
 
   // Show a splash screen while the Widevine CDM downloads/initialises
@@ -245,6 +256,10 @@ app.whenReady().then(async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.insertCSS(STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
+    const hookPath = getAssetPath('assets', 'musicKitHook.js');
+    const hookScript = fs.readFileSync(hookPath, 'utf-8');
+    win.webContents.executeJavaScript(hookScript);
+    mainLog.debug('MusicKit hook injected');
   });
 
   win.webContents.once('did-finish-load', () => {
