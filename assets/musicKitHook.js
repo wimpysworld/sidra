@@ -52,6 +52,15 @@
       window.AMWrapper.ipcRenderer.send('volumeDidChange', mk.volume);
     });
 
+    let lastVolume = mk.volume;
+    setInterval(() => {
+      const v = mk.volume;
+      if (v !== lastVolume) {
+        lastVolume = v;
+        window.AMWrapper.ipcRenderer.send('volumeDidChange', v);
+      }
+    }, 250);
+
     window.__sidra = {
       play:       () => mk.play(),
       pause:      () => mk.pause(),
