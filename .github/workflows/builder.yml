@@ -107,6 +107,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -136,12 +138,7 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || true)
-            if [[ -z "${VERSION}" ]]; then
-              VERSION="0.0.0-dev"
-            else
-              VERSION="${VERSION#v}"
-            fi
+            VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0-dev")
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version
       - name: Compile TypeScript
