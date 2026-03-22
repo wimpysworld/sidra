@@ -48,11 +48,11 @@
       window.AMWrapper.ipcRenderer.send('shuffleModeDidChange', mk.shuffleMode);
     });
 
+    let lastVolume = mk.volume;
     mk.addEventListener('volumeDidChange', () => {
+      lastVolume = mk.volume;
       window.AMWrapper.ipcRenderer.send('volumeDidChange', mk.volume);
     });
-
-    let lastVolume = mk.volume;
     setInterval(() => {
       const v = mk.volume;
       if (v !== lastVolume) {
