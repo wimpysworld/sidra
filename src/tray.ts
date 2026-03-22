@@ -2,17 +2,11 @@ import { app, BrowserWindow, Menu, nativeTheme, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings } from './i18n';
+import { getAssetPath } from './paths';
 
 const trayLog = log.scope('tray');
 
 const pkg = require(path.join(__dirname, '..', 'package.json'));
-
-function getAssetPath(...parts: string[]): string {
-  const base = app.isPackaged
-    ? path.join(process.resourcesPath, 'app.asar.unpacked')
-    : path.join(__dirname, '..');
-  return path.join(base, ...parts);
-}
 
 const iconsDir = getAssetPath('assets', 'icons');
 
