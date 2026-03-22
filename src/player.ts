@@ -3,6 +3,17 @@ import log from 'electron-log/main';
 
 const playerLog = log.scope('player');
 
+const REPEAT_MODES: Record<number, string> = {
+  0: 'none',
+  1: 'one',
+  2: 'all',
+};
+
+const SHUFFLE_MODES: Record<number, string> = {
+  0: 'off',
+  1: 'songs',
+};
+
 const PLAYBACK_STATES: Record<number, string> = {
   0: 'none',
   1: 'loading',
@@ -45,12 +56,14 @@ export class Player extends EventEmitter {
   }
 
   handleRepeatModeDidChange(payload: unknown): void {
-    playerLog.debug('repeatModeDidChange:', payload);
+    const modeName = typeof payload === 'number' ? (REPEAT_MODES[payload] ?? String(payload)) : payload;
+    playerLog.debug('repeatModeDidChange:', modeName);
     this.emit('repeatModeDidChange', payload);
   }
 
   handleShuffleModeDidChange(payload: unknown): void {
-    playerLog.debug('shuffleModeDidChange:', payload);
+    const modeName = typeof payload === 'number' ? (SHUFFLE_MODES[payload] ?? String(payload)) : payload;
+    playerLog.debug('shuffleModeDidChange:', modeName);
     this.emit('shuffleModeDidChange', payload);
   }
 
