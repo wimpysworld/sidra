@@ -187,7 +187,16 @@ app.whenReady().then(async () => {
   splash.loadFile(path.join(__dirname, 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
   splashLog.info('splash created');
 
-  await components.whenReady();
+  // Clear stale service workers concurrently with Widevine CDM init - both are
+  // independent async operations and navigation has not started yet.
+  const ses = session.fromPartition('persist:sidra');
+  await Promise.all([
+    components.whenReady(),
+    ses.clearData({
+      dataTypes: ['serviceWorkers', 'cache'],
+      origins: ['https://music.apple.com'],
+    }),
+  ]);
   mainLog.info('Widevine CDM ready, status:', components.status());
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
@@ -215,20 +224,11 @@ app.whenReady().then(async () => {
     win.show();
   });
 
-  // Stale service workers from music.apple.com persist between launches in the
-  // persist: partition and intercept requests, serving invalid cached responses.
-  // Clear service workers and HTTP cache before loading, preserving auth cookies.
-  const ses = session.fromPartition('persist:sidra');
-  await ses.clearData({
-    dataTypes: ['serviceWorkers', 'cache'],
-    origins: ['https://music.apple.com'],
-  });
-
   // Set UA on the persist:sidra session used by the window
   ses.setUserAgent(UA);
 
   // Strip Electron and app name tokens from outgoing request headers
-  ses.webRequest.onBeforeSendHeaders((details, callback) => {
+  ses.webRequest.onBeforeSendHeaders({ urls: ['https://music.apple.com/*'] }, (details, callback) => {
     const ua = details.requestHeaders['User-Agent'];
     if (ua && ua !== UA) {
       details.requestHeaders['User-Agent'] = UA;
