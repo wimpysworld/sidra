@@ -251,7 +251,11 @@ app.whenReady().then(async () => {
 
   let catppuccinCssOp = Promise.resolve();
   applyCatppuccinCSS = (enabled: boolean) => {
-    catppuccinCssOp = catppuccinCssOp.then(async () => {
+    catppuccinCssOp = catppuccinCssOp
+      .catch((error) => {
+        mainLog.warn('Catppuccin CSS operation failed', error);
+      })
+      .then(async () => {
       if (enabled && catppuccinCssKey !== null) {
         await win.webContents.removeInsertedCSS(catppuccinCssKey);
         catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
