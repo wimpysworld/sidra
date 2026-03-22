@@ -249,19 +249,23 @@ app.whenReady().then(async () => {
   initNotifications(player, () => win);
   initDiscordPresence(player);
 
-  applyCatppuccinCSS = async (enabled: boolean) => {
-    if (enabled && catppuccinCssKey !== null) {
-      await win.webContents.removeInsertedCSS(catppuccinCssKey);
-      catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
-      mainLog.debug('Catppuccin CSS re-injected');
-    } else if (enabled) {
-      catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
-      mainLog.debug('Catppuccin CSS injected');
-    } else if (catppuccinCssKey !== null) {
-      await win.webContents.removeInsertedCSS(catppuccinCssKey);
-      catppuccinCssKey = null;
-      mainLog.debug('Catppuccin CSS removed');
-    }
+  let catppuccinCssOp = Promise.resolve();
+  applyCatppuccinCSS = (enabled: boolean) => {
+    catppuccinCssOp = catppuccinCssOp.then(async () => {
+      if (enabled && catppuccinCssKey !== null) {
+        await win.webContents.removeInsertedCSS(catppuccinCssKey);
+        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+        mainLog.debug('Catppuccin CSS re-injected');
+      } else if (enabled) {
+        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+        mainLog.debug('Catppuccin CSS injected');
+      } else if (catppuccinCssKey !== null) {
+        await win.webContents.removeInsertedCSS(catppuccinCssKey);
+        catppuccinCssKey = null;
+        mainLog.debug('Catppuccin CSS removed');
+      }
+    });
+    return catppuccinCssOp;
   };
 
   (app as NodeJS.EventEmitter).on('catppuccin-toggle', (_event: unknown, enabled: boolean) => {
