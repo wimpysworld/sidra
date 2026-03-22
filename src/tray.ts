@@ -5,6 +5,7 @@ import { getTrayStrings, getAboutStrings } from './i18n';
 
 const trayLog = log.scope('tray');
 
+const pkg = require(path.join(__dirname, '..', 'package.json'));
 const iconsDir = path.join(__dirname, '..', 'assets', 'icons');
 
 function getLinuxTrayIconPath(): string {
@@ -56,7 +57,6 @@ function showAboutWindow(): void {
   });
 
   const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
-  const pkg = require(path.join(__dirname, '..', 'package.json'));
   const author = typeof pkg.author === 'string'
     ? pkg.author.replace(/\s*<[^>]+>/, '')
     : (pkg.author?.name ?? '');
@@ -85,7 +85,6 @@ export function createTray(): Tray {
   trayLog.info('creating tray with icon:', iconPath);
 
   const tray = new Tray(iconPath);
-  const pkg = require(path.join(__dirname, '..', 'package.json'));
   const productName: string = pkg.build?.productName ?? app.getName();
   tray.setToolTip(productName);
 

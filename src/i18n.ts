@@ -3,6 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 
 const i18nLog = log.scope('i18n');
+const pkg = require(path.join(__dirname, '..', 'package.json'));
 
 // --- Localised loading text ---
 export const LOADING_TEXT: Record<string, string> = {
@@ -311,7 +312,6 @@ export function getLoadingText(): { text: string; lang: string } {
 
 export function getTrayStrings(): { about: string; quit: string } {
   const langs = app.getPreferredSystemLanguages();
-  const pkg = require(path.join(__dirname, '..', 'package.json'));
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
   const about = aboutTemplate.replace('{name}', productName);

@@ -20,6 +20,7 @@ The codebase is tightly focused and as lean as possible. Four runtime dependenci
 - [Volume Sync](#volume-sync)
 - [Region and Storefront](#region-and-storefront)
 - [Authentication](#authentication)
+- [Theming](#theming)
 - [Discord Rich Presence](#discord-rich-presence)
 - [Track Change Notifications](#track-change-notifications)
 - [Feature Inventory](#feature-inventory)
@@ -139,6 +140,8 @@ sidra/
 │   ├── styleFix.css               — CSS overrides injected via webContents.insertCSS()
 │   │                                 Hides "Get the app" and "Open in Music" banners
 │   │                                 that Apple shows to push users toward native apps
+│   ├── catppuccin.css             — Optional Catppuccin palette overrides; injected when
+│   │                                 the theme preference is set to catppuccin
 │   └── icons/
 │       ├── icon.png, icon.icns, icon.ico
 │       └── tray.png, tray@2x.png
@@ -469,6 +472,49 @@ const win = new BrowserWindow({
 
 ---
 
+## Theming
+
+The default colour scheme is Apple Music's own. When the `catppuccin` theme is selected, a CSS override file is injected via `webContents.insertCSS()` immediately after `styleFix.css`. No custom UI components are introduced - colour tokens only.
+
+### Palette
+
+| Context | Variant | Background | Text | Accent |
+|---|---|---|---|---|
+| Dark | Catppuccin Mocha | `#1e1e2e` (Base) | `#cdd6f4` (Text) | `#f38ba8` (Red) |
+| Light | Catppuccin Latte | `#eff1f5` (Base) | `#4c4f69` (Text) | `#d20f39` (Red) |
+
+The red accent is used in both variants to preserve Apple Music brand association. Light/dark variant selection follows the system `prefers-color-scheme` media query.
+
+### Persistence
+
+Theme preference is stored in `electron-store` as `theme` (`'default'` | `'catppuccin'`). Default is `'default'`. No restart required - the preference is applied on next launch.
+
+### Implementation
+
+`catppuccin.css` overrides CSS custom properties on `:root`. Apple Music's own web app uses CSS variables throughout its UI, so a targeted variable replacement is sufficient. No element-level selectors.
+
+```css
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #1e1e2e;
+    --color-text-primary: #cdd6f4;
+    --color-accent: #f38ba8;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-background: #eff1f5;
+    --color-text-primary: #4c4f69;
+    --color-accent: #d20f39;
+  }
+}
+```
+
+The actual variable names must be verified against `music.apple.com`'s live CSS. The above is illustrative.
+
+---
+
 ## Discord Rich Presence
 
 Uses `@xhayper/discord-rpc`. Requires creating a Discord Application at discord.com/developers for a Client ID and uploading Sidra branding assets.
@@ -612,10 +658,11 @@ Notifications are toggleable via an `electron-store` boolean setting (default: o
 |---|---|
 | Last.fm scrobbling | ~100 lines, proven pattern from Cider/apple-music-wrapper |
 | AirPlay casting | `airtunes2` node module (Cider v1 has this) |
+| Catppuccin theme | CSS variable overrides injected at startup; mocha/latte red accent; stored in electron-store |
 
 ### Explicitly Out of Scope
 
-- Custom UI or theming of any kind
+- Custom UI, component overrides, or plugin-based theme engines
 - Audio effects or EQ
 - Plugin/extension system
 - Lossless upgrade (already works via the web player)

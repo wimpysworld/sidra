@@ -2,7 +2,16 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 // Channels the renderer is allowed to use.
 // Extend these lists as new IPC messages are added.
-const SEND_CHANNELS: string[] = [];
+const SEND_CHANNELS: string[] = [
+  'playbackStateDidChange',
+  'nowPlayingItemDidChange',
+  'playbackTimeDidChange',
+  'repeatModeDidChange',
+  'shuffleModeDidChange',
+  'volumeDidChange',
+];
+// Main process uses webContents.executeJavaScript() for renderer callbacks,
+// so no ipcRenderer.on channels are needed.
 const RECEIVE_CHANNELS: string[] = [];
 
 /**
