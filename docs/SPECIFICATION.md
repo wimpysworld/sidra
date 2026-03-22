@@ -487,7 +487,7 @@ The red accent is used in both variants to preserve Apple Music brand associatio
 
 ### Persistence
 
-Theme preference is stored in `electron-store` as `theme` (`'default'` | `'catppuccin'`). Default is `'default'`. No restart required - the preference is applied on next launch.
+Theme preference is stored in `electron-store` as `theme` (`'default'` | `'catppuccin'`). Default is `'default'`. Restart required - the preference is applied on next launch.
 
 ### Implementation
 
