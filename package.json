@@ -1,6 +1,7 @@
 {
   "name": "sidra",
-  "version": "0.1.1",
+  "version": "0.0.0",
+  "_version_note": "Placeholder; stamped from git tag by CI before each build",
   "description": "An elegant Apple Music desktop client. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
   "scripts": {
