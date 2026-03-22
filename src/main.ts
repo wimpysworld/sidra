@@ -47,7 +47,8 @@ function chromeUA(): string {
 }
 
 // Set fallback UA before app.whenReady() so any early requests use it
-app.userAgentFallback = chromeUA();
+const UA = chromeUA();
+app.userAgentFallback = UA;
 
 // Prevent garbage collection of tray icon
 let appTray: Tray | null = null;
@@ -105,13 +106,13 @@ function handleStorefrontNavigation(url: string): void {
   const currentLanguage = getLanguage();
   const nextLanguage = result.language ?? currentLanguage ?? null;
 
+  if (result.storefront !== currentStorefront) {
+    setStorefront(result.storefront);
+  }
+  if (nextLanguage !== currentLanguage) {
+    setLanguage(nextLanguage);
+  }
   if (result.storefront !== currentStorefront || nextLanguage !== currentLanguage) {
-    if (result.storefront !== currentStorefront) {
-      setStorefront(result.storefront);
-    }
-    if (nextLanguage !== currentLanguage) {
-      setLanguage(nextLanguage);
-    }
     mainLog.info(`storefront changed: ${result.storefront} (language: ${nextLanguage})`);
   }
 }
@@ -190,7 +191,7 @@ app.whenReady().then(async () => {
   mainLog.info('Widevine CDM ready, status:', components.status());
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
-  session.defaultSession.setUserAgent(chromeUA());
+  session.defaultSession.setUserAgent(UA);
 
   const win = new BrowserWindow({
     title: 'Sidra',
@@ -224,13 +225,13 @@ app.whenReady().then(async () => {
   });
 
   // Set UA on the persist:sidra session used by the window
-  ses.setUserAgent(chromeUA());
+  ses.setUserAgent(UA);
 
   // Strip Electron and app name tokens from outgoing request headers
   ses.webRequest.onBeforeSendHeaders((details, callback) => {
     const ua = details.requestHeaders['User-Agent'];
-    if (ua && ua !== chromeUA()) {
-      details.requestHeaders['User-Agent'] = chromeUA();
+    if (ua && ua !== UA) {
+      details.requestHeaders['User-Agent'] = UA;
     }
     callback({ requestHeaders: details.requestHeaders });
   });
@@ -284,7 +285,7 @@ app.whenReady().then(async () => {
   }
 
   mainLog.info('loading Apple Music...');
-  win.loadURL(buildAppleMusicURL(), { userAgent: chromeUA() });
+  win.loadURL(buildAppleMusicURL(), { userAgent: UA });
 });
 
 app.on('window-all-closed', () => {

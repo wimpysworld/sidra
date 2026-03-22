@@ -10,9 +10,6 @@ const SEND_CHANNELS: string[] = [
   'shuffleModeDidChange',
   'volumeDidChange',
 ];
-// Main process uses webContents.executeJavaScript() for renderer callbacks,
-// so no ipcRenderer.on channels are needed.
-const RECEIVE_CHANNELS: string[] = [];
 
 /**
  * Minimal IPC bridge exposed to the renderer as window.AMWrapper.
@@ -26,13 +23,6 @@ contextBridge.exposeInMainWorld('AMWrapper', {
         return;
       }
       ipcRenderer.send(channel, data);
-    },
-    on: (channel: string, func: (...args: unknown[]) => void) => {
-      if (!RECEIVE_CHANNELS.includes(channel)) {
-        console.warn(`AMWrapper: blocked listener on unlisted channel "${channel}"`);
-        return;
-      }
-      ipcRenderer.on(channel, (_event, ...args) => func(...args));
     },
   },
 });

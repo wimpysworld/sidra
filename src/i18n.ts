@@ -295,19 +295,18 @@ export function getStorefront(): string {
 
 export function getLoadingText(): { text: string; lang: string } {
   const langs = app.getPreferredSystemLanguages();
-  for (const lang of langs) {
-    if (LOADING_TEXT[lang]) {
-      i18nLog.debug(`resolved locale: ${lang} (exact)`);
-      return { text: LOADING_TEXT[lang], lang };
-    }
-    const base = lang.split('-')[0];
-    if (LOADING_TEXT[base]) {
-      i18nLog.debug(`resolved locale: ${base} (from ${lang})`);
-      return { text: LOADING_TEXT[base], lang: base };
-    }
+  const text = getLocalizedString(LOADING_TEXT, langs);
+
+  // Determine which key matched using the same exact/base walk
+  let lang = 'en';
+  for (const candidate of langs) {
+    if (LOADING_TEXT[candidate]) { lang = candidate; break; }
+    const base = candidate.split('-')[0];
+    if (LOADING_TEXT[base]) { lang = base; break; }
   }
-  i18nLog.debug('resolved locale: en (fallback)');
-  return { text: LOADING_TEXT['en'], lang: 'en' };
+
+  i18nLog.debug(`resolved locale: ${lang}`);
+  return { text, lang };
 }
 
 export function getTrayStrings(): { about: string; quit: string } {
