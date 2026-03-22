@@ -33,6 +33,7 @@
     "asar": true,
     "asarUnpack": [
       "assets/icons/**",
+      "assets/catppuccin.css",
       "assets/musicKitHook.js",
       "assets/sidra-logo.png"
     ],

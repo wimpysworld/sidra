@@ -175,6 +175,33 @@ Getters return `undefined` when no value has been persisted - absence of a key i
 
 When adding new persistent settings, add typed getter/setter pairs to `config.ts` following the existing pattern. Do not use `electron-store` directly elsewhere in the codebase.
 
+## CSS injection
+
+`webContents.insertCSS()` injects at author-level cascade origin. Apple's own stylesheets compete at the same specificity, so all overrides require `!important` or they lose on specificity ties after navigation.
+
+`@media (prefers-color-scheme: dark/light)` resolves correctly against `nativeTheme.shouldUseDarkColors`. A single CSS file with both media blocks covers both variants.
+
+### Elements outside the `:root` cascade
+
+Most Apple Music styling responds to `:root` custom property overrides. These elements do not:
+
+| Element | Selector | Reason |
+|---------|----------|--------|
+| Player bar background | `.wrapper amp-chrome-player::before` | `::before` pseudo paints the bar |
+| Side panels (Lyrics/Up Next) | `.side-panel`, `.side-panel-header-wrapper` | Direct `background-color` |
+| Page footer | `.scrollable-page > footer` | Direct `background-color` |
+| LCD now-playing widget | `amp-lcd { --lcd-bg-color }` | Shadow DOM scoped variable |
+
+**Pattern:** when a `:root` variable override has no visible effect, the element either (a) uses a shadow-DOM-scoped custom property (set the variable on the host element), or (b) paints its own background via `::before` or a direct property (use a direct selector with `!important`).
+
+### CSS variable audit
+
+Active Apple Music userstyle repositories provide reliable cross-referenced variable lists: PitchBlack (`sprince0031/PitchBlack-UserStyle-themes`), Native AM (`dantelin2009`), AppleMusic-Tui. Search with `mcp__exa__get_code_context_exa` using `"apple music userstyle css variables site:github.com"`.
+
+### Asset packaging
+
+CSS files read via `fs.readFileSync` at runtime must be listed individually in `asarUnpack` in `package.json`. `asarUnpack` does not support globs - each file must be named explicitly or packaged builds will fail to read them.
+
 ## Architecture notes
 
 - Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.executeJavaScript()` calling methods on `window.__sidra`

@@ -190,6 +190,43 @@ export const DISCORD_TEXT: Record<string, string> = {
   'he': 'Discord Rich Presence',
 };
 
+// --- "Catppuccin" ---
+export const CATPPUCCIN_TEXT: Record<string, string> = {
+  'en': 'Catppuccin',
+  'zh-CN': 'Catppuccin',
+  'zh-SG': 'Catppuccin',
+  'zh-TW': 'Catppuccin',
+  'zh-HK': 'Catppuccin',
+  'es': 'Catppuccin',
+  'hi': 'Catppuccin',
+  'ar': 'Catppuccin',
+  'fr': 'Catppuccin',
+  'pt': 'Catppuccin',
+  'de': 'Catppuccin',
+  'ru': 'Catppuccin',
+  'ja': 'Catppuccin',
+  'ko': 'Catppuccin',
+  'it': 'Catppuccin',
+  'nl': 'Catppuccin',
+  'pl': 'Catppuccin',
+  'tr': 'Catppuccin',
+  'sv': 'Catppuccin',
+  'da': 'Catppuccin',
+  'fi': 'Catppuccin',
+  'nb': 'Catppuccin',
+  'no': 'Catppuccin',
+  'cs': 'Catppuccin',
+  'ro': 'Catppuccin',
+  'hu': 'Catppuccin',
+  'el': 'Catppuccin',
+  'th': 'Catppuccin',
+  'id': 'Catppuccin',
+  'ms': 'Catppuccin',
+  'uk': 'Catppuccin',
+  'vi': 'Catppuccin',
+  'he': 'Catppuccin',
+};
+
 // --- "Close" ---
 export const CLOSE_TEXT: Record<string, string> = {
   'en': 'Close',
@@ -393,7 +430,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; catppuccin: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
@@ -401,7 +438,8 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const quit = getLocalizedString(QUIT_TEXT, langs);
   const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
   const discord = getLocalizedString(DISCORD_TEXT, langs);
-  return { about, quit, notifications, discord };
+  const catppuccin = getLocalizedString(CATPPUCCIN_TEXT, langs);
+  return { about, quit, notifications, discord, catppuccin };
 }
 
 export function getAboutStrings(): {

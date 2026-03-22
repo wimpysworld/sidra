@@ -3,7 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings } from './i18n';
 import { getAssetPath } from './paths';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled } from './config';
 
 const trayLog = log.scope('tray');
 
@@ -92,6 +92,8 @@ function buildContextMenu(tray: Tray): Menu {
   const notifGlyph = notifEnabled ? '●' : '○';
   const discordEnabled = getDiscordEnabled();
   const discordGlyph = discordEnabled ? '●' : '○';
+  const catppuccinEnabled = getCatppuccinEnabled();
+  const catppuccinGlyph = catppuccinEnabled ? '●' : '○';
 
   return Menu.buildFromTemplate([
     {
@@ -113,6 +115,16 @@ function buildContextMenu(tray: Tray): Menu {
       checked: discordEnabled,
       click: (menuItem) => {
         setDiscordEnabled(menuItem.checked);
+        tray.setContextMenu(buildContextMenu(tray));
+      },
+    },
+    {
+      label: isLinux ? `${catppuccinGlyph} ${strings.catppuccin}` : strings.catppuccin,
+      type: 'checkbox',
+      checked: catppuccinEnabled,
+      click: (menuItem) => {
+        setCatppuccinEnabled(menuItem.checked);
+        app.emit('catppuccin-toggle', {}, menuItem.checked);
         tray.setContextMenu(buildContextMenu(tray));
       },
     },

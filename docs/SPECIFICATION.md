@@ -541,27 +541,34 @@ Theme preference is stored in `electron-store` as `theme` (`'default'` | `'catpp
 
 ### Implementation
 
-`catppuccin.css` overrides CSS custom properties on `:root`. Apple Music's own web app uses CSS variables throughout its UI, so a targeted variable replacement is sufficient. No element-level selectors.
+`catppuccin.css` overrides CSS custom properties on `:root` and targets specific elements that fall outside the normal cascade. `webContents.insertCSS()` injects at author-level cascade origin, so all overrides use `!important` to win specificity ties against Apple's own stylesheets after navigation.
 
-```css
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-background: #1e1e2e;
-    --color-text-primary: #cdd6f4;
-    --color-accent: #f38ba8;
-  }
-}
+`@media (prefers-color-scheme: dark)` and `@media (prefers-color-scheme: light)` resolve correctly in Electron's Chromium renderer against `nativeTheme.shouldUseDarkColors`. A single CSS file with both blocks covers both variants.
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --color-background: #eff1f5;
-    --color-text-primary: #4c4f69;
-    --color-accent: #d20f39;
-  }
-}
-```
+#### `:root` variable overrides
 
-The actual variable names must be verified against `music.apple.com`'s live CSS. The above is illustrative.
+Most Apple Music styling responds to `:root` custom property overrides. The CSS file sets colour tokens on `:root` within each `@media (prefers-color-scheme)` block.
+
+#### Elements requiring direct selectors
+
+Several elements render outside the normal `:root` cascade and require direct element selectors:
+
+| Element | Selector | Notes |
+|---------|----------|-------|
+| Player bar background | `.wrapper amp-chrome-player::before` | `::before` pseudo-element paints the bar, ignores `:root` |
+| Side panels (Lyrics + Up Next) | `.side-panel`, `.side-panel-header-wrapper` | Both panels share one container element |
+| Page footer | `.scrollable-page > footer` | Paints its own `background-color` directly |
+| LCD now-playing widget | `amp-lcd { --lcd-bg-color }` | Shadow DOM scoped variable; must be set on the host element, not `:root` |
+
+When a `:root` variable override has no visible effect, the element is either (a) using a shadow-DOM-scoped custom property - set the variable on the host element directly, or (b) painting its own `background-color` via a `::before` pseudo or direct property - use a direct element selector with `!important`.
+
+#### CSS variable audit
+
+A live DevTools audit (`just run-devtools`) is the primary tool for discovering variable names. Active Apple Music userstyle repositories provide reliable cross-referenced variable lists: PitchBlack (`sprince0031/PitchBlack-UserStyle-themes`), Native AM (`dantelin2009`), AppleMusic-Tui.
+
+#### Asset packaging
+
+`asarUnpack` in `package.json` lists files individually (not via glob). Any new CSS asset files read via `fs.readFileSync` at runtime must be added explicitly to `asarUnpack` or they will be inaccessible in packaged builds.
 
 ---
 

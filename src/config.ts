@@ -7,6 +7,7 @@ interface StoreSchema {
   language: string | null;
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
+  'catppuccin.enabled': boolean;
 }
 
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
@@ -67,4 +68,16 @@ export function getDiscordEnabled(): boolean {
 export function setDiscordEnabled(enabled: boolean): void {
   store.set('discord.enabled', enabled);
   configLog.info('discord.enabled set:', enabled);
+}
+
+export function getCatppuccinEnabled(): boolean {
+  if (!store.has('catppuccin.enabled')) {
+    return false;  // default off
+  }
+  return store.get('catppuccin.enabled');
+}
+
+export function setCatppuccinEnabled(enabled: boolean): void {
+  store.set('catppuccin.enabled', enabled);
+  configLog.info('catppuccin.enabled set:', enabled);
 }

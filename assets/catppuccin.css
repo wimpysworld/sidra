@@ -1,0 +1,245 @@
+/*
+ * Catppuccin theme for Apple Music
+ * Mocha (dark) and Latte (light) variants via prefers-color-scheme
+ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Background & Structure */
+    --pageBG: #1e1e2e !important;
+    --pageBG-rgb: 30,30,46 !important;
+    --opaqueShelfBG: #181825 !important;
+    --opaquePageBGColor: #181825 !important;
+    --fallbackMaterialBG: rgba(24,24,37,0.97) !important;
+    --shelfBG: rgba(49,50,68,0.15) !important;
+    --modalBGColor: #1e1e2e !important;
+    --modalBGColor-rgb: 30,30,46 !important;
+    --modalBGHeaderColor: rgba(24,24,37,0.97) !important;
+    --footerBG: #11111b !important;
+    --sidebar: rgba(49,50,68,0.05) !important;
+    --webNavigationMobileBg: #181825 !important;
+    --genericJoeColor: #45475a !important;
+
+    /* Accent */
+    --keyColor: #f38ba8 !important;
+    --keyColor-rgb: 243,139,168 !important;
+    --keyColor-rollover: #eba0ac !important;
+    --keyColor-pressed: #eba0ac !important;
+    --keyColor-deepPressed: #eba0ac !important;
+    --keyColor-disabled: rgba(243,139,168,0.35) !important;
+    --musicKeyColor: #f38ba8 !important;
+    --systemAccentBG: #f38ba8 !important;
+    --musicBrandBG: #f38ba8 !important;
+    --selectionColor: #f38ba8 !important;
+    --lovedBGColor: #f38ba8 !important;
+
+    /* Text */
+    --systemPrimary: rgba(205,214,244,0.85) !important;
+    --systemPrimary-vibrant: #cdd6f4 !important;
+    --systemPrimary-vibrant-rgb: 205,214,244 !important;
+    --systemSecondary: rgba(186,194,222,0.55) !important;
+    --systemSecondary-vibrant: #a6adc8 !important;
+    --systemTertiary: rgba(108,112,134,0.25) !important;
+    --systemTertiary-vibrant: #585b70 !important;
+    --systemQuaternary: rgba(69,71,90,0.15) !important;
+    --systemQuinary: rgba(49,50,68,0.08) !important;
+    --contextMenuTextColor: rgba(205,214,244,0.85) !important;
+
+    /* Borders & Dividers */
+    --labelDivider: rgba(88,91,112,0.2) !important;
+    --vibrantDivider: rgba(88,91,112,0.25) !important;
+    --sidebarBorderRule: rgba(88,91,112,0.15) !important;
+    --contextMenuBorderColor: rgba(88,91,112,0.2) !important;
+    --searchBorder: rgba(88,91,112,0.2) !important;
+
+    /* Player */
+    --playerBackground: rgba(24,24,37,0.88) !important;
+    --playerBackgroundFallback: rgba(24,24,37,0.97) !important;
+    --playerLCDBGFill: #313244 !important;
+    --playerLCDBGFill-rgb: 49,50,68 !important;
+    --playerLCDLogo: rgba(166,173,200,0.55) !important;
+    --playerScrubberFill: #f38ba8 !important;
+    --playerScrubberTrack: rgba(69,71,90,0.2) !important;
+    --playerScrubberPlayhead: #a6adc8 !important;
+    --playerVolumeFill: #f38ba8 !important;
+    --playerVolumeTrack: rgba(69,71,90,0.2) !important;
+    --playerVolumeIconFill: rgba(186,194,222,0.5) !important;
+    --playerPlatterButtonBGFill: #f38ba8 !important;
+    --playerPlatterButtonIconFill: #1e1e2e !important;
+    --playerDropShadow2: rgba(17,17,27,0.1) !important;
+    --playerArtworkKeyline: rgba(49,50,68,0.15) !important;
+
+    /* Navigation */
+    --sidebarSelectedState: rgba(49,50,68,0.15) !important;
+    --segmentedControlBG: rgba(49,50,68,0.2) !important;
+    --segmentedControlSelectedBG: #45475a !important;
+
+    /* Tracklist */
+    --tracklistHoverColor: rgba(49,50,68,0.08) !important;
+    --tracklistAltRowColor: rgba(49,50,68,0.03) !important;
+    --trackBackgroundEven: rgba(49,50,68,0.05) !important;
+
+    /* Materials */
+    --systemStandardThickMaterialSover: rgba(24,24,37,0.72) !important;
+    --systemHeaderMaterialSover: rgba(24,24,37,0.8) !important;
+    --systemToolbarTitlebarMaterialSover: rgba(24,24,37,0.8) !important;
+  }
+
+  /* Top player bar: amp-chrome-player::before paints the bar background
+     independently of :root variables - must be overridden directly */
+  .wrapper amp-chrome-player::before {
+    background-color: rgba(24, 24, 37, 0.88) !important;
+  }
+
+  /* Prevent .player-bar from painting its own light background over the top */
+  .player-bar,
+  .chrome-player.chrome-player__music {
+    background: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Force --playerBGFill into shadow-DOM-scoped elements */
+  * {
+    --playerBGFill: rgba(24, 24, 37, 0.88) !important;
+  }
+
+  /* Side panels (Lyrics + Up Next): not covered by :root variables */
+  .side-panel {
+    background-color: rgba(24, 24, 37, 0.97) !important;
+    backdrop-filter: blur(50px) saturate(100%) !important;
+  }
+  .side-panel.side-panel-header-wrapper,
+  .side-panel .side-panel-header-wrapper,
+  .side-panel-header-wrapper {
+    background-color: rgba(24, 24, 37, 0.97) !important;
+  }
+
+  /* LCD now-playing text/info area background */
+  amp-lcd {
+    --lcd-bg-color: #313244 !important;
+  }
+
+  /* Footer */
+  .scrollable-page > footer {
+    background-color: #11111b !important;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Background & Structure */
+    --pageBG: #eff1f5 !important;
+    --pageBG-rgb: 239,241,245 !important;
+    --opaqueShelfBG: #e6e9ef !important;
+    --opaquePageBGColor: #e6e9ef !important;
+    --fallbackMaterialBG: rgba(230,233,239,0.97) !important;
+    --shelfBG: rgba(204,208,218,0.15) !important;
+    --modalBGColor: #eff1f5 !important;
+    --modalBGColor-rgb: 239,241,245 !important;
+    --modalBGHeaderColor: rgba(230,233,239,0.97) !important;
+    --footerBG: #dce0e8 !important;
+    --sidebar: rgba(204,208,218,0.05) !important;
+    --webNavigationMobileBg: #e6e9ef !important;
+    --genericJoeColor: #bcc0cc !important;
+
+    /* Accent */
+    --keyColor: #d20f39 !important;
+    --keyColor-rgb: 210,15,57 !important;
+    --keyColor-rollover: #e64553 !important;
+    --keyColor-pressed: #e64553 !important;
+    --keyColor-deepPressed: #e64553 !important;
+    --keyColor-disabled: rgba(210,15,57,0.35) !important;
+    --musicKeyColor: #d20f39 !important;
+    --systemAccentBG: #d20f39 !important;
+    --musicBrandBG: #d20f39 !important;
+    --selectionColor: #d20f39 !important;
+    --lovedBGColor: #d20f39 !important;
+
+    /* Text */
+    --systemPrimary: rgba(76,79,105,0.85) !important;
+    --systemPrimary-vibrant: #4c4f69 !important;
+    --systemPrimary-vibrant-rgb: 76,79,105 !important;
+    --systemSecondary: rgba(92,95,119,0.55) !important;
+    --systemSecondary-vibrant: #6c6f85 !important;
+    --systemTertiary: rgba(156,160,176,0.25) !important;
+    --systemTertiary-vibrant: #acb0be !important;
+    --systemQuaternary: rgba(188,192,204,0.15) !important;
+    --systemQuinary: rgba(204,208,218,0.08) !important;
+    --contextMenuTextColor: rgba(76,79,105,0.85) !important;
+
+    /* Borders & Dividers */
+    --labelDivider: rgba(172,176,190,0.2) !important;
+    --vibrantDivider: rgba(172,176,190,0.25) !important;
+    --sidebarBorderRule: rgba(172,176,190,0.15) !important;
+    --contextMenuBorderColor: rgba(172,176,190,0.2) !important;
+    --searchBorder: rgba(172,176,190,0.2) !important;
+
+    /* Player */
+    --playerBackground: rgba(230,233,239,0.88) !important;
+    --playerBackgroundFallback: rgba(230,233,239,0.97) !important;
+    --playerLCDBGFill: #ccd0da !important;
+    --playerLCDBGFill-rgb: 204,208,218 !important;
+    --playerLCDLogo: rgba(108,111,133,0.55) !important;
+    --playerScrubberFill: #d20f39 !important;
+    --playerScrubberTrack: rgba(188,192,204,0.2) !important;
+    --playerScrubberPlayhead: #6c6f85 !important;
+    --playerVolumeFill: #d20f39 !important;
+    --playerVolumeTrack: rgba(188,192,204,0.2) !important;
+    --playerVolumeIconFill: rgba(92,95,119,0.5) !important;
+    --playerPlatterButtonBGFill: #d20f39 !important;
+    --playerPlatterButtonIconFill: #eff1f5 !important;
+    --playerDropShadow2: rgba(220,224,232,0.1) !important;
+    --playerArtworkKeyline: rgba(204,208,218,0.15) !important;
+
+    /* Navigation */
+    --sidebarSelectedState: rgba(204,208,218,0.15) !important;
+    --segmentedControlBG: rgba(204,208,218,0.2) !important;
+    --segmentedControlSelectedBG: #bcc0cc !important;
+
+    /* Tracklist */
+    --tracklistHoverColor: rgba(204,208,218,0.08) !important;
+    --tracklistAltRowColor: rgba(204,208,218,0.03) !important;
+    --trackBackgroundEven: rgba(204,208,218,0.05) !important;
+
+    /* Materials */
+    --systemStandardThickMaterialSover: rgba(230,233,239,0.72) !important;
+    --systemHeaderMaterialSover: rgba(230,233,239,0.8) !important;
+    --systemToolbarTitlebarMaterialSover: rgba(230,233,239,0.8) !important;
+  }
+
+  /* Top player bar */
+  .wrapper amp-chrome-player::before {
+    background-color: rgba(230, 233, 239, 0.88) !important;
+  }
+
+  .player-bar,
+  .chrome-player.chrome-player__music {
+    background: none !important;
+    box-shadow: none !important;
+  }
+
+  * {
+    --playerBGFill: rgba(230, 233, 239, 0.88) !important;
+  }
+
+  /* Side panels (Lyrics + Up Next): not covered by :root variables */
+  .side-panel {
+    background-color: rgba(230, 233, 239, 0.97) !important;
+    backdrop-filter: blur(50px) saturate(100%) !important;
+  }
+  .side-panel.side-panel-header-wrapper,
+  .side-panel .side-panel-header-wrapper,
+  .side-panel-header-wrapper {
+    background-color: rgba(230, 233, 239, 0.97) !important;
+  }
+
+  /* LCD now-playing text/info area background */
+  amp-lcd {
+    --lcd-bg-color: #ccd0da !important;
+  }
+
+  /* Footer */
+  .scrollable-page > footer {
+    background-color: #dce0e8 !important;
+  }
+}

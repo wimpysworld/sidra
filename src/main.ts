@@ -1,8 +1,8 @@
-import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, components, ipcMain, Menu, nativeTheme, session, shell, Tray } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled } from './config';
 import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
@@ -62,6 +62,9 @@ app.userAgentFallback = UA;
 
 // Prevent garbage collection of tray icon
 let appTray: Tray | null = null;
+
+// Track injected Catppuccin CSS for live toggle
+let catppuccinCssKey: string | null = null;
 
 function buildAppleMusicURL(): string {
   let storefront = getStorefront();
@@ -154,6 +157,10 @@ const STYLE_FIX_CSS = `
   }
 `;
 
+// Apply or remove Catppuccin CSS on the main window.
+// Handles enable, disable, and re-injection (variant change) cases.
+let applyCatppuccinCSS: (enabled: boolean) => Promise<void>;
+
 app.whenReady().then(async () => {
   mainLog.info('app ready, waiting for Widevine CDM...');
 
@@ -220,6 +227,9 @@ app.whenReady().then(async () => {
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
   session.defaultSession.setUserAgent(UA);
 
+  const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
+  const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
+
   const win = new BrowserWindow({
     title: 'Sidra',
     width: 1280,
@@ -238,6 +248,31 @@ app.whenReady().then(async () => {
 
   initNotifications(player, () => win);
   initDiscordPresence(player);
+
+  applyCatppuccinCSS = async (enabled: boolean) => {
+    if (enabled && catppuccinCssKey !== null) {
+      await win.webContents.removeInsertedCSS(catppuccinCssKey);
+      catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+      mainLog.debug('Catppuccin CSS re-injected');
+    } else if (enabled) {
+      catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+      mainLog.debug('Catppuccin CSS injected');
+    } else if (catppuccinCssKey !== null) {
+      await win.webContents.removeInsertedCSS(catppuccinCssKey);
+      catppuccinCssKey = null;
+      mainLog.debug('Catppuccin CSS removed');
+    }
+  };
+
+  (app as NodeJS.EventEmitter).on('catppuccin-toggle', (_event: unknown, enabled: boolean) => {
+    void applyCatppuccinCSS(enabled);
+  });
+
+  nativeTheme.on('updated', () => {
+    if (getCatppuccinEnabled()) {
+      void applyCatppuccinCSS(true);
+    }
+  });
 
   Promise.all([minDisplay, cssReady]).then(() => {
     splashLog.info('splash closed');
@@ -262,10 +297,14 @@ app.whenReady().then(async () => {
     event.preventDefault();
   });
 
-  win.webContents.on('did-finish-load', () => {
+  win.webContents.on('did-finish-load', async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.insertCSS(STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
+    if (getCatppuccinEnabled()) {
+      catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+      mainLog.debug('Catppuccin CSS injected');
+    }
     const hookPath = getAssetPath('assets', 'musicKitHook.js');
     const hookScript = fs.readFileSync(hookPath, 'utf-8');
     win.webContents.executeJavaScript(hookScript);
