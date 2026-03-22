@@ -264,6 +264,13 @@ export const LICENSE_PREFIX: Record<string, string> = {
   'he': 'מורשה תחת',
 };
 
+// --- Cached system language list ---
+let _cachedLangs: string[] | null = null;
+function getSystemLanguages(): string[] {
+  if (!_cachedLangs) _cachedLangs = app.getPreferredSystemLanguages();
+  return _cachedLangs;
+}
+
 // --- Generic locale resolution ---
 export function getLocalizedString(
   record: Record<string, string>,
@@ -281,6 +288,18 @@ export function getLocalizedString(
   return record['en'];
 }
 
+function getLocalizedEntry(
+  record: Record<string, string>,
+  langs: string[],
+): { value: string; lang: string } {
+  for (const lang of langs) {
+    if (record[lang]) return { value: record[lang], lang };
+    const base = lang.split('-')[0];
+    if (record[base]) return { value: record[base], lang: base };
+  }
+  return { value: record['en'], lang: 'en' };
+}
+
 // --- Public API (uses Electron app internally) ---
 
 export function getStorefront(): string {
@@ -294,23 +313,14 @@ export function getStorefront(): string {
 }
 
 export function getLoadingText(): { text: string; lang: string } {
-  const langs = app.getPreferredSystemLanguages();
-  const text = getLocalizedString(LOADING_TEXT, langs);
-
-  // Determine which key matched using the same exact/base walk
-  let lang = 'en';
-  for (const candidate of langs) {
-    if (LOADING_TEXT[candidate]) { lang = candidate; break; }
-    const base = candidate.split('-')[0];
-    if (LOADING_TEXT[base]) { lang = base; break; }
-  }
-
+  const langs = getSystemLanguages();
+  const { value: text, lang } = getLocalizedEntry(LOADING_TEXT, langs);
   i18nLog.debug(`resolved locale: ${lang}`);
   return { text, lang };
 }
 
 export function getTrayStrings(): { about: string; quit: string } {
-  const langs = app.getPreferredSystemLanguages();
+  const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
   const about = aboutTemplate.replace('{name}', productName);
@@ -324,7 +334,7 @@ export function getAboutStrings(): {
   copyrightSuffix: string;
   licensePrefix: string;
 } {
-  const langs = app.getPreferredSystemLanguages();
+  const langs = getSystemLanguages();
   return {
     close: getLocalizedString(CLOSE_TEXT, langs),
     versionPrefix: getLocalizedString(VERSION_PREFIX, langs),
