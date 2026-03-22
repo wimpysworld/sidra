@@ -136,13 +136,28 @@ release VERSION:
         exit 1
     fi
 
+    version="{{VERSION}}"
+
     branch=$(git branch --show-current)
     if [[ "$branch" != "main" ]]; then
         echo "Error: must be on main branch (currently on $branch)" >&2
         exit 1
     fi
-    git tag "{{VERSION}}"
 
-    echo "Release {{VERSION}} tagged. Push with:"
-    echo "  git push origin main {{VERSION}}"
+    # Check if tag already exists
+    if git rev-parse "$version" >/dev/null 2>&1; then
+        echo "Error: Tag $version already exists" >&2
+        exit 1
+    fi
 
+    echo "Creating release $version..."
+    git tag -a "$version" -m "v$version"
+    echo "✓ Tag $version created"
+    echo ""
+    echo "To publish the release:"
+    echo "  git push origin $version"
+    echo ""
+    echo "This will trigger the GitHub Actions release workflow which will:"
+    echo "  - Build binaries for all platforms"
+    echo "  - Generate changelog from commits"
+    echo "  - Create GitHub release with downloadable assets"
