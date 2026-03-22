@@ -136,7 +136,12 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || true)
+            if [[ -z "${VERSION}" ]]; then
+              VERSION="0.0.0-dev"
+            else
+              VERSION="${VERSION#v}"
+            fi
           fi
           npm version "$VERSION" --no-git-tag-version --allow-same-version
       - name: Compile TypeScript
