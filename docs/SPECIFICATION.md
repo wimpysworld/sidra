@@ -137,6 +137,9 @@ sidra/
 │           └── index.ts           — navigator.mediaSession updates (macOS/Win)
 ├── assets/
 │   ├── musicKitHook.js            — Injected into music.apple.com post-load
+│   │                                 Must be listed in electron-builder's `asarUnpack` —
+│   │                                 it is read with readFileSync at runtime and will crash
+│   │                                 AppImage builds if packed inside the asar archive
 │   ├── styleFix.css               — CSS overrides injected via webContents.insertCSS()
 │   │                                 Hides "Get the app" and "Open in Music" banners
 │   │                                 that Apple shows to push users toward native apps
@@ -252,6 +255,8 @@ Integrations call back into the renderer through the `window.__sidra` control ob
 ## MusicKit Hook Script
 
 Injected into `music.apple.com` after page load via `webContents.executeJavaScript()`. Polls for `MusicKit` availability, hooks events, and exposes the `window.__sidra` control object.
+
+`assets/musicKitHook.js` is read with `fs.readFileSync` at runtime in the main process. It must be listed in the `asarUnpack` array in `electron-builder` configuration; without it, AppImage builds will crash on startup because the file is inaccessible inside the packed asar archive.
 
 ```javascript
 (function () {
@@ -369,7 +374,7 @@ if (process.platform === 'win32') {
 app.setName('Sidra');
 ```
 
-The GSMTC overlay (media flyout on Windows 11) will show "Sidra" as the controlling app.
+The GSMTC overlay (media flyout on Windows 11) will show "Sidra" as the controlling app. `app.setAppUserModelId()` is also required for desktop notifications to appear on Windows - without it, `Notification.show()` is silently ignored.
 
 ---
 
@@ -626,11 +631,14 @@ class DiscordPresence {
 
 Electron's built-in `Notification` API, works on all three platforms. Notification source shows as "Sidra" (app name) automatically.
 
+**Do not gate on `Notification.isSupported()`** - in CastLabs Electron this returns `false` even when the platform fully supports notifications. Rely on the `failed` event to surface OS-level rejection instead.
+
+On Windows, `app.setAppUserModelId()` must be called before `app.whenReady()` or notifications will not appear (see [Windows: Chromium's GSMTC Bridge](#windows-chromiums-gsmtc-bridge)).
+
 ```typescript
-import { Notification } from 'electron';
+import { Notification, app } from 'electron';
 import https from 'https';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 
 let lastArtworkUrl = '';
@@ -638,7 +646,9 @@ let cachedArtworkPath = '';
 
 async function getArtworkPath(url: string): Promise<string> {
   if (url === lastArtworkUrl && cachedArtworkPath) return cachedArtworkPath;
-  const dest = path.join(os.tmpdir(), 'sidra-artwork.jpg');
+  const cacheDir = path.join(app.getPath('cache'), 'artwork');
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const dest = path.join(cacheDir, 'sidra-artwork.jpg');
   await new Promise<void>((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     https.get(url, res => res.pipe(file).on('finish', resolve)).on('error', reject);
@@ -651,14 +661,21 @@ async function getArtworkPath(url: string): Promise<string> {
 async function showTrackNotification(metadata: TrackMetadata, enabled: boolean) {
   if (!enabled) return;
   const iconPath = await getArtworkPath(metadata.artworkUrl);
-  new Notification({
+  const n = new Notification({
     title: metadata.name,
     body: `${metadata.artistName} — ${metadata.albumName}`,
     icon: iconPath,
     silent: true,
-  }).show();
+  });
+  n.on('show', () => log.debug('Notification shown'));
+  n.on('failed', (_event, error) => log.warn('Notification failed', error));
+  n.show();
 }
 ```
+
+`app.getPath('cache')` maps to `~/.cache/<appName>/` on Linux (respects `$XDG_CACHE_HOME`), `~/Library/Caches/<appName>/` on macOS, and `%LOCALAPPDATA%/<appName>/Cache/` on Windows. The directory is not guaranteed to exist; `fs.mkdirSync(..., { recursive: true })` is required before writing.
+
+On NixOS (dev shell), `libnotify` must be present in `LD_LIBRARY_PATH` or `notification.show()` will silently do nothing. This is a dev shell concern, not an app code concern - ensure `libnotify` is in the Nix dev shell's `LD_LIBRARY_PATH`.
 
 Notifications are toggleable via an `electron-store` boolean setting (default: on).
 
@@ -696,6 +713,11 @@ Notifications are toggleable via an `electron-store` boolean setting (default: o
 | System tray | Electron `Tray` | Prev/play-pause/next + show/hide |
 | macOS `.app` build | electron-builder | DMG |
 | Windows build | electron-builder | NSIS installer |
+
+#### Tray Menu Implementation Notes
+
+- Use `type: 'checkbox'` for toggle items (e.g. notifications on/off). On macOS and Windows this renders a native checkmark. Do not combine it with a `●`/`○` glyph prefix on those platforms - that creates double indication. Glyphs should be Linux-only.
+- For any Unicode symbols used as glyphs in menu labels, prefer early Unicode blocks (Letterlike Symbols U+2100-214F, Miscellaneous Technical U+2300-23FF, etc.) over emoji codepoints (U+1F000+). Emoji have poor coverage in native menu rendering stacks (GDI/Uniscribe on Windows, inconsistent on macOS); early Unicode symbols are safer. Conditionalise any glyphs on `process.platform === 'linux'`.
 
 ### v0.3 - Nice to Have
 

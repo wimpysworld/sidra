@@ -3,7 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings } from './i18n';
 import { getAssetPath } from './paths';
-import { getNotificationsEnabled, setNotificationsEnabled } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled } from './config';
 
 const trayLog = log.scope('tray');
 
@@ -90,6 +90,8 @@ function buildContextMenu(tray: Tray): Menu {
   const isLinux = process.platform === 'linux';
   const notifEnabled = getNotificationsEnabled();
   const notifGlyph = notifEnabled ? '●' : '○';
+  const discordEnabled = getDiscordEnabled();
+  const discordGlyph = discordEnabled ? '●' : '○';
 
   return Menu.buildFromTemplate([
     {
@@ -102,6 +104,15 @@ function buildContextMenu(tray: Tray): Menu {
       checked: notifEnabled,
       click: (menuItem) => {
         setNotificationsEnabled(menuItem.checked);
+        tray.setContextMenu(buildContextMenu(tray));
+      },
+    },
+    {
+      label: isLinux ? `${discordGlyph} ${strings.discord}` : strings.discord,
+      type: 'checkbox',
+      checked: discordEnabled,
+      click: (menuItem) => {
+        setDiscordEnabled(menuItem.checked);
         tray.setContextMenu(buildContextMenu(tray));
       },
     },
