@@ -4,6 +4,8 @@ import log from 'electron-log/main';
 const playerLog = log.scope('player');
 
 export class Player extends EventEmitter {
+  private lastTimeLogAt = 0;
+
   constructor() {
     super();
   }
@@ -19,7 +21,11 @@ export class Player extends EventEmitter {
   }
 
   handlePlaybackTimeDidChange(payload: unknown): void {
-    playerLog.debug('playbackTimeDidChange:', payload);
+    const now = Date.now();
+    if (now - this.lastTimeLogAt >= 10_000) {
+      playerLog.debug('playbackTimeDidChange:', payload);
+      this.lastTimeLogAt = now;
+    }
     this.emit('playbackTimeDidChange', payload);
   }
 
