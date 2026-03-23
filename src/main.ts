@@ -175,18 +175,17 @@ let applyCatppuccinCSS: (enabled: boolean) => Promise<void>;
 app.whenReady().then(async () => {
   mainLog.info('app ready, waiting for Widevine CDM...');
 
-  const menuTemplate: Electron.MenuItemConstructorOptions[] = [];
-  if (process.platform === 'darwin') {
-    menuTemplate.push({ role: 'appMenu' });
-  }
-  menuTemplate.push({ role: 'editMenu' });
   if (process.env.SIDRA_DEVTOOLS === '1') {
-    menuTemplate.push({
-      label: 'View',
-      submenu: [{ role: 'toggleDevTools' }],
-    });
+    const menuTemplate: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: 'View',
+        submenu: [{ role: 'toggleDevTools' }],
+      },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+  } else {
+    Menu.setApplicationMenu(null);
   }
-  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
   mainLog.info('application menu set');
 
   const player = new Player();
