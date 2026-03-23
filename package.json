@@ -44,6 +44,7 @@
       "assets/icons/**",
       "assets/catppuccin.css",
       "assets/musicKitHook.js",
+      "assets/navigationBar.js",
       "assets/sidra-logo.png"
     ],
     "icon": "build/icon.png",

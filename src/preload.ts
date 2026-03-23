@@ -9,6 +9,9 @@ const SEND_CHANNELS = new Set<string>([
   'repeatModeDidChange',
   'shuffleModeDidChange',
   'volumeDidChange',
+  'nav:back',
+  'nav:forward',
+  'nav:reload',
 ]);
 
 /**
