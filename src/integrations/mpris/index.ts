@@ -4,13 +4,13 @@ import log from 'electron-log/main';
 import { Player } from '../../player';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const dbus = require('dbus-next');
+const dbus = require('@holusion/dbus-next');
 const {
   Interface,
   ACCESS_READ,
   ACCESS_READWRITE,
 } = dbus.interface;
-const { Variant } = require('dbus-next');
+const { Variant } = require('@holusion/dbus-next');
 
 const mprisLog = log.scope('mpris');
 
