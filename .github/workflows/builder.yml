@@ -265,11 +265,13 @@ jobs:
           git commit -m "chore(nix): update hashes for v${VERSION}"
           git push origin "${BRANCH}"
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head "${BRANCH}" \
             --title "chore(nix): update hashes for v${VERSION}" \
-            --body "Update Nix package hashes for the ${VERSION} release." \
-            --auto-merge
+            --body "Update Nix package hashes for the ${VERSION} release.")
+
+          echo "Created PR: ${PR_URL}"
+          gh pr merge "${PR_URL}" --auto --squash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
