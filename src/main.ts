@@ -259,6 +259,10 @@ app.whenReady().then(async () => {
   initNotifications(player, () => win);
   initDiscordPresence(player);
 
+  ipcMain.on('nav:back', () => win.webContents.navigationHistory.goBack());
+  ipcMain.on('nav:forward', () => win.webContents.navigationHistory.goForward());
+  ipcMain.on('nav:reload', () => win.webContents.reload());
+
   // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
   if (process.platform === 'linux') {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -336,6 +340,10 @@ app.whenReady().then(async () => {
     const hookScript = fs.readFileSync(hookPath, 'utf-8');
     win.webContents.executeJavaScript(hookScript);
     mainLog.debug('MusicKit hook injected');
+    const navBarPath = getAssetPath('assets', 'navigationBar.js');
+    const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
+    win.webContents.executeJavaScript(navBarScript);
+    mainLog.debug('Navigation bar injected');
   });
 
   win.webContents.once('did-finish-load', () => {
