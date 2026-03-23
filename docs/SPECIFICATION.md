@@ -352,6 +352,8 @@ if (process.platform === 'linux') {
 }
 ```
 
+**PulseAudio stream identity**: Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio/PipeWire streams via explicit API calls; `PULSE_PROP_*` environment variables are ineffective. Sidra fixes this by disabling `AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) and calling `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`). See [electron/electron#27581](https://github.com/electron/electron/issues/27581) and `docs/PULSE.md` for full details.
+
 ### macOS: Chromium's Built-in mediaSession Bridge
 
 Chromium maps `navigator.mediaSession` to `MPNowPlayingInfoCenter` automatically. The **app bundle name** determines what appears in the Now Playing widget (Control Centre, Lock Screen) - set via `productName: "Sidra"` in electron-builder config.
@@ -476,6 +478,8 @@ player.on('volumeDidChange', (volume: number) => {
 The suppression timeout is 500ms (2× the 250ms `musicKitHook.js` poll interval). The epsilon comparison (0.01) absorbs floating-point rounding without masking genuine user-initiated changes.
 
 Also update `navigator.mediaSession` volume whenever MusicKit volume changes - `music.apple.com` does not always do this itself.
+
+**PulseAudio sink input volume is intentionally not synced.** MPRIS `Volume` controls MusicKit's software volume (`HTMLMediaElement.volume`) only. The PulseAudio/PipeWire sink input volume shown in pulsemixer and pavucontrol is independent and left to the user via their system mixer. This matches the behaviour of Rhythmbox, Spotify, VLC, mpv, and Clementine. Syncing both would cause double-volume multiplication (e.g. 0.5 × 0.5 = 0.25, −12 dB instead of the expected −6 dB) and would require a `libpulse` binding or fragile `pactl` subprocess calls.
 
 ### Volume Event Workaround
 
