@@ -97,6 +97,7 @@ lint:
 # Validate electron-builder configuration
 test:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
+    npm audit
 
 # Clean build artefacts
 clean:
