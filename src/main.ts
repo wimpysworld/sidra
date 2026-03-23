@@ -26,6 +26,7 @@ if (process.env.ELECTRON_LOG_LEVEL) {
 
 const mainLog = log.scope('main');
 const splashLog = log.scope('splash');
+mainLog.info(`${app.name} ${app.getVersion()}`);
 
 // --- App identity: required on Windows for notifications to appear ---
 if (process.platform === 'win32') {
