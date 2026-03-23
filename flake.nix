@@ -87,6 +87,7 @@
                 pango
                 libx11
                 libxcb
+                libxcrypt-legacy
                 libxcomposite
                 libxdamage
                 libxext

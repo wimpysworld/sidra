@@ -152,7 +152,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 ### Adding translations
 
-`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 9 records with 33 languages each: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`. When adding a language, add an entry to every record.
+`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 12 records with 33 languages each: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`, `UPDATE_DOWNLOADING_TEXT`, `UPDATE_READY_TEXT`, `UPDATE_FAILED_TEXT`. When adding a language, add an entry to every record.
 
 ```typescript
 export const LOADING_TEXT: Record<string, string> = {
@@ -229,3 +229,12 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - MPRIS `Volume` controls MusicKit's software volume (`HTMLMediaElement.volume`) only - the PulseAudio/PipeWire sink input volume is independent; this matches the behaviour of Rhythmbox, Spotify, VLC, and every other major Linux music player; do not attempt to sync them
 - Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio streams; `PULSE_PROP_*` environment variables are ineffective (Chromium's explicit API calls override them); the fix is `disable-features=AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) combined with `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`); see [electron/electron#27581](https://github.com/electron/electron/issues/27581) and `docs/PULSE.md`
 - `music.apple.com` registers a `beforeunload` event handler while audio is playing; this silently blocks `BrowserWindow.close()` and `app.quit()` with no dialog or error (standard Chromium/Electron behaviour - unlike Chrome, Electron does not show a confirmation dialog); fix with `win.webContents.on('will-prevent-unload', (event) => event.preventDefault())`; see [electron/electron#8468](https://github.com/electron/electron/issues/8468) and `docs/QUIT.md`
+- `electron-updater` must be lazy-required inside `initAutoUpdate()` only - never at module top level; on unsupported platforms the module must never load; verify via log output: `autoUpdate` scope logs must not appear on deb/rpm/Nix builds
+- `electron-updater` implements its own download/install pipeline and does not use Electron's built-in `autoUpdater`; all APIs it uses are unmodified in CastLabs ECS; the known `app.relaunch()` bug (CastLabs issue #164) does NOT affect `AppImageUpdater` - it spawns the new binary via `child_process.spawn()` directly
+- Platform detection for auto-update: `process.env.APPIMAGE` is set only when running as an AppImage (present = enable updater, absent = notification-only); on Windows, `app.isPackaged` on `win32` indicates an NSIS installation
+- `verifyUpdateCodeSignature: false` is required on Windows because the app is unsigned
+- `app-update.yml` is present in all packaged builds including deb/rpm/Nix; runtime detection in `isAutoUpdateSupported()` prevents updater initialisation even if the file is present
+- electron-updater manifest filenames are hardcoded: `latest.yml` = Windows manifest, `latest-linux.yml` = Linux manifest; these cannot be consolidated
+- `SIDRA_DISABLE_AUTO_UPDATE=1` env var disables auto-update for AppImage/NSIS builds; future package managers (Scoop, Chocolatey) must set this in their install manifests
+- AppImage `artifactName` must omit the version component (use `${productName}-${os}-${arch}.${ext}`) to prevent filename changes breaking desktop shortcuts after update
+- On NixOS, `libxcrypt-legacy` must be in `LD_LIBRARY_PATH` (already added to `flake.nix`) for fpm's bundled Ruby to find `libcrypt.so.1` during deb/rpm builds; without it, deb/rpm targets fail at the fpm stage

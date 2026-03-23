@@ -23,6 +23,7 @@ The codebase is tightly focused and as lean as possible. Four runtime dependenci
 - [Theming](#theming)
 - [Discord Rich Presence](#discord-rich-presence)
 - [Track Change Notifications](#track-change-notifications)
+- [Auto-update](#auto-update)
 - [Feature Inventory](#feature-inventory)
 - [Risk Assessment](#risk-assessment)
 - [Prior Art](#prior-art)
@@ -678,6 +679,46 @@ async function showTrackNotification(metadata: TrackMetadata, enabled: boolean) 
 On NixOS (dev shell), `libnotify` must be present in `LD_LIBRARY_PATH` or `notification.show()` will silently do nothing. This is a dev shell concern, not an app code concern - ensure `libnotify` is in the Nix dev shell's `LD_LIBRARY_PATH`.
 
 Notifications are toggleable via an `electron-store` boolean setting (default: on).
+
+---
+
+## Auto-update
+
+`src/autoUpdate.ts` provides automatic update delivery for AppImage (Linux) and NSIS (Windows) builds via `electron-updater`. All other packaging formats (deb, rpm, Nix, DMG) receive a tray notification pointing to the GitHub releases page instead.
+
+### Platform detection
+
+`isAutoUpdateSupported()` determines at runtime whether the updater should initialise:
+
+| Condition | Result |
+|---|---|
+| `process.env.APPIMAGE` is set | AppImage - enable updater |
+| `process.platform === 'win32' && app.isPackaged` | NSIS - enable updater |
+| `SIDRA_DISABLE_AUTO_UPDATE=1` env var set | Force-disable regardless of packaging |
+| All other cases | Notification-only mode |
+
+`app-update.yml` is present in all packaged builds including deb/rpm/Nix. Runtime detection in `isAutoUpdateSupported()` prevents updater initialisation even when the file is present; log noise is not a concern in practice.
+
+### Lazy require constraint
+
+`electron-updater` must be `require()`d inside `initAutoUpdate()` only - never at module top level. On unsupported platforms the module must never load. Verify correct behaviour by checking log output: `autoUpdate` scope messages must not appear on deb, rpm, or Nix builds.
+
+### CastLabs ECS compatibility
+
+`electron-updater` implements its own download/install pipeline and does not use Electron's built-in `autoUpdater`. All APIs it uses are unmodified in CastLabs ECS. The known `app.relaunch()` bug (CastLabs issue #164) does not affect `AppImageUpdater` - it spawns the new binary via `child_process.spawn()` directly.
+
+### Manifest filenames
+
+electron-updater manifest filenames are hardcoded and cannot be changed:
+
+- `latest.yml` - Windows (NSIS) update manifest
+- `latest-linux.yml` - Linux (AppImage) update manifest
+
+### Configuration
+
+- `verifyUpdateCodeSignature: false` is required on Windows because the app is unsigned.
+- AppImage `artifactName` must omit the version component - use `${productName}-${os}-${arch}.${ext}`. Including the version causes filename changes that break desktop shortcuts after update.
+- Future package managers (Scoop, Chocolatey) must set `SIDRA_DISABLE_AUTO_UPDATE=1` in their install manifests to suppress the updater.
 
 ---
 
