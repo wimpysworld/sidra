@@ -11,6 +11,7 @@ import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
+import { init as initWedgeDetector } from './wedgeDetector';
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -262,6 +263,8 @@ app.whenReady().then(async () => {
     const mpris = require('./integrations/mpris');
     mpris.init(player, () => win);
   }
+
+  initWedgeDetector(player, () => win);
 
   let catppuccinCssOp = Promise.resolve();
   applyCatppuccinCSS = (enabled: boolean) => {
