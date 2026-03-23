@@ -61,7 +61,7 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
     if (getNotificationsEnabled()) {
       const strings = getUpdateStrings();
       const notification = new Notification({
-        title: strings.updateAvailable,
+        title: strings.updateAvailable.replace('{version}', info.version),
         body: `Sidra ${info.version}`,
         silent: true,
       });
