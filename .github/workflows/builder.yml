@@ -17,8 +17,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version-gate:
+    name: Version Gate 🔖
+    runs-on: ubuntu-slim
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Validate version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
+            echo "Error: package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)" >&2
+            exit 1
+          fi
+          echo "✓ Version $PKG_VERSION matches tag $TAG_VERSION"
+
   lint-code:
     name: Lint Code 🧹
+    needs: [version-gate]
+    if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -37,6 +60,8 @@ jobs:
 
   lint-actions:
     name: Lint Action ⚙️
+    needs: [version-gate]
+    if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -50,6 +75,8 @@ jobs:
 
   test:
     name: Test Config 🧪
+    needs: [version-gate]
+    if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -132,15 +159,6 @@ jobs:
       - name: Install RPM tools
         if: matrix.os == 'linux'
         run: sudo apt-get update && sudo apt-get install -y rpm
-      - name: Set version from build
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0-dev")
-          fi
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
       - name: Compile TypeScript
         run: npm run build
       - name: Build distributables

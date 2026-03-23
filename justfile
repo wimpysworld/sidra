@@ -119,6 +119,17 @@ clear:
 
 # Build a package for the current platform
 package: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    base_version=$(node -p "require('./package.json').version")
+    commit_count=$(git rev-list --count HEAD)
+    short_hash=$(git rev-parse --short HEAD)
+    dev_version="${base_version}-dev.${commit_count}.${short_hash}"
+
+    trap 'npm version "$base_version" --no-git-tag-version --allow-same-version >/dev/null 2>&1' EXIT
+
+    npm version "$dev_version" --no-git-tag-version --allow-same-version
     npx electron-builder {{ if os() == "linux" { "--linux AppImage" } else if os() == "macos" { "--mac dmg" } else { "error('Unsupported platform')" } }}
 
 # Show log file location and tail recent entries
@@ -148,6 +159,17 @@ release VERSION:
     if git rev-parse "$version" >/dev/null 2>&1; then
         echo "Error: Tag $version already exists" >&2
         exit 1
+    fi
+
+    # Bump package.json version if needed
+    current_version=$(node -p "require('./package.json').version")
+    if [[ "$current_version" != "$version" ]]; then
+        npm version "$version" --no-git-tag-version
+        git add package.json package-lock.json
+        git commit -m "chore(release): bump version to $version"
+        echo "✓ Version bumped to $version"
+    else
+        echo "✓ Version already at $version"
     fi
 
     echo "Creating release $version..."
