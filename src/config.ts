@@ -8,6 +8,7 @@ interface StoreSchema {
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
   'catppuccin.enabled': boolean;
+  'autoUpdate.enabled': boolean;
 
 }
 
@@ -81,5 +82,17 @@ export function getCatppuccinEnabled(): boolean {
 export function setCatppuccinEnabled(enabled: boolean): void {
   store.set('catppuccin.enabled', enabled);
   configLog.info('catppuccin.enabled set:', enabled);
+}
+
+export function getAutoUpdateEnabled(): boolean {
+  if (!store.has('autoUpdate.enabled')) {
+    return true;  // default on
+  }
+  return store.get('autoUpdate.enabled');
+}
+
+export function setAutoUpdateEnabled(enabled: boolean): void {
+  store.set('autoUpdate.enabled', enabled);
+  configLog.info('autoUpdate.enabled set:', enabled);
 }
 
