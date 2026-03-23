@@ -17,8 +17,33 @@
         "aarch64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+
+      # Systems that have release artefacts available
+      packageSystems = [
+        "x86_64-linux"
+        "aarch64-darwin"
+      ];
+      forPackageSystems = nixpkgs.lib.genAttrs packageSystems;
+
+      version = (nixpkgs.lib.importJSON ./package.json).version;
     in
     {
+      packages = forPackageSystems (
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          sidra =
+            if pkgs.stdenv.hostPlatform.isDarwin then
+              pkgs.callPackage ./nix/darwin.nix { inherit version; }
+            else
+              pkgs.callPackage ./nix/linux.nix { inherit version; };
+        in
+        {
+          inherit sidra;
+          default = sidra;
+        }
+      );
+
       devShells = forAllSystems (
         system:
         let

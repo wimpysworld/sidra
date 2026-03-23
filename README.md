@@ -39,6 +39,70 @@ Sidra is under active development; several features in this list are not yet imp
 
 ---
 
+> [!IMPORTANT]
+> Sidra's macOS and Windows releases are currently unsigned, requiring Gatekeeper and SmartScreen workarounds at install time. [Sponsoring the project](https://github.com/sponsors/flexiondotorg) 🩷 goes directly towards code-signing certificates to remove that friction for every user.
+
+## Install
+
+Download the latest release from [GitHub Releases](https://github.com/wimpysworld/sidra/releases).
+
+### Linux
+
+**AppImage** - portable, no installation required:
+
+```bash
+chmod +x Sidra-*.AppImage
+./Sidra-*.AppImage
+```
+
+**Debian/Ubuntu** (`.deb`):
+
+```bash
+sudo apt install ./Sidra-*.deb
+```
+
+**Fedora/openSUSE** (`.rpm`):
+
+```bash
+sudo dnf install ./Sidra-*.rpm
+```
+
+**Nix**:
+
+```bash
+nix profile install github:wimpysworld/sidra
+```
+
+To use Sidra as a NixOS or Home Manager module, add `github:wimpysworld/sidra` as a flake input and reference `inputs.sidra.packages.<system>.default`.
+
+### macOS
+
+**DMG** - open the `.dmg` and drag Sidra to Applications.
+
+Gatekeeper will block the first launch because the app is unsigned. Two ways to proceed:
+
+1. Remove the quarantine attribute:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Sidra.app
+```
+
+2. Open System Settings → Privacy & Security and click **Open Anyway** after the first blocked launch attempt.
+
+**Nix**:
+
+```bash
+nix profile install github:wimpysworld/sidra
+```
+
+### Windows
+
+**Installer** (`.exe`) - run the NSIS installer and follow the prompts.
+
+SmartScreen will show "Windows protected your PC" because the installer is unsigned. Click **More info** then **Run anyway**.
+
+---
+
 ## How It Works
 
 Sidra loads `music.apple.com` directly inside CastLabs Electron (required for Widevine DRM on Linux - no other shell supports this).

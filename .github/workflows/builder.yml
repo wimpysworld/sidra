@@ -209,3 +209,67 @@ jobs:
             release/*.rpm
             release/*.dmg
             release/*.exe
+
+  nix-hash:
+    name: Nix Hash 🔑
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: DeterminateSystems/determinate-nix-action@v3
+        with:
+          extra-conf: |
+            eval-cores = 0
+      - name: Update Nix hashes 📝
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME}"
+
+          # Fetch and hash the Linux deb
+          linux_url="https://github.com/wimpysworld/sidra/releases/download/${VERSION}/Sidra-${VERSION}-linux-amd64.deb"
+          echo "⬇️  Fetching Linux deb: ${linux_url}"
+          linux_hash=$(nix store prefetch-file --json --hash-type sha256 "$linux_url" | jq -r '.hash')
+          echo "🔑 Linux hash: ${linux_hash}"
+
+          # Fetch and hash the Darwin dmg
+          darwin_url="https://github.com/wimpysworld/sidra/releases/download/${VERSION}/Sidra-${VERSION}-mac-arm64.dmg"
+          echo "⬇️  Fetching Darwin dmg: ${darwin_url}"
+          darwin_hash=$(nix store prefetch-file --json --hash-type sha256 "$darwin_url" | jq -r '.hash')
+          echo "🔑 Darwin hash: ${darwin_hash}"
+
+          # Update Linux hash
+          sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"${linux_hash}\"|" nix/linux.nix
+
+          # Update Darwin hash (handles both "sha256-..." and lib.fakeHash)
+          sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"${darwin_hash}\"|" nix/darwin.nix
+          sed -i "s|hash = lib.fakeHash|hash = \"${darwin_hash}\"|" nix/darwin.nix
+
+          echo "✅ Updated nix/linux.nix and nix/darwin.nix"
+          git diff nix/linux.nix nix/darwin.nix
+
+      - name: Create PR with hash updates 🚀
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          BRANCH="ci/nix-hash-${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          git add nix/linux.nix nix/darwin.nix
+          git commit -m "chore(nix): update hashes for v${VERSION}"
+          git push origin "${BRANCH}"
+
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "chore(nix): update hashes for v${VERSION}" \
+            --body "Update Nix package hashes for the ${VERSION} release." \
+            --auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
