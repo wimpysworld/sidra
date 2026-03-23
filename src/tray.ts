@@ -1,9 +1,10 @@
-import { app, BrowserWindow, Menu, nativeTheme, Tray } from 'electron';
+import { app, BrowserWindow, Menu, nativeTheme, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
-import { getTrayStrings, getAboutStrings } from './i18n';
+import { getTrayStrings, getAboutStrings, getUpdateStrings } from './i18n';
 import { getAssetPath } from './paths';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled } from './config';
+import { getUpdateInfo } from './update';
 
 const trayLog = log.scope('tray');
 
@@ -129,6 +130,28 @@ function buildContextMenu(tray: Tray): Menu {
     },
   ];
 
+  const update = getUpdateInfo();
+  const updateStrings = getUpdateStrings();
+  if (update) {
+    const updateLabel = updateStrings.updateAvailable.replace('{version}', update.version);
+    const updateGlyph = '⬆';
+    menuItems.push(
+      { type: 'separator' },
+      {
+        label: isLinux ? `${updateGlyph} ${updateLabel}` : updateLabel,
+        click: () => shell.openExternal(update.url),
+      },
+    );
+  } else {
+    menuItems.push(
+      { type: 'separator' },
+      {
+        label: updateStrings.upToDate,
+        enabled: false,
+      },
+    );
+  }
+
   menuItems.push(
     { type: 'separator' },
     {
@@ -138,6 +161,10 @@ function buildContextMenu(tray: Tray): Menu {
   );
 
   return Menu.buildFromTemplate(menuItems);
+}
+
+export function rebuildTrayMenu(tray: Tray): void {
+  tray.setContextMenu(buildContextMenu(tray));
 }
 
 export function createTray(): Tray {

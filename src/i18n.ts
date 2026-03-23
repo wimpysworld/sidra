@@ -227,6 +227,80 @@ export const CATPPUCCIN_TEXT: Record<string, string> = {
   'he': 'Catppuccin',
 };
 
+// --- "Update available" ---
+export const UPDATE_AVAILABLE_TEXT: Record<string, string> = {
+  'en': 'Update available: {version}',
+  'zh-CN': '有可用更新：{version}',
+  'zh-SG': '有可用更新：{version}',
+  'zh-TW': '有可用更新：{version}',
+  'zh-HK': '有可用更新：{version}',
+  'es': 'Actualización disponible: {version}',
+  'hi': 'अपडेट उपलब्ध: {version}',
+  'ar': 'تحديث متوفر: {version}',
+  'fr': 'Mise à jour disponible : {version}',
+  'pt': 'Atualização disponível: {version}',
+  'de': 'Update verfügbar: {version}',
+  'ru': 'Доступно обновление: {version}',
+  'ja': 'アップデートあり: {version}',
+  'ko': '업데이트 가능: {version}',
+  'it': 'Aggiornamento disponibile: {version}',
+  'nl': 'Update beschikbaar: {version}',
+  'pl': 'Dostępna aktualizacja: {version}',
+  'tr': 'Güncelleme mevcut: {version}',
+  'sv': 'Uppdatering tillgänglig: {version}',
+  'da': 'Opdatering tilgængelig: {version}',
+  'fi': 'Päivitys saatavilla: {version}',
+  'nb': 'Oppdatering tilgjengelig: {version}',
+  'no': 'Oppdatering tilgjengelig: {version}',
+  'cs': 'Dostupná aktualizace: {version}',
+  'ro': 'Actualizare disponibilă: {version}',
+  'hu': 'Frissítés elérhető: {version}',
+  'el': 'Διαθέσιμη ενημέρωση: {version}',
+  'th': 'มีอัปเดต: {version}',
+  'id': 'Pembaruan tersedia: {version}',
+  'ms': 'Kemas kini tersedia: {version}',
+  'uk': 'Доступне оновлення: {version}',
+  'vi': 'Có bản cập nhật: {version}',
+  'he': 'עדכון זמין: {version}',
+};
+
+// --- "Up to date" ---
+export const UP_TO_DATE_TEXT: Record<string, string> = {
+  'en': 'Up to date',
+  'zh-CN': '已是最新版本',
+  'zh-SG': '已是最新版本',
+  'zh-TW': '已是最新版本',
+  'zh-HK': '已是最新版本',
+  'es': 'Actualizado',
+  'hi': 'अद्यतित',
+  'ar': 'محدّث',
+  'fr': 'À jour',
+  'pt': 'Atualizado',
+  'de': 'Aktuell',
+  'ru': 'Обновлено',
+  'ja': '最新版です',
+  'ko': '최신 버전',
+  'it': 'Aggiornato',
+  'nl': 'Up-to-date',
+  'pl': 'Aktualny',
+  'tr': 'Güncel',
+  'sv': 'Uppdaterad',
+  'da': 'Opdateret',
+  'fi': 'Ajan tasalla',
+  'nb': 'Oppdatert',
+  'no': 'Oppdatert',
+  'cs': 'Aktuální',
+  'ro': 'La zi',
+  'hu': 'Naprakész',
+  'el': 'Ενημερωμένο',
+  'th': 'เป็นเวอร์ชันล่าสุด',
+  'id': 'Terbaru',
+  'ms': 'Terkini',
+  'uk': 'Оновлено',
+  'vi': 'Đã cập nhật',
+  'he': 'מעודכן',
+};
+
 // --- "Close" ---
 export const CLOSE_TEXT: Record<string, string> = {
   'en': 'Close',
@@ -454,5 +528,16 @@ export function getAboutStrings(): {
     versionPrefix: getLocalizedString(VERSION_PREFIX, langs),
     copyrightSuffix: getLocalizedString(COPYRIGHT_SUFFIX, langs),
     licensePrefix: getLocalizedString(LICENSE_PREFIX, langs),
+  };
+}
+
+export function getUpdateStrings(): {
+  updateAvailable: string;
+  upToDate: string;
+} {
+  const langs = getSystemLanguages();
+  return {
+    updateAvailable: getLocalizedString(UPDATE_AVAILABLE_TEXT, langs),
+    upToDate: getLocalizedString(UP_TO_DATE_TEXT, langs),
   };
 }

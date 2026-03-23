@@ -6,7 +6,8 @@ import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEn
 import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
-import { createTray } from './tray';
+import { createTray, rebuildTrayMenu } from './tray';
+import { checkForUpdates } from './update';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 
@@ -333,6 +334,11 @@ app.whenReady().then(async () => {
 
   win.webContents.once('did-finish-load', () => {
     resolveCssReady();
+    setTimeout(() => {
+      if (appTray) {
+        checkForUpdates(appTray, rebuildTrayMenu);
+      }
+    }, 5000);
   });
 
   win.webContents.once('did-fail-load', () => {
