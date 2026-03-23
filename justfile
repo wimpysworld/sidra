@@ -166,7 +166,7 @@ release VERSION:
     if [[ "$current_version" != "$version" ]]; then
         npm version "$version" --no-git-tag-version
         git add package.json package-lock.json
-        git commit -m "chore(release): bump version to $version"
+        git commit -m "chore(release): bump version to $version" -- package.json package-lock.json
         echo "✓ Version bumped to $version"
     else
         echo "✓ Version already at $version"

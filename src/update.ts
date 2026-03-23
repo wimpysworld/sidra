@@ -58,16 +58,18 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
       return;
     }
 
-    if (isNewer(remoteVersion, localVersion)) {
-      updateLog.info(`update available: ${remoteVersion} (current: ${localVersion})`);
-      updateInfo = { version: remoteVersion, url: releaseUrl };
+    const cleanVersion = remoteVersion.replace(/^v/, '');
+
+    if (isNewer(cleanVersion, localVersion)) {
+      updateLog.info(`update available: ${cleanVersion} (current: ${localVersion})`);
+      updateInfo = { version: cleanVersion, url: releaseUrl };
       rebuildMenu(tray);
 
       if (getNotificationsEnabled()) {
         const strings = getUpdateStrings();
         const notification = new Notification({
           title: strings.updateAvailable,
-          body: `Sidra ${remoteVersion}`,
+          body: `Sidra ${cleanVersion}`,
           silent: true,
         });
         notification.on('click', () => {

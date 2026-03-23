@@ -66,6 +66,7 @@ let
 
     dontConfigure = true;
     dontBuild = true;
+    dontFixup = true;
 
     unpackPhase = ''
       runHook preUnpack

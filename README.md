@@ -61,10 +61,16 @@ chmod +x Sidra-*.AppImage
 sudo apt install ./Sidra-*.deb
 ```
 
-**Fedora/openSUSE** (`.rpm`):
+**Fedora** (`.rpm`):
 
 ```bash
 sudo dnf install ./Sidra-*.rpm
+```
+
+**openSUSE** (`.rpm`):
+
+```bash
+sudo zypper install ./Sidra-*.rpm
 ```
 
 **Nix**:
