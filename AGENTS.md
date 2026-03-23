@@ -1,5 +1,7 @@
 # Sidra
 
+> This file is the authoritative reference for the Sidra project. All agents and tooling should treat it as the single source of truth for architecture, conventions, and configuration.
+
 Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls.
 
 ## Technology stack
@@ -170,6 +172,7 @@ Prefer specific regional tags only when the translation differs from the base la
 | `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
 | `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
 | `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: true) |
+| `autoUpdate.enabled` | `boolean` | Enable automatic updates (default: true on AppImage and NSIS; disabled on all other platforms) |
 
 Getters return `undefined` when no value has been persisted - absence of a key is intentional and drives the storefront fallback chain in `main.ts`. Do not add default values to the store schema.
 

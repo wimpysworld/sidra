@@ -139,7 +139,18 @@ function buildContextMenu(tray: Tray): Menu {
       { type: 'separator' },
       {
         label: isLinux ? `${updateGlyph} ${updateLabel}` : updateLabel,
-        click: () => shell.openExternal(update.url),
+        click: () => {
+          try {
+            const parsed = new URL(update.url);
+            if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+              void shell.openExternal(parsed.toString());
+            } else {
+              trayLog.warn('blocked non-http(s) update URL:', update.url);
+            }
+          } catch {
+            trayLog.warn('invalid update URL:', update.url);
+          }
+        },
       },
     );
   } else {
