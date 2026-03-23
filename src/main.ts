@@ -11,7 +11,7 @@ import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
-import { init as initWedgeDetector } from './wedgeDetector';
+import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -261,7 +261,10 @@ app.whenReady().then(async () => {
 
   ipcMain.on('nav:back', () => win.webContents.navigationHistory.goBack());
   ipcMain.on('nav:forward', () => win.webContents.navigationHistory.goForward());
-  ipcMain.on('nav:reload', () => win.webContents.reload());
+  ipcMain.on('nav:reload', () => {
+    resetWedgeDetector();
+    win.webContents.reload();
+  });
 
   // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
   if (process.platform === 'linux') {

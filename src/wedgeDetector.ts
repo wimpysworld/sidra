@@ -43,6 +43,12 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
   });
 }
 
+export function reset(): void {
+  isPlaying = false;
+  skipAttempts = 0;
+  stopTimer();
+}
+
 export function init(player: Player, getWin: () => BrowserWindow | null): void {
   player.on('playbackStateDidChange', (payload: unknown) => {
     const p = payload as { state: number } | null;
