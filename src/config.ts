@@ -8,7 +8,7 @@ interface StoreSchema {
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
   'catppuccin.enabled': boolean;
-  'mpris.enabled': boolean;
+
 }
 
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
@@ -83,14 +83,3 @@ export function setCatppuccinEnabled(enabled: boolean): void {
   configLog.info('catppuccin.enabled set:', enabled);
 }
 
-export function getMprisEnabled(): boolean {
-  if (!store.has('mpris.enabled')) {
-    return true;  // default on
-  }
-  return store.get('mpris.enabled');
-}
-
-export function setMprisEnabled(enabled: boolean): void {
-  store.set('mpris.enabled', enabled);
-  configLog.info('mpris.enabled set:', enabled);
-}

@@ -3,7 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings } from './i18n';
 import { getAssetPath } from './paths';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled, getMprisEnabled, setMprisEnabled } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled } from './config';
 
 const trayLog = log.scope('tray');
 
@@ -94,9 +94,6 @@ function buildContextMenu(tray: Tray): Menu {
   const discordGlyph = discordEnabled ? '●' : '○';
   const catppuccinEnabled = getCatppuccinEnabled();
   const catppuccinGlyph = catppuccinEnabled ? '●' : '○';
-  const mprisEnabled = getMprisEnabled();
-  const mprisGlyph = mprisEnabled ? '●' : '○';
-
   const menuItems: Electron.MenuItemConstructorOptions[] = [
     {
       label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
@@ -131,19 +128,6 @@ function buildContextMenu(tray: Tray): Menu {
       },
     },
   ];
-
-  if (isLinux) {
-    menuItems.push({
-      label: `${mprisGlyph} ${strings.mpris}`,
-      type: 'checkbox',
-      checked: mprisEnabled,
-      click: (menuItem) => {
-        setMprisEnabled(menuItem.checked);
-        app.emit('mpris-toggle', {}, menuItem.checked);
-        tray.setContextMenu(buildContextMenu(tray));
-      },
-    });
-  }
 
   menuItems.push(
     { type: 'separator' },

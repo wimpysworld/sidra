@@ -5,9 +5,6 @@
 </h1>
 
 <p align="center"><b>An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎</b></p>
-<p align="center">
-<img alt="GitHub all releases" src="https://img.shields.io/github/downloads/wimpysworld/sidra/total?logo=github&label=Downloads">
-</p>
 
 <p align="center">Made with 💝 for 🐧🍏🪟</p>
 

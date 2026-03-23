@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
-import { getMprisEnabled } from '../../config';
+
 import { Player } from '../../player';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -711,7 +711,7 @@ function disconnectBus(): void {
 
 // --- Public API ---
 
-export function enable(): void {
+function enable(): void {
   if (bus) {
     mprisLog.debug('already enabled, skipping');
     return;
@@ -753,7 +753,7 @@ export function enable(): void {
   playerRef.on('playbackTimeDidChange', onPlaybackTimeDidChange);
 }
 
-export function disable(): void {
+function disable(): void {
   if (!bus) {
     mprisLog.debug('already disabled, skipping');
     return;
@@ -797,9 +797,5 @@ export function init(
     disconnectBus();
   });
 
-  if (getMprisEnabled()) {
-    enable();
-  } else {
-    mprisLog.info('MPRIS disabled by config, skipping bus connection');
-  }
+  enable();
 }

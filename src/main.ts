@@ -2,7 +2,7 @@ import { app, BrowserWindow, components, ipcMain, Menu, nativeTheme, session, sh
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getMprisEnabled } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled } from './config';
 import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
@@ -258,14 +258,6 @@ app.whenReady().then(async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mpris = require('./integrations/mpris');
     mpris.init(player, () => win);
-
-    (app as NodeJS.EventEmitter).on('mpris-toggle', (_event: unknown, enabled: boolean) => {
-      if (enabled) {
-        mpris.enable();
-      } else {
-        mpris.disable();
-      }
-    });
   }
 
   let catppuccinCssOp = Promise.resolve();

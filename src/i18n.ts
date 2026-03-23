@@ -227,43 +227,6 @@ export const CATPPUCCIN_TEXT: Record<string, string> = {
   'he': 'Catppuccin',
 };
 
-// --- "MPRIS" ---
-export const MPRIS_TEXT: Record<string, string> = {
-  'en': 'MPRIS',
-  'zh-CN': 'MPRIS',
-  'zh-SG': 'MPRIS',
-  'zh-TW': 'MPRIS',
-  'zh-HK': 'MPRIS',
-  'es': 'MPRIS',
-  'hi': 'MPRIS',
-  'ar': 'MPRIS',
-  'fr': 'MPRIS',
-  'pt': 'MPRIS',
-  'de': 'MPRIS',
-  'ru': 'MPRIS',
-  'ja': 'MPRIS',
-  'ko': 'MPRIS',
-  'it': 'MPRIS',
-  'nl': 'MPRIS',
-  'pl': 'MPRIS',
-  'tr': 'MPRIS',
-  'sv': 'MPRIS',
-  'da': 'MPRIS',
-  'fi': 'MPRIS',
-  'nb': 'MPRIS',
-  'no': 'MPRIS',
-  'cs': 'MPRIS',
-  'ro': 'MPRIS',
-  'hu': 'MPRIS',
-  'el': 'MPRIS',
-  'th': 'MPRIS',
-  'id': 'MPRIS',
-  'ms': 'MPRIS',
-  'uk': 'MPRIS',
-  'vi': 'MPRIS',
-  'he': 'MPRIS',
-};
-
 // --- "Close" ---
 export const CLOSE_TEXT: Record<string, string> = {
   'en': 'Close',
@@ -467,7 +430,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; catppuccin: string; mpris: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; catppuccin: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
@@ -476,8 +439,7 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
   const discord = getLocalizedString(DISCORD_TEXT, langs);
   const catppuccin = getLocalizedString(CATPPUCCIN_TEXT, langs);
-  const mpris = getLocalizedString(MPRIS_TEXT, langs);
-  return { about, quit, notifications, discord, catppuccin, mpris };
+  return { about, quit, notifications, discord, catppuccin };
 }
 
 export function getAboutStrings(): {
