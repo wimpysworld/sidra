@@ -74,7 +74,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
       if (getNotificationsEnabled()) {
         const strings = getUpdateStrings();
         const notification = new Notification({
-          title: strings.updateAvailable,
+          title: strings.updateAvailable.replace('{version}', cleanVersion),
           body: `Sidra ${cleanVersion}`,
           silent: true,
         });
