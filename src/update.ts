@@ -10,12 +10,18 @@ const GITHUB_API_URL = 'https://api.github.com/repos/wimpysworld/sidra/releases/
 export interface UpdateInfo {
   version: string;
   url: string;
+  ready: boolean;
 }
 
 let updateInfo: UpdateInfo | null = null;
 
 export function getUpdateInfo(): UpdateInfo | null {
   return updateInfo;
+}
+
+export function setUpdateReady(version: string): void {
+  updateInfo = { version, url: '', ready: true };
+  updateLog.info('update ready to install:', version);
 }
 
 function isNewer(remote: string, local: string): boolean {
@@ -62,7 +68,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
 
     if (isNewer(cleanVersion, localVersion)) {
       updateLog.info(`update available: ${cleanVersion} (current: ${localVersion})`);
-      updateInfo = { version: cleanVersion, url: releaseUrl };
+      updateInfo = { version: cleanVersion, url: releaseUrl, ready: false };
       rebuildMenu(tray);
 
       if (getNotificationsEnabled()) {

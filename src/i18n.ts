@@ -301,6 +301,117 @@ export const UP_TO_DATE_TEXT: Record<string, string> = {
   'he': 'מעודכן',
 };
 
+// --- "Downloading update..." ---
+export const UPDATE_DOWNLOADING_TEXT: Record<string, string> = {
+  'en': 'Downloading update...',
+  'zh-CN': '正在下载更新…',
+  'zh-SG': '正在下载更新…',
+  'zh-TW': '正在下載更新…',
+  'zh-HK': '正在下載更新…',
+  'es': 'Descargando actualización...',
+  'hi': 'अपडेट डाउनलोड हो रहा है...',
+  'ar': 'جارٍ تنزيل التحديث...',
+  'fr': 'Téléchargement de la mise à jour...',
+  'pt': 'A transferir atualização...',
+  'de': 'Update wird heruntergeladen...',
+  'ru': 'Загрузка обновления...',
+  'ja': 'アップデートをダウンロード中…',
+  'ko': '업데이트 다운로드 중...',
+  'it': 'Download aggiornamento...',
+  'nl': 'Update downloaden...',
+  'pl': 'Pobieranie aktualizacji...',
+  'tr': 'Güncelleme indiriliyor...',
+  'sv': 'Hämtar uppdatering...',
+  'da': 'Downloader opdatering...',
+  'fi': 'Ladataan päivitystä...',
+  'nb': 'Laster ned oppdatering...',
+  'no': 'Laster ned oppdatering...',
+  'cs': 'Stahování aktualizace...',
+  'ro': 'Se descarcă actualizarea...',
+  'hu': 'Frissítés letöltése...',
+  'el': 'Λήψη ενημέρωσης...',
+  'th': 'กำลังดาวน์โหลดอัปเดต...',
+  'id': 'Mengunduh pembaruan...',
+  'ms': 'Memuat turun kemas kini...',
+  'uk': 'Завантаження оновлення...',
+  'vi': 'Đang tải bản cập nhật...',
+  'he': 'מוריד עדכון...',
+};
+
+// --- "Restart to update" ---
+export const UPDATE_READY_TEXT: Record<string, string> = {
+  'en': 'Restart to update',
+  'zh-CN': '重启以更新',
+  'zh-SG': '重启以更新',
+  'zh-TW': '重新啟動以更新',
+  'zh-HK': '重新啟動以更新',
+  'es': 'Reiniciar para actualizar',
+  'hi': 'अपडेट करने के लिए पुनः आरंभ करें',
+  'ar': 'أعد التشغيل للتحديث',
+  'fr': 'Redémarrer pour mettre à jour',
+  'pt': 'Reiniciar para atualizar',
+  'de': 'Neu starten zum Aktualisieren',
+  'ru': 'Перезапустить для обновления',
+  'ja': '再起動して更新',
+  'ko': '업데이트를 위해 재시작',
+  'it': 'Riavvia per aggiornare',
+  'nl': 'Herstart om bij te werken',
+  'pl': 'Uruchom ponownie, aby zaktualizować',
+  'tr': 'Güncellemek için yeniden başlat',
+  'sv': 'Starta om för att uppdatera',
+  'da': 'Genstart for at opdatere',
+  'fi': 'Käynnistä uudelleen päivittääksesi',
+  'nb': 'Start på nytt for å oppdatere',
+  'no': 'Start på nytt for å oppdatere',
+  'cs': 'Restartovat pro aktualizaci',
+  'ro': 'Reporniți pentru actualizare',
+  'hu': 'Újraindítás a frissítéshez',
+  'el': 'Επανεκκίνηση για ενημέρωση',
+  'th': 'รีสตาร์ทเพื่ออัปเดต',
+  'id': 'Mulai ulang untuk memperbarui',
+  'ms': 'Mulakan semula untuk mengemas kini',
+  'uk': 'Перезапустити для оновлення',
+  'vi': 'Khởi động lại để cập nhật',
+  'he': 'הפעל מחדש לעדכון',
+};
+
+// --- "Update failed" ---
+export const UPDATE_FAILED_TEXT: Record<string, string> = {
+  'en': 'Update failed',
+  'zh-CN': '更新失败',
+  'zh-SG': '更新失败',
+  'zh-TW': '更新失敗',
+  'zh-HK': '更新失敗',
+  'es': 'Error de actualización',
+  'hi': 'अपडेट विफल',
+  'ar': 'فشل التحديث',
+  'fr': 'Échec de la mise à jour',
+  'pt': 'Falha na atualização',
+  'de': 'Aktualisierung fehlgeschlagen',
+  'ru': 'Ошибка обновления',
+  'ja': 'アップデート失敗',
+  'ko': '업데이트 실패',
+  'it': 'Aggiornamento non riuscito',
+  'nl': 'Update mislukt',
+  'pl': 'Aktualizacja nie powiodła się',
+  'tr': 'Güncelleme başarısız',
+  'sv': 'Uppdatering misslyckades',
+  'da': 'Opdatering mislykkedes',
+  'fi': 'Päivitys epäonnistui',
+  'nb': 'Oppdatering mislyktes',
+  'no': 'Oppdatering mislyktes',
+  'cs': 'Aktualizace se nezdařila',
+  'ro': 'Actualizare eșuată',
+  'hu': 'Frissítés sikertelen',
+  'el': 'Η ενημέρωση απέτυχε',
+  'th': 'อัปเดตล้มเหลว',
+  'id': 'Pembaruan gagal',
+  'ms': 'Kemas kini gagal',
+  'uk': 'Оновлення не вдалося',
+  'vi': 'Cập nhật thất bại',
+  'he': 'העדכון נכשל',
+};
+
 // --- "Close" ---
 export const CLOSE_TEXT: Record<string, string> = {
   'en': 'Close',
@@ -539,5 +650,18 @@ export function getUpdateStrings(): {
   return {
     updateAvailable: getLocalizedString(UPDATE_AVAILABLE_TEXT, langs),
     upToDate: getLocalizedString(UP_TO_DATE_TEXT, langs),
+  };
+}
+
+export function getAutoUpdateStrings(): {
+  downloading: string;
+  ready: string;
+  failed: string;
+} {
+  const langs = getSystemLanguages();
+  return {
+    downloading: getLocalizedString(UPDATE_DOWNLOADING_TEXT, langs),
+    ready: getLocalizedString(UPDATE_READY_TEXT, langs),
+    failed: getLocalizedString(UPDATE_FAILED_TEXT, langs),
   };
 }

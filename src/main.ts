@@ -8,6 +8,7 @@ import { getAssetPath } from './paths';
 import { Player } from './player';
 import { createTray, rebuildTrayMenu } from './tray';
 import { checkForUpdates } from './update';
+import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 
@@ -336,7 +337,11 @@ app.whenReady().then(async () => {
     resolveCssReady();
     setTimeout(() => {
       if (appTray) {
-        checkForUpdates(appTray, rebuildTrayMenu);
+        if (isAutoUpdateSupported()) {
+          initAutoUpdate(appTray, rebuildTrayMenu);
+        } else {
+          checkForUpdates(appTray, rebuildTrayMenu);
+        }
       }
     }, 5000);
   });

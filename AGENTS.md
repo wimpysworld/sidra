@@ -21,6 +21,7 @@ Current:
 
 - `electron-store` - Persistent configuration
 - `electron-log` - Logging
+- `electron-updater` - Auto-update for AppImage and NSIS
 - `dbus-next` - MPRIS D-Bus service (Linux)
 - `@xhayper/discord-rpc` - Discord Rich Presence
 
@@ -31,6 +32,7 @@ sidra/
 ├── src/
 │   ├── main.ts              — Bootstrap, Widevine, window, IPC hub
 │   ├── preload.ts           — contextBridge IPC exposure
+│   ├── autoUpdate.ts        — Auto-update via electron-updater (AppImage, NSIS)
 │   ├── config.ts            — electron-store wrapper
 │   ├── paths.ts             — Shared `getAssetPath()` utility
 │   ├── player.ts            — EventEmitter for playback state

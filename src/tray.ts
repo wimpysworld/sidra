@@ -1,10 +1,11 @@
 import { app, BrowserWindow, Menu, nativeTheme, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
-import { getTrayStrings, getAboutStrings, getUpdateStrings } from './i18n';
+import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings } from './i18n';
 import { getAssetPath } from './paths';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled } from './config';
 import { getUpdateInfo } from './update';
+import { quitAndInstall } from './autoUpdate';
 
 const trayLog = log.scope('tray');
 
@@ -132,7 +133,19 @@ function buildContextMenu(tray: Tray): Menu {
 
   const update = getUpdateInfo();
   const updateStrings = getUpdateStrings();
-  if (update) {
+  if (update && update.ready) {
+    const autoUpdateStrings = getAutoUpdateStrings();
+    const readyGlyph = '⟳';
+    menuItems.push(
+      { type: 'separator' },
+      {
+        label: isLinux ? `${readyGlyph} ${autoUpdateStrings.ready}` : autoUpdateStrings.ready,
+        click: () => {
+          quitAndInstall();
+        },
+      },
+    );
+  } else if (update) {
     const updateLabel = updateStrings.updateAvailable.replace('{version}', update.version);
     const updateGlyph = '⬆';
     menuItems.push(

@@ -35,6 +35,9 @@ Sidra is under active development; several features in this list are not yet imp
 - Desktop Notifications
 - Discord Rich Presence
 - Application Indicator (tray)
+- Auto-update via GitHub Releases:
+  - AppImage (Linux) and NSIS (Windows): silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
+  - deb, rpm, Nix, macOS DMG: update notification with link to release page
 - AirPlay casting
 
 ---
