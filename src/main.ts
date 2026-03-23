@@ -47,6 +47,9 @@ if (process.platform === 'linux') {
   mainLog.info('Linux platform switches applied');
 }
 
+// Ensure Discord IPC socket path resolves correctly on macOS GUI launch
+if (process.platform === 'darwin') process.env.TMPDIR = app.getPath('temp');
+
 // Use a platform-accurate Chrome UA, stripping Electron identifiers that
 // Apple Music detects and blocks. The platform component must be truthful
 // to match Sec-CH-UA-Platform Client Hints sent on every request.
