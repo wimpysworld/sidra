@@ -353,6 +353,10 @@ app.whenReady().then(async () => {
   win.webContents.on('did-navigate', (_event, url) => handleStorefrontNavigation(url));
   win.webContents.on('did-navigate-in-page', (_event, url) => handleStorefrontNavigation(url));
 
+  win.webContents.on('will-prevent-unload', (event) => {
+    event.preventDefault();
+  });
+
   // Open external links in the system browser (only http/https)
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {

@@ -532,6 +532,16 @@ const win = new BrowserWindow({
 });
 ```
 
+### Window close behaviour
+
+`music.apple.com` registers a `beforeunload` event handler while audio is playing. In Electron, this silently blocks `BrowserWindow.close()` and `app.quit()` with no dialog or error - unlike Chrome, Electron does not prompt the user. Fix with:
+
+```typescript
+win.webContents.on('will-prevent-unload', (event) => event.preventDefault());
+```
+
+This is standard Chromium/Electron behaviour, not CastLabs-specific. The same issue was documented for Google Music in [electron/electron#8468](https://github.com/electron/electron/issues/8468). See `docs/QUIT.md` for full research.
+
 ---
 
 ## Theming
