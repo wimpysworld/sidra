@@ -696,7 +696,14 @@ function cleanupState(): void {
 function disconnectBus(): void {
   if (bus) {
     mprisLog.info('disconnecting from D-Bus');
+    // bus.disconnect() calls stream.end() which only half-closes the socket.
+    // Force-destroy the underlying stream to release the event loop handle.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stream = (bus as any)._connection?.stream;
     bus.disconnect();
+    if (stream && typeof stream.destroy === 'function') {
+      stream.destroy();
+    }
     bus = null;
   }
   playerIfaceRef = null;
