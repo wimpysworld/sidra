@@ -98,9 +98,20 @@
     box-shadow: none !important;
   }
 
-  /* Force --playerBGFill into shadow-DOM-scoped elements */
+  /* Force variables into shadow-DOM-scoped elements */
   * {
     --playerBGFill: rgba(24, 24, 37, 0.88) !important;
+    --keyColor: #f38ba8 !important;
+    --keyColor-rgb: 243,139,168 !important;
+    --keyColor-rollover: #eba0ac !important;
+    --keyColor-pressed: #eba0ac !important;
+    --keyColor-deepPressed: #eba0ac !important;
+    --keyColor-disabled: rgba(243,139,168,0.35) !important;
+    --musicKeyColor: #f38ba8 !important;
+    --systemAccentBG: #f38ba8 !important;
+    --musicBrandBG: #f38ba8 !important;
+    --selectionColor: #f38ba8 !important;
+    --lovedBGColor: #f38ba8 !important;
   }
 
   /* Side panels (Lyrics + Up Next): not covered by :root variables */
@@ -220,6 +231,17 @@
 
   * {
     --playerBGFill: rgba(230, 233, 239, 0.88) !important;
+    --keyColor: #d20f39 !important;
+    --keyColor-rgb: 210,15,57 !important;
+    --keyColor-rollover: #e64553 !important;
+    --keyColor-pressed: #e64553 !important;
+    --keyColor-deepPressed: #e64553 !important;
+    --keyColor-disabled: rgba(210,15,57,0.35) !important;
+    --musicKeyColor: #d20f39 !important;
+    --systemAccentBG: #d20f39 !important;
+    --musicBrandBG: #d20f39 !important;
+    --selectionColor: #d20f39 !important;
+    --lovedBGColor: #d20f39 !important;
   }
 
   /* Side panels (Lyrics + Up Next): not covered by :root variables */
@@ -242,4 +264,9 @@
   .scrollable-page > footer {
     background-color: #dce0e8 !important;
   }
+}
+
+/* Override hardcoded primary button background to use Catppuccin accent */
+.button.primary button.click-action {
+  background-color: var(--keyColor) !important;
 }
