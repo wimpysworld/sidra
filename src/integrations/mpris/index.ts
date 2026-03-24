@@ -1,7 +1,8 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { Player } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState } from '../../player';
+import { errorMessage } from '../../utils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const dbus = require('@holusion/dbus-next');
@@ -129,6 +130,15 @@ class MediaPlayer2Player extends Interface {
     this._getMainWindow = getMainWindow;
   }
 
+  private _exec(js: string, label: string): void {
+    const win = this._getMainWindow();
+    if (win) {
+      win.webContents.executeJavaScript(js).catch((err: Error) => {
+        mprisLog.warn(`failed to ${label}:`, err.message);
+      });
+    }
+  }
+
   // --- Read-only properties ---
 
   get PlaybackStatus(): string {
@@ -197,12 +207,7 @@ class MediaPlayer2Player extends Interface {
       return;
     }
     this._loopStatus = value;
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript(`window.__sidra.setRepeat(${mode})`).catch((err: Error) => {
-        mprisLog.warn('failed to set repeat mode:', err.message);
-      });
-    }
+    this._exec(`window.__sidra.setRepeat(${mode})`, 'set repeat mode');
   }
 
   get Shuffle(): boolean {
@@ -212,12 +217,7 @@ class MediaPlayer2Player extends Interface {
   set Shuffle(value: boolean) {
     this._shuffle = value;
     const mode = value ? 1 : 0;
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript(`window.__sidra.setShuffle(${mode})`).catch((err: Error) => {
-        mprisLog.warn('failed to set shuffle mode:', err.message);
-      });
-    }
+    this._exec(`window.__sidra.setShuffle(${mode})`, 'set shuffle mode');
   }
 
   get Volume(): number {
@@ -235,81 +235,41 @@ class MediaPlayer2Player extends Interface {
       pendingVolume = null;
       volumeSuppressionTimer = null;
     }, VOLUME_SUPPRESSION_MS);
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript(`window.__sidra.setVolume(${clamped})`).catch((err: Error) => {
-        mprisLog.warn('failed to set volume:', err.message);
-      });
-    }
+    this._exec(`window.__sidra.setVolume(${clamped})`, 'set volume');
   }
 
   // --- Methods ---
 
   Next(): void {
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript('window.__sidra.next()').catch((err: Error) => {
-        mprisLog.warn('failed to call next:', err.message);
-      });
-    }
+    this._exec('window.__sidra.next()', 'call next');
   }
 
   Previous(): void {
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript('window.__sidra.previous()').catch((err: Error) => {
-        mprisLog.warn('failed to call previous:', err.message);
-      });
-    }
+    this._exec('window.__sidra.previous()', 'call previous');
   }
 
   Pause(): void {
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript('window.__sidra.pause()').catch((err: Error) => {
-        mprisLog.warn('failed to call pause:', err.message);
-      });
-    }
+    this._exec('window.__sidra.pause()', 'call pause');
   }
 
   PlayPause(): void {
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript('window.__sidra.playPause()').catch((err: Error) => {
-        mprisLog.warn('failed to call playPause:', err.message);
-      });
-    }
+    this._exec('window.__sidra.playPause()', 'call playPause');
   }
 
   Stop(): void {
     // Maps to pause(), not mk.stop(), to preserve queue state
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript('window.__sidra.pause()').catch((err: Error) => {
-        mprisLog.warn('failed to call stop (pause):', err.message);
-      });
-    }
+    this._exec('window.__sidra.pause()', 'call stop (pause)');
   }
 
   Play(): void {
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript('window.__sidra.play()').catch((err: Error) => {
-        mprisLog.warn('failed to call play:', err.message);
-      });
-    }
+    this._exec('window.__sidra.play()', 'call play');
   }
 
   Seek(offset: bigint): void {
     // offset is in microseconds; dbus-next delivers int64 as BigInt
     const targetUs = this._position + Number(offset);
     const targetSeconds = Math.max(0, targetUs) / 1_000_000;
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript(`window.__sidra.seek(${targetSeconds})`).catch((err: Error) => {
-        mprisLog.warn('failed to seek:', err.message);
-      });
-    }
+    this._exec(`window.__sidra.seek(${targetSeconds})`, 'seek');
   }
 
   SetPosition(trackId: string, position: bigint): void {
@@ -319,12 +279,7 @@ class MediaPlayer2Player extends Interface {
       return;
     }
     const targetSeconds = Number(position) / 1_000_000;
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.executeJavaScript(`window.__sidra.seek(${targetSeconds})`).catch((err: Error) => {
-        mprisLog.warn('failed to set position:', err.message);
-      });
-    }
+    this._exec(`window.__sidra.seek(${targetSeconds})`, 'set position');
   }
 
   OpenUri(uri: string): void {
@@ -488,8 +443,7 @@ function schedulePropertyEmission(properties: Record<string, unknown>): void {
       try {
         Interface.emitPropertiesChanged(playerIfaceRef, pendingChanges, []);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        mprisLog.warn('failed to emit PropertiesChanged:', message);
+        mprisLog.warn('failed to emit PropertiesChanged:', errorMessage(err));
       }
       pendingChanges = {};
     }
@@ -500,17 +454,7 @@ function sanitiseTrackId(trackId: string): string {
   return trackId.replace(/[^A-Za-z0-9_]/g, '_');
 }
 
-function buildMetadata(payload: {
-  name?: string;
-  albumName?: string;
-  artistName?: string;
-  durationInMillis?: number;
-  genreNames?: string[];
-  artworkUrl?: string;
-  trackId?: string;
-  trackNumber?: number;
-  url?: string;
-}): Record<string, InstanceType<typeof Variant>> {
+function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
   const appName = app.getName().toLowerCase();
   const rawId = payload.trackId ?? 'unknown';
   const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
@@ -561,11 +505,11 @@ function onPlaybackStateDidChange(payload: unknown): void {
   const p = payload as { state: number } | null;
   if (!p || !playerIfaceRef) return;
 
-  // MusicKit PlaybackStates: 2 = playing, 3 = paused, 4 = stopped
+  // MusicKit PlaybackStates
   let status: string;
-  if (p.state === 2) {
+  if (p.state === PlaybackState.Playing) {
     status = 'Playing';
-  } else if (p.state === 3 || p.state === 4) {
+  } else if (p.state === PlaybackState.Paused || p.state === PlaybackState.Stopped) {
     status = 'Paused';
   } else {
     status = 'Stopped';
@@ -578,17 +522,7 @@ function onPlaybackStateDidChange(payload: unknown): void {
 function onNowPlayingItemDidChange(payload: unknown): void {
   if (!playerIfaceRef) return;
 
-  const p = payload as {
-    name?: string;
-    albumName?: string;
-    artistName?: string;
-    durationInMillis?: number;
-    genreNames?: string[];
-    artworkUrl?: string;
-    trackId?: string;
-    trackNumber?: number;
-    url?: string;
-  } | null;
+  const p = payload as NowPlayingPayload | null;
 
   if (!p) {
     const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {

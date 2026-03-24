@@ -3,6 +3,20 @@ import log from 'electron-log/main';
 
 const playerLog = log.scope('player');
 
+export interface NowPlayingPayload {
+  name?: string;
+  artistName?: string;
+  albumName?: string;
+  artworkUrl?: string;
+  durationInMillis?: number;
+  url?: string;
+  genreNames?: string[];
+  trackId?: string;
+  trackNumber?: number;
+}
+
+export const PlaybackState = { Playing: 2, Paused: 3, Stopped: 4 } as const;
+
 const REPEAT_MODES: Record<number, string> = {
   0: 'none',
   1: 'one',
