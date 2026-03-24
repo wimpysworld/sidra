@@ -60,7 +60,7 @@ vi.mock('fs', () => ({
   readFileSync: vi.fn(() => ''),
 }));
 
-import { extractStorefrontFromURL, buildAppleMusicURL } from '../src/main';
+import { extractStorefrontFromURL, buildAppleMusicURL } from '../src/storefront';
 import { getStorefront, getLanguage, getStartPage, getLastPageUrl } from '../src/config';
 import { getStorefront as getLocaleStorefront } from '../src/i18n';
 
