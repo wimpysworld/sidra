@@ -225,9 +225,10 @@ app.whenReady().then(async () => {
   appTray = createTray();
 
   // Show a splash screen while the Widevine CDM downloads/initialises
+  const splashZoom = getZoomFactor();
   const splash = new BrowserWindow({
-    width: 300,
-    height: 350,
+    width: Math.round(300 * splashZoom),
+    height: Math.round(350 * splashZoom),
     frame: false,
     resizable: false,
     center: true,
@@ -241,6 +242,7 @@ app.whenReady().then(async () => {
   const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
   splash.once('ready-to-show', () => {
     splashLog.info('splash shown');
+    splash.webContents.setZoomFactor(getZoomFactor());
     splash.show();
     setTimeout(resolveMinDisplay, 500);
   });

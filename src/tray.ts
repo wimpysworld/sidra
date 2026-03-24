@@ -43,9 +43,10 @@ function showAboutWindow(): void {
   }
 
   trayLog.info('showing About window');
+  const zoomFactor = getZoomFactor();
   aboutWindow = new BrowserWindow({
-    width: 400,
-    height: 400,
+    width: Math.round(400 * zoomFactor),
+    height: Math.round(400 * zoomFactor),
     frame: false,
     resizable: false,
     center: true,
@@ -55,6 +56,7 @@ function showAboutWindow(): void {
   });
 
   aboutWindow.once('ready-to-show', () => {
+    aboutWindow?.webContents.setZoomFactor(getZoomFactor());
     aboutWindow?.show();
   });
 
