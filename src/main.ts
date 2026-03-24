@@ -54,7 +54,7 @@ if (process.platform === 'linux') {
   // Set the XDG desktop name so GetXdgAppId() returns 'sidra' and
   // GetPossiblyOverriddenApplicationName() can read Name= from sidra.desktop.
   // Required for correct PulseAudio stream identity once Kesefon's patch lands.
-  (app as unknown as { setDesktopName(name: string): void }).setDesktopName('sidra.desktop');
+  app.setDesktopName('sidra.desktop');
   mainLog.info('Linux platform switches applied');
 }
 
