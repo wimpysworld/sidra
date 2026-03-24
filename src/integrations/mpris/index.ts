@@ -114,19 +114,83 @@ MediaPlayer2.configureMembers({
 
 const NO_TRACK = '/org/mpris/MediaPlayer2/TrackList/NoTrack';
 
+function sanitiseTrackId(trackId: string): string {
+  return trackId.replace(/[^A-Za-z0-9_]/g, '_');
+}
+
+function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
+  const appName = app.getName().toLowerCase();
+  const rawId = payload.trackId ?? 'unknown';
+  const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
+
+  const metadata: Record<string, InstanceType<typeof Variant>> = {
+    'mpris:trackid': new Variant('o', trackId),
+  };
+
+  if (payload.durationInMillis != null) {
+    // Convert milliseconds to microseconds (int64)
+    metadata['mpris:length'] = new Variant('x', payload.durationInMillis * MS_TO_US);
+  }
+
+  if (payload.name != null) {
+    metadata['xesam:title'] = new Variant('s', payload.name);
+  }
+
+  if (payload.artistName != null) {
+    metadata['xesam:artist'] = new Variant('as', [payload.artistName]);
+  }
+
+  if (payload.albumName != null) {
+    metadata['xesam:album'] = new Variant('s', payload.albumName);
+  }
+
+  if (payload.artworkUrl != null) {
+    metadata['mpris:artUrl'] = new Variant('s', payload.artworkUrl);
+  }
+
+  if (payload.url != null) {
+    metadata['xesam:url'] = new Variant('s', payload.url);
+  }
+
+  if (payload.genreNames != null && payload.genreNames.length > 0) {
+    metadata['xesam:genre'] = new Variant('as', payload.genreNames);
+  }
+
+  if (payload.trackNumber != null) {
+    metadata['xesam:trackNumber'] = new Variant('i', payload.trackNumber);
+  }
+
+  return metadata;
+}
+
 class MediaPlayer2Player extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
 
-  // Cached property values (not private - updated by event handlers in init())
-  _playbackStatus = 'Stopped';
-  _loopStatus = 'None';
-  _shuffle = false;
-  _metadata: Record<string, InstanceType<typeof Variant>> = {
+  // Cached D-Bus property values
+  private _playbackStatus = 'Stopped';
+  private _loopStatus = 'None';
+  private _shuffle = false;
+  private _metadata: Record<string, InstanceType<typeof Variant>> = {
     'mpris:trackid': new Variant('o', NO_TRACK),
   };
-  _volume = 1.0;
-  _position = 0; // microseconds (int64)
-  _currentTrackId = NO_TRACK;
+  private _volume = 1.0;
+  private _position = 0; // microseconds (int64)
+  private _currentTrackId = NO_TRACK;
+
+  // Seek detection state
+  private readonly _seekThresholdUs = 1_000_000; // 1 second in microseconds
+  private _lastPositionUs = 0;
+  private _lastPositionTimestamp = Date.now();
+
+  // Volume suppression state - prevents feedback loops when MPRIS sets volume
+  private readonly _volumeSuppressionMs = 500; // 2x the 250ms poll interval in musicKitHook.js
+  private _pendingVolume: number | null = null;
+  private _volumeSuppressionTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Debounce timer for property change emissions
+  private readonly _debounceMs = 1000;
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _pendingChanges: Record<string, unknown> = {};
 
   constructor(getMainWindow: () => BrowserWindow | null) {
     super('org.mpris.MediaPlayer2.Player');
@@ -140,6 +204,140 @@ class MediaPlayer2Player extends Interface {
         mprisLog.warn(`failed to ${label}:`, err.message);
       });
     }
+  }
+
+  private _schedulePropertyEmission(properties: Record<string, unknown>): void {
+    Object.assign(this._pendingChanges, properties);
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null;
+      if (Object.keys(this._pendingChanges).length > 0) {
+        try {
+          Interface.emitPropertiesChanged(this, this._pendingChanges, []);
+        } catch (err: unknown) {
+          mprisLog.warn('failed to emit PropertiesChanged:', errorMessage(err));
+        }
+        this._pendingChanges = {};
+      }
+    }, this._debounceMs);
+  }
+
+  // --- Update methods (called by player event handlers) ---
+
+  updatePlaybackStatus(payload: PlaybackStatePayload): void {
+    if (!payload) return;
+
+    // MusicKit PlaybackStates
+    let status: string;
+    if (payload.state === PlaybackState.Playing) {
+      status = 'Playing';
+    } else if (payload.state === PlaybackState.Paused || payload.state === PlaybackState.Stopped) {
+      status = 'Paused';
+    } else {
+      status = 'Stopped';
+    }
+
+    this._playbackStatus = status;
+    this._schedulePropertyEmission({ PlaybackStatus: status });
+  }
+
+  updateNowPlaying(payload: NowPlayingPayload | null): void {
+    if (!payload) {
+      const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
+        'mpris:trackid': new Variant('o', NO_TRACK),
+      };
+      this._metadata = emptyMetadata;
+      this._currentTrackId = NO_TRACK;
+      this._schedulePropertyEmission({ Metadata: emptyMetadata });
+      this._lastPositionUs = 0;
+      this._lastPositionTimestamp = Date.now();
+      this._position = 0;
+      this.Seeked(0);
+      return;
+    }
+
+    const metadata = buildMetadata(payload);
+    const appName = app.getName().toLowerCase();
+    const rawId = payload.trackId ?? 'unknown';
+    const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
+
+    this._metadata = metadata;
+    this._currentTrackId = trackId;
+    this._schedulePropertyEmission({ Metadata: metadata });
+
+    this._lastPositionUs = 0;
+    this._lastPositionTimestamp = Date.now();
+    this._position = 0;
+    this.Seeked(0);
+  }
+
+  updateRepeatMode(payload: number | null): void {
+    if (payload == null) return;
+
+    const musicKitToLoop: Record<number, string> = {
+      0: 'None',
+      1: 'Track',
+      2: 'Playlist',
+    };
+    const loopStatus = musicKitToLoop[payload];
+    if (loopStatus === undefined) {
+      mprisLog.warn('unknown repeat mode:', payload);
+      return;
+    }
+
+    this._loopStatus = loopStatus;
+    this._schedulePropertyEmission({ LoopStatus: loopStatus });
+  }
+
+  updateShuffleMode(payload: number | null): void {
+    if (payload == null) return;
+
+    const shuffle = payload === 1;
+    this._shuffle = shuffle;
+    this._schedulePropertyEmission({ Shuffle: shuffle });
+  }
+
+  updateVolume(payload: number | null): void {
+    if (payload == null) return;
+
+    if (this._pendingVolume !== null && Math.abs(payload - this._pendingVolume) < VOLUME_ECHO_TOLERANCE) {
+      return;
+    }
+
+    this._volume = payload;
+    this._schedulePropertyEmission({ Volume: payload });
+  }
+
+  updatePosition(payload: number): void {
+    const newPositionUs = payload;
+    const now = Date.now();
+    const elapsedMs = now - this._lastPositionTimestamp;
+    const expectedPositionUs = this._lastPositionUs + elapsedMs * MS_TO_US;
+
+    if (Math.abs(newPositionUs - expectedPositionUs) > this._seekThresholdUs) {
+      this.Seeked(newPositionUs);
+    }
+
+    this._lastPositionUs = newPositionUs;
+    this._lastPositionTimestamp = now;
+    this._position = newPositionUs;
+  }
+
+  cleanup(): void {
+    if (this._volumeSuppressionTimer) {
+      clearTimeout(this._volumeSuppressionTimer);
+      this._volumeSuppressionTimer = null;
+    }
+    this._pendingVolume = null;
+    this._lastPositionUs = 0;
+    this._lastPositionTimestamp = Date.now();
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    this._pendingChanges = {};
   }
 
   // --- Read-only properties ---
@@ -230,14 +428,14 @@ class MediaPlayer2Player extends Interface {
   set Volume(value: number) {
     const clamped = Math.max(0.0, Math.min(1.0, value));
     this._volume = clamped;
-    pendingVolume = clamped;
-    if (volumeSuppressionTimer) {
-      clearTimeout(volumeSuppressionTimer);
+    this._pendingVolume = clamped;
+    if (this._volumeSuppressionTimer) {
+      clearTimeout(this._volumeSuppressionTimer);
     }
-    volumeSuppressionTimer = setTimeout(() => {
-      pendingVolume = null;
-      volumeSuppressionTimer = null;
-    }, VOLUME_SUPPRESSION_MS);
+    this._volumeSuppressionTimer = setTimeout(() => {
+      this._pendingVolume = null;
+      this._volumeSuppressionTimer = null;
+    }, this._volumeSuppressionMs);
     this._exec(`window.__sidra.setVolume(${clamped})`, 'set volume');
   }
 
@@ -415,211 +613,6 @@ MediaPlayer2Player.configureMembers({
 // Module-level bus reference for graceful shutdown
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
-// Seek detection state - tracks position to detect user-initiated seeks
-const SEEK_THRESHOLD_US = 1_000_000; // 1 second in microseconds
-let lastPositionUs = 0;
-let lastPositionTimestamp = Date.now();
-
-// Volume suppression state - prevents feedback loops when MPRIS sets volume
-const VOLUME_SUPPRESSION_MS = 500; // 2x the 250ms poll interval in musicKitHook.js
-let pendingVolume: number | null = null;
-let volumeSuppressionTimer: ReturnType<typeof setTimeout> | null = null;
-
-// Debounce timer for property change emissions
-const DEBOUNCE_MS = 1000;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingChanges: Record<string, unknown> = {};
-let playerIfaceRef: MediaPlayer2Player | null = null;
-
-function schedulePropertyEmission(properties: Record<string, unknown>): void {
-  Object.assign(pendingChanges, properties);
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
-  }
-  debounceTimer = setTimeout(() => {
-    debounceTimer = null;
-    if (playerIfaceRef && Object.keys(pendingChanges).length > 0) {
-      try {
-        Interface.emitPropertiesChanged(playerIfaceRef, pendingChanges, []);
-      } catch (err: unknown) {
-        mprisLog.warn('failed to emit PropertiesChanged:', errorMessage(err));
-      }
-      pendingChanges = {};
-    }
-  }, DEBOUNCE_MS);
-}
-
-function sanitiseTrackId(trackId: string): string {
-  return trackId.replace(/[^A-Za-z0-9_]/g, '_');
-}
-
-function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
-  const appName = app.getName().toLowerCase();
-  const rawId = payload.trackId ?? 'unknown';
-  const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
-
-  const metadata: Record<string, InstanceType<typeof Variant>> = {
-    'mpris:trackid': new Variant('o', trackId),
-  };
-
-  if (payload.durationInMillis != null) {
-    // Convert milliseconds to microseconds (int64)
-    metadata['mpris:length'] = new Variant('x', payload.durationInMillis * MS_TO_US);
-  }
-
-  if (payload.name != null) {
-    metadata['xesam:title'] = new Variant('s', payload.name);
-  }
-
-  if (payload.artistName != null) {
-    metadata['xesam:artist'] = new Variant('as', [payload.artistName]);
-  }
-
-  if (payload.albumName != null) {
-    metadata['xesam:album'] = new Variant('s', payload.albumName);
-  }
-
-  if (payload.artworkUrl != null) {
-    metadata['mpris:artUrl'] = new Variant('s', payload.artworkUrl);
-  }
-
-  if (payload.url != null) {
-    metadata['xesam:url'] = new Variant('s', payload.url);
-  }
-
-  if (payload.genreNames != null && payload.genreNames.length > 0) {
-    metadata['xesam:genre'] = new Variant('as', payload.genreNames);
-  }
-
-  if (payload.trackNumber != null) {
-    metadata['xesam:trackNumber'] = new Variant('i', payload.trackNumber);
-  }
-
-  return metadata;
-}
-
-// --- Named event handlers (stored for removeListener on disable) ---
-
-function onPlaybackStateDidChange(payload: PlaybackStatePayload): void {
-  if (!payload || !playerIfaceRef) return;
-
-  // MusicKit PlaybackStates
-  let status: string;
-  if (payload.state === PlaybackState.Playing) {
-    status = 'Playing';
-  } else if (payload.state === PlaybackState.Paused || payload.state === PlaybackState.Stopped) {
-    status = 'Paused';
-  } else {
-    status = 'Stopped';
-  }
-
-  playerIfaceRef._playbackStatus = status;
-  schedulePropertyEmission({ PlaybackStatus: status });
-}
-
-function onNowPlayingItemDidChange(payload: NowPlayingPayload | null): void {
-  if (!playerIfaceRef) return;
-
-  if (!payload) {
-    const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
-      'mpris:trackid': new Variant('o', NO_TRACK),
-    };
-    playerIfaceRef._metadata = emptyMetadata;
-    playerIfaceRef._currentTrackId = NO_TRACK;
-    schedulePropertyEmission({ Metadata: emptyMetadata });
-    lastPositionUs = 0;
-    lastPositionTimestamp = Date.now();
-    playerIfaceRef._position = 0;
-    playerIfaceRef.Seeked(0);
-    return;
-  }
-
-  const metadata = buildMetadata(payload);
-  const appName = app.getName().toLowerCase();
-  const rawId = payload.trackId ?? 'unknown';
-  const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
-
-  playerIfaceRef._metadata = metadata;
-  playerIfaceRef._currentTrackId = trackId;
-  schedulePropertyEmission({ Metadata: metadata });
-
-  lastPositionUs = 0;
-  lastPositionTimestamp = Date.now();
-  playerIfaceRef._position = 0;
-  playerIfaceRef.Seeked(0);
-}
-
-function onRepeatModeDidChange(payload: number | null): void {
-  if (payload == null || !playerIfaceRef) return;
-
-  const musicKitToLoop: Record<number, string> = {
-    0: 'None',
-    1: 'Track',
-    2: 'Playlist',
-  };
-  const loopStatus = musicKitToLoop[payload];
-  if (loopStatus === undefined) {
-    mprisLog.warn('unknown repeat mode:', payload);
-    return;
-  }
-
-  playerIfaceRef._loopStatus = loopStatus;
-  schedulePropertyEmission({ LoopStatus: loopStatus });
-}
-
-function onShuffleModeDidChange(payload: number | null): void {
-  if (payload == null || !playerIfaceRef) return;
-
-  const shuffle = payload === 1;
-  playerIfaceRef._shuffle = shuffle;
-  schedulePropertyEmission({ Shuffle: shuffle });
-}
-
-function onVolumeDidChange(payload: number | null): void {
-  if (payload == null || !playerIfaceRef) return;
-
-  if (pendingVolume !== null && Math.abs(payload - pendingVolume) < VOLUME_ECHO_TOLERANCE) {
-    return;
-  }
-
-  playerIfaceRef._volume = payload;
-  schedulePropertyEmission({ Volume: payload });
-}
-
-function onPlaybackTimeDidChange(payload: number): void {
-  if (!playerIfaceRef) return;
-
-  const newPositionUs = payload;
-  const now = Date.now();
-  const elapsedMs = now - lastPositionTimestamp;
-  const expectedPositionUs = lastPositionUs + elapsedMs * MS_TO_US;
-
-  if (Math.abs(newPositionUs - expectedPositionUs) > SEEK_THRESHOLD_US) {
-    playerIfaceRef.Seeked(newPositionUs);
-  }
-
-  lastPositionUs = newPositionUs;
-  lastPositionTimestamp = now;
-  playerIfaceRef._position = newPositionUs;
-}
-
-// --- Cleanup helper (shared by disable and will-quit) ---
-
-function cleanupState(): void {
-  if (volumeSuppressionTimer) {
-    clearTimeout(volumeSuppressionTimer);
-    volumeSuppressionTimer = null;
-  }
-  pendingVolume = null;
-  lastPositionUs = 0;
-  lastPositionTimestamp = Date.now();
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
-  }
-  pendingChanges = {};
-}
-
 function disconnectBus(): void {
   if (bus) {
     mprisLog.info('disconnecting from D-Bus');
@@ -633,7 +626,6 @@ function disconnectBus(): void {
     }
     bus = null;
   }
-  playerIfaceRef = null;
 }
 
 // --- Public API ---
@@ -644,6 +636,29 @@ export function init(ctx: IntegrationContext): void {
 
   mprisLog.info('MPRIS module initialised');
 
+  const rootIface = new MediaPlayer2(getMainWindow);
+  const playerIface = new MediaPlayer2Player(getMainWindow);
+
+  // Thin wrappers with stable references for removeListener
+  const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
+    playerIface.updatePlaybackStatus(payload);
+  };
+  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+    playerIface.updateNowPlaying(payload);
+  };
+  const onRepeatModeDidChange = (payload: number | null): void => {
+    playerIface.updateRepeatMode(payload);
+  };
+  const onShuffleModeDidChange = (payload: number | null): void => {
+    playerIface.updateShuffleMode(payload);
+  };
+  const onVolumeDidChange = (payload: number | null): void => {
+    playerIface.updateVolume(payload);
+  };
+  const onPlaybackTimeDidChange = (payload: number): void => {
+    playerIface.updatePosition(payload);
+  };
+
   app.on('will-quit', () => {
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
@@ -651,7 +666,7 @@ export function init(ctx: IntegrationContext): void {
     player.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
     player.removeListener('volumeDidChange', onVolumeDidChange);
     player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
-    cleanupState();
+    playerIface.cleanup();
     disconnectBus();
   });
 
@@ -662,10 +677,6 @@ export function init(ctx: IntegrationContext): void {
   bus.on('error', (err: Error) => {
     mprisLog.warn('D-Bus connection error:', err.message);
   });
-
-  const rootIface = new MediaPlayer2(getMainWindow);
-  const playerIface = new MediaPlayer2Player(getMainWindow);
-  playerIfaceRef = playerIface;
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
