@@ -94,8 +94,12 @@ lint:
     @actionlint
     npx tsc --noEmit
 
-# Validate electron-builder configuration
+# Run tests
 test:
+    npm test
+
+# Validate electron-builder configuration
+validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit
 
