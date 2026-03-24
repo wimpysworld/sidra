@@ -1,6 +1,6 @@
-import { describe, it, expect, expectTypeOf } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi } from 'vitest';
 
-import { PlaybackState, type PlayerEvents } from '../src/player';
+import { PlaybackState, Player, type PlayerEvents } from '../src/player';
 
 describe('PlaybackState', () => {
   it('None is 0', () => {
@@ -60,5 +60,69 @@ describe('PlayerEvents', () => {
       | 'volumeDidChange';
 
     expectTypeOf<EventKeys>().toEqualTypeOf<ExpectedKeys>();
+  });
+});
+
+describe('Player event forwarding', () => {
+  it('emits playbackStateDidChange with payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackStateDidChange', listener);
+
+    const payload = { status: true, state: PlaybackState.Playing };
+    player.handlePlaybackStateDidChange(payload);
+
+    expect(listener).toHaveBeenCalledWith(payload);
+  });
+
+  it('emits nowPlayingItemDidChange with payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('nowPlayingItemDidChange', listener);
+
+    const payload = { name: 'Track', artistName: 'Artist' };
+    player.handleNowPlayingItemDidChange(payload);
+
+    expect(listener).toHaveBeenCalledWith(payload);
+  });
+
+  it('emits playbackTimeDidChange with position', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackTimeDidChange', listener);
+
+    player.handlePlaybackTimeDidChange(42000);
+
+    expect(listener).toHaveBeenCalledWith(42000);
+  });
+
+  it('emits repeatModeDidChange with mode', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('repeatModeDidChange', listener);
+
+    player.handleRepeatModeDidChange(2);
+
+    expect(listener).toHaveBeenCalledWith(2);
+  });
+
+  it('emits shuffleModeDidChange with mode', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('shuffleModeDidChange', listener);
+
+    player.handleShuffleModeDidChange(1);
+
+    expect(listener).toHaveBeenCalledWith(1);
+  });
+
+  it('emits volumeDidChange with volume', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('volumeDidChange', listener);
+
+    player.handleVolumeDidChange(0.75);
+
+    expect(listener).toHaveBeenCalledWith(0.75);
   });
 });
