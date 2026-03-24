@@ -9,7 +9,7 @@ interface StoreSchema {
   'discord.enabled': boolean;
   'catppuccin.enabled': boolean;
   'autoUpdate.enabled': boolean;
-
+  startPage: 'home' | 'new' | 'radio' | 'all-playlists';
 }
 
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
@@ -94,5 +94,17 @@ export function getAutoUpdateEnabled(): boolean {
 export function setAutoUpdateEnabled(enabled: boolean): void {
   store.set('autoUpdate.enabled', enabled);
   configLog.info('autoUpdate.enabled set:', enabled);
+}
+
+export function getStartPage(): 'home' | 'new' | 'radio' | 'all-playlists' {
+  if (!store.has('startPage')) {
+    return 'new';
+  }
+  return store.get('startPage');
+}
+
+export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists'): void {
+  store.set('startPage', page);
+  configLog.info('startPage set:', page);
 }
 

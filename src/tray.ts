@@ -3,7 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings } from './i18n';
 import { getAssetPath } from './paths';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled, getStartPage, setStartPage } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 
@@ -130,6 +130,46 @@ function buildContextMenu(tray: Tray): Menu {
       },
     },
   ];
+
+  const currentStartPage = getStartPage();
+  const startPageLabelMap: Record<string, string> = {
+    'home': strings.startPageHome,
+    'new': strings.startPageNew,
+    'radio': strings.startPageRadio,
+    'all-playlists': strings.startPageAllPlaylists,
+  };
+  const currentStartPageLabel = startPageLabelMap[currentStartPage];
+  const startPageGlyph = '🗍';
+  const startPageParentLabel = `${strings.startPage}: ${currentStartPageLabel}`;
+  menuItems.push({
+    label: isLinux ? `${startPageGlyph} ${startPageParentLabel}` : startPageParentLabel,
+    submenu: [
+      {
+        label: strings.startPageHome,
+        type: 'radio',
+        checked: currentStartPage === 'home',
+        click: () => { setStartPage('home'); tray.setContextMenu(buildContextMenu(tray)); },
+      },
+      {
+        label: strings.startPageNew,
+        type: 'radio',
+        checked: currentStartPage === 'new',
+        click: () => { setStartPage('new'); tray.setContextMenu(buildContextMenu(tray)); },
+      },
+      {
+        label: strings.startPageRadio,
+        type: 'radio',
+        checked: currentStartPage === 'radio',
+        click: () => { setStartPage('radio'); tray.setContextMenu(buildContextMenu(tray)); },
+      },
+      {
+        label: strings.startPageAllPlaylists,
+        type: 'radio',
+        checked: currentStartPage === 'all-playlists',
+        click: () => { setStartPage('all-playlists'); tray.setContextMenu(buildContextMenu(tray)); },
+      },
+    ],
+  });
 
   const update = getUpdateInfo();
   const updateStrings = getUpdateStrings();
