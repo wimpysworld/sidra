@@ -246,6 +246,8 @@ app.whenReady().then(async () => {
 
   const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
   const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
+  const navBarPath = getAssetPath('assets', 'navigationBar.js');
+  const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
 
   const win = new BrowserWindow({
     title: 'Sidra',
@@ -350,8 +352,6 @@ app.whenReady().then(async () => {
     const hookScript = fs.readFileSync(hookPath, 'utf-8');
     win.webContents.executeJavaScript(hookScript);
     mainLog.debug('MusicKit hook injected');
-    const navBarPath = getAssetPath('assets', 'navigationBar.js');
-    const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
     win.webContents.executeJavaScript(navBarScript);
     mainLog.debug('Navigation bar injected');
   });
@@ -388,6 +388,7 @@ app.whenReady().then(async () => {
   });
   win.webContents.on('did-navigate-in-page', (_event, url) => {
     handleStorefrontNavigation(url);
+    win.webContents.executeJavaScript(navBarScript);
   });
 
   win.webContents.on('will-prevent-unload', (event) => {
