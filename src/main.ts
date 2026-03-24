@@ -2,7 +2,7 @@ import { app, BrowserWindow, components, ipcMain, Menu, nativeTheme, session, sh
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getStartPage } from './config';
 import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
@@ -90,7 +90,14 @@ function buildAppleMusicURL(): string {
 
   mainLog.info(`storefront resolved: ${storefront} (${source})`);
 
-  let url = `https://music.apple.com/${storefront}/new`;
+  const pagePathMap: Record<string, string> = {
+    'home': 'home',
+    'new': 'new',
+    'radio': 'radio',
+    'all-playlists': 'library/all-playlists/',
+  };
+  const pagePath = pagePathMap[getStartPage()];
+  let url = `https://music.apple.com/${storefront}/${pagePath}`;
   const language = getLanguage();
   if (language !== undefined && language !== null) {
     url += `?l=${language}`;

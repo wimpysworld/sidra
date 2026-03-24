@@ -190,6 +190,191 @@ export const DISCORD_TEXT: Record<string, string> = {
   'he': 'Discord Rich Presence',
 };
 
+// --- "Start page" ---
+export const START_PAGE_TEXT: Record<string, string> = {
+  'en': 'Start page',
+  'zh-CN': '起始页',
+  'zh-SG': '起始页',
+  'zh-TW': '起始頁',
+  'zh-HK': '起始頁',
+  'es': 'Página de inicio',
+  'hi': 'प्रारंभ पृष्ठ',
+  'ar': 'صفحة البداية',
+  'fr': 'Page de démarrage',
+  'pt': 'Página inicial',
+  'de': 'Startseite',
+  'ru': 'Начальная страница',
+  'ja': 'スタートページ',
+  'ko': '시작 페이지',
+  'it': 'Pagina iniziale',
+  'nl': 'Startpagina',
+  'pl': 'Strona startowa',
+  'tr': 'Başlangıç sayfası',
+  'sv': 'Startsida',
+  'da': 'Startside',
+  'fi': 'Aloitussivu',
+  'nb': 'Startside',
+  'no': 'Startside',
+  'cs': 'Úvodní stránka',
+  'ro': 'Pagină de start',
+  'hu': 'Kezdőoldal',
+  'el': 'Αρχική σελίδα',
+  'th': 'หน้าเริ่มต้น',
+  'id': 'Halaman awal',
+  'ms': 'Halaman mula',
+  'uk': 'Початкова сторінка',
+  'vi': 'Trang bắt đầu',
+  'he': 'דף התחלה',
+};
+
+// --- "Home" ---
+export const START_PAGE_HOME_TEXT: Record<string, string> = {
+  'en': 'Home',
+  'zh-CN': '主页',
+  'zh-SG': '主页',
+  'zh-TW': '首頁',
+  'zh-HK': '首頁',
+  'es': 'Inicio',
+  'hi': 'होम',
+  'ar': 'الرئيسية',
+  'fr': 'Accueil',
+  'pt': 'Início',
+  'de': 'Startseite',
+  'ru': 'Главная',
+  'ja': 'ホーム',
+  'ko': '홈',
+  'it': 'Home',
+  'nl': 'Home',
+  'pl': 'Główna',
+  'tr': 'Ana Sayfa',
+  'sv': 'Hem',
+  'da': 'Hjem',
+  'fi': 'Koti',
+  'nb': 'Hjem',
+  'no': 'Hjem',
+  'cs': 'Domů',
+  'ro': 'Acasă',
+  'hu': 'Kezdőlap',
+  'el': 'Αρχική',
+  'th': 'หน้าแรก',
+  'id': 'Beranda',
+  'ms': 'Laman Utama',
+  'uk': 'Головна',
+  'vi': 'Trang chủ',
+  'he': 'בית',
+};
+
+// --- "New" ---
+export const START_PAGE_NEW_TEXT: Record<string, string> = {
+  'en': 'New',
+  'zh-CN': '最新',
+  'zh-SG': '最新',
+  'zh-TW': '最新',
+  'zh-HK': '最新',
+  'es': 'Nuevo',
+  'hi': 'नया',
+  'ar': 'جديد',
+  'fr': 'Nouveautés',
+  'pt': 'Novo',
+  'de': 'Neu',
+  'ru': 'Новое',
+  'ja': '新着',
+  'ko': '새로운 항목',
+  'it': 'Novità',
+  'nl': 'Nieuw',
+  'pl': 'Nowości',
+  'tr': 'Yeni',
+  'sv': 'Nytt',
+  'da': 'Nyt',
+  'fi': 'Uutuudet',
+  'nb': 'Nytt',
+  'no': 'Nytt',
+  'cs': 'Nové',
+  'ro': 'Nou',
+  'hu': 'Új',
+  'el': 'Νέα',
+  'th': 'ใหม่',
+  'id': 'Baru',
+  'ms': 'Baharu',
+  'uk': 'Нове',
+  'vi': 'Mới',
+  'he': 'חדש',
+};
+
+// --- "Radio" ---
+export const START_PAGE_RADIO_TEXT: Record<string, string> = {
+  'en': 'Radio',
+  'zh-CN': '广播',
+  'zh-SG': '广播',
+  'zh-TW': '廣播',
+  'zh-HK': '廣播',
+  'es': 'Radio',
+  'hi': 'रेडियो',
+  'ar': 'راديو',
+  'fr': 'Radio',
+  'pt': 'Rádio',
+  'de': 'Radio',
+  'ru': 'Радио',
+  'ja': 'ラジオ',
+  'ko': '라디오',
+  'it': 'Radio',
+  'nl': 'Radio',
+  'pl': 'Radio',
+  'tr': 'Radyo',
+  'sv': 'Radio',
+  'da': 'Radio',
+  'fi': 'Radio',
+  'nb': 'Radio',
+  'no': 'Radio',
+  'cs': 'Rádio',
+  'ro': 'Radio',
+  'hu': 'Rádió',
+  'el': 'Ραδιόφωνο',
+  'th': 'วิทยุ',
+  'id': 'Radio',
+  'ms': 'Radio',
+  'uk': 'Радіо',
+  'vi': 'Radio',
+  'he': 'רדיו',
+};
+
+// --- "All Playlists" ---
+export const START_PAGE_ALL_PLAYLISTS_TEXT: Record<string, string> = {
+  'en': 'All Playlists',
+  'zh-CN': '所有播放列表',
+  'zh-SG': '所有播放列表',
+  'zh-TW': '所有播放列表',
+  'zh-HK': '所有播放列表',
+  'es': 'Todas las playlists',
+  'hi': 'सभी प्लेलिस्ट',
+  'ar': 'جميع قوائم التشغيل',
+  'fr': 'Toutes les playlists',
+  'pt': 'Todas as playlists',
+  'de': 'Alle Playlists',
+  'ru': 'Все плейлисты',
+  'ja': 'すべてのプレイリスト',
+  'ko': '모든 플레이리스트',
+  'it': 'Tutte le playlist',
+  'nl': 'Alle afspeellijsten',
+  'pl': 'Wszystkie playlisty',
+  'tr': 'Tüm çalma listeleri',
+  'sv': 'Alla spellistor',
+  'da': 'Alle playlister',
+  'fi': 'Kaikki soittolistat',
+  'nb': 'Alle spillelister',
+  'no': 'Alle spillelister',
+  'cs': 'Všechny playlisty',
+  'ro': 'Toate playlisturile',
+  'hu': 'Összes lejátszási lista',
+  'el': 'Όλες οι λίστες',
+  'th': 'เพลย์ลิสต์ทั้งหมด',
+  'id': 'Semua Playlist',
+  'ms': 'Semua Senarai Main',
+  'uk': 'Усі плейлисти',
+  'vi': 'Tất cả playlist',
+  'he': 'כל הפלייליסטים',
+};
+
 // --- "Catppuccin" ---
 export const CATPPUCCIN_TEXT: Record<string, string> = {
   'en': 'Catppuccin',
@@ -615,7 +800,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; catppuccin: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; catppuccin: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
@@ -623,8 +808,13 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const quit = getLocalizedString(QUIT_TEXT, langs);
   const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
   const discord = getLocalizedString(DISCORD_TEXT, langs);
+  const startPage = getLocalizedString(START_PAGE_TEXT, langs);
+  const startPageHome = getLocalizedString(START_PAGE_HOME_TEXT, langs);
+  const startPageNew = getLocalizedString(START_PAGE_NEW_TEXT, langs);
+  const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
+  const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
   const catppuccin = getLocalizedString(CATPPUCCIN_TEXT, langs);
-  return { about, quit, notifications, discord, catppuccin };
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, catppuccin };
 }
 
 export function getAboutStrings(): {
