@@ -50,6 +50,9 @@
     });
 
     let lastVolume = mk.volume;
+    // Send the initial volume so MPRIS (and any other listener) receives the
+    // real value immediately, not just on subsequent changes.
+    window.AMWrapper.ipcRenderer.send('volumeDidChange', lastVolume);
     mk.addEventListener('volumeDidChange', () => {
       lastVolume = mk.volume;
       window.AMWrapper.ipcRenderer.send('volumeDidChange', mk.volume);
