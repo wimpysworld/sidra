@@ -327,6 +327,49 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
   return { win, winReady };
 }
 
+function initCatppuccinCSS(win: BrowserWindow, CATPPUCCIN_CSS: string): void {
+  let catppuccinCssOp = Promise.resolve();
+  applyCatppuccinCSS = (enabled: boolean) => {
+    catppuccinCssOp = catppuccinCssOp
+      .catch((error) => {
+        mainLog.warn('Catppuccin CSS operation failed', error);
+      })
+      .then(async () => {
+      if (enabled && catppuccinCssKey !== null) {
+        await win.webContents.removeInsertedCSS(catppuccinCssKey);
+        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+        mainLog.debug('Catppuccin CSS re-injected');
+      } else if (enabled) {
+        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+        mainLog.debug('Catppuccin CSS injected');
+      } else if (catppuccinCssKey !== null) {
+        await win.webContents.removeInsertedCSS(catppuccinCssKey);
+        catppuccinCssKey = null;
+        mainLog.debug('Catppuccin CSS removed');
+      }
+    });
+    return catppuccinCssOp;
+  };
+
+  (app as NodeJS.EventEmitter).on('catppuccin-toggle', (_event: unknown, enabled: boolean) => {
+    void applyCatppuccinCSS(enabled);
+  });
+
+  nativeTheme.on('updated', () => {
+    if (getCatppuccinEnabled()) {
+      void applyCatppuccinCSS(true);
+    }
+  });
+}
+
+function setupSplashTransition(win: BrowserWindow, splash: BrowserWindow, minDisplay: Promise<void>, cssReady: Promise<void>, winReady: Promise<void>): void {
+  Promise.all([minDisplay, cssReady, winReady]).then(() => {
+    win.show();
+    splashLog.info('splash closed');
+    splash.close();
+  });
+}
+
 function setupWindowZoomAndNav(win: BrowserWindow): void {
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
@@ -360,44 +403,9 @@ app.whenReady().then(async () => {
 
   setupWindowZoomAndNav(win);
 
-  let catppuccinCssOp = Promise.resolve();
-  applyCatppuccinCSS = (enabled: boolean) => {
-    catppuccinCssOp = catppuccinCssOp
-      .catch((error) => {
-        mainLog.warn('Catppuccin CSS operation failed', error);
-      })
-      .then(async () => {
-      if (enabled && catppuccinCssKey !== null) {
-        await win.webContents.removeInsertedCSS(catppuccinCssKey);
-        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
-        mainLog.debug('Catppuccin CSS re-injected');
-      } else if (enabled) {
-        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
-        mainLog.debug('Catppuccin CSS injected');
-      } else if (catppuccinCssKey !== null) {
-        await win.webContents.removeInsertedCSS(catppuccinCssKey);
-        catppuccinCssKey = null;
-        mainLog.debug('Catppuccin CSS removed');
-      }
-    });
-    return catppuccinCssOp;
-  };
+  initCatppuccinCSS(win, CATPPUCCIN_CSS);
 
-  (app as NodeJS.EventEmitter).on('catppuccin-toggle', (_event: unknown, enabled: boolean) => {
-    void applyCatppuccinCSS(enabled);
-  });
-
-  nativeTheme.on('updated', () => {
-    if (getCatppuccinEnabled()) {
-      void applyCatppuccinCSS(true);
-    }
-  });
-
-  Promise.all([minDisplay, cssReady, winReady]).then(() => {
-    win.show();
-    splashLog.info('splash closed');
-    splash.close();
-  });
+  setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
 
   // Set UA on the persist:sidra session used by the window
   ses.setUserAgent(UA);
