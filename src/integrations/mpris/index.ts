@@ -415,10 +415,6 @@ MediaPlayer2Player.configureMembers({
 // Module-level bus reference for graceful shutdown
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
-// Stored references from init() for use by enable/disable
-let playerRef: Player | null = null;
-let getMainWindowRef: (() => BrowserWindow | null) | null = null;
-
 // Seek detection state - tracks position to detect user-initiated seeks
 const SEEK_THRESHOLD_US = 1_000_000; // 1 second in microseconds
 let lastPositionUs = 0;
@@ -648,16 +644,22 @@ function disconnectBus(): void {
 
 // --- Public API ---
 
-function enable(): void {
-  if (bus) {
-    mprisLog.debug('already enabled, skipping');
-    return;
-  }
+export function init(
+  player: Player,
+  getMainWindow: () => BrowserWindow | null,
+): void {
+  mprisLog.info('MPRIS module initialised');
 
-  if (!playerRef || !getMainWindowRef) {
-    mprisLog.warn('enable called before init, skipping');
-    return;
-  }
+  app.on('will-quit', () => {
+    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.removeListener('repeatModeDidChange', onRepeatModeDidChange);
+    player.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
+    player.removeListener('volumeDidChange', onVolumeDidChange);
+    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+    cleanupState();
+    disconnectBus();
+  });
 
   mprisLog.info('enabling MPRIS service');
 
@@ -667,8 +669,8 @@ function enable(): void {
     mprisLog.warn('D-Bus connection error:', err.message);
   });
 
-  const rootIface = new MediaPlayer2(getMainWindowRef);
-  const playerIface = new MediaPlayer2Player(getMainWindowRef);
+  const rootIface = new MediaPlayer2(getMainWindow);
+  const playerIface = new MediaPlayer2Player(getMainWindow);
   playerIfaceRef = playerIface;
 
   bus.export(MPRIS_PATH, rootIface);
@@ -682,35 +684,10 @@ function enable(): void {
   });
 
   // Subscribe to player events
-  playerRef.on('playbackStateDidChange', onPlaybackStateDidChange);
-  playerRef.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  playerRef.on('repeatModeDidChange', onRepeatModeDidChange);
-  playerRef.on('shuffleModeDidChange', onShuffleModeDidChange);
-  playerRef.on('volumeDidChange', onVolumeDidChange);
-  playerRef.on('playbackTimeDidChange', onPlaybackTimeDidChange);
-}
-
-export function init(
-  player: Player,
-  getMainWindow: () => BrowserWindow | null,
-): void {
-  mprisLog.info('MPRIS module initialised');
-
-  playerRef = player;
-  getMainWindowRef = getMainWindow;
-
-  app.on('will-quit', () => {
-    if (playerRef) {
-      playerRef.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-      playerRef.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-      playerRef.removeListener('repeatModeDidChange', onRepeatModeDidChange);
-      playerRef.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
-      playerRef.removeListener('volumeDidChange', onVolumeDidChange);
-      playerRef.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
-    }
-    cleanupState();
-    disconnectBus();
-  });
-
-  enable();
+  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('repeatModeDidChange', onRepeatModeDidChange);
+  player.on('shuffleModeDidChange', onShuffleModeDidChange);
+  player.on('volumeDidChange', onVolumeDidChange);
+  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
 }

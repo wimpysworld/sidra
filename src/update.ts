@@ -2,6 +2,7 @@ import { app, net, Notification, shell, Tray } from 'electron';
 import log from 'electron-log/main';
 import { getNotificationsEnabled } from './config';
 import { getUpdateStrings } from './i18n';
+import { errorMessage } from './utils';
 
 const SEMVER_PARTS = 3;
 const UPDATE_CHECK_TIMEOUT_MS = 10000;
@@ -92,8 +93,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
       rebuildMenu(tray);
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    updateLog.debug('update check failed:', message);
+    updateLog.debug('update check failed:', errorMessage(error));
   } finally {
     clearTimeout(timeout);
   }

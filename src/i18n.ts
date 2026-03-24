@@ -1,9 +1,7 @@
 import { app } from 'electron';
-import path from 'path';
 import log from 'electron-log/main';
 
 const i18nLog = log.scope('i18n');
-const pkg = require(path.join(__dirname, '..', 'package.json'));
 
 // --- Localised loading text ---
 export const LOADING_TEXT: Record<string, string> = {
@@ -413,42 +411,6 @@ export const START_PAGE_LAST_TEXT: Record<string, string> = {
 };
 
 // --- "Catppuccin" ---
-export const CATPPUCCIN_TEXT: Record<string, string> = {
-  'en': 'Catppuccin',
-  'zh-CN': 'Catppuccin',
-  'zh-SG': 'Catppuccin',
-  'zh-TW': 'Catppuccin',
-  'zh-HK': 'Catppuccin',
-  'es': 'Catppuccin',
-  'hi': 'Catppuccin',
-  'ar': 'Catppuccin',
-  'fr': 'Catppuccin',
-  'pt': 'Catppuccin',
-  'de': 'Catppuccin',
-  'ru': 'Catppuccin',
-  'ja': 'Catppuccin',
-  'ko': 'Catppuccin',
-  'it': 'Catppuccin',
-  'nl': 'Catppuccin',
-  'pl': 'Catppuccin',
-  'tr': 'Catppuccin',
-  'sv': 'Catppuccin',
-  'da': 'Catppuccin',
-  'fi': 'Catppuccin',
-  'nb': 'Catppuccin',
-  'no': 'Catppuccin',
-  'cs': 'Catppuccin',
-  'ro': 'Catppuccin',
-  'hu': 'Catppuccin',
-  'el': 'Catppuccin',
-  'th': 'Catppuccin',
-  'id': 'Catppuccin',
-  'ms': 'Catppuccin',
-  'uk': 'Catppuccin',
-  'vi': 'Catppuccin',
-  'he': 'Catppuccin',
-};
-
 // --- "On" ---
 export const ON_TEXT: Record<string, string> = {
   'en': 'On',
@@ -558,43 +520,6 @@ export const STYLE_TEXT: Record<string, string> = {
   'uk': 'Стиль',
   'vi': 'Kiểu',
   'he': 'סגנון',
-};
-
-// --- "Apple Music" ---
-export const STYLE_APPLE_MUSIC_TEXT: Record<string, string> = {
-  'en': 'Apple Music',
-  'zh-CN': 'Apple Music',
-  'zh-SG': 'Apple Music',
-  'zh-TW': 'Apple Music',
-  'zh-HK': 'Apple Music',
-  'es': 'Apple Music',
-  'hi': 'Apple Music',
-  'ar': 'Apple Music',
-  'fr': 'Apple Music',
-  'pt': 'Apple Music',
-  'de': 'Apple Music',
-  'ru': 'Apple Music',
-  'ja': 'Apple Music',
-  'ko': 'Apple Music',
-  'it': 'Apple Music',
-  'nl': 'Apple Music',
-  'pl': 'Apple Music',
-  'tr': 'Apple Music',
-  'sv': 'Apple Music',
-  'da': 'Apple Music',
-  'fi': 'Apple Music',
-  'nb': 'Apple Music',
-  'no': 'Apple Music',
-  'cs': 'Apple Music',
-  'ro': 'Apple Music',
-  'hu': 'Apple Music',
-  'el': 'Apple Music',
-  'th': 'Apple Music',
-  'id': 'Apple Music',
-  'ms': 'Apple Music',
-  'uk': 'Apple Music',
-  'vi': 'Apple Music',
-  'he': 'Apple Music',
 };
 
 // --- "Zoom" ---
@@ -957,7 +882,7 @@ export function getLoadingText(): { text: string; lang: string } {
 
 export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; startPageLast: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string; zoom: string; zoom100: string; zoom125: string; zoom150: string; zoom175: string; zoom200: string } {
   const langs = getSystemLanguages();
-  const productName: string = pkg.build?.productName ?? app.getName();
+  const productName: string = app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
   const about = aboutTemplate.replace('{name}', productName);
   const quit = getLocalizedString(QUIT_TEXT, langs);
@@ -969,11 +894,11 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
   const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
   const startPageLast = getLocalizedString(START_PAGE_LAST_TEXT, langs);
-  const catppuccin = getLocalizedString(CATPPUCCIN_TEXT, langs);
+  const catppuccin = 'Catppuccin';
   const on = getLocalizedString(ON_TEXT, langs);
   const off = getLocalizedString(OFF_TEXT, langs);
   const style = getLocalizedString(STYLE_TEXT, langs);
-  const styleAppleMusic = getLocalizedString(STYLE_APPLE_MUSIC_TEXT, langs);
+  const styleAppleMusic = 'Apple Music';
   const zoom = getLocalizedString(ZOOM_TEXT, langs);
   const zoom100 = ZOOM_100;
   const zoom125 = ZOOM_125;
