@@ -40,6 +40,10 @@ Sidra is under active development; several features in this list are not yet imp
   - deb, rpm, Nix, macOS DMG: update notification with link to release page
 - AirPlay casting
 
+<p align="center">
+  <img src="assets/source/sidra-screenshot.png" alt="Sidra screenshot" width="100%">
+</p>
+
 ---
 
 > [!IMPORTANT]
