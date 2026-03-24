@@ -370,6 +370,20 @@ function setupSplashTransition(win: BrowserWindow, splash: BrowserWindow, minDis
   });
 }
 
+function setupSessionHeaders(ses: Electron.Session): void {
+  // Set UA on the persist:sidra session used by the window
+  ses.setUserAgent(UA);
+
+  // Strip Electron and app name tokens from outgoing request headers
+  ses.webRequest.onBeforeSendHeaders({ urls: ['https://music.apple.com/*'] }, (details, callback) => {
+    const ua = details.requestHeaders['User-Agent'];
+    if (ua && ua !== UA) {
+      details.requestHeaders['User-Agent'] = UA;
+    }
+    callback({ requestHeaders: details.requestHeaders });
+  });
+}
+
 function setupWindowZoomAndNav(win: BrowserWindow): void {
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
@@ -379,6 +393,67 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
   ipcMain.on('nav:reload', () => {
     resetWedgeDetector();
     win.webContents.reload();
+  });
+}
+
+function setupNavigationHandlers(win: BrowserWindow, navBarScript: string): void {
+  win.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+    if (isMainFrame) {
+      mainLog.debug('did-start-navigation:', url);
+    }
+  });
+  win.webContents.on('did-navigate', (_event, url) => {
+    mainLog.debug('did-navigate:', url);
+    handleStorefrontNavigation(url);
+  });
+  win.webContents.on('did-navigate-in-page', (_event, url) => {
+    handleStorefrontNavigation(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'music.apple.com') {
+        const segments = parsed.pathname.split('/').filter(Boolean);
+        const pageSegments = segments[0] && /^[a-z]{2}$/.test(segments[0]) ? segments.slice(1) : segments;
+        if (pageSegments.length > 0) setLastPageUrl(pageSegments.join('/'));
+      }
+    } catch {
+      mainLog.warn('failed to parse URL for last-page tracking:', url);
+    }
+    win.webContents.executeJavaScript(navBarScript);
+  });
+}
+
+function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
+  // Prevent the web page title from overriding the window title
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+
+  win.webContents.once('did-fail-load', () => {
+    markCssReady();
+  });
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    mainLog.error('page load failed:', errorCode, errorDescription);
+  });
+
+  win.webContents.on('will-prevent-unload', (event) => {
+    event.preventDefault();
+  });
+
+  // Open external links in the system browser (only http/https)
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        mainLog.debug('opening external URL in browser:', url);
+        shell.openExternal(url);
+      } else {
+        mainLog.warn('blocked external URL with disallowed protocol:', url);
+      }
+    } catch {
+      mainLog.warn('blocked malformed external URL:', url);
+    }
+    return { action: 'deny' };
   });
 }
 
@@ -407,22 +482,9 @@ app.whenReady().then(async () => {
 
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
 
-  // Set UA on the persist:sidra session used by the window
-  ses.setUserAgent(UA);
+  setupSessionHeaders(ses);
 
-  // Strip Electron and app name tokens from outgoing request headers
-  ses.webRequest.onBeforeSendHeaders({ urls: ['https://music.apple.com/*'] }, (details, callback) => {
-    const ua = details.requestHeaders['User-Agent'];
-    if (ua && ua !== UA) {
-      details.requestHeaders['User-Agent'] = UA;
-    }
-    callback({ requestHeaders: details.requestHeaders });
-  });
-
-  // Prevent the web page title from overriding the window title
-  win.on('page-title-updated', (event) => {
-    event.preventDefault();
-  });
+  setupWindowEvents(win, markCssReady);
 
   let firstLoad = true;
   win.webContents.on('did-finish-load', async () => {
@@ -467,57 +529,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  win.webContents.once('did-fail-load', () => {
-    markCssReady();
-  });
-
-  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-    mainLog.error('page load failed:', errorCode, errorDescription);
-  });
-
-  win.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
-    if (isMainFrame) {
-      mainLog.debug('did-start-navigation:', url);
-    }
-  });
-  win.webContents.on('did-navigate', (_event, url) => {
-    mainLog.debug('did-navigate:', url);
-    handleStorefrontNavigation(url);
-  });
-  win.webContents.on('did-navigate-in-page', (_event, url) => {
-    handleStorefrontNavigation(url);
-    try {
-      const parsed = new URL(url);
-      if (parsed.hostname === 'music.apple.com') {
-        const segments = parsed.pathname.split('/').filter(Boolean);
-        const pageSegments = segments[0] && /^[a-z]{2}$/.test(segments[0]) ? segments.slice(1) : segments;
-        if (pageSegments.length > 0) setLastPageUrl(pageSegments.join('/'));
-      }
-    } catch {
-      mainLog.warn('failed to parse URL for last-page tracking:', url);
-    }
-    win.webContents.executeJavaScript(navBarScript);
-  });
-
-  win.webContents.on('will-prevent-unload', (event) => {
-    event.preventDefault();
-  });
-
-  // Open external links in the system browser (only http/https)
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        mainLog.debug('opening external URL in browser:', url);
-        shell.openExternal(url);
-      } else {
-        mainLog.warn('blocked external URL with disallowed protocol:', url);
-      }
-    } catch {
-      mainLog.warn('blocked malformed external URL:', url);
-    }
-    return { action: 'deny' };
-  });
+  setupNavigationHandlers(win, navBarScript);
 
   // Open DevTools when SIDRA_DEVTOOLS=1 (for inspecting CSS, verifying AMWrapper)
   if (process.env.SIDRA_DEVTOOLS === '1') {
