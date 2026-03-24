@@ -290,23 +290,7 @@ function loadAssets(): { CATPPUCCIN_CSS: string; navBarScript: string } {
   return { CATPPUCCIN_CSS, navBarScript };
 }
 
-app.whenReady().then(async () => {
-  mainLog.info('app ready, waiting for Widevine CDM...');
-
-  // Show a splash screen while the Widevine CDM downloads/initialises.
-  // Created first so the user sees feedback as early as possible.
-  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
-
-  setupApplicationMenu();
-
-  const player = initPlayerIPC();
-
-  appTray = createTray();
-
-  const ses = await initSession();
-
-  const { CATPPUCCIN_CSS, navBarScript } = loadAssets();
-
+function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
   const win = new BrowserWindow({
     title: 'Sidra',
     width: 1280,
@@ -340,6 +324,10 @@ app.whenReady().then(async () => {
   ]);
   winReady.then(() => { pollCancelled = true; });
 
+  return { win, winReady };
+}
+
+function setupWindowZoomAndNav(win: BrowserWindow): void {
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
 
@@ -349,6 +337,28 @@ app.whenReady().then(async () => {
     resetWedgeDetector();
     win.webContents.reload();
   });
+}
+
+app.whenReady().then(async () => {
+  mainLog.info('app ready, waiting for Widevine CDM...');
+
+  // Show a splash screen while the Widevine CDM downloads/initialises.
+  // Created first so the user sees feedback as early as possible.
+  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+
+  setupApplicationMenu();
+
+  const player = initPlayerIPC();
+
+  appTray = createTray();
+
+  const ses = await initSession();
+
+  const { CATPPUCCIN_CSS, navBarScript } = loadAssets();
+
+  const { win, winReady } = createMainWindow(ses);
+
+  setupWindowZoomAndNav(win);
 
   let catppuccinCssOp = Promise.resolve();
   applyCatppuccinCSS = (enabled: boolean) => {
