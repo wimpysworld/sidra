@@ -287,7 +287,19 @@ app.whenReady().then(async () => {
     },
   });
 
-  const winReady = new Promise<void>(resolve => win.webContents.once('did-navigate-in-page', () => resolve()));
+  const winReady = Promise.race([
+    new Promise<void>(resolve => {
+      win.webContents.once('did-navigate-in-page', () => {
+        const poll = () => {
+          win.webContents.executeJavaScript('!!document.querySelector("main > .content-container > .section")')
+            .then(ready => { if (ready) resolve(); else setTimeout(poll, 100); })
+            .catch(() => setTimeout(poll, 100));
+        };
+        poll();
+      });
+    }),
+    new Promise<void>(resolve => setTimeout(resolve, 3500)),
+  ]);
 
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
