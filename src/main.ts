@@ -287,19 +287,22 @@ app.whenReady().then(async () => {
     },
   });
 
+  let pollCancelled = false;
   const winReady = Promise.race([
     new Promise<void>(resolve => {
       win.webContents.once('did-navigate-in-page', () => {
         const poll = () => {
+          if (pollCancelled) return;
           win.webContents.executeJavaScript('!!document.querySelector("main > .content-container > .section")')
-            .then(ready => { if (ready) resolve(); else setTimeout(poll, 100); })
-            .catch(() => setTimeout(poll, 100));
+            .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, 100); })
+            .catch(() => { if (!pollCancelled) setTimeout(poll, 100); });
         };
         poll();
       });
     }),
     new Promise<void>(resolve => setTimeout(resolve, 3500)),
   ]);
+  winReady.then(() => { pollCancelled = true; });
 
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
@@ -384,19 +387,18 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(navBarScript);
     mainLog.debug('Navigation bar injected');
 
-    initNotifications(player, () => win);
-    initDiscordPresence(player);
-
-    // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
-    if (process.platform === 'linux') {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mpris = require('./integrations/mpris');
-      mpris.init(player, () => win);
-    }
-
-    initWedgeDetector(player, () => win);
-
     if (firstLoad) {
+      initNotifications(player, () => win);
+      initDiscordPresence(player);
+
+      // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
+      if (process.platform === 'linux') {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const mpris = require('./integrations/mpris');
+        mpris.init(player, () => win);
+      }
+
+      initWedgeDetector(player, () => win);
       firstLoad = false;
       resolveCssReady();
       setTimeout(() => {
