@@ -753,28 +753,6 @@ function enable(): void {
   playerRef.on('playbackTimeDidChange', onPlaybackTimeDidChange);
 }
 
-function disable(): void {
-  if (!bus) {
-    mprisLog.debug('already disabled, skipping');
-    return;
-  }
-
-  mprisLog.info('disabling MPRIS service');
-
-  // Remove event listeners
-  if (playerRef) {
-    playerRef.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-    playerRef.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    playerRef.removeListener('repeatModeDidChange', onRepeatModeDidChange);
-    playerRef.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
-    playerRef.removeListener('volumeDidChange', onVolumeDidChange);
-    playerRef.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
-  }
-
-  cleanupState();
-  disconnectBus();
-}
-
 export function init(
   player: Player,
   getMainWindow: () => BrowserWindow | null,
