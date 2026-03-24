@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
-import { Player } from './player';
+import { Player, PlaybackState } from './player';
 
 const wedgeLog = log.scope('wedge');
 
@@ -52,7 +52,7 @@ export function reset(): void {
 export function init(player: Player, getWin: () => BrowserWindow | null): void {
   player.on('playbackStateDidChange', (payload: unknown) => {
     const p = payload as { state: number } | null;
-    isPlaying = p?.state === 2;
+    isPlaying = p?.state === PlaybackState.Playing;
     lastAdvanceTime = Date.now();
     skipAttempts = 0;
 

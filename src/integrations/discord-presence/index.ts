@@ -1,7 +1,7 @@
 import log from 'electron-log/main';
 import { Client } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
-import { Player } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState } from '../../player';
 import { getDiscordEnabled } from '../../config';
 
 const discordLog = log.scope('discord');
@@ -159,14 +159,7 @@ export function init(player: Player): void {
   });
 
   player.on('nowPlayingItemDidChange', (payload: unknown) => {
-    const p = payload as {
-      name?: string;
-      artistName?: string;
-      albumName?: string;
-      artworkUrl?: string;
-      durationInMillis?: number;
-      url?: string;
-    } | null;
+    const p = payload as NowPlayingPayload | null;
 
     if (!p) {
       trackName = null;
@@ -196,8 +189,8 @@ export function init(player: Player): void {
   player.on('playbackStateDidChange', (payload: unknown) => {
     const p = payload as { state: number } | null;
     const wasPlaying = isPlaying;
-    // MusicKit PlaybackStates: 2 = playing
-    isPlaying = p?.state === 2;
+    // MusicKit PlaybackStates
+    isPlaying = p?.state === PlaybackState.Playing;
 
     if (isPlaying && pauseTimer) {
       clearTimeout(pauseTimer);
