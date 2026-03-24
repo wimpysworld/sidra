@@ -412,6 +412,154 @@ export const CATPPUCCIN_TEXT: Record<string, string> = {
   'he': 'Catppuccin',
 };
 
+// --- "On" ---
+export const ON_TEXT: Record<string, string> = {
+  'en': 'On',
+  'zh-CN': '开启',
+  'zh-SG': '开启',
+  'zh-TW': '開啟',
+  'zh-HK': '開啟',
+  'es': 'Activado',
+  'hi': 'चालू',
+  'ar': 'مفعّل',
+  'fr': 'Activé',
+  'pt': 'Ligado',
+  'de': 'Ein',
+  'ru': 'Вкл.',
+  'ja': 'オン',
+  'ko': '켜짐',
+  'it': 'Attivo',
+  'nl': 'Aan',
+  'pl': 'Włączone',
+  'tr': 'Açık',
+  'sv': 'På',
+  'da': 'Til',
+  'fi': 'Päällä',
+  'nb': 'På',
+  'no': 'På',
+  'cs': 'Zapnuto',
+  'ro': 'Activat',
+  'hu': 'Be',
+  'el': 'Ενεργό',
+  'th': 'เปิด',
+  'id': 'Aktif',
+  'ms': 'Hidup',
+  'uk': 'Увімк.',
+  'vi': 'Bật',
+  'he': 'מופעל',
+};
+
+// --- "Off" ---
+export const OFF_TEXT: Record<string, string> = {
+  'en': 'Off',
+  'zh-CN': '关闭',
+  'zh-SG': '关闭',
+  'zh-TW': '關閉',
+  'zh-HK': '關閉',
+  'es': 'Desactivado',
+  'hi': 'बंद',
+  'ar': 'معطّل',
+  'fr': 'Désactivé',
+  'pt': 'Desligado',
+  'de': 'Aus',
+  'ru': 'Выкл.',
+  'ja': 'オフ',
+  'ko': '꺼짐',
+  'it': 'Disattivo',
+  'nl': 'Uit',
+  'pl': 'Wyłączone',
+  'tr': 'Kapalı',
+  'sv': 'Av',
+  'da': 'Fra',
+  'fi': 'Pois',
+  'nb': 'Av',
+  'no': 'Av',
+  'cs': 'Vypnuto',
+  'ro': 'Dezactivat',
+  'hu': 'Ki',
+  'el': 'Ανενεργό',
+  'th': 'ปิด',
+  'id': 'Nonaktif',
+  'ms': 'Mati',
+  'uk': 'Вимк.',
+  'vi': 'Tắt',
+  'he': 'כבוי',
+};
+
+// --- "Style" ---
+export const STYLE_TEXT: Record<string, string> = {
+  'en': 'Style',
+  'zh-CN': '样式',
+  'zh-SG': '样式',
+  'zh-TW': '樣式',
+  'zh-HK': '樣式',
+  'es': 'Estilo',
+  'hi': 'शैली',
+  'ar': 'النمط',
+  'fr': 'Style',
+  'pt': 'Estilo',
+  'de': 'Stil',
+  'ru': 'Стиль',
+  'ja': 'スタイル',
+  'ko': '스타일',
+  'it': 'Stile',
+  'nl': 'Stijl',
+  'pl': 'Styl',
+  'tr': 'Stil',
+  'sv': 'Stil',
+  'da': 'Stil',
+  'fi': 'Tyyli',
+  'nb': 'Stil',
+  'no': 'Stil',
+  'cs': 'Styl',
+  'ro': 'Stil',
+  'hu': 'Stílus',
+  'el': 'Στυλ',
+  'th': 'สไตล์',
+  'id': 'Gaya',
+  'ms': 'Gaya',
+  'uk': 'Стиль',
+  'vi': 'Kiểu',
+  'he': 'סגנון',
+};
+
+// --- "Apple Music" ---
+export const STYLE_APPLE_MUSIC_TEXT: Record<string, string> = {
+  'en': 'Apple Music',
+  'zh-CN': 'Apple Music',
+  'zh-SG': 'Apple Music',
+  'zh-TW': 'Apple Music',
+  'zh-HK': 'Apple Music',
+  'es': 'Apple Music',
+  'hi': 'Apple Music',
+  'ar': 'Apple Music',
+  'fr': 'Apple Music',
+  'pt': 'Apple Music',
+  'de': 'Apple Music',
+  'ru': 'Apple Music',
+  'ja': 'Apple Music',
+  'ko': 'Apple Music',
+  'it': 'Apple Music',
+  'nl': 'Apple Music',
+  'pl': 'Apple Music',
+  'tr': 'Apple Music',
+  'sv': 'Apple Music',
+  'da': 'Apple Music',
+  'fi': 'Apple Music',
+  'nb': 'Apple Music',
+  'no': 'Apple Music',
+  'cs': 'Apple Music',
+  'ro': 'Apple Music',
+  'hu': 'Apple Music',
+  'el': 'Apple Music',
+  'th': 'Apple Music',
+  'id': 'Apple Music',
+  'ms': 'Apple Music',
+  'uk': 'Apple Music',
+  'vi': 'Apple Music',
+  'he': 'Apple Music',
+};
+
 // --- "Update available" ---
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = {
   'en': 'Update available: {version}',
@@ -800,7 +948,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; catppuccin: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
@@ -814,7 +962,11 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
   const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
   const catppuccin = getLocalizedString(CATPPUCCIN_TEXT, langs);
-  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, catppuccin };
+  const on = getLocalizedString(ON_TEXT, langs);
+  const off = getLocalizedString(OFF_TEXT, langs);
+  const style = getLocalizedString(STYLE_TEXT, langs);
+  const styleAppleMusic = getLocalizedString(STYLE_APPLE_MUSIC_TEXT, langs);
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, catppuccin, on, off, style, styleAppleMusic };
 }
 
 export function getAboutStrings(): {

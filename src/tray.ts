@@ -91,43 +91,71 @@ function buildContextMenu(tray: Tray): Menu {
   const quitGlyph = '🆇';
   const isLinux = process.platform === 'linux';
   const notifEnabled = getNotificationsEnabled();
-  const notifGlyph = notifEnabled ? '●' : '○';
   const discordEnabled = getDiscordEnabled();
-  const discordGlyph = discordEnabled ? '●' : '○';
   const catppuccinEnabled = getCatppuccinEnabled();
-  const catppuccinGlyph = catppuccinEnabled ? '●' : '○';
+
+  const notifGlyph = '🕭';
+  const notifParentLabel = `${strings.notifications}: ${notifEnabled ? strings.on : strings.off}`;
+  const discordGlyph = '🗫';
+  const discordParentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
+  const styleGlyph = '🌢';
+  const styleParentLabel = `${strings.style}: ${catppuccinEnabled ? strings.catppuccin : strings.styleAppleMusic}`;
+
   const menuItems: Electron.MenuItemConstructorOptions[] = [
     {
       label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
       click: () => showAboutWindow(),
     },
     {
-      label: isLinux ? `${notifGlyph} ${strings.notifications}` : strings.notifications,
-      type: 'checkbox',
-      checked: notifEnabled,
-      click: (menuItem) => {
-        setNotificationsEnabled(menuItem.checked);
-        tray.setContextMenu(buildContextMenu(tray));
-      },
+      label: isLinux ? `${notifGlyph} ${notifParentLabel}` : notifParentLabel,
+      submenu: [
+        {
+          label: strings.on,
+          type: 'radio',
+          checked: notifEnabled,
+          click: () => { setNotificationsEnabled(true); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.off,
+          type: 'radio',
+          checked: !notifEnabled,
+          click: () => { setNotificationsEnabled(false); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+      ],
     },
     {
-      label: isLinux ? `${discordGlyph} ${strings.discord}` : strings.discord,
-      type: 'checkbox',
-      checked: discordEnabled,
-      click: (menuItem) => {
-        setDiscordEnabled(menuItem.checked);
-        tray.setContextMenu(buildContextMenu(tray));
-      },
+      label: isLinux ? `${discordGlyph} ${discordParentLabel}` : discordParentLabel,
+      submenu: [
+        {
+          label: strings.on,
+          type: 'radio',
+          checked: discordEnabled,
+          click: () => { setDiscordEnabled(true); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.off,
+          type: 'radio',
+          checked: !discordEnabled,
+          click: () => { setDiscordEnabled(false); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+      ],
     },
     {
-      label: isLinux ? `${catppuccinGlyph} ${strings.catppuccin}` : strings.catppuccin,
-      type: 'checkbox',
-      checked: catppuccinEnabled,
-      click: (menuItem) => {
-        setCatppuccinEnabled(menuItem.checked);
-        app.emit('catppuccin-toggle', {}, menuItem.checked);
-        tray.setContextMenu(buildContextMenu(tray));
-      },
+      label: isLinux ? `${styleGlyph} ${styleParentLabel}` : styleParentLabel,
+      submenu: [
+        {
+          label: strings.styleAppleMusic,
+          type: 'radio',
+          checked: !catppuccinEnabled,
+          click: () => { setCatppuccinEnabled(false); app.emit('catppuccin-toggle', {}, false); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.catppuccin,
+          type: 'radio',
+          checked: catppuccinEnabled,
+          click: () => { setCatppuccinEnabled(true); app.emit('catppuccin-toggle', {}, true); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+      ],
     },
   ];
 
