@@ -77,7 +77,6 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
       type: 'info',
       title: autoUpdateStrings.ready,
       message: `Sidra ${info.version}`,
-      detail: autoUpdateStrings.ready,
       buttons: ['Restart Now', 'Later'],
       defaultId: 0,
       cancelId: 1,

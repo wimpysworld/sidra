@@ -176,32 +176,6 @@ function handleStorefrontNavigation(url: string): void {
 // (apple-music-wrapper, apple-music-electron, apple-music-desktop).
 // Semantic class names have been stable for 4+ years.
 // Avoid Svelte hash-based selectors (svelte-*) as they change on each deploy.
-const STYLE_FIX_CSS = `
-  /* "Get the App" CTA in sidebar navigation */
-  #navigation > div.navigation__native-cta,
-  .web-navigation__native-upsell,
-  .native-cta,
-  [class*="native-cta"],
-  [class*="native-upsell"] {
-    display: none !important;
-  }
-
-  /* "Open in Music" upsell banner */
-  .upsell-banner,
-  [class*="upsell-banner"] {
-    display: none !important;
-  }
-
-  /* Footer (not needed in desktop app) */
-  footer.dt-footer {
-    display: none !important;
-  }
-
-  /* Bigger transport bar - zoom controls, LCD, and icons */
-  amp-chrome-player {
-    zoom: 1.25;
-  }
-`;
 
 // Apply or remove Catppuccin CSS on the main window.
 // Handles enable, disable, and re-injection (variant change) cases.
@@ -291,12 +265,14 @@ async function initSession(): Promise<Electron.Session> {
   return ses;
 }
 
-function loadAssets(): { CATPPUCCIN_CSS: string; navBarScript: string } {
+function loadAssets(): { STYLE_FIX_CSS: string; CATPPUCCIN_CSS: string; navBarScript: string } {
+  const styleFixCssPath = getAssetPath('assets', 'styleFix.css');
+  const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, 'utf-8');
   const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
   const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
   const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
-  return { CATPPUCCIN_CSS, navBarScript };
+  return { STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript };
 }
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
@@ -466,7 +442,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
   });
 }
 
-function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, CATPPUCCIN_CSS: string, navBarScript: string): void {
+function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, STYLE_FIX_CSS: string, CATPPUCCIN_CSS: string, navBarScript: string): void {
   // Approach A: self-nullifying inner function eliminates the `firstLoad` mutable
   // flag while keeping a single `on('did-finish-load')` handler. This avoids
   // depending on `once`/`on` listener ordering semantics - the integration init
@@ -524,13 +500,13 @@ app.whenReady().then(async () => {
   const player = initPlayerIPC();
   appTray = createTray();
   const ses = await initSession();
-  const { CATPPUCCIN_CSS, navBarScript } = loadAssets();
+  const { STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript } = loadAssets();
   const { win, winReady } = createMainWindow(ses);
   setupWindowZoomAndNav(win);
   initCatppuccinCSS(win, CATPPUCCIN_CSS);
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
   setupSessionHeaders(ses);
-  setupContentHandlers(win, player, markCssReady, CATPPUCCIN_CSS, navBarScript);
+  setupContentHandlers(win, player, markCssReady, STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript);
   setupWindowEvents(win, markCssReady);
   setupNavigationHandlers(win, navBarScript);
   if (process.env.SIDRA_DEVTOOLS === '1') {

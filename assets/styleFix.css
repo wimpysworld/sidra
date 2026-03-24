@@ -1,0 +1,25 @@
+
+  /* "Get the App" CTA in sidebar navigation */
+  #navigation > div.navigation__native-cta,
+  .web-navigation__native-upsell,
+  .native-cta,
+  [class*="native-cta"],
+  [class*="native-upsell"] {
+    display: none !important;
+  }
+
+  /* "Open in Music" upsell banner */
+  .upsell-banner,
+  [class*="upsell-banner"] {
+    display: none !important;
+  }
+
+  /* Footer (not needed in desktop app) */
+  footer.dt-footer {
+    display: none !important;
+  }
+
+  /* Bigger transport bar - zoom controls, LCD, and icons */
+  amp-chrome-player {
+    zoom: 1.25;
+  }
