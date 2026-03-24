@@ -101,10 +101,50 @@ function buildContextMenu(tray: Tray): Menu {
   const styleGlyph = '🌢';
   const styleParentLabel = `${strings.style}: ${catppuccinEnabled ? strings.catppuccin : strings.styleAppleMusic}`;
 
+  const currentStartPage = getStartPage();
+  const startPageLabelMap: Record<string, string> = {
+    'home': strings.startPageHome,
+    'new': strings.startPageNew,
+    'radio': strings.startPageRadio,
+    'all-playlists': strings.startPageAllPlaylists,
+  };
+  const currentStartPageLabel = startPageLabelMap[currentStartPage];
+  const startPageGlyph = '♪';
+  const startPageParentLabel = `${strings.startPage}: ${currentStartPageLabel}`;
+
   const menuItems: Electron.MenuItemConstructorOptions[] = [
     {
       label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
       click: () => showAboutWindow(),
+    },
+    {
+      label: isLinux ? `${startPageGlyph} ${startPageParentLabel}` : startPageParentLabel,
+      submenu: [
+        {
+          label: strings.startPageHome,
+          type: 'radio',
+          checked: currentStartPage === 'home',
+          click: () => { setStartPage('home'); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.startPageNew,
+          type: 'radio',
+          checked: currentStartPage === 'new',
+          click: () => { setStartPage('new'); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.startPageRadio,
+          type: 'radio',
+          checked: currentStartPage === 'radio',
+          click: () => { setStartPage('radio'); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.startPageAllPlaylists,
+          type: 'radio',
+          checked: currentStartPage === 'all-playlists',
+          click: () => { setStartPage('all-playlists'); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+      ],
     },
     {
       label: isLinux ? `${notifGlyph} ${notifParentLabel}` : notifParentLabel,
@@ -158,46 +198,6 @@ function buildContextMenu(tray: Tray): Menu {
       ],
     },
   ];
-
-  const currentStartPage = getStartPage();
-  const startPageLabelMap: Record<string, string> = {
-    'home': strings.startPageHome,
-    'new': strings.startPageNew,
-    'radio': strings.startPageRadio,
-    'all-playlists': strings.startPageAllPlaylists,
-  };
-  const currentStartPageLabel = startPageLabelMap[currentStartPage];
-  const startPageGlyph = '🗍';
-  const startPageParentLabel = `${strings.startPage}: ${currentStartPageLabel}`;
-  menuItems.push({
-    label: isLinux ? `${startPageGlyph} ${startPageParentLabel}` : startPageParentLabel,
-    submenu: [
-      {
-        label: strings.startPageHome,
-        type: 'radio',
-        checked: currentStartPage === 'home',
-        click: () => { setStartPage('home'); tray.setContextMenu(buildContextMenu(tray)); },
-      },
-      {
-        label: strings.startPageNew,
-        type: 'radio',
-        checked: currentStartPage === 'new',
-        click: () => { setStartPage('new'); tray.setContextMenu(buildContextMenu(tray)); },
-      },
-      {
-        label: strings.startPageRadio,
-        type: 'radio',
-        checked: currentStartPage === 'radio',
-        click: () => { setStartPage('radio'); tray.setContextMenu(buildContextMenu(tray)); },
-      },
-      {
-        label: strings.startPageAllPlaylists,
-        type: 'radio',
-        checked: currentStartPage === 'all-playlists',
-        click: () => { setStartPage('all-playlists'); tray.setContextMenu(buildContextMenu(tray)); },
-      },
-    ],
-  });
 
   const update = getUpdateInfo();
   const updateStrings = getUpdateStrings();
