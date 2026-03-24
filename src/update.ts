@@ -24,7 +24,7 @@ export function setUpdateReady(version: string): void {
   updateLog.info('update ready to install:', version);
 }
 
-function isNewer(remote: string, local: string): boolean {
+export function isNewer(remote: string, local: string): boolean {
   const r = remote.split('.').map(Number);
   const l = local.split('.').map(Number);
   for (let i = 0; i < 3; i++) {
