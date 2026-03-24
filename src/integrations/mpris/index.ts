@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { Player, NowPlayingPayload, PlaybackState } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload } from '../../player';
 import { errorMessage } from '../../utils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -500,15 +500,14 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
 
 // --- Named event handlers (stored for removeListener on disable) ---
 
-function onPlaybackStateDidChange(payload: unknown): void {
-  const p = payload as { state: number } | null;
-  if (!p || !playerIfaceRef) return;
+function onPlaybackStateDidChange(payload: PlaybackStatePayload): void {
+  if (!payload || !playerIfaceRef) return;
 
   // MusicKit PlaybackStates
   let status: string;
-  if (p.state === PlaybackState.Playing) {
+  if (payload.state === PlaybackState.Playing) {
     status = 'Playing';
-  } else if (p.state === PlaybackState.Paused || p.state === PlaybackState.Stopped) {
+  } else if (payload.state === PlaybackState.Paused || payload.state === PlaybackState.Stopped) {
     status = 'Paused';
   } else {
     status = 'Stopped';
@@ -518,12 +517,10 @@ function onPlaybackStateDidChange(payload: unknown): void {
   schedulePropertyEmission({ PlaybackStatus: status });
 }
 
-function onNowPlayingItemDidChange(payload: unknown): void {
+function onNowPlayingItemDidChange(payload: NowPlayingPayload | null): void {
   if (!playerIfaceRef) return;
 
-  const p = payload as NowPlayingPayload | null;
-
-  if (!p) {
+  if (!payload) {
     const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
       'mpris:trackid': new Variant('o', NO_TRACK),
     };
@@ -537,9 +534,9 @@ function onNowPlayingItemDidChange(payload: unknown): void {
     return;
   }
 
-  const metadata = buildMetadata(p);
+  const metadata = buildMetadata(payload);
   const appName = app.getName().toLowerCase();
-  const rawId = p.trackId ?? 'unknown';
+  const rawId = payload.trackId ?? 'unknown';
   const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
 
   playerIfaceRef._metadata = metadata;
@@ -552,18 +549,17 @@ function onNowPlayingItemDidChange(payload: unknown): void {
   playerIfaceRef.Seeked(0);
 }
 
-function onRepeatModeDidChange(payload: unknown): void {
-  const mode = payload as number | null;
-  if (mode == null || !playerIfaceRef) return;
+function onRepeatModeDidChange(payload: number | null): void {
+  if (payload == null || !playerIfaceRef) return;
 
   const musicKitToLoop: Record<number, string> = {
     0: 'None',
     1: 'Track',
     2: 'Playlist',
   };
-  const loopStatus = musicKitToLoop[mode];
+  const loopStatus = musicKitToLoop[payload];
   if (loopStatus === undefined) {
-    mprisLog.warn('unknown repeat mode:', mode);
+    mprisLog.warn('unknown repeat mode:', payload);
     return;
   }
 
@@ -571,29 +567,27 @@ function onRepeatModeDidChange(payload: unknown): void {
   schedulePropertyEmission({ LoopStatus: loopStatus });
 }
 
-function onShuffleModeDidChange(payload: unknown): void {
-  const mode = payload as number | null;
-  if (mode == null || !playerIfaceRef) return;
+function onShuffleModeDidChange(payload: number | null): void {
+  if (payload == null || !playerIfaceRef) return;
 
-  const shuffle = mode === 1;
+  const shuffle = payload === 1;
   playerIfaceRef._shuffle = shuffle;
   schedulePropertyEmission({ Shuffle: shuffle });
 }
 
-function onVolumeDidChange(payload: unknown): void {
-  const volume = payload as number | null;
-  if (volume == null || !playerIfaceRef) return;
+function onVolumeDidChange(payload: number | null): void {
+  if (payload == null || !playerIfaceRef) return;
 
-  if (pendingVolume !== null && Math.abs(volume - pendingVolume) < VOLUME_ECHO_TOLERANCE) {
+  if (pendingVolume !== null && Math.abs(payload - pendingVolume) < VOLUME_ECHO_TOLERANCE) {
     return;
   }
 
-  playerIfaceRef._volume = volume;
-  schedulePropertyEmission({ Volume: volume });
+  playerIfaceRef._volume = payload;
+  schedulePropertyEmission({ Volume: payload });
 }
 
-function onPlaybackTimeDidChange(payload: unknown): void {
-  if (typeof payload !== 'number' || !playerIfaceRef) return;
+function onPlaybackTimeDidChange(payload: number): void {
+  if (!playerIfaceRef) return;
 
   const newPositionUs = payload;
   const now = Date.now();
