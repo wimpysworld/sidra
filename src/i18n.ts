@@ -597,6 +597,228 @@ export const STYLE_APPLE_MUSIC_TEXT: Record<string, string> = {
   'he': 'Apple Music',
 };
 
+// --- "Zoom" ---
+export const ZOOM_TEXT: Record<string, string> = {
+  'en': 'Zoom',
+  'zh-CN': '缩放',
+  'zh-SG': '缩放',
+  'zh-TW': '縮放',
+  'zh-HK': '縮放',
+  'es': 'Zoom',
+  'hi': 'ज़ूम',
+  'ar': 'تكبير',
+  'fr': 'Zoom',
+  'pt': 'Zoom',
+  'de': 'Zoom',
+  'ru': 'Масштаб',
+  'ja': 'ズーム',
+  'ko': '확대/축소',
+  'it': 'Zoom',
+  'nl': 'Zoom',
+  'pl': 'Powiększenie',
+  'tr': 'Yakınlaştırma',
+  'sv': 'Zoom',
+  'da': 'Zoom',
+  'fi': 'Zoomaus',
+  'nb': 'Zoom',
+  'no': 'Zoom',
+  'cs': 'Přiblížení',
+  'ro': 'Zoom',
+  'hu': 'Nagyítás',
+  'el': 'Ζουμ',
+  'th': 'ซูม',
+  'id': 'Zoom',
+  'ms': 'Zum',
+  'uk': 'Масштаб',
+  'vi': 'Thu phóng',
+  'he': 'זום',
+};
+
+// --- "100%" ---
+export const ZOOM_100_TEXT: Record<string, string> = {
+  'en': '100%',
+  'zh-CN': '100%',
+  'zh-SG': '100%',
+  'zh-TW': '100%',
+  'zh-HK': '100%',
+  'es': '100%',
+  'hi': '100%',
+  'ar': '100%',
+  'fr': '100%',
+  'pt': '100%',
+  'de': '100%',
+  'ru': '100%',
+  'ja': '100%',
+  'ko': '100%',
+  'it': '100%',
+  'nl': '100%',
+  'pl': '100%',
+  'tr': '100%',
+  'sv': '100%',
+  'da': '100%',
+  'fi': '100%',
+  'nb': '100%',
+  'no': '100%',
+  'cs': '100%',
+  'ro': '100%',
+  'hu': '100%',
+  'el': '100%',
+  'th': '100%',
+  'id': '100%',
+  'ms': '100%',
+  'uk': '100%',
+  'vi': '100%',
+  'he': '100%',
+};
+
+// --- "125%" ---
+export const ZOOM_125_TEXT: Record<string, string> = {
+  'en': '125%',
+  'zh-CN': '125%',
+  'zh-SG': '125%',
+  'zh-TW': '125%',
+  'zh-HK': '125%',
+  'es': '125%',
+  'hi': '125%',
+  'ar': '125%',
+  'fr': '125%',
+  'pt': '125%',
+  'de': '125%',
+  'ru': '125%',
+  'ja': '125%',
+  'ko': '125%',
+  'it': '125%',
+  'nl': '125%',
+  'pl': '125%',
+  'tr': '125%',
+  'sv': '125%',
+  'da': '125%',
+  'fi': '125%',
+  'nb': '125%',
+  'no': '125%',
+  'cs': '125%',
+  'ro': '125%',
+  'hu': '125%',
+  'el': '125%',
+  'th': '125%',
+  'id': '125%',
+  'ms': '125%',
+  'uk': '125%',
+  'vi': '125%',
+  'he': '125%',
+};
+
+// --- "150%" ---
+export const ZOOM_150_TEXT: Record<string, string> = {
+  'en': '150%',
+  'zh-CN': '150%',
+  'zh-SG': '150%',
+  'zh-TW': '150%',
+  'zh-HK': '150%',
+  'es': '150%',
+  'hi': '150%',
+  'ar': '150%',
+  'fr': '150%',
+  'pt': '150%',
+  'de': '150%',
+  'ru': '150%',
+  'ja': '150%',
+  'ko': '150%',
+  'it': '150%',
+  'nl': '150%',
+  'pl': '150%',
+  'tr': '150%',
+  'sv': '150%',
+  'da': '150%',
+  'fi': '150%',
+  'nb': '150%',
+  'no': '150%',
+  'cs': '150%',
+  'ro': '150%',
+  'hu': '150%',
+  'el': '150%',
+  'th': '150%',
+  'id': '150%',
+  'ms': '150%',
+  'uk': '150%',
+  'vi': '150%',
+  'he': '150%',
+};
+
+// --- "175%" ---
+export const ZOOM_175_TEXT: Record<string, string> = {
+  'en': '175%',
+  'zh-CN': '175%',
+  'zh-SG': '175%',
+  'zh-TW': '175%',
+  'zh-HK': '175%',
+  'es': '175%',
+  'hi': '175%',
+  'ar': '175%',
+  'fr': '175%',
+  'pt': '175%',
+  'de': '175%',
+  'ru': '175%',
+  'ja': '175%',
+  'ko': '175%',
+  'it': '175%',
+  'nl': '175%',
+  'pl': '175%',
+  'tr': '175%',
+  'sv': '175%',
+  'da': '175%',
+  'fi': '175%',
+  'nb': '175%',
+  'no': '175%',
+  'cs': '175%',
+  'ro': '175%',
+  'hu': '175%',
+  'el': '175%',
+  'th': '175%',
+  'id': '175%',
+  'ms': '175%',
+  'uk': '175%',
+  'vi': '175%',
+  'he': '175%',
+};
+
+// --- "200%" ---
+export const ZOOM_200_TEXT: Record<string, string> = {
+  'en': '200%',
+  'zh-CN': '200%',
+  'zh-SG': '200%',
+  'zh-TW': '200%',
+  'zh-HK': '200%',
+  'es': '200%',
+  'hi': '200%',
+  'ar': '200%',
+  'fr': '200%',
+  'pt': '200%',
+  'de': '200%',
+  'ru': '200%',
+  'ja': '200%',
+  'ko': '200%',
+  'it': '200%',
+  'nl': '200%',
+  'pl': '200%',
+  'tr': '200%',
+  'sv': '200%',
+  'da': '200%',
+  'fi': '200%',
+  'nb': '200%',
+  'no': '200%',
+  'cs': '200%',
+  'ro': '200%',
+  'hu': '200%',
+  'el': '200%',
+  'th': '200%',
+  'id': '200%',
+  'ms': '200%',
+  'uk': '200%',
+  'vi': '200%',
+  'he': '200%',
+};
+
 // --- "Update available" ---
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = {
   'en': 'Update available: {version}',
@@ -985,7 +1207,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; startPageLast: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; startPageLast: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string; zoom: string; zoom100: string; zoom125: string; zoom150: string; zoom175: string; zoom200: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
@@ -1004,7 +1226,13 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const off = getLocalizedString(OFF_TEXT, langs);
   const style = getLocalizedString(STYLE_TEXT, langs);
   const styleAppleMusic = getLocalizedString(STYLE_APPLE_MUSIC_TEXT, langs);
-  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic };
+  const zoom = getLocalizedString(ZOOM_TEXT, langs);
+  const zoom100 = getLocalizedString(ZOOM_100_TEXT, langs);
+  const zoom125 = getLocalizedString(ZOOM_125_TEXT, langs);
+  const zoom150 = getLocalizedString(ZOOM_150_TEXT, langs);
+  const zoom175 = getLocalizedString(ZOOM_175_TEXT, langs);
+  const zoom200 = getLocalizedString(ZOOM_200_TEXT, langs);
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200 };
 }
 
 export function getAboutStrings(): {

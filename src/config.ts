@@ -11,6 +11,7 @@ interface StoreSchema {
   'autoUpdate.enabled': boolean;
   startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
   lastPageUrl: string;
+  zoomFactor: number;
 }
 
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
@@ -119,5 +120,17 @@ export function getStartPage(): 'home' | 'new' | 'radio' | 'all-playlists' | 'la
 export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists' | 'last'): void {
   store.set('startPage', page);
   configLog.info('startPage set:', page);
+}
+
+export function getZoomFactor(): number {
+  if (!store.has('zoomFactor')) {
+    return 1.0;  // default 100%
+  }
+  return store.get('zoomFactor');
+}
+
+export function setZoomFactor(factor: number): void {
+  store.set('zoomFactor', factor);
+  configLog.info('zoomFactor set:', factor);
 }
 

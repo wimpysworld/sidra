@@ -2,11 +2,11 @@ import { app, BrowserWindow, components, ipcMain, Menu, nativeTheme, session, sh
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getStartPage, getLastPageUrl, setLastPageUrl } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getStartPage, getLastPageUrl, setLastPageUrl, getZoomFactor } from './config';
 import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
-import { createTray, rebuildTrayMenu } from './tray';
+import { createTray, rebuildTrayMenu, setApplyZoomCallback } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
@@ -187,6 +187,11 @@ const STYLE_FIX_CSS = `
   footer.dt-footer {
     display: none !important;
   }
+
+  /* Bigger transport bar - zoom controls, LCD, and icons */
+  amp-chrome-player {
+    zoom: 1.25;
+  }
 `;
 
 // Apply or remove Catppuccin CSS on the main window.
@@ -279,6 +284,9 @@ app.whenReady().then(async () => {
     },
   });
 
+  win.webContents.setZoomFactor(getZoomFactor());
+  setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
+
   initNotifications(player, () => win);
   initDiscordPresence(player);
 
@@ -356,6 +364,7 @@ app.whenReady().then(async () => {
 
   win.webContents.on('did-finish-load', async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
+    win.webContents.setZoomFactor(getZoomFactor());
     win.webContents.insertCSS(STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
     if (getCatppuccinEnabled()) {

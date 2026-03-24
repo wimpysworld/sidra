@@ -3,7 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings } from './i18n';
 import { getAssetPath } from './paths';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled, getStartPage, setStartPage } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 
@@ -34,6 +34,7 @@ function getTrayIconPath(): string {
 }
 
 let aboutWindow: BrowserWindow | null = null;
+let applyZoomCallback: ((factor: number) => void) | null = null;
 
 function showAboutWindow(): void {
   if (aboutWindow) {
@@ -100,6 +101,11 @@ function buildContextMenu(tray: Tray): Menu {
   const discordParentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
   const styleGlyph = '🌢';
   const styleParentLabel = `${strings.style}: ${catppuccinEnabled ? strings.catppuccin : strings.styleAppleMusic}`;
+
+  const zoomFactor = getZoomFactor();
+  const zoomGlyph = '%';
+  const zoomLabelMap: Record<number, string> = { 1.0: strings.zoom100, 1.25: strings.zoom125, 1.5: strings.zoom150, 1.75: strings.zoom175, 2.0: strings.zoom200 };
+  const zoomParentLabel = `${strings.zoom}: ${zoomLabelMap[zoomFactor] ?? `${Math.round(zoomFactor * 100)}%`}`;
 
   const currentStartPage = getStartPage();
   const startPageLabelMap: Record<string, string> = {
@@ -204,6 +210,41 @@ function buildContextMenu(tray: Tray): Menu {
         },
       ],
     },
+    {
+      label: isLinux ? `${zoomGlyph} ${zoomParentLabel}` : zoomParentLabel,
+      submenu: [
+        {
+          label: strings.zoom100,
+          type: 'radio',
+          checked: zoomFactor === 1.0,
+          click: () => { setZoomFactor(1.0); if (applyZoomCallback) applyZoomCallback(1.0); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.zoom125,
+          type: 'radio',
+          checked: zoomFactor === 1.25,
+          click: () => { setZoomFactor(1.25); if (applyZoomCallback) applyZoomCallback(1.25); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.zoom150,
+          type: 'radio',
+          checked: zoomFactor === 1.5,
+          click: () => { setZoomFactor(1.5); if (applyZoomCallback) applyZoomCallback(1.5); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.zoom175,
+          type: 'radio',
+          checked: zoomFactor === 1.75,
+          click: () => { setZoomFactor(1.75); if (applyZoomCallback) applyZoomCallback(1.75); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.zoom200,
+          type: 'radio',
+          checked: zoomFactor === 2.0,
+          click: () => { setZoomFactor(2.0); if (applyZoomCallback) applyZoomCallback(2.0); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+      ],
+    },
   ];
 
   const update = getUpdateInfo();
@@ -262,11 +303,16 @@ function buildContextMenu(tray: Tray): Menu {
   return Menu.buildFromTemplate(menuItems);
 }
 
+export function setApplyZoomCallback(callback: (factor: number) => void): void {
+  applyZoomCallback = callback;
+}
+
 export function rebuildTrayMenu(tray: Tray): void {
   tray.setContextMenu(buildContextMenu(tray));
 }
 
-export function createTray(): Tray {
+export function createTray(applyZoom?: (factor: number) => void): Tray {
+  applyZoomCallback = applyZoom ?? null;
   const iconPath = getTrayIconPath();
   trayLog.info('creating tray with icon:', iconPath);
 
