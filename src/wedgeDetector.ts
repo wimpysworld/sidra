@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
-import { Player, PlaybackState, PlaybackStatePayload, NowPlayingPayload } from './player';
+import { Player, PlaybackState, PlaybackStatePayload, NowPlayingPayload, IntegrationContext } from './player';
 
 const wedgeLog = log.scope('wedge');
 
@@ -49,7 +49,10 @@ export function reset(): void {
   stopTimer();
 }
 
-export function init(player: Player, getWin: () => BrowserWindow | null): void {
+export function init(ctx: IntegrationContext): void {
+  const { player, getMainWindow: getWin } = ctx;
+  if (!getWin) throw new Error('wedgeDetector requires getMainWindow');
+
   player.on('playbackStateDidChange', (payload: PlaybackStatePayload) => {
     isPlaying = payload?.state === PlaybackState.Playing;
     lastAdvanceTime = Date.now();

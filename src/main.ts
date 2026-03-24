@@ -5,7 +5,7 @@ import log from 'electron-log/main';
 import { getCatppuccinEnabled, setLastPageUrl, getZoomFactor } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
-import { Player } from './player';
+import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
 import { initCatppuccinCSS, setCatppuccinCssKey } from './theme';
 import { createTray, rebuildTrayMenu, setApplyZoomCallback } from './tray';
@@ -324,17 +324,17 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
   // always runs after CSS/hook injection completes because it is called at the
   // end of the same async handler invocation.
   let initIntegrationsOnce: (() => void) | null = () => {
-    initNotifications(player, () => win);
-    initDiscordPresence(player);
+    initNotifications({ player, getMainWindow: () => win });
+    initDiscordPresence({ player });
 
     // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
     if (process.platform === 'linux') {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mpris = require('./integrations/mpris');
-      mpris.init(player, () => win);
+      const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
+      mpris.init({ player, getMainWindow: () => win });
     }
 
-    initWedgeDetector(player, () => win);
+    initWedgeDetector({ player, getMainWindow: () => win });
     markCssReady();
     setTimeout(() => {
       if (appTray) {
