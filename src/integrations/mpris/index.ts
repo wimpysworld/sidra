@@ -11,6 +11,12 @@ const {
   ACCESS_READWRITE,
 } = dbus.interface;
 const { Variant } = require('@holusion/dbus-next');
+import path from 'path';
+import crypto from 'crypto';
+import https from 'https';
+import { promises as fsp, createWriteStream } from 'fs';
+
+const DBUS_SERVICE = 'org.mpris.MediaPlayer2.sidra';
 
 const mprisLog = log.scope('mpris');
 
@@ -617,6 +623,51 @@ function onNowPlayingItemDidChange(payload: unknown): void {
   lastPositionTimestamp = Date.now();
   playerIfaceRef._position = 0;
   playerIfaceRef.Seeked(0);
+
+  if (p.artworkUrl && p.artworkUrl.startsWith('https://')) {
+    try {
+      const cacheDir = path.join(app.getPath('userData' as any), 'art');
+      if (!require('fs').existsSync(cacheDir)) {
+        require('fs').mkdirSync(cacheDir, { recursive: true });
+      }
+      const hash = crypto.createHash('md5').update(p.artworkUrl).digest('hex');
+      const ext = p.artworkUrl.split('.').pop()?.split('?')[0] || 'jpg';
+      const filepath = path.join(cacheDir, `sidra-art-${hash}.${ext}`);
+      const fileUrl = `file://${filepath}`;
+
+      fsp.stat(filepath)
+        .then(() => {
+          metadata['mpris:artUrl'] = new Variant('s', fileUrl);
+          if (playerIfaceRef) {
+            playerIfaceRef._metadata = metadata;
+            schedulePropertyEmission({ Metadata: metadata });
+          }
+        })
+        .catch(() => {
+          https.get(p.artworkUrl as string, (res: any) => {
+            if (res.statusCode === 200) {
+              const stream = createWriteStream(filepath);
+              res.pipe(stream);
+              stream.on('finish', () => {
+                stream.close();
+                mprisLog.debug('Cached artwork to local file:', fileUrl);
+                metadata['mpris:artUrl'] = new Variant('s', fileUrl);
+                if (playerIfaceRef) {
+                  playerIfaceRef._metadata = metadata;
+                  schedulePropertyEmission({ Metadata: metadata });
+                }
+              });
+            } else {
+              mprisLog.warn('failed to download artwork. HTTP code:', res.statusCode);
+            }
+          }).on('error', (err: Error) => {
+            mprisLog.warn('failed to download artwork for MPRIS:', err.message);
+          });
+        });
+    } catch (err: any) {
+      mprisLog.error('failed to process artwork caching:', err.message);
+    }
+  }
 }
 
 function onRepeatModeDidChange(payload: unknown): void {
