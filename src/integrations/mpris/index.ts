@@ -615,14 +615,18 @@ function onNowPlayingItemDidChange(payload: unknown): void {
   const rawId = p.trackId ?? 'unknown';
   const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
 
-  playerIfaceRef._metadata = metadata;
-  playerIfaceRef._currentTrackId = trackId;
-  schedulePropertyEmission({ Metadata: metadata });
+  const setMetadata = () => {
+    if (playerIfaceRef) {
+      playerIfaceRef._metadata = metadata;
+      playerIfaceRef._currentTrackId = trackId;
+      playerIfaceRef._position = 0;
+      schedulePropertyEmission({ Metadata: metadata });
+      playerIfaceRef.Seeked(0);
+    }
+  };
 
   lastPositionUs = 0;
   lastPositionTimestamp = Date.now();
-  playerIfaceRef._position = 0;
-  playerIfaceRef.Seeked(0);
 
   if (p.artworkUrl && p.artworkUrl.startsWith('https://')) {
     try {
@@ -638,10 +642,7 @@ function onNowPlayingItemDidChange(payload: unknown): void {
       fsp.stat(filepath)
         .then(() => {
           metadata['mpris:artUrl'] = new Variant('s', fileUrl);
-          if (playerIfaceRef) {
-            playerIfaceRef._metadata = metadata;
-            schedulePropertyEmission({ Metadata: metadata });
-          }
+          setMetadata();
         })
         .catch(() => {
           https.get(p.artworkUrl as string, (res: any) => {
@@ -652,21 +653,23 @@ function onNowPlayingItemDidChange(payload: unknown): void {
                 stream.close();
                 mprisLog.debug('Cached artwork to local file:', fileUrl);
                 metadata['mpris:artUrl'] = new Variant('s', fileUrl);
-                if (playerIfaceRef) {
-                  playerIfaceRef._metadata = metadata;
-                  schedulePropertyEmission({ Metadata: metadata });
-                }
+                setMetadata();
               });
             } else {
               mprisLog.warn('failed to download artwork. HTTP code:', res.statusCode);
+              setMetadata();
             }
           }).on('error', (err: Error) => {
             mprisLog.warn('failed to download artwork for MPRIS:', err.message);
+            setMetadata();
           });
         });
     } catch (err: any) {
       mprisLog.error('failed to process artwork caching:', err.message);
+      setMetadata();
     }
+  } else {
+    setMetadata();
   }
 }
 
