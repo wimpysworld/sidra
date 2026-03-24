@@ -9,7 +9,8 @@ interface StoreSchema {
   'discord.enabled': boolean;
   'catppuccin.enabled': boolean;
   'autoUpdate.enabled': boolean;
-  startPage: 'home' | 'new' | 'radio' | 'all-playlists';
+  startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
+  lastPageUrl: string;
 }
 
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
@@ -96,14 +97,26 @@ export function setAutoUpdateEnabled(enabled: boolean): void {
   configLog.info('autoUpdate.enabled set:', enabled);
 }
 
-export function getStartPage(): 'home' | 'new' | 'radio' | 'all-playlists' {
+export function getLastPageUrl(): string | undefined {
+  if (!store.has('lastPageUrl')) {
+    return undefined;
+  }
+  return store.get('lastPageUrl');
+}
+
+export function setLastPageUrl(url: string): void {
+  store.set('lastPageUrl', url);
+  configLog.info('lastPageUrl set:', url);
+}
+
+export function getStartPage(): 'home' | 'new' | 'radio' | 'all-playlists' | 'last' {
   if (!store.has('startPage')) {
     return 'new';
   }
   return store.get('startPage');
 }
 
-export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists'): void {
+export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists' | 'last'): void {
   store.set('startPage', page);
   configLog.info('startPage set:', page);
 }

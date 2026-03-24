@@ -375,6 +375,43 @@ export const START_PAGE_ALL_PLAYLISTS_TEXT: Record<string, string> = {
   'he': 'כל הפלייליסטים',
 };
 
+// --- "Last session" ---
+export const START_PAGE_LAST_TEXT: Record<string, string> = {
+  'en': 'Last session',
+  'zh-CN': '上次会话',
+  'zh-SG': '上次会话',
+  'zh-TW': '上次工作階段',
+  'zh-HK': '上次工作階段',
+  'es': 'Última sesión',
+  'hi': 'पिछला सत्र',
+  'ar': 'الجلسة الأخيرة',
+  'fr': 'Dernière session',
+  'pt': 'Última sessão',
+  'de': 'Letzte Sitzung',
+  'ru': 'Последний сеанс',
+  'ja': '前回のセッション',
+  'ko': '마지막 세션',
+  'it': 'Ultima sessione',
+  'nl': 'Laatste sessie',
+  'pl': 'Ostatnia sesja',
+  'tr': 'Son oturum',
+  'sv': 'Senaste session',
+  'da': 'Sidste session',
+  'fi': 'Edellinen istunto',
+  'nb': 'Forrige økt',
+  'no': 'Forrige økt',
+  'cs': 'Poslední relace',
+  'ro': 'Ultima sesiune',
+  'hu': 'Utolsó munkamenet',
+  'el': 'Τελευταία συνεδρία',
+  'th': 'เซสชันล่าสุด',
+  'id': 'Sesi terakhir',
+  'ms': 'Sesi terakhir',
+  'uk': 'Останній сеанс',
+  'vi': 'Phiên trước',
+  'he': 'הפעלה אחרונה',
+};
+
 // --- "Catppuccin" ---
 export const CATPPUCCIN_TEXT: Record<string, string> = {
   'en': 'Catppuccin',
@@ -948,7 +985,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string } {
+export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; startPageLast: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string } {
   const langs = getSystemLanguages();
   const productName: string = pkg.build?.productName ?? app.getName();
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
@@ -961,12 +998,13 @@ export function getTrayStrings(): { about: string; quit: string; notifications: 
   const startPageNew = getLocalizedString(START_PAGE_NEW_TEXT, langs);
   const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
   const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
+  const startPageLast = getLocalizedString(START_PAGE_LAST_TEXT, langs);
   const catppuccin = getLocalizedString(CATPPUCCIN_TEXT, langs);
   const on = getLocalizedString(ON_TEXT, langs);
   const off = getLocalizedString(OFF_TEXT, langs);
   const style = getLocalizedString(STYLE_TEXT, langs);
   const styleAppleMusic = getLocalizedString(STYLE_APPLE_MUSIC_TEXT, langs);
-  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, catppuccin, on, off, style, styleAppleMusic };
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic };
 }
 
 export function getAboutStrings(): {

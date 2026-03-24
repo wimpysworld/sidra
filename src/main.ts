@@ -2,7 +2,7 @@ import { app, BrowserWindow, components, ipcMain, Menu, nativeTheme, session, sh
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getStartPage } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getStartPage, getLastPageUrl, setLastPageUrl } from './config';
 import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
@@ -90,15 +90,29 @@ function buildAppleMusicURL(): string {
 
   mainLog.info(`storefront resolved: ${storefront} (${source})`);
 
+  const language = getLanguage();
+  const startPage = getStartPage();
+
+  if (startPage === 'last') {
+    const lastPath = getLastPageUrl();
+    if (lastPath) {
+      let url = `https://music.apple.com/${storefront}/${lastPath}`;
+      if (language !== undefined && language !== null) {
+        url += `?l=${language}`;
+      }
+      return url;
+    }
+    // fall through: no stored path yet, use 'new'
+  }
+
   const pagePathMap: Record<string, string> = {
     'home': 'home',
     'new': 'new',
     'radio': 'radio',
     'all-playlists': 'library/all-playlists/',
   };
-  const pagePath = pagePathMap[getStartPage()];
+  const pagePath = pagePathMap[startPage] ?? pagePathMap['new'];
   let url = `https://music.apple.com/${storefront}/${pagePath}`;
-  const language = getLanguage();
   if (language !== undefined && language !== null) {
     url += `?l=${language}`;
   }
@@ -388,6 +402,10 @@ app.whenReady().then(async () => {
   });
   win.webContents.on('did-navigate-in-page', (_event, url) => {
     handleStorefrontNavigation(url);
+    if (url.includes('music.apple.com')) {
+      const match = url.match(/music\.apple\.com\/(?:[a-z]{2,3}\/)?([^?#]+)/);
+      if (match) setLastPageUrl(match[1]);
+    }
     win.webContents.executeJavaScript(navBarScript);
   });
 
