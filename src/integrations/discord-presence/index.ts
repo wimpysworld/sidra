@@ -1,7 +1,7 @@
 import log from 'electron-log/main';
 import { Client } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { getDiscordEnabled } from '../../config';
 
 const discordLog = log.scope('discord');
@@ -133,7 +133,8 @@ function scheduleReconnect(): void {
   }, delay);
 }
 
-export function init(player: Player): void {
+export function init(ctx: IntegrationContext): void {
+  const { player } = ctx;
   discordLog.info('discord presence module initialised');
 
   client = new Client({ clientId: CLIENT_ID });

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
 const playerLog = log.scope('player');
@@ -37,6 +38,11 @@ export interface PlayerEvents {
   repeatModeDidChange: [payload: number | null];
   shuffleModeDidChange: [payload: number | null];
   volumeDidChange: [payload: number | null];
+}
+
+export interface IntegrationContext {
+  player: Player;
+  getMainWindow?: () => BrowserWindow | null;
 }
 
 const REPEAT_MODES: Record<number, string> = {

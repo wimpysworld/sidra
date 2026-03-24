@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { errorMessage } from '../../utils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -638,10 +638,10 @@ function disconnectBus(): void {
 
 // --- Public API ---
 
-export function init(
-  player: Player,
-  getMainWindow: () => BrowserWindow | null,
-): void {
+export function init(ctx: IntegrationContext): void {
+  const { player, getMainWindow } = ctx;
+  if (!getMainWindow) throw new Error('MPRIS requires getMainWindow');
+
   mprisLog.info('MPRIS module initialised');
 
   app.on('will-quit', () => {

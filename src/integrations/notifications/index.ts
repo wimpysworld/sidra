@@ -3,7 +3,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { Player, NowPlayingPayload } from '../../player';
+import { Player, NowPlayingPayload, IntegrationContext } from '../../player';
 import { getNotificationsEnabled } from '../../config';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
@@ -95,10 +95,10 @@ async function showNotification(
   notifLog.debug('notification requested:', payload.name);
 }
 
-export function init(
-  player: Player,
-  getMainWindow: () => BrowserWindow | null,
-): void {
+export function init(ctx: IntegrationContext): void {
+  const { player, getMainWindow } = ctx;
+  const getWin = getMainWindow ?? (() => null);
+
   notifLog.info('notification module initialised');
   notifLog.info('notifications enabled:', getNotificationsEnabled());
 
@@ -115,7 +115,7 @@ export function init(
 
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      showNotification(payload, getMainWindow);
+      showNotification(payload, getWin);
     }, NOTIFICATION_DEBOUNCE_MS);
   });
 }
