@@ -402,9 +402,15 @@ app.whenReady().then(async () => {
   });
   win.webContents.on('did-navigate-in-page', (_event, url) => {
     handleStorefrontNavigation(url);
-    if (url.includes('music.apple.com')) {
-      const match = url.match(/music\.apple\.com\/(?:[a-z]{2,3}\/)?([^?#]+)/);
-      if (match) setLastPageUrl(match[1]);
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'music.apple.com') {
+        const segments = parsed.pathname.split('/').filter(Boolean);
+        const pageSegments = segments[0] && /^[a-z]{2}$/.test(segments[0]) ? segments.slice(1) : segments;
+        if (pageSegments.length > 0) setLastPageUrl(pageSegments.join('/'));
+      }
+    } catch {
+      mainLog.warn('failed to parse URL for last-page tracking:', url);
     }
     win.webContents.executeJavaScript(navBarScript);
   });
