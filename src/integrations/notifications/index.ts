@@ -11,8 +11,7 @@ const ARTWORK_DOWNLOAD_TIMEOUT_MS = 5000;
 
 const notifLog = log.scope('notifications');
 
-// 'cache' is a valid Electron runtime path but absent from CastLabs type definitions
-const ARTWORK_PATH = path.join((app.getPath as (name: string) => string)('cache'), 'sidra-artwork.jpg');
+const ARTWORK_PATH = path.join(app.getPath('cache'), 'sidra-artwork.jpg');
 let lastArtworkUrl: string | null = null;
 
 async function downloadArtwork(url: string | undefined): Promise<string | null> {
