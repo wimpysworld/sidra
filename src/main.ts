@@ -370,8 +370,18 @@ app.whenReady().then(async () => {
     mainLog.error('page load failed:', errorCode, errorDescription);
   });
 
-  win.webContents.on('did-navigate', (_event, url) => handleStorefrontNavigation(url));
-  win.webContents.on('did-navigate-in-page', (_event, url) => handleStorefrontNavigation(url));
+  win.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+    if (isMainFrame) {
+      mainLog.debug('did-start-navigation:', url);
+    }
+  });
+  win.webContents.on('did-navigate', (_event, url) => {
+    mainLog.debug('did-navigate:', url);
+    handleStorefrontNavigation(url);
+  });
+  win.webContents.on('did-navigate-in-page', (_event, url) => {
+    handleStorefrontNavigation(url);
+  });
 
   win.webContents.on('will-prevent-unload', (event) => {
     event.preventDefault();
