@@ -198,11 +198,7 @@ const STYLE_FIX_CSS = `
 // Handles enable, disable, and re-injection (variant change) cases.
 let applyCatppuccinCSS: (enabled: boolean) => Promise<void>;
 
-app.whenReady().then(async () => {
-  mainLog.info('app ready, waiting for Widevine CDM...');
-
-  // Show a splash screen while the Widevine CDM downloads/initialises.
-  // Created first so the user sees feedback as early as possible.
+function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; cssReady: Promise<void>; markCssReady: () => void } {
   const splashZoom = getZoomFactor();
   const splash = new BrowserWindow({
     width: Math.round(300 * splashZoom),
@@ -227,7 +223,10 @@ app.whenReady().then(async () => {
   let resolveCssReady!: () => void;
   const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
   splashLog.info('splash created');
+  return { splash, minDisplay, cssReady, markCssReady: () => resolveCssReady() };
+}
 
+function setupApplicationMenu(): void {
   if (process.env.SIDRA_DEVTOOLS === '1') {
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
@@ -240,7 +239,9 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
   }
   mainLog.info('application menu set');
+}
 
+function initPlayerIPC(): Player {
   const player = new Player();
   ipcMain.on('playbackStateDidChange', (_event, data) => player.handlePlaybackStateDidChange(data));
   ipcMain.on('nowPlayingItemDidChange', (_event, data) => player.handleNowPlayingItemDidChange(data));
@@ -248,6 +249,19 @@ app.whenReady().then(async () => {
   ipcMain.on('repeatModeDidChange', (_event, data) => player.handleRepeatModeDidChange(data));
   ipcMain.on('shuffleModeDidChange', (_event, data) => player.handleShuffleModeDidChange(data));
   ipcMain.on('volumeDidChange', (_event, data) => player.handleVolumeDidChange(data));
+  return player;
+}
+
+app.whenReady().then(async () => {
+  mainLog.info('app ready, waiting for Widevine CDM...');
+
+  // Show a splash screen while the Widevine CDM downloads/initialises.
+  // Created first so the user sees feedback as early as possible.
+  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+
+  setupApplicationMenu();
+
+  const player = initPlayerIPC();
 
   appTray = createTray();
 
@@ -411,7 +425,7 @@ app.whenReady().then(async () => {
 
       initWedgeDetector(player, () => win);
       firstLoad = false;
-      resolveCssReady();
+      markCssReady();
       setTimeout(() => {
         if (appTray) {
           if (isAutoUpdateSupported()) {
@@ -425,7 +439,7 @@ app.whenReady().then(async () => {
   });
 
   win.webContents.once('did-fail-load', () => {
-    resolveCssReady();
+    markCssReady();
   });
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
