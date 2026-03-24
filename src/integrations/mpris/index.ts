@@ -537,7 +537,7 @@ function buildMetadata(payload: {
   }
 
   if (payload.artworkUrl != null) {
-    metadata['xesam:artUrl'] = new Variant('s', payload.artworkUrl);
+    metadata['mpris:artUrl'] = new Variant('s', payload.artworkUrl);
   }
 
   if (payload.url != null) {
