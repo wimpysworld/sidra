@@ -107,6 +107,7 @@ function buildContextMenu(tray: Tray): Menu {
     'new': strings.startPageNew,
     'radio': strings.startPageRadio,
     'all-playlists': strings.startPageAllPlaylists,
+    'last': strings.startPageLast,
   };
   const currentStartPageLabel = startPageLabelMap[currentStartPage];
   const startPageGlyph = '♪';
@@ -143,6 +144,12 @@ function buildContextMenu(tray: Tray): Menu {
           type: 'radio',
           checked: currentStartPage === 'all-playlists',
           click: () => { setStartPage('all-playlists'); tray.setContextMenu(buildContextMenu(tray)); },
+        },
+        {
+          label: strings.startPageLast,
+          type: 'radio',
+          checked: currentStartPage === 'last',
+          click: () => { setStartPage('last'); tray.setContextMenu(buildContextMenu(tray)); },
         },
       ],
     },
