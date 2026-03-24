@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, nativeTheme, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings } from './i18n';
-import { getAssetPath } from './paths';
+import { getAssetPath, getProductInfo } from './paths';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -11,8 +11,6 @@ const ABOUT_WINDOW_WIDTH_PX = 400;
 const ABOUT_WINDOW_HEIGHT_PX = 400;
 
 const trayLog = log.scope('tray');
-
-const pkg = require(path.join(__dirname, '..', 'package.json'));
 
 const iconsDir = getAssetPath('assets', 'icons');
 
@@ -68,20 +66,18 @@ function showAboutWindow(): void {
   });
 
   const iconPath = getAssetPath('assets', 'sidra-logo.png');
-  const author = typeof pkg.author === 'string'
-    ? pkg.author.replace(/\s*<[^>]+>/, '')
-    : (pkg.author?.name ?? '');
+  const info = getProductInfo();
   const trayStrings = getTrayStrings();
   const aboutStrings = getAboutStrings();
 
   aboutWindow.loadFile(path.join(__dirname, 'about.html'), {
     query: {
       icon: iconPath,
-      name: pkg.build?.productName ?? app.getName(),
+      name: info.productName,
       version: app.getVersion(),
-      description: pkg.description ?? '',
-      author,
-      license: pkg.license ?? '',
+      description: info.description,
+      author: info.author,
+      license: info.license,
       about: trayStrings.about,
       close: aboutStrings.close,
       versionPrefix: aboutStrings.versionPrefix,
@@ -323,8 +319,7 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
   trayLog.info('creating tray with icon:', iconPath);
 
   const tray = new Tray(iconPath);
-  const productName: string = pkg.build?.productName ?? app.getName();
-  tray.setToolTip(productName);
+  tray.setToolTip(getProductInfo().productName);
 
   tray.setContextMenu(buildContextMenu(tray));
 

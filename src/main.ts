@@ -1,11 +1,13 @@
-import { app, BrowserWindow, components, ipcMain, Menu, nativeTheme, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getCatppuccinEnabled, getStartPage, getLastPageUrl, setLastPageUrl, getZoomFactor } from './config';
-import { getLoadingText, getStorefront as getLocaleStorefront } from './i18n';
+import { getCatppuccinEnabled, setLastPageUrl, getZoomFactor } from './config';
+import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player } from './player';
+import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
+import { initCatppuccinCSS, setCatppuccinCssKey } from './theme';
 import { createTray, rebuildTrayMenu, setApplyZoomCallback } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -83,103 +85,11 @@ app.userAgentFallback = UA;
 // Prevent garbage collection of tray icon
 let appTray: Tray | null = null;
 
-// Track injected Catppuccin CSS for live toggle
-let catppuccinCssKey: string | null = null;
-
-export function buildAppleMusicURL(): string {
-  let storefront = getStorefront();
-  let source: string;
-
-  if (storefront !== undefined) {
-    source = 'persisted';
-  } else {
-    storefront = getLocaleStorefront();
-    source = storefront === 'us' ? 'fallback' : 'detected';
-  }
-
-  mainLog.info(`storefront resolved: ${storefront} (${source})`);
-
-  const language = getLanguage();
-  const startPage = getStartPage();
-
-  if (startPage === 'last') {
-    const lastPath = getLastPageUrl();
-    if (lastPath) {
-      let url = `https://music.apple.com/${storefront}/${lastPath}`;
-      if (language !== undefined && language !== null) {
-        url += `?l=${language}`;
-      }
-      return url;
-    }
-    // fall through: no stored path yet, use 'new'
-  }
-
-  const pagePathMap: Record<string, string> = {
-    'home': 'home',
-    'new': 'new',
-    'radio': 'radio',
-    'all-playlists': 'library/all-playlists/',
-  };
-  const pagePath = pagePathMap[startPage] ?? pagePathMap['new'];
-  let url = `https://music.apple.com/${storefront}/${pagePath}`;
-  if (language !== undefined && language !== null) {
-    url += `?l=${language}`;
-  }
-
-  return url;
+export interface Assets {
+  STYLE_FIX_CSS: string;
+  CATPPUCCIN_CSS: string;
+  navBarScript: string;
 }
-
-export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname !== 'music.apple.com') {
-      return null;
-    }
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    if (segments.length === 0) {
-      return null;
-    }
-    const storefront = segments[0];
-    if (!/^[a-z]{2}$/.test(storefront)) {
-      return null;
-    }
-    const language = parsed.searchParams.get('l');
-    return { storefront, language };
-  } catch {
-    return null;
-  }
-}
-
-function handleStorefrontNavigation(url: string): void {
-  const result = extractStorefrontFromURL(url);
-  if (!result) {
-    return;
-  }
-
-  const currentStorefront = getStorefront();
-  const currentLanguage = getLanguage();
-  const nextLanguage = result.language ?? currentLanguage ?? null;
-
-  if (result.storefront !== currentStorefront) {
-    setStorefront(result.storefront);
-  }
-  if (nextLanguage !== currentLanguage) {
-    setLanguage(nextLanguage);
-  }
-  if (result.storefront !== currentStorefront || nextLanguage !== currentLanguage) {
-    mainLog.info(`storefront changed: ${result.storefront} (language: ${nextLanguage})`);
-  }
-}
-
-// CSS to hide "Get the app" and "Open in Music" banners.
-// Selectors confirmed across three independent Electron wrappers
-// (apple-music-wrapper, apple-music-electron, apple-music-desktop).
-// Semantic class names have been stable for 4+ years.
-// Avoid Svelte hash-based selectors (svelte-*) as they change on each deploy.
-
-// Apply or remove Catppuccin CSS on the main window.
-// Handles enable, disable, and re-injection (variant change) cases.
-let applyCatppuccinCSS: (enabled: boolean) => Promise<void>;
 
 function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; cssReady: Promise<void>; markCssReady: () => void } {
   const splashZoom = getZoomFactor();
@@ -265,7 +175,7 @@ async function initSession(): Promise<Electron.Session> {
   return ses;
 }
 
-function loadAssets(): { STYLE_FIX_CSS: string; CATPPUCCIN_CSS: string; navBarScript: string } {
+function loadAssets(): Assets {
   const styleFixCssPath = getAssetPath('assets', 'styleFix.css');
   const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, 'utf-8');
   const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
@@ -310,41 +220,6 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
   winReady.then(() => { pollCancelled = true; });
 
   return { win, winReady };
-}
-
-function initCatppuccinCSS(win: BrowserWindow, CATPPUCCIN_CSS: string): void {
-  let catppuccinCssOp = Promise.resolve();
-  applyCatppuccinCSS = (enabled: boolean) => {
-    catppuccinCssOp = catppuccinCssOp
-      .catch((error) => {
-        mainLog.warn('Catppuccin CSS operation failed', error);
-      })
-      .then(async () => {
-      if (enabled && catppuccinCssKey !== null) {
-        await win.webContents.removeInsertedCSS(catppuccinCssKey);
-        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
-        mainLog.debug('Catppuccin CSS re-injected');
-      } else if (enabled) {
-        catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
-        mainLog.debug('Catppuccin CSS injected');
-      } else if (catppuccinCssKey !== null) {
-        await win.webContents.removeInsertedCSS(catppuccinCssKey);
-        catppuccinCssKey = null;
-        mainLog.debug('Catppuccin CSS removed');
-      }
-    });
-    return catppuccinCssOp;
-  };
-
-  (app as NodeJS.EventEmitter).on('catppuccin-toggle', (_event: unknown, enabled: boolean) => {
-    void applyCatppuccinCSS(enabled);
-  });
-
-  nativeTheme.on('updated', () => {
-    if (getCatppuccinEnabled()) {
-      void applyCatppuccinCSS(true);
-    }
-  });
 }
 
 function setupSplashTransition(win: BrowserWindow, splash: BrowserWindow, minDisplay: Promise<void>, cssReady: Promise<void>, winReady: Promise<void>): void {
@@ -442,7 +317,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
   });
 }
 
-function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, STYLE_FIX_CSS: string, CATPPUCCIN_CSS: string, navBarScript: string): void {
+function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, assets: Assets): void {
   // Approach A: self-nullifying inner function eliminates the `firstLoad` mutable
   // flag while keeping a single `on('did-finish-load')` handler. This avoids
   // depending on `once`/`on` listener ordering semantics - the integration init
@@ -476,17 +351,17 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
   win.webContents.on('did-finish-load', async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.setZoomFactor(getZoomFactor());
-    await win.webContents.insertCSS(STYLE_FIX_CSS);
+    await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
     if (getCatppuccinEnabled()) {
-      catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
+      setCatppuccinCssKey(await win.webContents.insertCSS(assets.CATPPUCCIN_CSS));
       mainLog.debug('Catppuccin CSS injected');
     }
     const hookPath = getAssetPath('assets', 'musicKitHook.js');
     const hookScript = fs.readFileSync(hookPath, 'utf-8');
     await win.webContents.executeJavaScript(hookScript);
     mainLog.debug('MusicKit hook injected');
-    await win.webContents.executeJavaScript(navBarScript);
+    await win.webContents.executeJavaScript(assets.navBarScript);
     mainLog.debug('Navigation bar injected');
 
     initIntegrationsOnce?.();
@@ -500,15 +375,15 @@ app.whenReady().then(async () => {
   const player = initPlayerIPC();
   appTray = createTray();
   const ses = await initSession();
-  const { STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript } = loadAssets();
+  const assets = loadAssets();
   const { win, winReady } = createMainWindow(ses);
   setupWindowZoomAndNav(win);
-  initCatppuccinCSS(win, CATPPUCCIN_CSS);
+  initCatppuccinCSS(win, assets.CATPPUCCIN_CSS);
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
   setupSessionHeaders(ses);
-  setupContentHandlers(win, player, markCssReady, STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript);
+  setupContentHandlers(win, player, markCssReady, assets);
   setupWindowEvents(win, markCssReady);
-  setupNavigationHandlers(win, navBarScript);
+  setupNavigationHandlers(win, assets.navBarScript);
   if (process.env.SIDRA_DEVTOOLS === '1') {
     win.webContents.openDevTools();
     mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
