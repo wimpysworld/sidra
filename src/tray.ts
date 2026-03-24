@@ -7,6 +7,9 @@ import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, se
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 
+const ABOUT_WINDOW_WIDTH_PX = 400;
+const ABOUT_WINDOW_HEIGHT_PX = 400;
+
 const trayLog = log.scope('tray');
 
 const pkg = require(path.join(__dirname, '..', 'package.json'));
@@ -45,8 +48,8 @@ function showAboutWindow(): void {
   trayLog.info('showing About window');
   const zoomFactor = getZoomFactor();
   aboutWindow = new BrowserWindow({
-    width: Math.round(400 * zoomFactor),
-    height: Math.round(400 * zoomFactor),
+    width: Math.round(ABOUT_WINDOW_WIDTH_PX * zoomFactor),
+    height: Math.round(ABOUT_WINDOW_HEIGHT_PX * zoomFactor),
     frame: false,
     resizable: false,
     center: true,

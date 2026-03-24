@@ -3,6 +3,9 @@ import log from 'electron-log/main';
 import { getNotificationsEnabled } from './config';
 import { getUpdateStrings } from './i18n';
 
+const SEMVER_PARTS = 3;
+const UPDATE_CHECK_TIMEOUT_MS = 10000;
+
 const updateLog = log.scope('update');
 
 const GITHUB_API_URL = 'https://api.github.com/repos/wimpysworld/sidra/releases/latest';
@@ -27,7 +30,7 @@ export function setUpdateReady(version: string): void {
 export function isNewer(remote: string, local: string): boolean {
   const r = remote.split('.').map(Number);
   const l = local.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < SEMVER_PARTS; i++) {
     if (r[i] > l[i]) return true;
     if (r[i] < l[i]) return false;
   }
@@ -39,7 +42,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
   updateLog.debug('checking for updates, current version:', localVersion);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
 
   try {
     const response = await net.fetch(GITHUB_API_URL, {

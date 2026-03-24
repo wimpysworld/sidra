@@ -13,6 +13,9 @@ const {
 } = dbus.interface;
 const { Variant } = require('@holusion/dbus-next');
 
+const VOLUME_ECHO_TOLERANCE = 0.01;
+const MS_TO_US = 1000;
+
 const mprisLog = log.scope('mpris');
 
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
@@ -465,7 +468,7 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
 
   if (payload.durationInMillis != null) {
     // Convert milliseconds to microseconds (int64)
-    metadata['mpris:length'] = new Variant('x', payload.durationInMillis * 1000);
+    metadata['mpris:length'] = new Variant('x', payload.durationInMillis * MS_TO_US);
   }
 
   if (payload.name != null) {
@@ -585,7 +588,7 @@ function onVolumeDidChange(payload: unknown): void {
   const volume = payload as number | null;
   if (volume == null || !playerIfaceRef) return;
 
-  if (pendingVolume !== null && Math.abs(volume - pendingVolume) < 0.01) {
+  if (pendingVolume !== null && Math.abs(volume - pendingVolume) < VOLUME_ECHO_TOLERANCE) {
     return;
   }
 
@@ -599,7 +602,7 @@ function onPlaybackTimeDidChange(payload: unknown): void {
   const newPositionUs = payload;
   const now = Date.now();
   const elapsedMs = now - lastPositionTimestamp;
-  const expectedPositionUs = lastPositionUs + elapsedMs * 1000;
+  const expectedPositionUs = lastPositionUs + elapsedMs * MS_TO_US;
 
   if (Math.abs(newPositionUs - expectedPositionUs) > SEEK_THRESHOLD_US) {
     playerIfaceRef.Seeked(newPositionUs);
