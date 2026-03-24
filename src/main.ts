@@ -252,19 +252,7 @@ function initPlayerIPC(): Player {
   return player;
 }
 
-app.whenReady().then(async () => {
-  mainLog.info('app ready, waiting for Widevine CDM...');
-
-  // Show a splash screen while the Widevine CDM downloads/initialises.
-  // Created first so the user sees feedback as early as possible.
-  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
-
-  setupApplicationMenu();
-
-  const player = initPlayerIPC();
-
-  appTray = createTray();
-
+async function initSession(): Promise<Electron.Session> {
   // Clear stale service workers concurrently with Widevine CDM init - both are
   // independent async operations and navigation has not started yet.
   const ses = session.fromPartition('persist:sidra');
@@ -291,10 +279,33 @@ app.whenReady().then(async () => {
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
   session.defaultSession.setUserAgent(UA);
 
+  return ses;
+}
+
+function loadAssets(): { CATPPUCCIN_CSS: string; navBarScript: string } {
   const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
   const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
   const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
+  return { CATPPUCCIN_CSS, navBarScript };
+}
+
+app.whenReady().then(async () => {
+  mainLog.info('app ready, waiting for Widevine CDM...');
+
+  // Show a splash screen while the Widevine CDM downloads/initialises.
+  // Created first so the user sees feedback as early as possible.
+  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+
+  setupApplicationMenu();
+
+  const player = initPlayerIPC();
+
+  appTray = createTray();
+
+  const ses = await initSession();
+
+  const { CATPPUCCIN_CSS, navBarScript } = loadAssets();
 
   const win = new BrowserWindow({
     title: 'Sidra',
