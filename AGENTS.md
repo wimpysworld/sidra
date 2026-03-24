@@ -14,6 +14,7 @@ Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` di
 | Package manager | npm | Dependency management |
 | Build | electron-builder | Platform installers (AppImage, deb, rpm, DMG, NSIS) |
 | Dev environment | Nix flake + direnv | Reproducible tooling |
+| Test framework | Vitest | Unit tests for src modules |
 
 ## Runtime dependencies
 
@@ -34,8 +35,12 @@ sidra/
 │   ├── preload.ts           — contextBridge IPC exposure
 │   ├── autoUpdate.ts        — Auto-update via electron-updater (AppImage, NSIS)
 │   ├── config.ts            — electron-store wrapper
-│   ├── paths.ts             — Shared `getAssetPath()` utility
-│   ├── player.ts            — EventEmitter for playback state
+│   ├── i18n.ts              — Locale detection and all translated strings
+│   ├── paths.ts             — `getAssetPath()` and `getProductInfo()` utilities
+│   ├── player.ts            — TypedEmitter, PlayerEvents, PlaybackState, IntegrationContext
+│   ├── storefront.ts        — URL construction and storefront detection
+│   ├── theme.ts             — Catppuccin CSS toggle lifecycle
+│   ├── utils.ts             — `errorMessage()` utility
 │   └── integrations/
 │       ├── integration.ts   — IIntegration interface
 │       ├── mpris/           — D-Bus MPRIS (Linux)
@@ -48,6 +53,15 @@ sidra/
 │   ├── styleFix.css         — Suppress "Get the app" banners
 │   ├── icons/
 │   └── source/              — Gimp XCF masters and SVG source files
+├── test/
+│   ├── setup.ts             — Vitest global setup
+│   ├── i18n.test.ts         — i18n locale detection and string lookup
+│   ├── i18n-consistency.test.ts — All records have identical key sets
+│   ├── player.test.ts       — Player, TypedEmitter, PlaybackState
+│   ├── storefront.test.ts   — buildAppleMusicURL, extractStorefrontFromURL
+│   ├── update.test.ts       — Auto-update platform detection
+│   ├── url.test.ts          — URL construction edge cases
+│   └── utils.test.ts        — errorMessage utility
 ├── package.json
 └── tsconfig.json
 ```
@@ -78,6 +92,7 @@ Run `direnv allow` in the project root to activate the Nix dev shell automatical
 | Run fast | `just run-fast` | Launch without rebuilding (pair with `just watch`) |
 | Watch | `just watch` | Rebuild on file changes |
 | Lint | `just lint` | Run actionlint and TypeScript type-check |
+| Test | `just test` | Run Vitest unit tests (`npm test`) |
 | Clean | `just clean` | Remove `dist/` build artefacts |
 | Logs | `just logs` | Show log file location and tail recent entries |
 
@@ -153,7 +168,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 ### Adding translations
 
-`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 12 records with 33 languages each: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`, `UPDATE_DOWNLOADING_TEXT`, `UPDATE_READY_TEXT`, `UPDATE_FAILED_TEXT`. When adding a language, add an entry to every record.
+`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 22 records: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`. When adding a language, add an entry to every record.
 
 ```typescript
 export const LOADING_TEXT: Record<string, string> = {

@@ -125,7 +125,12 @@ sidra/
 │   ├── main.ts                    — bootstrap, Widevine wait, window, IPC hub
 │   ├── preload.ts                 — contextBridge IPC exposure (AMWrapper)
 │   ├── config.ts                  — electron-store wrapper
-│   ├── player.ts                  — EventEmitter: nowPlaying, playbackState, volume, etc.
+│   ├── i18n.ts                    — locale detection and translated strings
+│   ├── paths.ts                   — getAssetPath() and getProductInfo() utilities
+│   ├── player.ts                  — TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
+│   ├── storefront.ts              — buildAppleMusicURL(), extractStorefrontFromURL(), handleStorefrontNavigation()
+│   ├── theme.ts                   — initCatppuccinCSS(): CSS toggle lifecycle
+│   ├── utils.ts                   — errorMessage() utility
 │   └── integrations/
 │       ├── integration.ts         — IIntegration interface (enable/disable)
 │       ├── mpris/
