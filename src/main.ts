@@ -261,8 +261,18 @@ app.whenReady().then(async () => {
       origins: ['https://music.apple.com'],
     }),
   ]);
-  const cdmStatus = Object.values(components.status())[0] as { status: string; title: string; version: string };
-  mainLog.info(`Widevine CDM ready: ${cdmStatus.title} v${cdmStatus.version} (${cdmStatus.status})`);
+  interface CdmComponentStatus {
+    status: string;
+    title: string;
+    version: string;
+  }
+
+  const cdmStatus = Object.values(components.status())[0] as CdmComponentStatus | undefined;
+  if (cdmStatus) {
+    mainLog.info(`Widevine CDM ready: ${cdmStatus.title} v${cdmStatus.version} (${cdmStatus.status})`);
+  } else {
+    mainLog.warn('Widevine CDM ready: status unavailable');
+  }
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
   session.defaultSession.setUserAgent(UA);
