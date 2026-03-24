@@ -15,7 +15,29 @@ export interface NowPlayingPayload {
   trackNumber?: number;
 }
 
-export const PlaybackState = { Playing: 2, Paused: 3, Stopped: 4 } as const;
+export const PlaybackState = {
+  None: 0,
+  Loading: 1,
+  Playing: 2,
+  Paused: 3,
+  Stopped: 4,
+  Ended: 5,
+  Seeking: 6,
+  Waiting: 7,
+  Stalled: 8,
+  Completed: 9,
+} as const;
+
+export type PlaybackStatePayload = { status: boolean; state: number } | null;
+
+export interface PlayerEvents {
+  playbackStateDidChange: [payload: PlaybackStatePayload];
+  nowPlayingItemDidChange: [payload: NowPlayingPayload | null];
+  playbackTimeDidChange: [payload: number];
+  repeatModeDidChange: [payload: number | null];
+  shuffleModeDidChange: [payload: number | null];
+  volumeDidChange: [payload: number | null];
+}
 
 const REPEAT_MODES: Record<number, string> = {
   0: 'none',
@@ -41,26 +63,50 @@ const PLAYBACK_STATES: Record<number, string> = {
   9: 'completed',
 };
 
-export class Player extends EventEmitter {
+// Type-safe EventEmitter wrapper. Provides compile-time payload checking on
+// emit, on, once, removeListener, and off while preserving full runtime
+// compatibility with Node's EventEmitter.
+export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> extends EventEmitter {
+  override emit<K extends keyof Events & string>(event: K, ...args: Events[K]): boolean {
+    return super.emit(event, ...args);
+  }
+
+  override on<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
+    return super.on(event, listener as (...args: unknown[]) => void);
+  }
+
+  override once<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
+    return super.once(event, listener as (...args: unknown[]) => void);
+  }
+
+  override removeListener<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
+    return super.removeListener(event, listener as (...args: unknown[]) => void);
+  }
+
+  override off<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
+    return super.off(event, listener as (...args: unknown[]) => void);
+  }
+}
+
+export class Player extends TypedEmitter<PlayerEvents> {
   private lastTimeLogAt = 0;
 
   constructor() {
     super();
   }
 
-  handlePlaybackStateDidChange(payload: unknown): void {
-    const p = payload as { status: boolean; state: number } | null;
-    const stateName = p != null ? (PLAYBACK_STATES[p.state] ?? String(p.state)) : null;
-    playerLog.debug('playbackStateDidChange:', { ...p, state: stateName });
+  handlePlaybackStateDidChange(payload: PlaybackStatePayload): void {
+    const stateName = payload != null ? (PLAYBACK_STATES[payload.state] ?? String(payload.state)) : null;
+    playerLog.debug('playbackStateDidChange:', { ...payload, state: stateName });
     this.emit('playbackStateDidChange', payload);
   }
 
-  handleNowPlayingItemDidChange(payload: unknown): void {
+  handleNowPlayingItemDidChange(payload: NowPlayingPayload | null): void {
     playerLog.debug('nowPlayingItemDidChange:', payload);
     this.emit('nowPlayingItemDidChange', payload);
   }
 
-  handlePlaybackTimeDidChange(payload: unknown): void {
+  handlePlaybackTimeDidChange(payload: number): void {
     const now = Date.now();
     if (now - this.lastTimeLogAt >= 10_000) {
       playerLog.debug('playbackTimeDidChange:', payload);
@@ -69,19 +115,19 @@ export class Player extends EventEmitter {
     this.emit('playbackTimeDidChange', payload);
   }
 
-  handleRepeatModeDidChange(payload: unknown): void {
+  handleRepeatModeDidChange(payload: number | null): void {
     const modeName = typeof payload === 'number' ? (REPEAT_MODES[payload] ?? String(payload)) : payload;
     playerLog.debug('repeatModeDidChange:', modeName);
     this.emit('repeatModeDidChange', payload);
   }
 
-  handleShuffleModeDidChange(payload: unknown): void {
+  handleShuffleModeDidChange(payload: number | null): void {
     const modeName = typeof payload === 'number' ? (SHUFFLE_MODES[payload] ?? String(payload)) : payload;
     playerLog.debug('shuffleModeDidChange:', modeName);
     this.emit('shuffleModeDidChange', payload);
   }
 
-  handleVolumeDidChange(payload: unknown): void {
+  handleVolumeDidChange(payload: number | null): void {
     playerLog.debug('volumeDidChange:', payload);
     this.emit('volumeDidChange', payload);
   }
