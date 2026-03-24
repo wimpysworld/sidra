@@ -45,7 +45,6 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
   autoUpdater.autoDownload = true;
 
   if (process.platform === 'win32') {
-    autoUpdater.autoDownload = true;
     autoUpdater.verifyUpdateCodeSignature = false;
   }
 
