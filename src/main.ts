@@ -318,37 +318,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
 }
 
 function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, assets: Assets): void {
-  // Approach A: self-nullifying inner function eliminates the `firstLoad` mutable
-  // flag while keeping a single `on('did-finish-load')` handler. This avoids
-  // depending on `once`/`on` listener ordering semantics - the integration init
-  // always runs after CSS/hook injection completes because it is called at the
-  // end of the same async handler invocation.
-  let initIntegrationsOnce: (() => void) | null = () => {
-    initNotifications({ player, getMainWindow: () => win });
-    initDiscordPresence({ player });
-
-    // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
-    if (process.platform === 'linux') {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
-      mpris.init({ player, getMainWindow: () => win });
-    }
-
-    initWedgeDetector({ player, getMainWindow: () => win });
-    markCssReady();
-    setTimeout(() => {
-      if (appTray) {
-        if (isAutoUpdateSupported()) {
-          initAutoUpdate(appTray, rebuildTrayMenu);
-        } else {
-          checkForUpdates(appTray, rebuildTrayMenu);
-        }
-      }
-    }, UPDATE_CHECK_DELAY_MS);
-    initIntegrationsOnce = null;
-  };
-
-  win.webContents.on('did-finish-load', async () => {
+  async function injectContent(): Promise<void> {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.setZoomFactor(getZoomFactor());
     await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
@@ -363,8 +333,36 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     mainLog.debug('MusicKit hook injected');
     await win.webContents.executeJavaScript(assets.navBarScript);
     mainLog.debug('Navigation bar injected');
+  }
 
-    initIntegrationsOnce?.();
+  let initialized = false;
+  win.webContents.on('did-finish-load', async () => {
+    await injectContent();
+
+    if (!initialized) {
+      initialized = true;
+
+      initNotifications({ player, getMainWindow: () => win });
+      initDiscordPresence({ player });
+
+      if (process.platform === 'linux') {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
+        mpris.init({ player, getMainWindow: () => win });
+      }
+
+      initWedgeDetector({ player, getMainWindow: () => win });
+      markCssReady();
+      setTimeout(() => {
+        if (appTray) {
+          if (isAutoUpdateSupported()) {
+            initAutoUpdate(appTray, rebuildTrayMenu);
+          } else {
+            checkForUpdates(appTray, rebuildTrayMenu);
+          }
+        }
+      }, UPDATE_CHECK_DELAY_MS);
+    }
   });
 }
 
