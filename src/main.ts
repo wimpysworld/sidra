@@ -313,7 +313,7 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
       win.webContents.once('did-navigate-in-page', () => {
         const poll = () => {
           if (pollCancelled) return;
-          win.webContents.executeJavaScript('!!document.querySelector("main > .content-container > .section")')
+          win.webContents.executeJavaScript('!!document.querySelector("amp-lcd[hydrated]")')
             .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, 100); })
             .catch(() => { if (!pollCancelled) setTimeout(poll, 100); });
         };
