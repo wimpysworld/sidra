@@ -20,6 +20,11 @@ describe('i18n translation records', () => {
 
   for (const name of TRANSLATION_RECORDS) {
     const record = (i18n as Record<string, Record<string, string>>)[name];
+
+    it(`${name} is exported from i18n`, () => {
+      expect(record, `${name} is listed in TRANSLATION_RECORDS but not exported from src/i18n`).toBeDefined();
+    });
+
     if (!record) continue;
 
     it(`${name} has the same language keys as LOADING_TEXT`, () => {
