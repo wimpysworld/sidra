@@ -77,7 +77,7 @@ let appTray: Tray | null = null;
 // Track injected Catppuccin CSS for live toggle
 let catppuccinCssKey: string | null = null;
 
-function buildAppleMusicURL(): string {
+export function buildAppleMusicURL(): string {
   let storefront = getStorefront();
   let source: string;
 
@@ -120,7 +120,7 @@ function buildAppleMusicURL(): string {
   return url;
 }
 
-function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
+export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
   try {
     const parsed = new URL(url);
     if (parsed.hostname !== 'music.apple.com') {
