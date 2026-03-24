@@ -6,6 +6,9 @@ import log from 'electron-log/main';
 import { Player } from '../../player';
 import { getNotificationsEnabled } from '../../config';
 
+const NOTIFICATION_DEBOUNCE_MS = 1500;
+const ARTWORK_DOWNLOAD_TIMEOUT_MS = 5000;
+
 const notifLog = log.scope('notifications');
 
 // 'cache' is a valid Electron runtime path but absent from CastLabs type definitions
@@ -41,7 +44,7 @@ async function downloadArtwork(url: string | undefined): Promise<string | null> 
       notifLog.warn('artwork download error:', err.message);
       resolve(null);
     });
-    request.setTimeout(5000, () => {
+    request.setTimeout(ARTWORK_DOWNLOAD_TIMEOUT_MS, () => {
       request.destroy();
       notifLog.warn('artwork download timed out');
       resolve(null);
@@ -120,6 +123,6 @@ export function init(
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       showNotification(payload, getMainWindow);
-    }, 1500);
+    }, NOTIFICATION_DEBOUNCE_MS);
   });
 }

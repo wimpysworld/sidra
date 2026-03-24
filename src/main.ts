@@ -13,6 +13,15 @@ import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 
+const SPLASH_MIN_DISPLAY_MS = 500;
+const CONTENT_READY_POLL_MS = 100;
+const CONTENT_READY_TIMEOUT_MS = 3500;
+const UPDATE_CHECK_DELAY_MS = 5000;
+const SPLASH_WIDTH_PX = 300;
+const SPLASH_HEIGHT_PX = 350;
+const MAIN_WINDOW_WIDTH_PX = 1280;
+const MAIN_WINDOW_HEIGHT_PX = 800;
+
 // --- Logging: initialise before anything else ---
 log.initialize();
 log.transports.file.level = 'info';
@@ -201,8 +210,8 @@ let applyCatppuccinCSS: (enabled: boolean) => Promise<void>;
 function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; cssReady: Promise<void>; markCssReady: () => void } {
   const splashZoom = getZoomFactor();
   const splash = new BrowserWindow({
-    width: Math.round(300 * splashZoom),
-    height: Math.round(350 * splashZoom),
+    width: Math.round(SPLASH_WIDTH_PX * splashZoom),
+    height: Math.round(SPLASH_HEIGHT_PX * splashZoom),
     frame: false,
     resizable: false,
     center: true,
@@ -219,7 +228,7 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
   });
   let resolveMinDisplay!: () => void;
   const minDisplay = new Promise<void>(resolve => { resolveMinDisplay = resolve; });
-  setTimeout(resolveMinDisplay, 500);
+  setTimeout(resolveMinDisplay, SPLASH_MIN_DISPLAY_MS);
   let resolveCssReady!: () => void;
   const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
   splashLog.info('splash created');
@@ -293,8 +302,8 @@ function loadAssets(): { CATPPUCCIN_CSS: string; navBarScript: string } {
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
   const win = new BrowserWindow({
     title: 'Sidra',
-    width: 1280,
-    height: 800,
+    width: MAIN_WINDOW_WIDTH_PX,
+    height: MAIN_WINDOW_HEIGHT_PX,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -314,13 +323,13 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
         const poll = () => {
           if (pollCancelled) return;
           win.webContents.executeJavaScript('!!document.querySelector("amp-lcd[hydrated]")')
-            .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, 100); })
-            .catch(() => { if (!pollCancelled) setTimeout(poll, 100); });
+            .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); })
+            .catch(() => { if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); });
         };
         poll();
       });
     }),
-    new Promise<void>(resolve => setTimeout(resolve, 3500)),
+    new Promise<void>(resolve => setTimeout(resolve, CONTENT_READY_TIMEOUT_MS)),
   ]);
   winReady.then(() => { pollCancelled = true; });
 
@@ -484,7 +493,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
           checkForUpdates(appTray, rebuildTrayMenu);
         }
       }
-    }, 5000);
+    }, UPDATE_CHECK_DELAY_MS);
     initIntegrationsOnce = null;
   };
 
