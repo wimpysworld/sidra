@@ -613,13 +613,22 @@ MediaPlayer2Player.configureMembers({
 // Module-level bus reference for graceful shutdown
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
+// Typed interface for dbus-next internal socket access.
+// Verified against @holusion/dbus-next 0.11.2.
+interface DbusMessageBusInternals {
+  _connection?: {
+    stream?: {
+      destroy: () => void;
+    };
+  };
+}
+
 function disconnectBus(): void {
   if (bus) {
     mprisLog.info('disconnecting from D-Bus');
     // bus.disconnect() calls stream.end() which only half-closes the socket.
     // Force-destroy the underlying stream to release the event loop handle.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stream = (bus as any)._connection?.stream;
+    const stream = (bus as DbusMessageBusInternals)._connection?.stream;
     bus.disconnect();
     if (stream && typeof stream.destroy === 'function') {
       stream.destroy();
