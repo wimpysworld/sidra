@@ -3,7 +3,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { Player } from '../../player';
+import { Player, NowPlayingPayload } from '../../player';
 import { getNotificationsEnabled } from '../../config';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
@@ -53,26 +53,19 @@ async function downloadArtwork(url: string | undefined): Promise<string | null> 
 }
 
 async function showNotification(
-  payload: unknown,
+  payload: NowPlayingPayload | null,
   getMainWindow: () => BrowserWindow | null,
 ): Promise<void> {
-  const p = payload as {
-    name?: string;
-    artistName?: string;
-    albumName?: string;
-    artworkUrl?: string;
-  } | null;
-
-  if (!p?.name) {
+  if (!payload?.name) {
     notifLog.debug('skipping notification: no track name');
     return;
   }
 
-  const artworkPath = await downloadArtwork(p.artworkUrl);
+  const artworkPath = await downloadArtwork(payload.artworkUrl);
 
   const options: Electron.NotificationConstructorOptions = {
-    title: p.name,
-    body: [p.artistName, p.albumName].filter(Boolean).join(' - '),
+    title: payload.name,
+    body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
     silent: true,
   };
 
@@ -83,11 +76,11 @@ async function showNotification(
   const notification = new Notification(options);
 
   notification.on('show', () => {
-    notifLog.debug('notification displayed:', p.name);
+    notifLog.debug('notification displayed:', payload.name);
   });
 
   notification.on('failed', (_event, error) => {
-    notifLog.error('notification failed:', p.name, error);
+    notifLog.error('notification failed:', payload.name, error);
   });
 
   notification.on('click', () => {
@@ -99,7 +92,7 @@ async function showNotification(
   });
 
   notification.show();
-  notifLog.debug('notification requested:', p.name);
+  notifLog.debug('notification requested:', payload.name);
 }
 
 export function init(
@@ -111,7 +104,7 @@ export function init(
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  player.on('nowPlayingItemDidChange', (payload: unknown) => {
+  player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
     if (!getNotificationsEnabled()) {
       return;
     }

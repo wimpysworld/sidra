@@ -1,7 +1,7 @@
 import log from 'electron-log/main';
 import { Client } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
-import { Player, NowPlayingPayload, PlaybackState } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload } from '../../player';
 import { getDiscordEnabled } from '../../config';
 
 const discordLog = log.scope('discord');
@@ -158,10 +158,8 @@ export function init(player: Player): void {
     scheduleReconnect();
   });
 
-  player.on('nowPlayingItemDidChange', (payload: unknown) => {
-    const p = payload as NowPlayingPayload | null;
-
-    if (!p) {
+  player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
+    if (!payload) {
       trackName = null;
       artistName = null;
       albumName = null;
@@ -169,12 +167,12 @@ export function init(player: Player): void {
       durationMs = 0;
       trackUrl = undefined;
     } else {
-      trackName = p.name ?? null;
-      artistName = p.artistName ?? null;
-      albumName = p.albumName ?? null;
-      artworkUrl = p.artworkUrl;
-      durationMs = p.durationInMillis ?? 0;
-      trackUrl = p.url;
+      trackName = payload.name ?? null;
+      artistName = payload.artistName ?? null;
+      albumName = payload.albumName ?? null;
+      artworkUrl = payload.artworkUrl;
+      durationMs = payload.durationInMillis ?? 0;
+      trackUrl = payload.url;
     }
 
     // Cancel pause timer on new track
@@ -186,11 +184,10 @@ export function init(player: Player): void {
     scheduleUpdate();
   });
 
-  player.on('playbackStateDidChange', (payload: unknown) => {
-    const p = payload as { state: number } | null;
+  player.on('playbackStateDidChange', (payload: PlaybackStatePayload) => {
     const wasPlaying = isPlaying;
     // MusicKit PlaybackStates
-    isPlaying = p?.state === PlaybackState.Playing;
+    isPlaying = payload?.state === PlaybackState.Playing;
 
     if (isPlaying && pauseTimer) {
       clearTimeout(pauseTimer);
@@ -209,11 +206,9 @@ export function init(player: Player): void {
     scheduleUpdate();
   });
 
-  player.on('playbackTimeDidChange', (payload: unknown) => {
+  player.on('playbackTimeDidChange', (payload: number) => {
     // Payload is microseconds (number)
-    if (typeof payload === 'number') {
-      currentPositionUs = payload;
-    }
+    currentPositionUs = payload;
     // Do not call scheduleUpdate() here: playbackTimeDidChange fires
     // continuously and would perpetually reset the debounce timer,
     // preventing sendActivity() from ever executing.
