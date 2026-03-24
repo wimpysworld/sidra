@@ -457,36 +457,37 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
   });
 }
 
-app.whenReady().then(async () => {
-  mainLog.info('app ready, waiting for Widevine CDM...');
+function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, CATPPUCCIN_CSS: string, navBarScript: string): void {
+  // Approach A: self-nullifying inner function eliminates the `firstLoad` mutable
+  // flag while keeping a single `on('did-finish-load')` handler. This avoids
+  // depending on `once`/`on` listener ordering semantics - the integration init
+  // always runs after CSS/hook injection completes because it is called at the
+  // end of the same async handler invocation.
+  let initIntegrationsOnce: (() => void) | null = () => {
+    initNotifications(player, () => win);
+    initDiscordPresence(player);
 
-  // Show a splash screen while the Widevine CDM downloads/initialises.
-  // Created first so the user sees feedback as early as possible.
-  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+    // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
+    if (process.platform === 'linux') {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mpris = require('./integrations/mpris');
+      mpris.init(player, () => win);
+    }
 
-  setupApplicationMenu();
+    initWedgeDetector(player, () => win);
+    markCssReady();
+    setTimeout(() => {
+      if (appTray) {
+        if (isAutoUpdateSupported()) {
+          initAutoUpdate(appTray, rebuildTrayMenu);
+        } else {
+          checkForUpdates(appTray, rebuildTrayMenu);
+        }
+      }
+    }, 5000);
+    initIntegrationsOnce = null;
+  };
 
-  const player = initPlayerIPC();
-
-  appTray = createTray();
-
-  const ses = await initSession();
-
-  const { CATPPUCCIN_CSS, navBarScript } = loadAssets();
-
-  const { win, winReady } = createMainWindow(ses);
-
-  setupWindowZoomAndNav(win);
-
-  initCatppuccinCSS(win, CATPPUCCIN_CSS);
-
-  setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
-
-  setupSessionHeaders(ses);
-
-  setupWindowEvents(win, markCssReady);
-
-  let firstLoad = true;
   win.webContents.on('did-finish-load', async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.setZoomFactor(getZoomFactor());
@@ -503,40 +504,30 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(navBarScript);
     mainLog.debug('Navigation bar injected');
 
-    if (firstLoad) {
-      initNotifications(player, () => win);
-      initDiscordPresence(player);
-
-      // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
-      if (process.platform === 'linux') {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const mpris = require('./integrations/mpris');
-        mpris.init(player, () => win);
-      }
-
-      initWedgeDetector(player, () => win);
-      firstLoad = false;
-      markCssReady();
-      setTimeout(() => {
-        if (appTray) {
-          if (isAutoUpdateSupported()) {
-            initAutoUpdate(appTray, rebuildTrayMenu);
-          } else {
-            checkForUpdates(appTray, rebuildTrayMenu);
-          }
-        }
-      }, 5000);
-    }
+    initIntegrationsOnce?.();
   });
+}
 
+app.whenReady().then(async () => {
+  mainLog.info('app ready, waiting for Widevine CDM...');
+  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+  setupApplicationMenu();
+  const player = initPlayerIPC();
+  appTray = createTray();
+  const ses = await initSession();
+  const { CATPPUCCIN_CSS, navBarScript } = loadAssets();
+  const { win, winReady } = createMainWindow(ses);
+  setupWindowZoomAndNav(win);
+  initCatppuccinCSS(win, CATPPUCCIN_CSS);
+  setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
+  setupSessionHeaders(ses);
+  setupContentHandlers(win, player, markCssReady, CATPPUCCIN_CSS, navBarScript);
+  setupWindowEvents(win, markCssReady);
   setupNavigationHandlers(win, navBarScript);
-
-  // Open DevTools when SIDRA_DEVTOOLS=1 (for inspecting CSS, verifying AMWrapper)
   if (process.env.SIDRA_DEVTOOLS === '1') {
     win.webContents.openDevTools();
     mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
   }
-
   mainLog.info('loading Apple Music...');
   win.loadURL(buildAppleMusicURL(), { userAgent: UA });
 });
