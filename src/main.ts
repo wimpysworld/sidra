@@ -201,6 +201,33 @@ let applyCatppuccinCSS: (enabled: boolean) => Promise<void>;
 app.whenReady().then(async () => {
   mainLog.info('app ready, waiting for Widevine CDM...');
 
+  // Show a splash screen while the Widevine CDM downloads/initialises.
+  // Created first so the user sees feedback as early as possible.
+  const splashZoom = getZoomFactor();
+  const splash = new BrowserWindow({
+    width: Math.round(300 * splashZoom),
+    height: Math.round(350 * splashZoom),
+    frame: false,
+    resizable: false,
+    center: true,
+    skipTaskbar: true,
+    backgroundColor: '#1a0a10',
+    show: false,
+  });
+  const { text: loadingText, lang: loadingLang } = getLoadingText();
+  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
+  splash.show();
+  splashLog.info('splash shown');
+  splash.webContents.on('did-finish-load', () => {
+    splash.webContents.setZoomFactor(getZoomFactor());
+  });
+  let resolveMinDisplay!: () => void;
+  const minDisplay = new Promise<void>(resolve => { resolveMinDisplay = resolve; });
+  setTimeout(resolveMinDisplay, 500);
+  let resolveCssReady!: () => void;
+  const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
+  splashLog.info('splash created');
+
   if (process.env.SIDRA_DEVTOOLS === '1') {
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
@@ -223,32 +250,6 @@ app.whenReady().then(async () => {
   ipcMain.on('volumeDidChange', (_event, data) => player.handleVolumeDidChange(data));
 
   appTray = createTray();
-
-  // Show a splash screen while the Widevine CDM downloads/initialises
-  const splashZoom = getZoomFactor();
-  const splash = new BrowserWindow({
-    width: Math.round(300 * splashZoom),
-    height: Math.round(350 * splashZoom),
-    frame: false,
-    resizable: false,
-    center: true,
-    skipTaskbar: true,
-    backgroundColor: '#1a0a10',
-    show: false,
-  });
-  let resolveMinDisplay!: () => void;
-  const minDisplay = new Promise<void>(resolve => { resolveMinDisplay = resolve; });
-  let resolveCssReady!: () => void;
-  const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
-  splash.once('ready-to-show', () => {
-    splashLog.info('splash shown');
-    splash.webContents.setZoomFactor(getZoomFactor());
-    splash.show();
-    setTimeout(resolveMinDisplay, 500);
-  });
-  const { text: loadingText, lang: loadingLang } = getLoadingText();
-  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
-  splashLog.info('splash created');
 
   // Clear stale service workers concurrently with Widevine CDM init - both are
   // independent async operations and navigation has not started yet.
@@ -286,11 +287,10 @@ app.whenReady().then(async () => {
     },
   });
 
+  const winReady = new Promise<void>(resolve => win.webContents.once('did-navigate-in-page', () => resolve()));
+
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
-
-  initNotifications(player, () => win);
-  initDiscordPresence(player);
 
   ipcMain.on('nav:back', () => win.webContents.navigationHistory.goBack());
   ipcMain.on('nav:forward', () => win.webContents.navigationHistory.goForward());
@@ -298,15 +298,6 @@ app.whenReady().then(async () => {
     resetWedgeDetector();
     win.webContents.reload();
   });
-
-  // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
-  if (process.platform === 'linux') {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mpris = require('./integrations/mpris');
-    mpris.init(player, () => win);
-  }
-
-  initWedgeDetector(player, () => win);
 
   let catppuccinCssOp = Promise.resolve();
   applyCatppuccinCSS = (enabled: boolean) => {
@@ -341,10 +332,10 @@ app.whenReady().then(async () => {
     }
   });
 
-  Promise.all([minDisplay, cssReady]).then(() => {
+  Promise.all([minDisplay, cssReady, winReady]).then(() => {
+    win.show();
     splashLog.info('splash closed');
     splash.close();
-    win.show();
   });
 
   // Set UA on the persist:sidra session used by the window
@@ -364,10 +355,11 @@ app.whenReady().then(async () => {
     event.preventDefault();
   });
 
+  let firstLoad = true;
   win.webContents.on('did-finish-load', async () => {
     mainLog.info('page loaded:', win.webContents.getURL());
     win.webContents.setZoomFactor(getZoomFactor());
-    win.webContents.insertCSS(STYLE_FIX_CSS);
+    await win.webContents.insertCSS(STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
     if (getCatppuccinEnabled()) {
       catppuccinCssKey = await win.webContents.insertCSS(CATPPUCCIN_CSS);
@@ -375,23 +367,36 @@ app.whenReady().then(async () => {
     }
     const hookPath = getAssetPath('assets', 'musicKitHook.js');
     const hookScript = fs.readFileSync(hookPath, 'utf-8');
-    win.webContents.executeJavaScript(hookScript);
+    await win.webContents.executeJavaScript(hookScript);
     mainLog.debug('MusicKit hook injected');
-    win.webContents.executeJavaScript(navBarScript);
+    await win.webContents.executeJavaScript(navBarScript);
     mainLog.debug('Navigation bar injected');
-  });
 
-  win.webContents.once('did-finish-load', () => {
-    resolveCssReady();
-    setTimeout(() => {
-      if (appTray) {
-        if (isAutoUpdateSupported()) {
-          initAutoUpdate(appTray, rebuildTrayMenu);
-        } else {
-          checkForUpdates(appTray, rebuildTrayMenu);
+    initNotifications(player, () => win);
+    initDiscordPresence(player);
+
+    // MPRIS D-Bus service (Linux only) - uses require() to avoid loading dbus-next on other platforms
+    if (process.platform === 'linux') {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mpris = require('./integrations/mpris');
+      mpris.init(player, () => win);
+    }
+
+    initWedgeDetector(player, () => win);
+
+    if (firstLoad) {
+      firstLoad = false;
+      resolveCssReady();
+      setTimeout(() => {
+        if (appTray) {
+          if (isAutoUpdateSupported()) {
+            initAutoUpdate(appTray, rebuildTrayMenu);
+          } else {
+            checkForUpdates(appTray, rebuildTrayMenu);
+          }
         }
-      }
-    }, 5000);
+      }, 5000);
+    }
   });
 
   win.webContents.once('did-fail-load', () => {
