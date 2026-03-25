@@ -27,11 +27,18 @@ const store: {
   set<K extends keyof StoreSchema>(key: K, value: StoreSchema[K]): void;
 } = new Store();
 
+function getConfigValue<K extends keyof StoreSchema>(key: K, defaultValue: StoreSchema[K]): StoreSchema[K] {
+  if (!store.has(key)) return defaultValue;
+  return store.get(key);
+}
+
+function getConfigValueOptional<K extends keyof StoreSchema>(key: K): StoreSchema[K] | undefined {
+  if (!store.has(key)) return undefined;
+  return store.get(key);
+}
+
 export function getStorefront(): string | undefined {
-  if (!store.has('storefront')) {
-    return undefined;
-  }
-  return store.get('storefront');
+  return getConfigValueOptional('storefront');
 }
 
 export function setStorefront(code: string): void {
@@ -40,10 +47,7 @@ export function setStorefront(code: string): void {
 }
 
 export function getLanguage(): string | null | undefined {
-  if (!store.has('language')) {
-    return undefined;
-  }
-  return store.get('language');
+  return getConfigValueOptional('language');
 }
 
 export function setLanguage(lang: string | null): void {
@@ -52,10 +56,7 @@ export function setLanguage(lang: string | null): void {
 }
 
 export function getNotificationsEnabled(): boolean {
-  if (!store.has('notifications.enabled')) {
-    return true;  // default on
-  }
-  return store.get('notifications.enabled');
+  return getConfigValue('notifications.enabled', true);
 }
 
 export function setNotificationsEnabled(enabled: boolean): void {
@@ -64,10 +65,7 @@ export function setNotificationsEnabled(enabled: boolean): void {
 }
 
 export function getDiscordEnabled(): boolean {
-  if (!store.has('discord.enabled')) {
-    return true;  // default on
-  }
-  return store.get('discord.enabled');
+  return getConfigValue('discord.enabled', true);
 }
 
 export function setDiscordEnabled(enabled: boolean): void {
@@ -76,10 +74,7 @@ export function setDiscordEnabled(enabled: boolean): void {
 }
 
 export function getTheme(): ThemeName {
-  if (!store.has('theme')) {
-    return 'apple-music';  // default: no override CSS
-  }
-  return store.get('theme');
+  return getConfigValue('theme', 'apple-music');
 }
 
 export function setTheme(name: ThemeName): void {
@@ -88,10 +83,7 @@ export function setTheme(name: ThemeName): void {
 }
 
 export function getAutoUpdateEnabled(): boolean {
-  if (!store.has('autoUpdate.enabled')) {
-    return true;  // default on
-  }
-  return store.get('autoUpdate.enabled');
+  return getConfigValue('autoUpdate.enabled', true);
 }
 
 export function setAutoUpdateEnabled(enabled: boolean): void {
@@ -100,10 +92,7 @@ export function setAutoUpdateEnabled(enabled: boolean): void {
 }
 
 export function getLastPageUrl(): string | undefined {
-  if (!store.has('lastPageUrl')) {
-    return undefined;
-  }
-  return store.get('lastPageUrl');
+  return getConfigValueOptional('lastPageUrl');
 }
 
 export function setLastPageUrl(url: string): void {
@@ -112,10 +101,7 @@ export function setLastPageUrl(url: string): void {
 }
 
 export function getStartPage(): 'home' | 'new' | 'radio' | 'all-playlists' | 'last' {
-  if (!store.has('startPage')) {
-    return 'new';
-  }
-  return store.get('startPage');
+  return getConfigValue('startPage', 'new');
 }
 
 export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists' | 'last'): void {
@@ -124,10 +110,7 @@ export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists' | 
 }
 
 export function getZoomFactor(): number {
-  if (!store.has('zoomFactor')) {
-    return 1.0;  // default 100%
-  }
-  return store.get('zoomFactor');
+  return getConfigValue('zoomFactor', 1.0);
 }
 
 export function setZoomFactor(factor: number): void {
