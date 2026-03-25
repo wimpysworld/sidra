@@ -31,6 +31,10 @@ export function downloadArtwork(url: string): Promise<string | null> {
 
   return new Promise((resolve) => {
     const file = fs.createWriteStream(filepath);
+    file.on('error', (err) => {
+      artworkLog.warn('write error:', err.message);
+      resolve(null);
+    });
     const request = https.get(url, (response) => {
       if (response.statusCode !== 200) {
         file.close();
