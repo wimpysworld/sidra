@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
+import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 
 // @holusion/dbus-next is lazy-required because the MPRIS module only loads on Linux
@@ -271,6 +272,21 @@ class MediaPlayer2Player extends Interface {
     this._lastPositionTimestamp = Date.now();
     this._position = 0;
     this.Seeked(0);
+
+    if (payload.artworkUrl && payload.artworkUrl.startsWith('https://')) {
+      downloadArtwork(payload.artworkUrl).then((localPath) => {
+        if (!localPath) return;
+        // Only update if this track is still current
+        if (this._currentTrackId !== trackId) return;
+        const fileUri = `file://${localPath}`;
+        metadata['mpris:artUrl'] = new Variant('s', fileUri);
+        this._metadata = metadata;
+        this._schedulePropertyEmission({ Metadata: metadata });
+        mprisLog.debug('artwork cached:', fileUri);
+      }).catch((err: unknown) => {
+        mprisLog.warn('artwork caching failed:', errorMessage(err));
+      });
+    }
   }
 
   updateRepeatMode(payload: number | null): void {

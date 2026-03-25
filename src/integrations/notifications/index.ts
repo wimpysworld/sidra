@@ -1,55 +1,12 @@
-import { app, BrowserWindow, Notification } from 'electron';
-import https from 'https';
-import fs from 'fs';
-import path from 'path';
+import { BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
 import { Player, NowPlayingPayload, IntegrationContext } from '../../player';
+import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
-const ARTWORK_DOWNLOAD_TIMEOUT_MS = 5000;
 
 const notifLog = log.scope('notifications');
-
-const ARTWORK_PATH = path.join(app.getPath('cache'), 'sidra-artwork.jpg');
-let lastArtworkUrl: string | null = null;
-
-async function downloadArtwork(url: string | undefined): Promise<string | null> {
-  if (!url) return null;
-  if (url === lastArtworkUrl && fs.existsSync(ARTWORK_PATH)) {
-    return ARTWORK_PATH;
-  }
-
-  fs.mkdirSync(path.dirname(ARTWORK_PATH), { recursive: true });
-
-  return new Promise((resolve) => {
-    const file = fs.createWriteStream(ARTWORK_PATH);
-    const request = https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        file.close();
-        notifLog.warn('artwork download failed, status:', response.statusCode);
-        resolve(null);
-        return;
-      }
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        lastArtworkUrl = url;
-        resolve(ARTWORK_PATH);
-      });
-    });
-    request.on('error', (err) => {
-      file.close();
-      notifLog.warn('artwork download error:', err.message);
-      resolve(null);
-    });
-    request.setTimeout(ARTWORK_DOWNLOAD_TIMEOUT_MS, () => {
-      request.destroy();
-      notifLog.warn('artwork download timed out');
-      resolve(null);
-    });
-  });
-}
 
 async function showNotification(
   payload: NowPlayingPayload | null,
@@ -60,7 +17,7 @@ async function showNotification(
     return;
   }
 
-  const artworkPath = await downloadArtwork(payload.artworkUrl);
+  const artworkPath = payload.artworkUrl ? await downloadArtwork(payload.artworkUrl) : null;
 
   const options: Electron.NotificationConstructorOptions = {
     title: payload.name,
