@@ -23,7 +23,47 @@
     'pointer-events: auto !important',
   ].join('; '));
 
-  function createButton(label, svgContent, channel) {
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function createSvgElement(tag, attrs) {
+    var el = document.createElementNS(SVG_NS, tag);
+    for (var key in attrs) {
+      el.setAttribute(key, attrs[key]);
+    }
+    return el;
+  }
+
+  var sharedAttrs = {
+    width: '20',
+    height: '20',
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'var(--systemPrimary, #ffffff)',
+    'stroke-width': '1.5',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+  };
+
+  function createBackSvg() {
+    var svg = createSvgElement('svg', sharedAttrs);
+    svg.appendChild(createSvgElement('polyline', { points: '15 18 9 12 15 6' }));
+    return svg;
+  }
+
+  function createForwardSvg() {
+    var svg = createSvgElement('svg', sharedAttrs);
+    svg.appendChild(createSvgElement('polyline', { points: '9 6 15 12 9 18' }));
+    return svg;
+  }
+
+  function createReloadSvg() {
+    var svg = createSvgElement('svg', sharedAttrs);
+    svg.appendChild(createSvgElement('polyline', { points: '23 4 23 10 17 10' }));
+    svg.appendChild(createSvgElement('path', { d: 'M20.49 15a9 9 0 1 1-2.12-9.36L23 10' }));
+    return svg;
+  }
+
+  function createButton(label, svgElement, channel) {
     const btn = document.createElement('button');
     btn.setAttribute('aria-label', label);
     btn.setAttribute('style', [
@@ -40,7 +80,7 @@
       'transition: opacity 0.15s ease, color 0.15s ease !important',
     ].join('; '));
 
-    btn.innerHTML = svgContent;
+    btn.appendChild(svgElement);
 
     btn.addEventListener('mouseenter', function () {
       this.style.setProperty('opacity', '1', 'important');
@@ -62,15 +102,9 @@
     return btn;
   }
 
-  var svgAttrs = 'xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--systemPrimary, #ffffff)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
-
-  var backSvg = '<svg ' + svgAttrs + '><polyline points="15 18 9 12 15 6"></polyline></svg>';
-  var forwardSvg = '<svg ' + svgAttrs + '><polyline points="9 6 15 12 9 18"></polyline></svg>';
-  var reloadSvg = '<svg ' + svgAttrs + '><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
-
-  container.appendChild(createButton('Back', backSvg, 'nav:back'));
-  container.appendChild(createButton('Forward', forwardSvg, 'nav:forward'));
-  container.appendChild(createButton('Reload', reloadSvg, 'nav:reload'));
+  container.appendChild(createButton('Back', createBackSvg(), 'nav:back'));
+  container.appendChild(createButton('Forward', createForwardSvg(), 'nav:forward'));
+  container.appendChild(createButton('Reload', createReloadSvg(), 'nav:reload'));
 
   logoEl.appendChild(container);
 

@@ -101,6 +101,9 @@ body {
 
   document.title = aboutText;
 
+  // Trust boundary: the icon query parameter is set by src/tray.ts via
+  // getAssetPath('assets', 'sidra-logo.png') and is not user-controllable.
+  // Revisit this pattern if the about window ever accepts external input.
   if (icon) {
     document.getElementById('icon').src = 'file://' + icon;
   }
