@@ -1,10 +1,11 @@
-import { app } from 'electron';
-import https from 'https';
+import { app, net } from 'electron';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
+import { Readable } from 'stream';
 import log from 'electron-log/main';
+import { errorMessage } from './utils';
 
 const artworkLog = log.scope('artwork');
 
@@ -12,56 +13,86 @@ const ARTWORK_DOWNLOAD_TIMEOUT_MS = 5000;
 const ARTWORK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const ARTWORK_CACHE_DIR = path.join(app.getPath('cache'), app.getName().toLowerCase(), 'artwork');
 
-let lastArtworkUrl: string | null = null;
-let lastArtworkPath: string | null = null;
-
-function artworkCachePath(url: string): string {
-  const hash = createHash('sha256').update(url).digest('hex').slice(0, 16);
-  return path.join(ARTWORK_CACHE_DIR, `${hash}.jpg`);
+function cleanupTmpFile(tmpPath: string): void {
+  fsPromises.unlink(tmpPath).catch(() => {});
 }
 
-export function downloadArtwork(url: string): Promise<string | null> {
+const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+function artworkCachePath(url: string): string {
+  let filename: string;
+  try {
+    const pathname = new URL(url).pathname;
+    const match = pathname.match(UUID_REGEX);
+    filename = match
+      ? `${match[0]}.jpg`
+      : `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
+  } catch {
+    filename = `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
+  }
+  return path.join(ARTWORK_CACHE_DIR, filename);
+}
+
+export async function downloadArtwork(url: string): Promise<string | null> {
   const filepath = artworkCachePath(url);
 
-  if (url === lastArtworkUrl && lastArtworkPath && fs.existsSync(filepath)) {
-    return Promise.resolve(filepath);
+  if (fs.existsSync(filepath)) {
+    artworkLog.debug('cache hit: %s', filepath);
+    return filepath;
   }
 
   fs.mkdirSync(ARTWORK_CACHE_DIR, { recursive: true });
 
-  return new Promise((resolve) => {
-    const file = fs.createWriteStream(filepath);
-    file.on('error', (err) => {
-      request.destroy();
-      artworkLog.warn('write error:', err.message);
-      resolve(null);
-    });
-    const request = https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        file.close();
-        artworkLog.warn('download failed, status:', response.statusCode);
-        resolve(null);
-        return;
-      }
-      response.pipe(file);
+  const tmpPath = filepath + '.' + Date.now() + '.tmp';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ARTWORK_DOWNLOAD_TIMEOUT_MS);
+
+  try {
+    const response = await net.fetch(url, { signal: controller.signal });
+
+    if (!response.ok) {
+      artworkLog.warn('download failed, status:', response.status);
+      return null;
+    }
+
+    if (!response.body) {
+      artworkLog.warn('download failed: empty response body');
+      return null;
+    }
+
+    const file = fs.createWriteStream(tmpPath);
+
+    await new Promise<void>((resolve, reject) => {
+      file.on('error', (err) => {
+        reject(err);
+      });
+      const readable = Readable.fromWeb(response.body! as import('stream/web').ReadableStream);
+      readable.on('error', (err) => {
+        file.destroy();
+        reject(err);
+      });
+      readable.pipe(file);
       file.on('finish', () => {
-        file.close();
-        lastArtworkUrl = url;
-        lastArtworkPath = filepath;
-        resolve(filepath);
+        file.close((err) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
       });
     });
-    request.on('error', (err) => {
-      file.close();
-      artworkLog.warn('download error:', err.message);
-      resolve(null);
-    });
-    request.setTimeout(ARTWORK_DOWNLOAD_TIMEOUT_MS, () => {
-      request.destroy();
-      artworkLog.warn('download timed out');
-      resolve(null);
-    });
-  });
+
+    await fsPromises.rename(tmpPath, filepath);
+    artworkLog.debug('artwork cached: %s', filepath);
+    return filepath;
+  } catch (error: unknown) {
+    cleanupTmpFile(tmpPath);
+    artworkLog.warn('download error:', errorMessage(error));
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function cleanArtworkCache(): Promise<void> {

@@ -282,7 +282,7 @@ class MediaPlayer2Player extends Interface {
         metadata['mpris:artUrl'] = new Variant('s', fileUri);
         this._metadata = metadata;
         this._schedulePropertyEmission({ Metadata: metadata });
-        mprisLog.debug('artwork cached:', fileUri);
+        mprisLog.debug('mpris:artUrl updated to local file:', fileUri);
       }).catch((err: unknown) => {
         mprisLog.warn('artwork caching failed:', errorMessage(err));
       });

@@ -1,10 +1,12 @@
-import { BrowserWindow, Notification } from 'electron';
+import { app, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
 import { Player, NowPlayingPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
+import { errorMessage } from '../../utils';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
+const ARTWORK_RACE_TIMEOUT_MS = 500;
 
 const notifLog = log.scope('notifications');
 
@@ -17,7 +19,12 @@ async function showNotification(
     return;
   }
 
-  const artworkPath = payload.artworkUrl ? await downloadArtwork(payload.artworkUrl) : null;
+  const artworkPath = payload.artworkUrl
+    ? await Promise.race([
+        downloadArtwork(payload.artworkUrl),
+        new Promise<null>((resolve) => setTimeout(resolve, ARTWORK_RACE_TIMEOUT_MS, null)),
+      ])
+    : null;
 
   const options: Electron.NotificationConstructorOptions = {
     title: payload.name,
@@ -60,7 +67,7 @@ export function init(ctx: IntegrationContext): void {
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
+  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     if (!getNotificationsEnabled()) {
       return;
     }
@@ -71,7 +78,19 @@ export function init(ctx: IntegrationContext): void {
 
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      showNotification(payload, getWin);
+      showNotification(payload, getWin).catch((error: unknown) =>
+        notifLog.warn('notification error:', errorMessage(error)),
+      );
     }, NOTIFICATION_DEBOUNCE_MS);
+  };
+
+  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+
+  app.on('will-quit', () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   });
 }
