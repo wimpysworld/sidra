@@ -88,11 +88,24 @@ export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> ext
   }
 }
 
+export interface PlaybackSnapshot {
+  isPlaying: boolean;
+  positionUs: number;
+  state: number;
+}
+
 export class Player extends TypedEmitter<PlayerEvents> {
   private lastTimeLogAt = 0;
+  private _isPlaying = false;
+  private _positionUs = 0;
+  private _state = 0;
 
   constructor() {
     super();
+  }
+
+  playbackSnapshot(): PlaybackSnapshot {
+    return { isPlaying: this._isPlaying, positionUs: this._positionUs, state: this._state };
   }
 
   handlePlaybackStateDidChange(payload: PlaybackStatePayload): void {
@@ -109,6 +122,13 @@ export class Player extends TypedEmitter<PlayerEvents> {
         playerLog.warn('playbackStateDidChange: invalid payload, expected state to be number');
         return;
       }
+    }
+    if (payload != null) {
+      this._state = payload.state;
+      this._isPlaying = payload.state === PlaybackState.Playing;
+    } else {
+      this._state = 0;
+      this._isPlaying = false;
     }
     const stateName = payload != null ? (PLAYBACK_STATES[payload.state] ?? String(payload.state)) : null;
     playerLog.debug('playbackStateDidChange:', { ...payload, state: stateName });
@@ -131,6 +151,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
       playerLog.warn('playbackTimeDidChange: invalid payload, expected finite number');
       return;
     }
+    this._positionUs = payload;
     const now = Date.now();
     if (now - this.lastTimeLogAt >= 10_000) {
       playerLog.debug('playbackTimeDidChange:', payload);

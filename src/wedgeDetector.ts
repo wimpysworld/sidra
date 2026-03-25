@@ -9,8 +9,7 @@ const END_SAFETY_MARGIN_MS = 10000;
 const CHECK_INTERVAL_MS = 1000;
 const MAX_SKIP_ATTEMPTS = 3;
 
-let isPlaying = false;
-let lastPositionUs = 0;
+let playerRef: Player | null = null;
 let lastAdvanceTime = 0;
 let durationMs = 0;
 let checkTimer: ReturnType<typeof setInterval> | null = null;
@@ -29,9 +28,10 @@ function stopTimer(): void {
 }
 
 function checkForWedge(getWin: () => BrowserWindow | null): void {
-  if (!isPlaying) return;
+  if (!playerRef?.playbackSnapshot().isPlaying) return;
   if (Date.now() - lastAdvanceTime < STALL_THRESHOLD_MS) return;
-  if (durationMs > 0 && (durationMs - lastPositionUs / 1000) < END_SAFETY_MARGIN_MS) return;
+  const positionUs = playerRef.playbackSnapshot().positionUs;
+  if (durationMs > 0 && (durationMs - positionUs / 1000) < END_SAFETY_MARGIN_MS) return;
   if (skipAttempts >= MAX_SKIP_ATTEMPTS) return;
 
   skipAttempts++;
@@ -42,7 +42,6 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
 }
 
 export function reset(): void {
-  isPlaying = false;
   skipAttempts = 0;
   stopTimer();
 }
@@ -50,13 +49,14 @@ export function reset(): void {
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow: getWin } = ctx;
   if (!getWin) throw new Error('wedgeDetector requires getMainWindow');
+  playerRef = player;
 
   player.on('playbackStateDidChange', (payload: PlaybackStatePayload) => {
-    isPlaying = payload?.state === PlaybackState.Playing;
+    const nowPlaying = payload?.state === PlaybackState.Playing;
     lastAdvanceTime = Date.now();
     skipAttempts = 0;
 
-    if (isPlaying) {
+    if (nowPlaying) {
       startTimer(getWin);
     } else {
       stopTimer();
@@ -65,14 +65,14 @@ export function init(ctx: IntegrationContext): void {
 
   player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
     durationMs = payload?.durationInMillis ?? 0;
-    lastPositionUs = 0;
     lastAdvanceTime = Date.now();
     skipAttempts = 0;
   });
 
+  let lastSeenPositionUs = 0;
   player.on('playbackTimeDidChange', (payload: number) => {
-    if (payload !== lastPositionUs) {
-      lastPositionUs = payload;
+    if (payload !== lastSeenPositionUs) {
+      lastSeenPositionUs = payload;
       lastAdvanceTime = Date.now();
     }
   });
