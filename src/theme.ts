@@ -17,7 +17,8 @@ let themeCssKey: string | null = null;
 
 // Apply or remove theme CSS on the main window.
 // Handles enable, disable, and re-injection (variant change) cases.
-let applyThemeCSSInternal: (name: ThemeName) => Promise<void>;
+// No-op until initThemeCSS() assigns the real implementation.
+let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = () => Promise.resolve();
 
 export function applyTheme(name: ThemeName): void {
   void applyThemeCSSInternal(name);
