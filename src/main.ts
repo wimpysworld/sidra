@@ -265,7 +265,7 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
   });
 }
 
-function setupNavigationHandlers(win: BrowserWindow, navBarScript: string): void {
+function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookScript: string): void {
   win.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
     if (isMainFrame) {
       mainLog.debug('did-start-navigation:', url);
@@ -275,7 +275,7 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string): void
     mainLog.debug('did-navigate:', url);
     handleStorefrontNavigation(url);
   });
-  win.webContents.on('did-navigate-in-page', (_event, url) => {
+  win.webContents.on('did-navigate-in-page', async (_event, url) => {
     handleStorefrontNavigation(url);
     try {
       const parsed = new URL(url);
@@ -287,7 +287,16 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string): void
     } catch {
       mainLog.warn('failed to parse URL for last-page tracking:', url);
     }
-    win.webContents.executeJavaScript(navBarScript);
+    try {
+      await win.webContents.executeJavaScript(hookScript);
+    } catch (e: unknown) {
+      mainLog.warn('failed to inject hookScript on SPA navigation:', e);
+    }
+    try {
+      await win.webContents.executeJavaScript(navBarScript);
+    } catch (e: unknown) {
+      mainLog.warn('failed to inject navBarScript on SPA navigation:', e);
+    }
   });
 }
 
@@ -394,7 +403,7 @@ app.whenReady().then(async () => {
   setupSessionHeaders(ses);
   setupContentHandlers(win, player, markCssReady, assets);
   setupWindowEvents(win, markCssReady);
-  setupNavigationHandlers(win, assets.navBarScript);
+  setupNavigationHandlers(win, assets.navBarScript, assets.hookScript);
   if (process.env.SIDRA_DEVTOOLS === '1') {
     win.webContents.openDevTools();
     mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
