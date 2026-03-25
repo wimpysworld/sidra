@@ -163,7 +163,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
       playerLog.warn('volumeDidChange: invalid payload, expected number or null');
       return;
     }
-    playerLog.debug('volumeDidChange:', payload);
+    playerLog.debug('volumeDidChange:', payload != null ? Math.round(payload * 100) / 100 : payload);
     this.emit('volumeDidChange', payload);
   }
 }
