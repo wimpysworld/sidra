@@ -21,7 +21,10 @@ async function showNotification(
 
   const artworkPath = payload.artworkUrl
     ? await Promise.race([
-        downloadArtwork(payload.artworkUrl),
+        downloadArtwork(payload.artworkUrl).catch((error: unknown) => {
+          notifLog.warn('artwork download error:', errorMessage(error));
+          return null;
+        }),
         new Promise<null>((resolve) => setTimeout(resolve, ARTWORK_RACE_TIMEOUT_MS, null)),
       ])
     : null;
