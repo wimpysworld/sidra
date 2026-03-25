@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>About</title>
 <style>
@@ -78,7 +79,7 @@ body {
 </style>
 </head>
 <body>
-<img class="icon" id="icon" src="" alt="Sidra">
+<img class="icon" id="icon" src="sidra-logo.png" alt="Sidra">
 <div class="name" id="name">Sidra</div>
 <div class="version" id="version"></div>
 <div class="description" id="description"></div>
@@ -87,7 +88,6 @@ body {
 <button class="close-btn" id="close-btn"></button>
 <script>
   var params = new URLSearchParams(window.location.search);
-  var icon = params.get('icon') || '';
   var name = params.get('name') || 'Sidra';
   var version = params.get('version') || '';
   var description = params.get('description') || '';
@@ -101,12 +101,6 @@ body {
 
   document.title = aboutText;
 
-  // Trust boundary: the icon query parameter is set by src/tray.ts via
-  // getAssetPath('assets', 'sidra-logo.png') and is not user-controllable.
-  // Revisit this pattern if the about window ever accepts external input.
-  if (icon) {
-    document.getElementById('icon').src = 'file://' + icon;
-  }
   document.getElementById('name').textContent = name;
   document.getElementById('version').textContent = versionPrefix + ' ' + version;
   document.getElementById('description').textContent = description;

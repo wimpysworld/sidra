@@ -71,14 +71,12 @@ function showAboutWindow(): void {
     aboutWindow = null;
   });
 
-  const iconPath = getAssetPath('assets', 'sidra-logo.png');
   const info = getProductInfo();
   const trayStrings = getTrayStrings();
   const aboutStrings = getAboutStrings();
 
   aboutWindow.loadFile(getAssetPath('assets', 'about.html'), {
     query: {
-      icon: iconPath,
       name: info.productName,
       version: app.getVersion(),
       description: info.description,
