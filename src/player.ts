@@ -102,17 +102,41 @@ export class Player extends TypedEmitter<PlayerEvents> {
   }
 
   handlePlaybackStateDidChange(payload: PlaybackStatePayload): void {
+    if (payload != null) {
+      if (typeof payload !== 'object' || Array.isArray(payload)) {
+        playerLog.warn('playbackStateDidChange: invalid payload, expected object or null');
+        return;
+      }
+      if (typeof payload.status !== 'boolean') {
+        playerLog.warn('playbackStateDidChange: invalid payload, expected status to be boolean');
+        return;
+      }
+      if (typeof payload.state !== 'number') {
+        playerLog.warn('playbackStateDidChange: invalid payload, expected state to be number');
+        return;
+      }
+    }
     const stateName = payload != null ? (PLAYBACK_STATES[payload.state] ?? String(payload.state)) : null;
     playerLog.debug('playbackStateDidChange:', { ...payload, state: stateName });
     this.emit('playbackStateDidChange', payload);
   }
 
   handleNowPlayingItemDidChange(payload: NowPlayingPayload | null): void {
+    if (payload != null) {
+      if (typeof payload !== 'object' || Array.isArray(payload)) {
+        playerLog.warn('nowPlayingItemDidChange: invalid payload, expected object or null');
+        return;
+      }
+    }
     playerLog.debug('nowPlayingItemDidChange:', payload);
     this.emit('nowPlayingItemDidChange', payload);
   }
 
   handlePlaybackTimeDidChange(payload: number): void {
+    if (typeof payload !== 'number' || !isFinite(payload)) {
+      playerLog.warn('playbackTimeDidChange: invalid payload, expected finite number');
+      return;
+    }
     const now = Date.now();
     if (now - this.lastTimeLogAt >= 10_000) {
       playerLog.debug('playbackTimeDidChange:', payload);
@@ -122,18 +146,30 @@ export class Player extends TypedEmitter<PlayerEvents> {
   }
 
   handleRepeatModeDidChange(payload: number | null): void {
+    if (payload != null && typeof payload !== 'number') {
+      playerLog.warn('repeatModeDidChange: invalid payload, expected number or null');
+      return;
+    }
     const modeName = typeof payload === 'number' ? (REPEAT_MODES[payload] ?? String(payload)) : payload;
     playerLog.debug('repeatModeDidChange:', modeName);
     this.emit('repeatModeDidChange', payload);
   }
 
   handleShuffleModeDidChange(payload: number | null): void {
+    if (payload != null && typeof payload !== 'number') {
+      playerLog.warn('shuffleModeDidChange: invalid payload, expected number or null');
+      return;
+    }
     const modeName = typeof payload === 'number' ? (SHUFFLE_MODES[payload] ?? String(payload)) : payload;
     playerLog.debug('shuffleModeDidChange:', modeName);
     this.emit('shuffleModeDidChange', payload);
   }
 
   handleVolumeDidChange(payload: number | null): void {
+    if (payload != null && typeof payload !== 'number') {
+      playerLog.warn('volumeDidChange: invalid payload, expected number or null');
+      return;
+    }
     playerLog.debug('volumeDidChange:', payload);
     this.emit('volumeDidChange', payload);
   }
