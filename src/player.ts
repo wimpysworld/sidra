@@ -36,6 +36,7 @@ export type PlaybackStatePayload = { status: boolean; state: number } | null;
 export interface PlayerEvents {
   playbackStateDidChange: [payload: PlaybackStatePayload];
   nowPlayingItemDidChange: [payload: NowPlayingPayload | null];
+  /** Playback position in microseconds (from MusicKit.currentPlaybackTime * 1e6 in assets/musicKitHook.js:40). */
   playbackTimeDidChange: [payload: number];
   repeatModeDidChange: [payload: number | null];
   shuffleModeDidChange: [payload: number | null];
