@@ -21,7 +21,7 @@ Sidra is under active development; several features in this list are not yet imp
 - Apple Music desktop client
 - Lossless audio on macOS and Windows via CastLabs EVS production VMP signing
 - Persistent login with localised Apple Music storefront
-- Localised interface in 31 languages
+- Localised interface in 32 languages
 - **Linux**:
   - Standard Widevine DRM via CastLabs Electron
   - Wayland and X11 support
