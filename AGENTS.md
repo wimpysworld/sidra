@@ -35,7 +35,7 @@ sidra/
 │   ├── preload.ts           — contextBridge IPC exposure
 │   ├── autoUpdate.ts        — Auto-update via electron-updater (AppImage, NSIS)
 │   ├── config.ts            — electron-store wrapper
-│   ├── i18n.ts              — Locale detection and all translated strings
+│   ├── i18n.ts              — Locale detection; loads translation records from assets/locales/ JSON files
 │   ├── paths.ts             — `getAssetPath()` and `getProductInfo()` utilities
 │   ├── player.ts            — TypedEmitter, PlayerEvents, PlaybackState, IntegrationContext
 │   ├── storefront.ts        — URL construction and storefront detection
@@ -53,6 +53,11 @@ sidra/
 │   ├── navigationBar.js     — Injected browser navigation controls (Back/Forward/Reload)
 │   ├── styleFix.css         — Suppress "Get the app" banners
 │   ├── icons/
+│   ├── locales/             — Translation record JSON files (loaded by src/i18n.ts)
+│   │   ├── loading.json     — LOADING_TEXT
+│   │   ├── tray.json        — 14 tray menu records
+│   │   ├── about.json       — 4 about dialog records
+│   │   └── update.json      — 5 auto-update records
 │   └── source/              — Gimp XCF masters and SVG source files
 ├── test/
 │   ├── setup.ts             — Vitest global setup (global mocks: electron, electron-log/main, electron-store)
@@ -200,15 +205,28 @@ These standards are established and must be maintained.
 
 ### Adding translations
 
-`src/i18n.ts` contains all translation records for Sidra's own UI. Each record is a `Record<string, string>` keyed by BCP 47 language tags. Currently 24 records: `LOADING_TEXT`, `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `RESTART_NOW_TEXT`, `LATER_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX`. When adding a language, add an entry to every record.
+Translation records live in `assets/locales/` as JSON files. Each JSON file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 24 named records.
 
-```typescript
-export const LOADING_TEXT: Record<string, string> = {
-  'en': 'Loading...',
-  'fr': 'Chargement...',
-  // add new entries here
-};
+| File | Records |
+|------|---------|
+| `assets/locales/loading.json` | `LOADING_TEXT` |
+| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT` |
+| `assets/locales/about.json` | `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX` |
+| `assets/locales/update.json` | `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `RESTART_NOW_TEXT`, `LATER_TEXT` |
+
+When adding a language, add an entry to every record in every JSON file.
+
+```json
+{
+  "LOADING_TEXT": {
+    "en": "Loading...",
+    "fr": "Chargement...",
+    "de": "Wird geladen..."
+  }
+}
 ```
+
+All locale JSON files must be listed individually in `asarUnpack` in `package.json` - globs are not supported.
 
 Prefer specific regional tags only when the translation differs from the base language variant (e.g. `zh-CN` vs `zh-TW`). Use the base tag (e.g. `fr`) for languages where one translation covers all regions.
 

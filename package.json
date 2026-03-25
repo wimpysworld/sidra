@@ -46,10 +46,14 @@
     "asarUnpack": [
       "assets/icons/**",
       "assets/catppuccin.css",
-      "assets/styleFix.css",
+      "assets/locales/about.json",
+      "assets/locales/loading.json",
+      "assets/locales/tray.json",
+      "assets/locales/update.json",
       "assets/musicKitHook.js",
       "assets/navigationBar.js",
-      "assets/sidra-logo.png"
+      "assets/sidra-logo.png",
+      "assets/styleFix.css"
     ],
     "icon": "build/icon.png",
     "files": [
