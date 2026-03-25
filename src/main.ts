@@ -2,12 +2,12 @@ import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray } f
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getCatppuccinEnabled, setLastPageUrl, getZoomFactor } from './config';
+import { getTheme, setLastPageUrl, getZoomFactor } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
-import { initCatppuccinCSS, setCatppuccinCssKey } from './theme';
+import { initThemeCSS, setThemeCssKey } from './theme';
 import { createTray, rebuildTrayMenu, setApplyZoomCallback } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -323,9 +323,10 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     win.webContents.setZoomFactor(getZoomFactor());
     await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
-    if (getCatppuccinEnabled()) {
-      setCatppuccinCssKey(await win.webContents.insertCSS(assets.CATPPUCCIN_CSS));
-      mainLog.debug('Catppuccin CSS injected');
+    const theme = getTheme();
+    if (theme !== 'apple-music') {
+      setThemeCssKey(await win.webContents.insertCSS(assets.CATPPUCCIN_CSS));
+      mainLog.debug(`Theme CSS injected: ${theme}`);
     }
     const hookPath = getAssetPath('assets', 'musicKitHook.js');
     const hookScript = fs.readFileSync(hookPath, 'utf-8');
@@ -376,7 +377,7 @@ app.whenReady().then(async () => {
   const assets = loadAssets();
   const { win, winReady } = createMainWindow(ses);
   setupWindowZoomAndNav(win);
-  initCatppuccinCSS(win, assets.CATPPUCCIN_CSS);
+  initThemeCSS(win, assets.CATPPUCCIN_CSS);
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
   setupSessionHeaders(ses);
   setupContentHandlers(win, player, markCssReady, assets);

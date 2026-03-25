@@ -3,9 +3,10 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getCatppuccinEnabled, setCatppuccinEnabled, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
+import { applyTheme } from './theme';
 
 const ABOUT_WINDOW_WIDTH_PX = 400;
 const ABOUT_WINDOW_HEIGHT_PX = 400;
@@ -95,14 +96,14 @@ function buildContextMenu(tray: Tray): Menu {
   const isLinux = process.platform === 'linux';
   const notifEnabled = getNotificationsEnabled();
   const discordEnabled = getDiscordEnabled();
-  const catppuccinEnabled = getCatppuccinEnabled();
+  const currentTheme = getTheme();
 
   const notifGlyph = '🕭';
   const notifParentLabel = `${strings.notifications}: ${notifEnabled ? strings.on : strings.off}`;
   const discordGlyph = '🗫';
   const discordParentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
   const styleGlyph = '🌢';
-  const styleParentLabel = `${strings.style}: ${catppuccinEnabled ? strings.catppuccin : strings.styleAppleMusic}`;
+  const styleParentLabel = `${strings.style}: ${currentTheme === 'catppuccin' ? strings.catppuccin : strings.styleAppleMusic}`;
 
   const zoomFactor = getZoomFactor();
   const zoomGlyph = '%';
@@ -201,14 +202,14 @@ function buildContextMenu(tray: Tray): Menu {
         {
           label: strings.styleAppleMusic,
           type: 'radio',
-          checked: !catppuccinEnabled,
-          click: () => { setCatppuccinEnabled(false); app.emit('catppuccin-toggle', {}, false); refresh(); },
+          checked: currentTheme === 'apple-music',
+          click: () => { setTheme('apple-music'); applyTheme('apple-music'); refresh(); },
         },
         {
           label: strings.catppuccin,
           type: 'radio',
-          checked: catppuccinEnabled,
-          click: () => { setCatppuccinEnabled(true); app.emit('catppuccin-toggle', {}, true); refresh(); },
+          checked: currentTheme === 'catppuccin',
+          click: () => { setTheme('catppuccin'); applyTheme('catppuccin'); refresh(); },
         },
       ],
     },
