@@ -2,7 +2,6 @@ import { app, dialog, Notification, Tray } from 'electron';
 import log from 'electron-log/main';
 import { getAutoUpdateEnabled, getNotificationsEnabled } from './config';
 import { getAutoUpdateStrings, getUpdateStrings } from './i18n';
-import { errorMessage } from './utils';
 import { setUpdateReady } from './update';
 
 const autoUpdateLog = log.scope('autoUpdate');
@@ -46,7 +45,7 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { autoUpdater } = require('electron-updater');
 
-  autoUpdater.logger = autoUpdateLog;
+  autoUpdater.logger = null;
   autoUpdater.autoDownload = true;
 
   if (process.platform === 'win32') {
@@ -92,12 +91,12 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
   });
 
   autoUpdater.on('error', (error: Error) => {
-    autoUpdateLog.error('update error:', error.message);
+    if (error.message.includes('No published versions')) {
+      autoUpdateLog.info('no published releases found; skipping update check');
+    } else {
+      autoUpdateLog.error('update error:', error.message);
+    }
   });
 
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (error: unknown) {
-    autoUpdateLog.error('checkForUpdates failed:', errorMessage(error));
-  }
+  await autoUpdater.checkForUpdates().catch(() => {});
 }
