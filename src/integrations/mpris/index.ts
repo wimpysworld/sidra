@@ -311,8 +311,9 @@ class MediaPlayer2Player extends Interface {
       return;
     }
 
-    this._volume = payload;
-    this._schedulePropertyEmission({ Volume: payload });
+    const rounded = Math.round(payload * 100) / 100;
+    this._volume = rounded;
+    this._schedulePropertyEmission({ Volume: rounded });
   }
 
   updatePosition(payload: number): void {
@@ -427,11 +428,11 @@ class MediaPlayer2Player extends Interface {
   }
 
   get Volume(): number {
-    return this._volume;
+    return Math.round(this._volume * 100) / 100;
   }
 
   set Volume(value: number) {
-    const clamped = Math.max(0.0, Math.min(1.0, value));
+    const clamped = Math.round(Math.max(0.0, Math.min(1.0, value)) * 100) / 100;
     this._volume = clamped;
     this._pendingVolume = clamped;
     if (this._volumeSafetyTimer) {
