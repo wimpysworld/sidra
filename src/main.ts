@@ -13,6 +13,7 @@ import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
+import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
@@ -380,6 +381,7 @@ app.whenReady().then(async () => {
   const player = initPlayerIPC();
   appTray = createTray();
   const ses = await initSession();
+  cleanArtworkCache();
   const assets = loadAssets();
   const { win, winReady } = createMainWindow(ses);
   setupWindowZoomAndNav(win);
