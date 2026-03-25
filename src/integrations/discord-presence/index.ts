@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import log from 'electron-log/main';
 import { Client } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
@@ -159,7 +160,8 @@ export function init(ctx: IntegrationContext): void {
     scheduleReconnect();
   });
 
-  player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
+  // Named listener references for removeListener in will-quit
+  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     if (!payload) {
       trackName = null;
       artistName = null;
@@ -183,9 +185,9 @@ export function init(ctx: IntegrationContext): void {
     }
 
     scheduleUpdate();
-  });
+  };
 
-  player.on('playbackStateDidChange', (payload: PlaybackStatePayload) => {
+  const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     const wasPlaying = isPlaying;
     // MusicKit PlaybackStates
     isPlaying = payload?.state === PlaybackState.Playing;
@@ -205,13 +207,43 @@ export function init(ctx: IntegrationContext): void {
     }
 
     scheduleUpdate();
-  });
+  };
 
-  player.on('playbackTimeDidChange', (payload: number) => {
+  const onPlaybackTimeDidChange = (payload: number): void => {
     // Payload is microseconds (number)
     currentPositionUs = payload;
     // Do not call scheduleUpdate() here: playbackTimeDidChange fires
     // continuously and would perpetually reset the debounce timer,
     // preventing sendActivity() from ever executing.
+  };
+
+  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+
+  app.on('will-quit', () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (pauseTimer) clearTimeout(pauseTimer);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+
+    try {
+      client.destroy();
+    } catch {
+      // client.destroy() may throw if Discord is not connected
+    }
+
+    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+
+    trackName = null;
+    artistName = null;
+    albumName = null;
+    artworkUrl = undefined;
+    durationMs = 0;
+    trackUrl = undefined;
+    isPlaying = false;
+    currentPositionUs = 0;
+    retryCount = 0;
   });
 }
