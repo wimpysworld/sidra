@@ -63,7 +63,6 @@ _sign-evs:
 # Build TypeScript to dist/
 build: _fix-frameworks _sign-evs
     npx tsc
-    cp src/splash.html src/about.html dist/
 
 # Run the app (builds first)
 run: build

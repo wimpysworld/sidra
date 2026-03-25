@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "start": "npm run build && electron .",
-    "build": "tsc && shx cp src/splash.html src/about.html dist/",
+    "build": "tsc",
     "dist": "electron-builder",
     "watch": "tsc --watch",
     "test": "vitest run",
@@ -52,7 +52,9 @@
       "assets/locales/update.json",
       "assets/musicKitHook.js",
       "assets/navigationBar.js",
+      "assets/about.html",
       "assets/sidra-logo.png",
+      "assets/splash.html",
       "assets/styleFix.css"
     ],
     "icon": "build/icon.png",

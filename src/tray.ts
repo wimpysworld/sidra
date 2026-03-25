@@ -71,7 +71,7 @@ function showAboutWindow(): void {
   const trayStrings = getTrayStrings();
   const aboutStrings = getAboutStrings();
 
-  aboutWindow.loadFile(path.join(__dirname, 'about.html'), {
+  aboutWindow.loadFile(getAssetPath('assets', 'about.html'), {
     query: {
       icon: iconPath,
       name: info.productName,
