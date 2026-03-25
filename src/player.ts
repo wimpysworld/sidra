@@ -58,18 +58,9 @@ const SHUFFLE_MODES: Record<number, string> = {
   1: 'songs',
 };
 
-const PLAYBACK_STATES: Record<number, string> = {
-  0: 'none',
-  1: 'loading',
-  2: 'playing',
-  3: 'paused',
-  4: 'stopped',
-  5: 'ended',
-  6: 'seeking',
-  7: 'waiting',
-  8: 'stalled',
-  9: 'completed',
-};
+const PLAYBACK_STATES: Record<number, string> = Object.fromEntries(
+  Object.entries(PlaybackState).map(([k, v]) => [v, k.toLowerCase()])
+);
 
 // Type-safe EventEmitter wrapper. Provides compile-time payload checking on
 // emit, on, once, removeListener, and off while preserving full runtime

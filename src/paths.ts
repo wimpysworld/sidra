@@ -28,7 +28,7 @@ export function getProductInfo(): ProductInfo {
     : (pkg.author?.name ?? '');
 
   cachedProductInfo = {
-    productName: app.getName(),
+    productName: pkg.build?.productName ?? app.getName(),
     description: pkg.description ?? '',
     author,
     license: pkg.license ?? '',

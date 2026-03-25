@@ -89,6 +89,7 @@ export interface Assets {
   STYLE_FIX_CSS: string;
   CATPPUCCIN_CSS: string;
   navBarScript: string;
+  hookScript: string;
 }
 
 function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; cssReady: Promise<void>; markCssReady: () => void } {
@@ -182,7 +183,9 @@ function loadAssets(): Assets {
   const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
   const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
-  return { STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript };
+  const hookPath = getAssetPath('assets', 'musicKitHook.js');
+  const hookScript = fs.readFileSync(hookPath, 'utf-8');
+  return { STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript, hookScript };
 }
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
@@ -328,9 +331,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
       setThemeCssKey(await win.webContents.insertCSS(assets.CATPPUCCIN_CSS));
       mainLog.debug(`Theme CSS injected: ${theme}`);
     }
-    const hookPath = getAssetPath('assets', 'musicKitHook.js');
-    const hookScript = fs.readFileSync(hookPath, 'utf-8');
-    await win.webContents.executeJavaScript(hookScript);
+    await win.webContents.executeJavaScript(assets.hookScript);
     mainLog.debug('MusicKit hook injected');
     await win.webContents.executeJavaScript(assets.navBarScript);
     mainLog.debug('Navigation bar injected');

@@ -2,7 +2,14 @@ import log from 'electron-log/main';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getStartPage, getLastPageUrl } from './config';
 import { getStorefront as getLocaleStorefront } from './i18n';
 
-const mainLog = log.scope('main');
+const storefrontLog = log.scope('storefront');
+
+function appendLanguage(url: string, language: string | null | undefined): string {
+  if (language != null) {
+    return `${url}?l=${language}`;
+  }
+  return url;
+}
 
 export function buildAppleMusicURL(): string {
   let storefront = getStorefront();
@@ -15,7 +22,7 @@ export function buildAppleMusicURL(): string {
     source = storefront === 'us' ? 'fallback' : 'detected';
   }
 
-  mainLog.info(`storefront resolved: ${storefront} (${source})`);
+  storefrontLog.info(`storefront resolved: ${storefront} (${source})`);
 
   const language = getLanguage();
   const startPage = getStartPage();
@@ -23,11 +30,7 @@ export function buildAppleMusicURL(): string {
   if (startPage === 'last') {
     const lastPath = getLastPageUrl();
     if (lastPath) {
-      let url = `https://music.apple.com/${storefront}/${lastPath}`;
-      if (language !== undefined && language !== null) {
-        url += `?l=${language}`;
-      }
-      return url;
+      return appendLanguage(`https://music.apple.com/${storefront}/${lastPath}`, language);
     }
     // fall through: no stored path yet, use 'new'
   }
@@ -39,12 +42,8 @@ export function buildAppleMusicURL(): string {
     'all-playlists': 'library/all-playlists/',
   };
   const pagePath = pagePathMap[startPage] ?? pagePathMap['new'];
-  let url = `https://music.apple.com/${storefront}/${pagePath}`;
-  if (language !== undefined && language !== null) {
-    url += `?l=${language}`;
-  }
 
-  return url;
+  return appendLanguage(`https://music.apple.com/${storefront}/${pagePath}`, language);
 }
 
 export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
@@ -85,6 +84,6 @@ export function handleStorefrontNavigation(url: string): void {
     setLanguage(nextLanguage);
   }
   if (result.storefront !== currentStorefront || nextLanguage !== currentLanguage) {
-    mainLog.info(`storefront changed: ${result.storefront} (language: ${nextLanguage})`);
+    storefrontLog.info(`storefront changed: ${result.storefront} (language: ${nextLanguage})`);
   }
 }

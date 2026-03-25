@@ -4,6 +4,7 @@ import log from 'electron-log/main';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { errorMessage } from '../../utils';
 
+// @holusion/dbus-next is lazy-required because the MPRIS module only loads on Linux
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const dbus = require('@holusion/dbus-next');
 const {
@@ -118,10 +119,13 @@ function sanitiseTrackId(trackId: string): string {
   return trackId.replace(/[^A-Za-z0-9_]/g, '_');
 }
 
-function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
+function buildTrackId(rawId: string): string {
   const appName = app.getName().toLowerCase();
-  const rawId = payload.trackId ?? 'unknown';
-  const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
+  return `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
+}
+
+function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
+  const trackId = buildTrackId(payload.trackId ?? 'unknown');
 
   const metadata: Record<string, InstanceType<typeof Variant>> = {
     'mpris:trackid': new Variant('o', trackId),
@@ -257,9 +261,7 @@ class MediaPlayer2Player extends Interface {
     }
 
     const metadata = buildMetadata(payload);
-    const appName = app.getName().toLowerCase();
-    const rawId = payload.trackId ?? 'unknown';
-    const trackId = `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
+    const trackId = buildTrackId(payload.trackId ?? 'unknown');
 
     this._metadata = metadata;
     this._currentTrackId = trackId;
