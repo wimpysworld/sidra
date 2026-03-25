@@ -127,6 +127,41 @@ describe('Player event forwarding', () => {
   });
 });
 
+describe('Player playbackSnapshot', () => {
+  it('returns initial snapshot before any events', () => {
+    const player = new Player();
+    expect(player.playbackSnapshot()).toEqual({ isPlaying: false, positionUs: 0, state: 0 });
+  });
+
+  it('reflects playing state after playbackStateDidChange', () => {
+    const player = new Player();
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+    expect(player.playbackSnapshot()).toEqual({ isPlaying: true, positionUs: 0, state: 2 });
+  });
+
+  it('reflects position after playbackTimeDidChange', () => {
+    const player = new Player();
+    player.handlePlaybackTimeDidChange(42000);
+    expect(player.playbackSnapshot().positionUs).toBe(42000);
+  });
+
+  it('reflects paused state while preserving position', () => {
+    const player = new Player();
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+    player.handlePlaybackTimeDidChange(42000);
+    player.handlePlaybackStateDidChange({ status: false, state: PlaybackState.Paused });
+    expect(player.playbackSnapshot()).toEqual({ isPlaying: false, positionUs: 42000, state: 3 });
+  });
+
+  it('resets state but preserves position on null payload', () => {
+    const player = new Player();
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+    player.handlePlaybackTimeDidChange(42000);
+    player.handlePlaybackStateDidChange(null);
+    expect(player.playbackSnapshot()).toEqual({ isPlaying: false, positionUs: 42000, state: 0 });
+  });
+});
+
 // Validation tests for handle* methods with invalid payloads.
 describe('Player handle* payload validation', () => {
   it('handlePlaybackStateDidChange ignores string payload', () => {

@@ -37,8 +37,8 @@ let durationMs = 0;
 let trackUrl: string | undefined = undefined;
 
 // Playback state
-let isPlaying = false;
-let currentPositionUs = 0;
+let playerRef: Player | null = null;
+let previousState = 0;
 
 // Timers
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -103,8 +103,9 @@ function sendActivity(): void {
     buttons,
   };
 
-  if (isPlaying && durationMs > 0) {
-    const currentPositionMs = currentPositionUs / 1000;
+  const snap = playerRef!.playbackSnapshot();
+  if (snap.isPlaying && durationMs > 0) {
+    const currentPositionMs = snap.positionUs / 1000;
     const now = Date.now();
     activity.startTimestamp = new Date(now - currentPositionMs);
     activity.endTimestamp = new Date(now - currentPositionMs + durationMs);
@@ -136,6 +137,7 @@ function scheduleReconnect(): void {
 
 export function init(ctx: IntegrationContext): void {
   const { player } = ctx;
+  playerRef = player;
   discordLog.info('discord presence module initialised');
 
   client = new Client({ clientId: CLIENT_ID });
@@ -188,16 +190,16 @@ export function init(ctx: IntegrationContext): void {
   };
 
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
-    const wasPlaying = isPlaying;
-    // MusicKit PlaybackStates
-    isPlaying = payload?.state === PlaybackState.Playing;
+    const wasPlaying = previousState === PlaybackState.Playing;
+    const nowPlaying = payload?.state === PlaybackState.Playing;
+    previousState = payload?.state ?? 0;
 
-    if (isPlaying && pauseTimer) {
+    if (nowPlaying && pauseTimer) {
       clearTimeout(pauseTimer);
       pauseTimer = null;
     }
 
-    if (!isPlaying && wasPlaying) {
+    if (!nowPlaying && wasPlaying) {
       // Start pause timeout
       pauseTimer = setTimeout(() => {
         pauseTimer = null;
@@ -209,17 +211,8 @@ export function init(ctx: IntegrationContext): void {
     scheduleUpdate();
   };
 
-  const onPlaybackTimeDidChange = (payload: number): void => {
-    // Payload is microseconds (number)
-    currentPositionUs = payload;
-    // Do not call scheduleUpdate() here: playbackTimeDidChange fires
-    // continuously and would perpetually reset the debounce timer,
-    // preventing sendActivity() from ever executing.
-  };
-
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
-  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
 
   app.on('will-quit', () => {
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -234,7 +227,6 @@ export function init(ctx: IntegrationContext): void {
 
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
 
     trackName = null;
     artistName = null;
@@ -242,8 +234,7 @@ export function init(ctx: IntegrationContext): void {
     artworkUrl = undefined;
     durationMs = 0;
     trackUrl = undefined;
-    isPlaying = false;
-    currentPositionUs = 0;
+    previousState = 0;
     retryCount = 0;
   });
 }
