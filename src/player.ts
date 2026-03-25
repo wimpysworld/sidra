@@ -14,6 +14,8 @@ export interface NowPlayingPayload {
   genreNames?: string[];
   trackId?: string;
   trackNumber?: number;
+  audioTraits?: string[];
+  targetBitrate?: number;
 }
 
 export const PlaybackState = {
