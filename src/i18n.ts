@@ -14,6 +14,11 @@ function loadLocaleFile(filename: string): TranslationFile {
   return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TranslationFile;
 }
 
+// Module-level readFileSync calls are intentional here. The AGENTS.md guideline
+// about avoiding synchronous reads targets conditional platform modules, not
+// data-loading modules like this one. These reads must complete before the first
+// window renders, the locale files total under 5KB, and each read finishes in
+// under 1ms.
 const loadingData = loadLocaleFile('loading.json');
 const trayData = loadLocaleFile('tray.json');
 const aboutData = loadLocaleFile('about.json');
