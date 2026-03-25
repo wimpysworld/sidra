@@ -183,9 +183,9 @@ class MediaPlayer2Player extends Interface {
   private _lastPositionTimestamp = Date.now();
 
   // Volume suppression state - prevents feedback loops when MPRIS sets volume
-  private readonly _volumeSuppressionMs = 500; // 2x the 250ms poll interval in musicKitHook.js
+  private readonly _volumeSafetyMs = 2000; // safety timeout to prevent permanent suppression
   private _pendingVolume: number | null = null;
-  private _volumeSuppressionTimer: ReturnType<typeof setTimeout> | null = null;
+  private _volumeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Debounce timer for property change emissions
   private readonly _debounceMs = 1000;
@@ -301,6 +301,11 @@ class MediaPlayer2Player extends Interface {
     if (payload == null) return;
 
     if (this._pendingVolume !== null && Math.abs(payload - this._pendingVolume) < VOLUME_ECHO_TOLERANCE) {
+      this._pendingVolume = null;
+      if (this._volumeSafetyTimer) {
+        clearTimeout(this._volumeSafetyTimer);
+        this._volumeSafetyTimer = null;
+      }
       return;
     }
 
@@ -324,9 +329,9 @@ class MediaPlayer2Player extends Interface {
   }
 
   cleanup(): void {
-    if (this._volumeSuppressionTimer) {
-      clearTimeout(this._volumeSuppressionTimer);
-      this._volumeSuppressionTimer = null;
+    if (this._volumeSafetyTimer) {
+      clearTimeout(this._volumeSafetyTimer);
+      this._volumeSafetyTimer = null;
     }
     this._pendingVolume = null;
     this._lastPositionUs = 0;
@@ -427,13 +432,13 @@ class MediaPlayer2Player extends Interface {
     const clamped = Math.max(0.0, Math.min(1.0, value));
     this._volume = clamped;
     this._pendingVolume = clamped;
-    if (this._volumeSuppressionTimer) {
-      clearTimeout(this._volumeSuppressionTimer);
+    if (this._volumeSafetyTimer) {
+      clearTimeout(this._volumeSafetyTimer);
     }
-    this._volumeSuppressionTimer = setTimeout(() => {
+    this._volumeSafetyTimer = setTimeout(() => {
       this._pendingVolume = null;
-      this._volumeSuppressionTimer = null;
-    }, this._volumeSuppressionMs);
+      this._volumeSafetyTimer = null;
+    }, this._volumeSafetyMs);
     this._send('player:setVolume', clamped);
   }
 
