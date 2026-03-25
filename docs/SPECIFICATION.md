@@ -125,7 +125,7 @@ sidra/
 │   ├── main.ts                    — bootstrap, Widevine wait, window, IPC hub
 │   ├── preload.ts                 — contextBridge IPC exposure (AMWrapper)
 │   ├── config.ts                  — electron-store wrapper
-│   ├── i18n.ts                    — locale detection and translated strings
+│   ├── i18n.ts                    — locale detection, JSON loader, and re-exported translation records
 │   ├── paths.ts                   — getAssetPath() and getProductInfo() utilities
 │   ├── player.ts                  — TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
 │   ├── storefront.ts              — buildAppleMusicURL(), extractStorefrontFromURL(), handleStorefrontNavigation()
@@ -148,6 +148,11 @@ sidra/
 │   │                                 Must be listed in electron-builder's `asarUnpack` —
 │   │                                 it is read with readFileSync at runtime and will crash
 │   │                                 AppImage builds if packed inside the asar archive
+│   ├── locales/
+│   │   ├── loading.json           — 1 translation record: LOADING_TEXT
+│   │   ├── tray.json              — 14 translation records: tray menu labels
+│   │   ├── about.json             — 4 translation records: about window labels
+│   │   └── update.json            — 5 translation records: auto-update labels
 │   ├── styleFix.css               — CSS overrides injected via webContents.insertCSS()
 │   │                                 Hides "Get the app" and "Open in Music" banners
 │   │                                 that Apple shows to push users toward native apps
