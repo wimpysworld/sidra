@@ -197,12 +197,10 @@ class MediaPlayer2Player extends Interface {
     this._getMainWindow = getMainWindow;
   }
 
-  private _exec(js: string, label: string): void {
+  private _send(channel: string, ...args: unknown[]): void {
     const win = this._getMainWindow();
     if (win) {
-      win.webContents.executeJavaScript(js).catch((err: Error) => {
-        mprisLog.warn(`failed to ${label}:`, err.message);
-      });
+      win.webContents.send(channel, ...args);
     }
   }
 
@@ -408,7 +406,7 @@ class MediaPlayer2Player extends Interface {
       return;
     }
     this._loopStatus = value;
-    this._exec(`window.__sidra.setRepeat(${mode})`, 'set repeat mode');
+    this._send('player:setRepeat', mode);
   }
 
   get Shuffle(): boolean {
@@ -418,7 +416,7 @@ class MediaPlayer2Player extends Interface {
   set Shuffle(value: boolean) {
     this._shuffle = value;
     const mode = value ? 1 : 0;
-    this._exec(`window.__sidra.setShuffle(${mode})`, 'set shuffle mode');
+    this._send('player:setShuffle', mode);
   }
 
   get Volume(): number {
@@ -436,41 +434,41 @@ class MediaPlayer2Player extends Interface {
       this._pendingVolume = null;
       this._volumeSuppressionTimer = null;
     }, this._volumeSuppressionMs);
-    this._exec(`window.__sidra.setVolume(${clamped})`, 'set volume');
+    this._send('player:setVolume', clamped);
   }
 
   // --- Methods ---
 
   Next(): void {
-    this._exec('window.__sidra.next()', 'call next');
+    this._send('player:next');
   }
 
   Previous(): void {
-    this._exec('window.__sidra.previous()', 'call previous');
+    this._send('player:previous');
   }
 
   Pause(): void {
-    this._exec('window.__sidra.pause()', 'call pause');
+    this._send('player:pause');
   }
 
   PlayPause(): void {
-    this._exec('window.__sidra.playPause()', 'call playPause');
+    this._send('player:playPause');
   }
 
   Stop(): void {
     // Maps to pause(), not mk.stop(), to preserve queue state
-    this._exec('window.__sidra.pause()', 'call stop (pause)');
+    this._send('player:pause');
   }
 
   Play(): void {
-    this._exec('window.__sidra.play()', 'call play');
+    this._send('player:play');
   }
 
   Seek(offset: bigint): void {
     // offset is in microseconds; dbus-next delivers int64 as BigInt
     const targetUs = this._position + Number(offset);
     const targetSeconds = Math.max(0, targetUs) / 1_000_000;
-    this._exec(`window.__sidra.seek(${targetSeconds})`, 'seek');
+    this._send('player:seek', targetSeconds);
   }
 
   SetPosition(trackId: string, position: bigint): void {
@@ -480,7 +478,7 @@ class MediaPlayer2Player extends Interface {
       return;
     }
     const targetSeconds = Number(position) / 1_000_000;
-    this._exec(`window.__sidra.seek(${targetSeconds})`, 'set position');
+    this._send('player:seek', targetSeconds);
   }
 
   OpenUri(uri: string): void {

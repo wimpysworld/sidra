@@ -38,9 +38,7 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
   lastAdvanceTime = Date.now();
   wedgeLog.warn(`playback stalled, skipping forward (attempt ${skipAttempts}/${MAX_SKIP_ATTEMPTS})`);
 
-  getWin()?.webContents.executeJavaScript('window.__sidra.next()').catch((err: unknown) => {
-    wedgeLog.warn('skip forward failed:', err);
-  });
+  getWin()?.webContents.send('player:next');
 }
 
 export function reset(): void {

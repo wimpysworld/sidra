@@ -28,70 +28,14 @@ const RECEIVE_CHANNELS = new Set<string>([
   'player:setShuffle',
 ]);
 
-// Register receive channel handlers that dispatch to window.__sidra methods.
-// The main process sends these via webContents.send() to control playback.
+// Register receive channel handlers that bridge commands to the main world.
+// The preload runs in the isolated world (contextIsolation: true), so it cannot
+// access window.__sidra directly - that object lives in the main world, set up
+// by musicKitHook.js. window.postMessage() crosses the isolation boundary;
+// musicKitHook.js listens for these messages and dispatches to __sidra methods.
 for (const channel of RECEIVE_CHANNELS) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
-    const sidra = (window as unknown as Record<string, unknown>).__sidra as
-      Record<string, (...a: unknown[]) => unknown> | undefined;
-    if (!sidra) {
-      console.warn(`preload: received "${channel}" but window.__sidra is not available`);
-      return;
-    }
-
-    switch (channel) {
-      case 'player:play':
-        sidra.play();
-        break;
-      case 'player:pause':
-        sidra.pause();
-        break;
-      case 'player:playPause':
-        sidra.playPause();
-        break;
-      case 'player:next':
-        sidra.next();
-        break;
-      case 'player:previous':
-        sidra.previous();
-        break;
-      case 'player:seek': {
-        const secs = args[0];
-        if (typeof secs !== 'number' || !isFinite(secs)) {
-          console.warn(`preload: "${channel}" requires a finite number argument, got ${typeof secs}`);
-          return;
-        }
-        sidra.seek(secs);
-        break;
-      }
-      case 'player:setVolume': {
-        const vol = args[0];
-        if (typeof vol !== 'number' || !isFinite(vol)) {
-          console.warn(`preload: "${channel}" requires a finite number argument, got ${typeof vol}`);
-          return;
-        }
-        sidra.setVolume(vol);
-        break;
-      }
-      case 'player:setRepeat': {
-        const mode = args[0];
-        if (typeof mode !== 'number') {
-          console.warn(`preload: "${channel}" requires a number argument, got ${typeof mode}`);
-          return;
-        }
-        sidra.setRepeat(mode);
-        break;
-      }
-      case 'player:setShuffle': {
-        const mode = args[0];
-        if (typeof mode !== 'number') {
-          console.warn(`preload: "${channel}" requires a number argument, got ${typeof mode}`);
-          return;
-        }
-        sidra.setShuffle(mode);
-        break;
-      }
-    }
+    window.postMessage({ type: 'sidra:command', channel, args }, '*');
   });
 }
 

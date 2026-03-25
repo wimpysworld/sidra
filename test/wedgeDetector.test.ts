@@ -7,7 +7,7 @@ import * as wedgeDetector from '../src/wedgeDetector';
 
 describe('wedgeDetector', () => {
   let player: Player;
-  let mockWin: { webContents: { executeJavaScript: ReturnType<typeof vi.fn> } };
+  let mockWin: { webContents: { send: ReturnType<typeof vi.fn> } };
   let getMainWindow: () => BrowserWindow | null;
 
   beforeEach(() => {
@@ -15,7 +15,7 @@ describe('wedgeDetector', () => {
     player = new Player();
     mockWin = {
       webContents: {
-        executeJavaScript: vi.fn().mockResolvedValue(undefined),
+        send: vi.fn(),
       },
     };
     getMainWindow = () => mockWin as unknown as BrowserWindow;
@@ -36,8 +36,8 @@ describe('wedgeDetector', () => {
     // Advance past the stall threshold (5000ms) plus one check interval (1000ms)
     vi.advanceTimersByTime(6000);
 
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledWith(
-      'window.__sidra.next()'
+    expect(mockWin.webContents.send).toHaveBeenCalledWith(
+      'player:next'
     );
   });
 
@@ -47,7 +47,7 @@ describe('wedgeDetector', () => {
     // Advance less than the stall threshold
     vi.advanceTimersByTime(4000);
 
-    expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
   it('does not fire skip when position advances', () => {
@@ -59,7 +59,7 @@ describe('wedgeDetector', () => {
       player.handlePlaybackTimeDidChange(i * 1000);
     }
 
-    expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
   it('respects MAX_SKIP_ATTEMPTS (3)', () => {
@@ -69,19 +69,19 @@ describe('wedgeDetector', () => {
     // After each skip, the detector resets lastAdvanceTime = Date.now().
     // Skip 1
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(1);
 
     // Skip 2
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(2);
 
     // Skip 3
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
 
     // Skip 4 should not happen - max reached
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
   });
 
   it('reset() clears state and stops timer', () => {
@@ -95,7 +95,7 @@ describe('wedgeDetector', () => {
     // Advance well past threshold - should not fire because reset stopped timer
     vi.advanceTimersByTime(10000);
 
-    expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
   it('track change resets skip counter', () => {
@@ -104,18 +104,18 @@ describe('wedgeDetector', () => {
     // Trigger 2 skips
     vi.advanceTimersByTime(6000);
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(2);
 
     // Track changes - resets skip counter
     player.handleNowPlayingItemDidChange({ name: 'New Track', durationInMillis: 180000 });
 
     // Should be able to skip again (counter reset to 0)
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
 
     // And again
     vi.advanceTimersByTime(6000);
-    expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(mockWin.webContents.send).toHaveBeenCalledTimes(4);
   });
 
   it('does not fire skip when playback is paused', () => {
@@ -127,7 +127,7 @@ describe('wedgeDetector', () => {
 
     vi.advanceTimersByTime(10000);
 
-    expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
   it('does not fire skip near end of track (within END_SAFETY_MARGIN_MS)', () => {
@@ -145,7 +145,7 @@ describe('wedgeDetector', () => {
 
     vi.advanceTimersByTime(10000);
 
-    expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
   it('requires getMainWindow in context', () => {
