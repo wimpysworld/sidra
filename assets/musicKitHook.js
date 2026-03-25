@@ -77,6 +77,19 @@
       setShuffle: (m) => { mk.shuffleMode = m; },
     };
 
+    // Bridge: the preload script (isolated world) forwards IPC commands via
+    // window.postMessage because it cannot access window.__sidra directly.
+    window.addEventListener('message', (event) => {
+      if (event.source !== window) return;
+      if (!event.data || event.data.type !== 'sidra:command') return;
+
+      const { channel, args } = event.data;
+      const method = channel.replace('player:', '');
+      if (typeof window.__sidra[method] === 'function') {
+        window.__sidra[method](...(args || []));
+      }
+    });
+
     console.log('[Sidra] MusicKit hooked successfully');
   }, 500);
 })();

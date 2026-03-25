@@ -260,7 +260,7 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 
 ## Architecture notes
 
-- Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.executeJavaScript()` calling methods on `window.__sidra`
+- Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.send()` to the preload, which uses `window.postMessage()` to bridge the context isolation boundary, and `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
 - `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime; it must be listed in `asarUnpack` in the electron-builder config or AppImage builds will crash on startup
 - Chromium's built-in `MediaSessionService` must be disabled on Linux to avoid conflicting MPRIS registrations; Sidra registers its own `org.mpris.MediaPlayer2.sidra` service via dbus-next
 - macOS and Windows use Chromium's native mediaSession bridges (no extra libraries)
