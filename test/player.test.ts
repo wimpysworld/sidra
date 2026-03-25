@@ -126,3 +126,117 @@ describe('Player event forwarding', () => {
     expect(listener).toHaveBeenCalledWith(0.75);
   });
 });
+
+// Validation tests for handle* methods with invalid payloads.
+// These are skipped until task 2.1 adds payload validation guards.
+describe('Player handle* payload validation', () => {
+  it.skip('handlePlaybackStateDidChange ignores string payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackStateDidChange', listener);
+
+    (player.handlePlaybackStateDidChange as (p: unknown) => void)('invalid');
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handlePlaybackStateDidChange ignores payload missing state field', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackStateDidChange', listener);
+
+    (player.handlePlaybackStateDidChange as (p: unknown) => void)({ status: true });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handlePlaybackStateDidChange ignores payload with non-number state', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackStateDidChange', listener);
+
+    (player.handlePlaybackStateDidChange as (p: unknown) => void)({ status: true, state: 'playing' });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handleNowPlayingItemDidChange ignores string payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('nowPlayingItemDidChange', listener);
+
+    (player.handleNowPlayingItemDidChange as (p: unknown) => void)('invalid');
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handleNowPlayingItemDidChange ignores array payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('nowPlayingItemDidChange', listener);
+
+    (player.handleNowPlayingItemDidChange as (p: unknown) => void)([1, 2, 3]);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handlePlaybackTimeDidChange ignores string payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackTimeDidChange', listener);
+
+    (player.handlePlaybackTimeDidChange as (p: unknown) => void)('not-a-number');
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handlePlaybackTimeDidChange ignores undefined payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackTimeDidChange', listener);
+
+    (player.handlePlaybackTimeDidChange as (p: unknown) => void)(undefined);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handleRepeatModeDidChange ignores string payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('repeatModeDidChange', listener);
+
+    (player.handleRepeatModeDidChange as (p: unknown) => void)('repeat');
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handleShuffleModeDidChange ignores string payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('shuffleModeDidChange', listener);
+
+    (player.handleShuffleModeDidChange as (p: unknown) => void)('shuffle');
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handleVolumeDidChange ignores string payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('volumeDidChange', listener);
+
+    (player.handleVolumeDidChange as (p: unknown) => void)('loud');
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.skip('handleVolumeDidChange ignores object payload', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('volumeDidChange', listener);
+
+    (player.handleVolumeDidChange as (p: unknown) => void)({ volume: 0.5 });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
