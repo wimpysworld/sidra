@@ -39,7 +39,9 @@ sidra/
 │   ├── paths.ts             — `getAssetPath()` and `getProductInfo()` utilities
 │   ├── player.ts            — TypedEmitter, PlayerEvents, PlaybackState, IntegrationContext
 │   ├── storefront.ts        — URL construction and storefront detection
-│   ├── theme.ts             — Catppuccin CSS toggle lifecycle
+│   ├── types/
+│   │   └── electron.d.ts    — Module augmentations for CastLabs type gaps (setDesktopName, getPath('cache'))
+│   ├── theme.ts             — Named theme lifecycle: ThemeName, applyTheme(), initThemeCSS(), themeCssMap
 │   ├── utils.ts             — `errorMessage()` utility
 │   └── integrations/
 │       ├── integration.ts   — IIntegration interface
@@ -54,7 +56,9 @@ sidra/
 │   ├── icons/
 │   └── source/              — Gimp XCF masters and SVG source files
 ├── test/
-│   ├── setup.ts             — Vitest global setup
+│   ├── setup.ts             — Vitest global setup (global mocks: electron, electron-log/main, electron-store)
+│   ├── mocks/
+│   │   └── storefront-deps.ts — Shared vi.mock() fixture for tests that import storefront code
 │   ├── i18n.test.ts         — i18n locale detection and string lookup
 │   ├── i18n-consistency.test.ts — All records have identical key sets
 │   ├── player.test.ts       — Player, TypedEmitter, PlaybackState
@@ -188,6 +192,7 @@ Prefer specific regional tags only when the translation differs from the base la
 |-----|------|---------|
 | `storefront` | `string` | Apple Music storefront code (e.g. `gb`, `us`) |
 | `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
+| `theme` | `ThemeName` (`'apple-music' \| 'catppuccin'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
 | `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
 | `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: true) |
 | `autoUpdate.enabled` | `boolean` | Enable automatic updates (default: true on AppImage and NSIS; disabled on all other platforms) |
@@ -257,3 +262,8 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - AppImage `artifactName` must omit the version component (use `${productName}-${os}-${arch}.${ext}`) to prevent filename changes breaking desktop shortcuts after update
 - On NixOS, `libxcrypt-legacy` must be in `LD_LIBRARY_PATH` (already added to `flake.nix`) for fpm's bundled Ruby to find `libcrypt.so.1` during deb/rpm builds; without it, deb/rpm targets fail at the fpm stage
 - `webContents.reload()` must be preceded by `wedgeDetector.reset()` when called from an IPC handler; without this, the wedge detector's `isPlaying` flag remains `true` through the reload, causing spurious skip-forward attempts after the page re-initialises
+- CastLabs Electron type definitions omit `App.setDesktopName()` and `'cache'` from `app.getPath()` - both methods work at runtime; use module augmentations in `src/types/electron.d.ts` rather than type casts at call sites
+- `dbus-next` has no public API to fully close its socket; `bus.disconnect()` calls `stream.end()` only (half-close); `(bus as DbusMessageBusInternals)._connection?.stream?.destroy()` is the only way to force-close - the `DbusMessageBusInternals` interface in `src/integrations/mpris/index.ts` documents this and is version-pinned to `@holusion/dbus-next 0.11.2`
+- `setupContentHandlers()` uses a single `on('did-finish-load')` handler with an `initialized` flag (not `once`/`on` split) - both `once` and `on` fire on the first load, and async `executeJavaScript` injection cannot rely on script-level idempotency guards to prevent double event listener registration
+- Theme system uses `ThemeName = 'apple-music' | 'catppuccin'` and `applyTheme(name)` in `src/theme.ts`; `'apple-music'` means no override CSS is injected; adding a new theme requires: add to `ThemeName` union, add to `themeCssMap`, add CSS file to `assets/`, list in `asarUnpack` in `package.json`, add radio option to tray
+- `test/mocks/storefront-deps.ts` contains shared `vi.mock()` declarations for tests that import storefront code; Vitest hoists `vi.mock()` calls within the fixture file itself, so the fixture uses `../../src/` paths (relative to `test/mocks/`, not `test/`) - do not change these paths

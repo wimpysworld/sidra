@@ -129,7 +129,9 @@ sidra/
 │   ├── paths.ts                   — getAssetPath() and getProductInfo() utilities
 │   ├── player.ts                  — TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
 │   ├── storefront.ts              — buildAppleMusicURL(), extractStorefrontFromURL(), handleStorefrontNavigation()
-│   ├── theme.ts                   — initCatppuccinCSS(): CSS toggle lifecycle
+│   ├── types/
+│   │   └── electron.d.ts          — module augmentations for CastLabs type gaps
+│   ├── theme.ts                   — named theme lifecycle: ThemeName, applyTheme(), initThemeCSS(), themeCssMap
 │   ├── utils.ts                   — errorMessage() utility
 │   └── integrations/
 │       ├── integration.ts         — IIntegration interface (enable/disable)
@@ -565,9 +567,11 @@ The red accent is used in both variants to preserve Apple Music brand associatio
 
 ### Persistence
 
-Theme preference is stored in `electron-store` as `theme` (`'default'` | `'catppuccin'`). Default is `'default'`. Restart required - the preference is applied on next launch.
+Theme preference is stored in `electron-store` as `theme` (`ThemeName`: `'apple-music'` | `'catppuccin'`). Default is `'apple-music'`. Applied immediately via `applyTheme(name)` - no restart required.
 
 ### Implementation
+
+`theme.ts` exposes `applyTheme(name: ThemeName)`: unloads the current CSS key (if any) then injects the new theme's CSS via `webContents.insertCSS()`. `'apple-music'` maps to `null` in `themeCssMap` - no CSS is injected. A promise queue inside `initThemeCSS()` serialises all inject/remove operations to prevent race conditions. Adding a new theme: add the name to `ThemeName`, add the CSS string to `themeCssMap`, add the CSS file to `assets/`, and list it in `asarUnpack` in `package.json`.
 
 `catppuccin.css` overrides CSS custom properties on `:root` and targets specific elements that fall outside the normal cascade. `webContents.insertCSS()` injects at author-level cascade origin, so all overrides use `!important` to win specificity ties against Apple's own stylesheets after navigation.
 
