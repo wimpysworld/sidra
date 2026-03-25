@@ -79,7 +79,6 @@
       "executableName": "sidra"
     },
     "appImage": {
-      "//artifactName": "Version intentionally omitted from artifactName to prevent desktop shortcut breakage after AppImage updates",
       "artifactName": "${productName}-${os}-${arch}.${ext}"
     },
     "deb": {
