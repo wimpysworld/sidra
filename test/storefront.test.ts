@@ -24,13 +24,12 @@ describe('handleStorefrontNavigation', () => {
     expect(mockedSetLanguage).toHaveBeenCalledWith('en-GB');
   });
 
-  it('saves storefront and clears language when URL has no language parameter', () => {
+  it('does not change language when URL has no language parameter', () => {
     mockedGetStorefront.mockReturnValue('us');
     mockedGetLanguage.mockReturnValue(undefined);
     handleStorefrontNavigation('https://music.apple.com/gb/new');
     expect(mockedSetStorefront).toHaveBeenCalledWith('gb');
-    // nextLanguage = null ?? undefined ?? null = null, currentLanguage = undefined, null !== undefined
-    expect(mockedSetLanguage).toHaveBeenCalledWith(null);
+    expect(mockedSetLanguage).not.toHaveBeenCalled();
   });
 
   it('does not update config for non-Apple Music URLs', () => {
@@ -56,7 +55,7 @@ describe('handleStorefrontNavigation', () => {
     mockedGetStorefront.mockReturnValue('gb');
     mockedGetLanguage.mockReturnValue('en-GB');
     handleStorefrontNavigation('https://music.apple.com/gb/new');
-    // nextLanguage = null ?? 'en-GB' ?? null = 'en-GB', currentLanguage = 'en-GB', no change
+    // No ?l= in URL means no language change, regardless of current value
     expect(mockedSetLanguage).not.toHaveBeenCalled();
   });
 
