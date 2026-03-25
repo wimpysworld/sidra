@@ -105,7 +105,7 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
     show: false,
   });
   const { text: loadingText, lang: loadingLang } = getLoadingText();
-  splash.loadFile(path.join(__dirname, 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
+  splash.loadFile(getAssetPath('assets', 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
   splash.show();
   splashLog.info('splash shown');
   splash.webContents.on('did-finish-load', () => {
