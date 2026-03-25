@@ -16,6 +16,7 @@ const SEND_CHANNELS = new Set<string>([
 
 // Channels the main process is allowed to send to the renderer.
 // Each channel maps to a window.__sidra method dispatched via ipcRenderer.on().
+// The command allowlist in assets/musicKitHook.js must stay in sync.
 const RECEIVE_CHANNELS = new Set<string>([
   'player:play',
   'player:pause',

@@ -55,6 +55,11 @@ function showAboutWindow(): void {
     skipTaskbar: true,
     backgroundColor: '#1a0a10',
     show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
 
   aboutWindow.once('ready-to-show', () => {
