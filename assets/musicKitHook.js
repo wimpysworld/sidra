@@ -77,6 +77,13 @@
       setShuffle: (m) => { mk.shuffleMode = m; },
     };
 
+    // Allowed commands that may be dispatched via window.postMessage from the
+    // preload script. Must stay in sync with RECEIVE_CHANNELS in src/preload.ts.
+    const COMMANDS = new Set([
+      'play', 'pause', 'playPause', 'next', 'previous',
+      'seek', 'setVolume', 'setRepeat', 'setShuffle',
+    ]);
+
     // Bridge: the preload script (isolated world) forwards IPC commands via
     // window.postMessage because it cannot access window.__sidra directly.
     window.addEventListener('message', (event) => {
@@ -85,6 +92,10 @@
 
       const { channel, args } = event.data;
       const method = channel.replace('player:', '');
+      if (!COMMANDS.has(method)) {
+        console.warn(`[Sidra] blocked unrecognised command: "${method}"`);
+        return;
+      }
       if (typeof window.__sidra[method] === 'function') {
         window.__sidra[method](...(args || []));
       }

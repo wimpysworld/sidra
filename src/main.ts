@@ -103,6 +103,11 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
     skipTaskbar: true,
     backgroundColor: '#1a0a10',
     show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
   });
   const { text: loadingText, lang: loadingLang } = getLoadingText();
   splash.loadFile(getAssetPath('assets', 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
