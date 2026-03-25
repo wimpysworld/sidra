@@ -1,4 +1,5 @@
 import log from 'electron-log/main';
+import type { ThemeName } from './theme';
 
 const configLog = log.scope('config');
 
@@ -7,7 +8,7 @@ interface StoreSchema {
   language: string | null;
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
-  'catppuccin.enabled': boolean;
+  theme: ThemeName;
   'autoUpdate.enabled': boolean;
   startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
   lastPageUrl: string;
@@ -74,16 +75,16 @@ export function setDiscordEnabled(enabled: boolean): void {
   configLog.info('discord.enabled set:', enabled);
 }
 
-export function getCatppuccinEnabled(): boolean {
-  if (!store.has('catppuccin.enabled')) {
-    return false;  // default off
+export function getTheme(): ThemeName {
+  if (!store.has('theme')) {
+    return 'apple-music';  // default: no override CSS
   }
-  return store.get('catppuccin.enabled');
+  return store.get('theme');
 }
 
-export function setCatppuccinEnabled(enabled: boolean): void {
-  store.set('catppuccin.enabled', enabled);
-  configLog.info('catppuccin.enabled set:', enabled);
+export function setTheme(name: ThemeName): void {
+  store.set('theme', name);
+  configLog.info('theme set:', name);
 }
 
 export function getAutoUpdateEnabled(): boolean {
