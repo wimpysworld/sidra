@@ -75,15 +75,18 @@ export function handleStorefrontNavigation(url: string): void {
 
   const currentStorefront = getStorefront();
   const currentLanguage = getLanguage();
-  const nextLanguage = result.language ?? currentLanguage ?? null;
 
-  if (result.storefront !== currentStorefront) {
+  // Only update language when the URL explicitly provides ?l=; absence means no change
+  const storefrontChanged = result.storefront !== currentStorefront;
+  const languageChanged = result.language !== null && result.language !== currentLanguage;
+
+  if (storefrontChanged) {
     setStorefront(result.storefront);
   }
-  if (nextLanguage !== currentLanguage) {
-    setLanguage(nextLanguage);
+  if (languageChanged) {
+    setLanguage(result.language);
   }
-  if (result.storefront !== currentStorefront || nextLanguage !== currentLanguage) {
-    storefrontLog.info(`storefront changed: ${result.storefront} (language: ${nextLanguage})`);
+  if (storefrontChanged || languageChanged) {
+    storefrontLog.info(`storefront changed: ${result.storefront} (language: ${result.language ?? currentLanguage})`);
   }
 }
