@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { app } from 'electron';
 import log from 'electron-log/main';
-import { getAssetPath } from './paths';
+import { getAssetPath, getProductInfo } from './paths';
 
 const i18nLog = log.scope('i18n');
 
@@ -111,9 +111,33 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
-export function getTrayStrings(): { about: string; quit: string; notifications: string; discord: string; startPage: string; startPageHome: string; startPageNew: string; startPageRadio: string; startPageAllPlaylists: string; startPageLast: string; catppuccin: string; on: string; off: string; style: string; styleAppleMusic: string; zoom: string; zoom100: string; zoom125: string; zoom150: string; zoom175: string; zoom200: string } {
+export interface TrayStrings {
+  about: string;
+  quit: string;
+  notifications: string;
+  discord: string;
+  startPage: string;
+  startPageHome: string;
+  startPageNew: string;
+  startPageRadio: string;
+  startPageAllPlaylists: string;
+  startPageLast: string;
+  catppuccin: string;
+  on: string;
+  off: string;
+  style: string;
+  styleAppleMusic: string;
+  zoom: string;
+  zoom100: string;
+  zoom125: string;
+  zoom150: string;
+  zoom175: string;
+  zoom200: string;
+}
+
+export function getTrayStrings(): TrayStrings {
   const langs = getSystemLanguages();
-  const productName: string = app.getName();
+  const productName: string = getProductInfo().productName;
   const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
   const about = aboutTemplate.replace('{name}', productName);
   const quit = getLocalizedString(QUIT_TEXT, langs);

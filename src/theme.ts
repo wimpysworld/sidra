@@ -4,7 +4,7 @@ import { getTheme } from './config';
 
 export type ThemeName = 'apple-music' | 'catppuccin';
 
-const mainLog = log.scope('main');
+const themeLog = log.scope('theme');
 
 // Map from theme name to CSS content (null = no override CSS)
 const themeCssMap: Record<ThemeName, string | null> = {
@@ -30,21 +30,21 @@ export function initThemeCSS(win: BrowserWindow, catppuccinCSS: string): void {
   applyThemeCSSInternal = (name: ThemeName) => {
     themeCssOp = themeCssOp
       .catch((error) => {
-        mainLog.warn('Theme CSS operation failed', error);
+        themeLog.warn('Theme CSS operation failed', error);
       })
       .then(async () => {
         const css = themeCssMap[name];
         if (css !== null && themeCssKey !== null) {
           await win.webContents.removeInsertedCSS(themeCssKey);
           themeCssKey = await win.webContents.insertCSS(css);
-          mainLog.debug(`Theme CSS re-injected: ${name}`);
+          themeLog.debug(`Theme CSS re-injected: ${name}`);
         } else if (css !== null) {
           themeCssKey = await win.webContents.insertCSS(css);
-          mainLog.debug(`Theme CSS injected: ${name}`);
+          themeLog.debug(`Theme CSS injected: ${name}`);
         } else if (themeCssKey !== null) {
           await win.webContents.removeInsertedCSS(themeCssKey);
           themeCssKey = null;
-          mainLog.debug(`Theme CSS removed: ${name}`);
+          themeLog.debug(`Theme CSS removed: ${name}`);
         }
       });
     return themeCssOp;
