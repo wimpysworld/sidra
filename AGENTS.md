@@ -159,6 +159,35 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 - British English spelling
 - The codebase is tightly focused and as lean as possible
 
+## Code quality objectives
+
+These standards are established and must be maintained.
+
+**Electron security**
+- `contextIsolation: true`, `nodeIntegration: false` on all windows
+- All renderer→main IPC flows through the `SEND_CHANNELS` allowlist in `src/preload.ts`; blocked channels log a warning
+- No Node.js APIs exposed to the renderer
+- External URLs validated for `http:`/`https:` protocol before opening via `setWindowOpenHandler` and tray links
+
+**TypeScript**
+- `strict: true` in `tsconfig.json`; zero `any` annotations, `@ts-ignore`, or `@ts-expect-error` in `src/`
+- IPC payloads typed via `TypedEmitter<PlayerEvents>`; no raw string channel dispatch
+- CastLabs type gaps resolved via module augmentations in `src/types/electron.d.ts`, not type casts at call sites
+
+**Architecture**
+- All integrations follow the `init(ctx: IntegrationContext)` pattern and manage their own lifecycle
+- Platform-specific modules (`electron-updater`, MPRIS) lazy-required only when needed; never at module top level
+- `playbackTimeDidChange` handlers store position only - never trigger a debounced send (see architecture notes)
+- All event listeners and resources cleaned up on `will-quit`
+
+**Tests**
+- Tests cover pure logic and event forwarding; shared mock fixtures live in `test/mocks/` to avoid duplication
+- Type-level assertions (`expectTypeOf`) used to verify event map contracts at compile time
+
+**Dependencies**
+- Minimise runtime dependencies; each must be purpose-driven
+- Do not add dependencies that duplicate Electron or Node.js built-ins
+
 ## Internationalisation (i18n)
 
 `src/i18n.ts` handles all locale detection and translated strings for Sidra's own UI. Apple Music's web UI localises itself independently.
