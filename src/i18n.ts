@@ -73,16 +73,7 @@ export function getLocalizedString(
   record: Record<string, string>,
   langs: string[],
 ): string {
-  for (const lang of langs) {
-    if (record[lang]) {
-      return record[lang];
-    }
-    const base = lang.split('-')[0];
-    if (record[base]) {
-      return record[base];
-    }
-  }
-  return record['en'];
+  return getLocalizedEntry(record, langs).value;
 }
 
 function getLocalizedEntry(
