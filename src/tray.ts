@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, nativeTheme, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
-import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings } from './i18n';
+import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
@@ -91,28 +91,14 @@ function showAboutWindow(): void {
   });
 }
 
-function buildContextMenu(tray: Tray): Menu {
-  const refresh = () => tray.setContextMenu(buildContextMenu(tray));
-  const strings = getTrayStrings();
-  const aboutGlyph = '🛈';
-  const quitGlyph = '🆇';
-  const isLinux = process.platform === 'linux';
-  const notifEnabled = getNotificationsEnabled();
-  const discordEnabled = getDiscordEnabled();
-  const currentTheme = getTheme();
+interface SubmenuContext {
+  strings: TrayStrings;
+  isLinux: boolean;
+  refresh: () => void;
+}
 
-  const notifGlyph = '🕭';
-  const notifParentLabel = `${strings.notifications}: ${notifEnabled ? strings.on : strings.off}`;
-  const discordGlyph = '🗫';
-  const discordParentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
-  const styleGlyph = '🌢';
-  const styleParentLabel = `${strings.style}: ${currentTheme === 'catppuccin' ? strings.catppuccin : strings.styleAppleMusic}`;
-
-  const zoomFactor = getZoomFactor();
-  const zoomGlyph = '%';
-  const zoomLabelMap: Record<number, string> = { 1.0: strings.zoom100, 1.25: strings.zoom125, 1.5: strings.zoom150, 1.75: strings.zoom175, 2.0: strings.zoom200 };
-  const zoomParentLabel = `${strings.zoom}: ${zoomLabelMap[zoomFactor] ?? `${Math.round(zoomFactor * 100)}%`}`;
-
+function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, isLinux, refresh } = ctx;
   const currentStartPage = getStartPage();
   const startPageLabelMap: Record<string, string> = {
     'home': strings.startPageHome,
@@ -121,156 +107,153 @@ function buildContextMenu(tray: Tray): Menu {
     'all-playlists': strings.startPageAllPlaylists,
     'last': strings.startPageLast,
   };
-  const currentStartPageLabel = startPageLabelMap[currentStartPage];
   const startPageGlyph = '♪';
-  const startPageParentLabel = `${strings.startPage}: ${currentStartPageLabel}`;
+  const parentLabel = `${strings.startPage}: ${startPageLabelMap[currentStartPage]}`;
+  return {
+    label: isLinux ? `${startPageGlyph} ${parentLabel}` : parentLabel,
+    submenu: [
+      {
+        label: strings.startPageHome,
+        type: 'radio',
+        checked: currentStartPage === 'home',
+        click: () => { setStartPage('home'); refresh(); },
+      },
+      {
+        label: strings.startPageNew,
+        type: 'radio',
+        checked: currentStartPage === 'new',
+        click: () => { setStartPage('new'); refresh(); },
+      },
+      {
+        label: strings.startPageRadio,
+        type: 'radio',
+        checked: currentStartPage === 'radio',
+        click: () => { setStartPage('radio'); refresh(); },
+      },
+      {
+        label: strings.startPageAllPlaylists,
+        type: 'radio',
+        checked: currentStartPage === 'all-playlists',
+        click: () => { setStartPage('all-playlists'); refresh(); },
+      },
+      {
+        label: strings.startPageLast,
+        type: 'radio',
+        checked: currentStartPage === 'last',
+        click: () => { setStartPage('last'); refresh(); },
+      },
+    ],
+  };
+}
 
-  const menuItems: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
-      click: () => showAboutWindow(),
-    },
-    {
-      label: isLinux ? `${startPageGlyph} ${startPageParentLabel}` : startPageParentLabel,
-      submenu: [
-        {
-          label: strings.startPageHome,
-          type: 'radio',
-          checked: currentStartPage === 'home',
-          click: () => { setStartPage('home'); refresh(); },
-        },
-        {
-          label: strings.startPageNew,
-          type: 'radio',
-          checked: currentStartPage === 'new',
-          click: () => { setStartPage('new'); refresh(); },
-        },
-        {
-          label: strings.startPageRadio,
-          type: 'radio',
-          checked: currentStartPage === 'radio',
-          click: () => { setStartPage('radio'); refresh(); },
-        },
-        {
-          label: strings.startPageAllPlaylists,
-          type: 'radio',
-          checked: currentStartPage === 'all-playlists',
-          click: () => { setStartPage('all-playlists'); refresh(); },
-        },
-        {
-          label: strings.startPageLast,
-          type: 'radio',
-          checked: currentStartPage === 'last',
-          click: () => { setStartPage('last'); refresh(); },
-        },
-      ],
-    },
-    {
-      label: isLinux ? `${notifGlyph} ${notifParentLabel}` : notifParentLabel,
-      submenu: [
-        {
-          label: strings.on,
-          type: 'radio',
-          checked: notifEnabled,
-          click: () => { setNotificationsEnabled(true); refresh(); },
-        },
-        {
-          label: strings.off,
-          type: 'radio',
-          checked: !notifEnabled,
-          click: () => { setNotificationsEnabled(false); refresh(); },
-        },
-      ],
-    },
-    {
-      label: isLinux ? `${discordGlyph} ${discordParentLabel}` : discordParentLabel,
-      submenu: [
-        {
-          label: strings.on,
-          type: 'radio',
-          checked: discordEnabled,
-          click: () => { setDiscordEnabled(true); refresh(); },
-        },
-        {
-          label: strings.off,
-          type: 'radio',
-          checked: !discordEnabled,
-          click: () => { setDiscordEnabled(false); refresh(); },
-        },
-      ],
-    },
-    {
-      label: isLinux ? `${styleGlyph} ${styleParentLabel}` : styleParentLabel,
-      submenu: [
-        {
-          label: strings.styleAppleMusic,
-          type: 'radio',
-          checked: currentTheme === 'apple-music',
-          click: () => { setTheme('apple-music'); applyTheme('apple-music'); refresh(); },
-        },
-        {
-          label: strings.catppuccin,
-          type: 'radio',
-          checked: currentTheme === 'catppuccin',
-          click: () => { setTheme('catppuccin'); applyTheme('catppuccin'); refresh(); },
-        },
-      ],
-    },
-    {
-      label: isLinux ? `${zoomGlyph} ${zoomParentLabel}` : zoomParentLabel,
-      submenu: [
-        {
-          label: strings.zoom100,
-          type: 'radio',
-          checked: zoomFactor === 1.0,
-          click: () => { setZoomFactor(1.0); if (applyZoomCallback) applyZoomCallback(1.0); refresh(); },
-        },
-        {
-          label: strings.zoom125,
-          type: 'radio',
-          checked: zoomFactor === 1.25,
-          click: () => { setZoomFactor(1.25); if (applyZoomCallback) applyZoomCallback(1.25); refresh(); },
-        },
-        {
-          label: strings.zoom150,
-          type: 'radio',
-          checked: zoomFactor === 1.5,
-          click: () => { setZoomFactor(1.5); if (applyZoomCallback) applyZoomCallback(1.5); refresh(); },
-        },
-        {
-          label: strings.zoom175,
-          type: 'radio',
-          checked: zoomFactor === 1.75,
-          click: () => { setZoomFactor(1.75); if (applyZoomCallback) applyZoomCallback(1.75); refresh(); },
-        },
-        {
-          label: strings.zoom200,
-          type: 'radio',
-          checked: zoomFactor === 2.0,
-          click: () => { setZoomFactor(2.0); if (applyZoomCallback) applyZoomCallback(2.0); refresh(); },
-        },
-      ],
-    },
-  ];
+function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, isLinux, refresh } = ctx;
+  const notifEnabled = getNotificationsEnabled();
+  const notifGlyph = '🕭';
+  const parentLabel = `${strings.notifications}: ${notifEnabled ? strings.on : strings.off}`;
+  return {
+    label: isLinux ? `${notifGlyph} ${parentLabel}` : parentLabel,
+    submenu: [
+      {
+        label: strings.on,
+        type: 'radio',
+        checked: notifEnabled,
+        click: () => { setNotificationsEnabled(true); refresh(); },
+      },
+      {
+        label: strings.off,
+        type: 'radio',
+        checked: !notifEnabled,
+        click: () => { setNotificationsEnabled(false); refresh(); },
+      },
+    ],
+  };
+}
 
+function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, isLinux, refresh } = ctx;
+  const discordEnabled = getDiscordEnabled();
+  const discordGlyph = '🗫';
+  const parentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
+  return {
+    label: isLinux ? `${discordGlyph} ${parentLabel}` : parentLabel,
+    submenu: [
+      {
+        label: strings.on,
+        type: 'radio',
+        checked: discordEnabled,
+        click: () => { setDiscordEnabled(true); refresh(); },
+      },
+      {
+        label: strings.off,
+        type: 'radio',
+        checked: !discordEnabled,
+        click: () => { setDiscordEnabled(false); refresh(); },
+      },
+    ],
+  };
+}
+
+function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, isLinux, refresh } = ctx;
+  const currentTheme = getTheme();
+  const styleGlyph = '🌢';
+  const parentLabel = `${strings.style}: ${currentTheme === 'catppuccin' ? strings.catppuccin : strings.styleAppleMusic}`;
+  return {
+    label: isLinux ? `${styleGlyph} ${parentLabel}` : parentLabel,
+    submenu: [
+      {
+        label: strings.styleAppleMusic,
+        type: 'radio',
+        checked: currentTheme === 'apple-music',
+        click: () => { setTheme('apple-music'); applyTheme('apple-music'); refresh(); },
+      },
+      {
+        label: strings.catppuccin,
+        type: 'radio',
+        checked: currentTheme === 'catppuccin',
+        click: () => { setTheme('catppuccin'); applyTheme('catppuccin'); refresh(); },
+      },
+    ],
+  };
+}
+
+function buildZoomSubmenu(ctx: SubmenuContext & { applyZoom: ((factor: number) => void) | null }): Electron.MenuItemConstructorOptions {
+  const { strings, isLinux, refresh, applyZoom } = ctx;
+  const zoomFactor = getZoomFactor();
+  const zoomGlyph = '%';
+  const zoomLabelMap: Record<number, string> = { 1.0: strings.zoom100, 1.25: strings.zoom125, 1.5: strings.zoom150, 1.75: strings.zoom175, 2.0: strings.zoom200 };
+  const parentLabel = `${strings.zoom}: ${zoomLabelMap[zoomFactor] ?? `${Math.round(zoomFactor * 100)}%`}`;
+  const makeClick = (factor: number) => () => { setZoomFactor(factor); if (applyZoom) applyZoom(factor); refresh(); };
+  return {
+    label: isLinux ? `${zoomGlyph} ${parentLabel}` : parentLabel,
+    submenu: [
+      { label: strings.zoom100, type: 'radio', checked: zoomFactor === 1.0, click: makeClick(1.0) },
+      { label: strings.zoom125, type: 'radio', checked: zoomFactor === 1.25, click: makeClick(1.25) },
+      { label: strings.zoom150, type: 'radio', checked: zoomFactor === 1.5, click: makeClick(1.5) },
+      { label: strings.zoom175, type: 'radio', checked: zoomFactor === 1.75, click: makeClick(1.75) },
+      { label: strings.zoom200, type: 'radio', checked: zoomFactor === 2.0, click: makeClick(2.0) },
+    ],
+  };
+}
+
+function buildUpdateMenuItems(isLinux: boolean): Electron.MenuItemConstructorOptions[] {
   const update = getUpdateInfo();
   const updateStrings = getUpdateStrings();
   if (update && update.ready) {
     const autoUpdateStrings = getAutoUpdateStrings();
     const readyGlyph = '⟳';
-    menuItems.push(
+    return [
       { type: 'separator' },
       {
         label: isLinux ? `${readyGlyph} ${autoUpdateStrings.ready}` : autoUpdateStrings.ready,
-        click: () => {
-          quitAndInstall();
-        },
+        click: () => { quitAndInstall(); },
       },
-    );
+    ];
   } else if (update) {
     const updateLabel = updateStrings.updateAvailable.replace('{version}', update.version);
     const updateGlyph = '⬆';
-    menuItems.push(
+    return [
       { type: 'separator' },
       {
         label: isLinux ? `${updateGlyph} ${updateLabel}` : updateLabel,
@@ -287,24 +270,39 @@ function buildContextMenu(tray: Tray): Menu {
           }
         },
       },
-    );
-  } else {
-    menuItems.push(
-      { type: 'separator' },
-      {
-        label: updateStrings.upToDate,
-        enabled: false,
-      },
-    );
+    ];
   }
+  return [
+    { type: 'separator' },
+    { label: updateStrings.upToDate, enabled: false },
+  ];
+}
 
-  menuItems.push(
+function buildContextMenu(tray: Tray): Menu {
+  const refresh = () => tray.setContextMenu(buildContextMenu(tray));
+  const strings = getTrayStrings();
+  const isLinux = process.platform === 'linux';
+  const ctx: SubmenuContext = { strings, isLinux, refresh };
+  const aboutGlyph = '🛈';
+  const quitGlyph = '🆇';
+
+  const menuItems: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
+      click: () => showAboutWindow(),
+    },
+    buildStartPageSubmenu(ctx),
+    buildNotificationsSubmenu(ctx),
+    buildDiscordSubmenu(ctx),
+    buildStyleSubmenu(ctx),
+    buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
+    ...buildUpdateMenuItems(isLinux),
     { type: 'separator' },
     {
       label: isLinux ? `${quitGlyph} ${strings.quit}` : strings.quit,
       click: () => app.quit(),
     },
-  );
+  ];
 
   return Menu.buildFromTemplate(menuItems);
 }
