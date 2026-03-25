@@ -196,6 +196,7 @@ jobs:
             release/*.rpm
             release/*.dmg
             release/*.exe
+            release/latest*.yml
           retention-days: 7
 
   release:
@@ -229,6 +230,7 @@ jobs:
             release/*.rpm
             release/*.dmg
             release/*.exe
+            release/latest*.yml
 
   nix-hash:
     name: Nix Hash 🔑
