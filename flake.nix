@@ -62,6 +62,9 @@
               ]
               ++ lib.optionals stdenv.isDarwin [
                 uv # required for EVS VMP signing via uvx
+              ]
+              ++ lib.optionals stdenv.isLinux [
+                gsettings-desktop-schemas
               ];
 
             # CastLabs Electron (installed via npm) is a prebuilt binary that
@@ -108,6 +111,7 @@
                   export LD_LIBRARY_PATH="/run/opengl-driver/lib:$LD_LIBRARY_PATH"
                 fi
               fi
+              export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
             '') + ''
               echo "Sidra development shell"
               echo "  node: $(node --version)"

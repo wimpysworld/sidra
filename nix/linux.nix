@@ -20,6 +20,7 @@
   gcc-unwrapped,
   gdk-pixbuf,
   glib,
+  gsettings-desktop-schemas,
   gtk3,
   libdrm,
   libglvnd,
@@ -105,6 +106,7 @@ let
     gcc-unwrapped.lib
     gdk-pixbuf
     glib
+    gsettings-desktop-schemas
     gtk3
     libdrm
     libglvnd
