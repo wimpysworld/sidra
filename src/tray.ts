@@ -9,6 +9,7 @@ import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 import { applyTheme } from './theme';
 import { downloadArtwork } from './artwork';
+import { createPauseTimer } from './pauseTimer';
 
 const ABOUT_WINDOW_WIDTH_PX = 400;
 const ABOUT_WINDOW_HEIGHT_PX = 400;
@@ -604,15 +605,22 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
   let currentVolume = 1;
   let currentPayload: NowPlayingPayload | null = null;
   let currentArtworkPath: string | null = null;
-  let trayPauseTimer: ReturnType<typeof setTimeout> | null = null;
   let previousPlaying = false;
+
+  const clearNowPlaying = (): void => {
+    trayLog.debug('tray pause timeout reached, clearing Now Playing');
+    updateTrayTooltip(tray, null);
+    currentPayload = null;
+    currentArtworkPath = null;
+    updateNowPlayingState(null, null, false, currentVolume);
+    rebuildTrayMenu(tray);
+  };
+
+  const trayPauseTimer = createPauseTimer(TRAY_PAUSE_TIMEOUT_MS, clearNowPlaying);
 
   const onNowPlayingItemDidChange = async (payload: NowPlayingPayload | null): Promise<void> => {
     // Cancel pause timer on track change
-    if (trayPauseTimer) {
-      clearTimeout(trayPauseTimer);
-      trayPauseTimer = null;
-    }
+    trayPauseTimer.cancel();
     if (!payload) {
       trayLog.debug('nowPlayingItemDidChange (tray handler): null payload, clearing state');
       currentPayload = null;
@@ -641,10 +649,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     const state = payload?.state ?? 0;
     if (state === PlaybackState.None || state === PlaybackState.Stopped ||
         state === PlaybackState.Ended || state === PlaybackState.Completed) {
-      if (trayPauseTimer) {
-        clearTimeout(trayPauseTimer);
-        trayPauseTimer = null;
-      }
+      trayPauseTimer.cancel();
       updateTrayTooltip(tray, null);
       currentPayload = null;
       currentArtworkPath = null;
@@ -655,20 +660,11 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     const { isPlaying } = player.playbackSnapshot();
 
     // Pause timeout: clear Now Playing after 30s of inactivity
-    if (isPlaying && trayPauseTimer) {
-      clearTimeout(trayPauseTimer);
-      trayPauseTimer = null;
+    if (isPlaying) {
+      trayPauseTimer.cancel();
     }
     if (!isPlaying && previousPlaying) {
-      trayPauseTimer = setTimeout(() => {
-        trayPauseTimer = null;
-        trayLog.debug('tray pause timeout reached, clearing Now Playing');
-        updateTrayTooltip(tray, null);
-        currentPayload = null;
-        currentArtworkPath = null;
-        updateNowPlayingState(null, null, false, currentVolume);
-        rebuildTrayMenu(tray);
-      }, TRAY_PAUSE_TIMEOUT_MS);
+      trayPauseTimer.start();
     }
     previousPlaying = isPlaying;
 
@@ -689,10 +685,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
   player.on('volumeDidChange', onVolumeDidChange);
 
   return () => {
-    if (trayPauseTimer) {
-      clearTimeout(trayPauseTimer);
-      trayPauseTimer = null;
-    }
+    trayPauseTimer.destroy();
     player.off('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.off('playbackStateDidChange', onPlaybackStateDidChange);
     player.off('volumeDidChange', onVolumeDidChange);

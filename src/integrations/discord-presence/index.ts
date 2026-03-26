@@ -4,6 +4,7 @@ import { Client } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { getDiscordEnabled } from '../../config';
+import { createPauseTimer } from '../../pauseTimer';
 
 const discordLog = log.scope('discord');
 
@@ -42,11 +43,15 @@ let previousState = 0;
 
 // Timers
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let pauseTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 
 let client: Client;
+
+const pauseTimeout = createPauseTimer(PAUSE_TIMEOUT_MS, () => {
+  discordLog.debug('pause timeout reached, clearing activity');
+  client.user?.clearActivity().catch(() => {});
+});
 
 function scheduleUpdate(): void {
   if (debounceTimer) {
@@ -181,10 +186,7 @@ export function init(ctx: IntegrationContext): void {
     }
 
     // Cancel pause timer on new track
-    if (pauseTimer) {
-      clearTimeout(pauseTimer);
-      pauseTimer = null;
-    }
+    pauseTimeout.cancel();
 
     scheduleUpdate();
   };
@@ -194,18 +196,12 @@ export function init(ctx: IntegrationContext): void {
     const nowPlaying = payload?.state === PlaybackState.Playing;
     previousState = payload?.state ?? 0;
 
-    if (nowPlaying && pauseTimer) {
-      clearTimeout(pauseTimer);
-      pauseTimer = null;
+    if (nowPlaying) {
+      pauseTimeout.cancel();
     }
 
     if (!nowPlaying && wasPlaying) {
-      // Start pause timeout
-      pauseTimer = setTimeout(() => {
-        pauseTimer = null;
-        discordLog.debug('pause timeout reached, clearing activity');
-        client.user?.clearActivity().catch(() => {});
-      }, PAUSE_TIMEOUT_MS);
+      pauseTimeout.start();
     }
 
     scheduleUpdate();
@@ -216,7 +212,7 @@ export function init(ctx: IntegrationContext): void {
 
   app.on('will-quit', () => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    if (pauseTimer) clearTimeout(pauseTimer);
+    pauseTimeout.destroy();
     if (reconnectTimer) clearTimeout(reconnectTimer);
 
     try {
