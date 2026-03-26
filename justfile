@@ -102,6 +102,28 @@ validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit
 
+# Generate tray menu icon PNGs from SVG sources
+generate-menu-icons:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="assets/source/tray-menu"
+    for svg in "$src"/*.svg; do
+        name=$(basename "$svg" .svg)
+        for variant in light dark; do
+            dir="assets/icons/tray/menu/$variant"
+            mkdir -p "$dir"
+            if [ "$variant" = "dark" ]; then
+                sed 's/<svg /<svg fill="#FFFFFF" /' "$svg" \
+                    | rsvg-convert -w 18 -h 18 -o "$dir/$name.png"
+                sed 's/<svg /<svg fill="#FFFFFF" /' "$svg" \
+                    | rsvg-convert -w 36 -h 36 -o "$dir/$name@2x.png"
+            else
+                rsvg-convert -w 18 -h 18 -o "$dir/$name.png" "$svg"
+                rsvg-convert -w 36 -h 36 -o "$dir/$name@2x.png" "$svg"
+            fi
+        done
+    done
+
 # Clean build artefacts
 clean:
     rm -rf dist/
