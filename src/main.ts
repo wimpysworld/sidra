@@ -5,10 +5,10 @@ import log from 'electron-log/main';
 import { getTheme, setLastPageUrl, getZoomFactor } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
-import { Player, IntegrationContext } from './player';
+import { Player, PlaybackState, IntegrationContext } from './player';
 import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
 import { initThemeCSS, setThemeCssKey } from './theme';
-import { createTray, rebuildTrayMenu, setApplyZoomCallback } from './tray';
+import { createTray, rebuildTrayMenu, setApplyZoomCallback, updateTrayTooltip } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
@@ -373,6 +373,24 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
       }
 
       initWedgeDetector({ player, getMainWindow: () => win });
+
+      player.on('nowPlayingItemDidChange', (payload) => {
+        if (!payload || !appTray) {
+          mainLog.debug('nowPlayingItemDidChange (tray handler): null payload ignored');
+          return;
+        }
+        mainLog.debug('nowPlayingItemDidChange (tray handler):', `"${payload.name}"`);
+        updateTrayTooltip(appTray, payload);
+      });
+      player.on('playbackStateDidChange', (payload) => {
+        if (!appTray) return;
+        const state = payload?.state ?? 0;
+        if (state === PlaybackState.None || state === PlaybackState.Stopped ||
+            state === PlaybackState.Ended || state === PlaybackState.Completed) {
+          updateTrayTooltip(appTray, null);
+        }
+      });
+
       markCssReady();
       setTimeout(() => {
         if (appTray) {
