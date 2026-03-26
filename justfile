@@ -121,6 +121,7 @@ generate-menu-icons:
                 rsvg-convert -w 18 -h 18 -o "$dir/$name.png" "$svg"
                 rsvg-convert -w 36 -h 36 -o "$dir/$name@2x.png" "$svg"
             fi
+            optipng -strip all -o7 -quiet "$dir/$name.png" "$dir/$name@2x.png"
         done
     done
 
