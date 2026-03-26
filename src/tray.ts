@@ -147,7 +147,7 @@ let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null 
 let aboutWindow: BrowserWindow | null = null;
 let applyZoomCallback: ((factor: number) => void) | null = null;
 
-function showAboutWindow(): void {
+export function showAboutWindow(): void {
   if (aboutWindow) {
     aboutWindow.focus();
     return;
