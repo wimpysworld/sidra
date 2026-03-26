@@ -102,6 +102,35 @@ validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit
 
+# Generate tray icon PNGs from SVG source
+generate-tray-icon:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="assets/source/sidra-mini.svg"
+    out="assets/icons"
+    # macOS Template icons (black on transparent, macOS handles theme adaptation)
+    rsvg-convert -w 16 -h 16 -o "$out/sidraTemplate.png" "$src"
+    rsvg-convert -w 32 -h 32 -o "$out/sidraTemplate@2x.png" "$src"
+    # Linux/Windows light theme (black on transparent)
+    rsvg-convert -w 24 -h 24 -o "$out/sidra-tray-light.png" "$src"
+    rsvg-convert -w 48 -h 48 -o "$out/sidra-tray-light@2x.png" "$src"
+    rsvg-convert -w 24 -h 24 -o "$out/sidra-tray.png" "$src"
+    rsvg-convert -w 48 -h 48 -o "$out/sidra-tray@2x.png" "$src"
+    # Linux/Windows dark theme (white on transparent)
+    sed 's/<svg /<svg fill="#FFFFFF" /' "$src" \
+        | rsvg-convert -w 24 -h 24 -o "$out/sidra-tray-dark.png"
+    sed 's/<svg /<svg fill="#FFFFFF" /' "$src" \
+        | rsvg-convert -w 48 -h 48 -o "$out/sidra-tray-dark@2x.png"
+    optipng -strip all -o7 -quiet \
+        "$out/sidraTemplate.png" \
+        "$out/sidraTemplate@2x.png" \
+        "$out/sidra-tray-light.png" \
+        "$out/sidra-tray-light@2x.png" \
+        "$out/sidra-tray-dark.png" \
+        "$out/sidra-tray-dark@2x.png" \
+        "$out/sidra-tray.png" \
+        "$out/sidra-tray@2x.png"
+
 # Generate tray menu icon PNGs from SVG sources
 generate-menu-icons:
     #!/usr/bin/env bash
