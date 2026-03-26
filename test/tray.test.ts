@@ -139,6 +139,7 @@ describe('createTray - menu template inspection', () => {
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
     vi.mocked(Menu.buildFromTemplate).mockClear();
+    vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   });
 
   it('calls Menu.buildFromTemplate and captures the template', () => {
