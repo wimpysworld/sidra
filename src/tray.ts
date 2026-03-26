@@ -3,6 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
+import type { NowPlayingPayload } from './player';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -313,6 +314,16 @@ export function setApplyZoomCallback(callback: (factor: number) => void): void {
 
 export function rebuildTrayMenu(tray: Tray): void {
   tray.setContextMenu(buildContextMenu(tray));
+}
+
+export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null): void {
+  const fallback = getProductInfo().productName;
+  const text = payload?.name
+    ? payload.artistName ? `${payload.name} - ${payload.artistName}` : payload.name
+    : fallback;
+  const tooltip = text || fallback;
+  trayLog.debug('updateTrayTooltip:', payload ? `name=${payload.name}, artistName=${payload.artistName}` : 'null payload', '->', `"${tooltip}"`);
+  tray.setToolTip(tooltip);
 }
 
 export function createTray(applyZoom?: (factor: number) => void): Tray {
