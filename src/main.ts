@@ -8,7 +8,7 @@ import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
 import { initThemeCSS, setThemeCssKey } from './theme';
-import { createTray, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback } from './tray';
+import { createTray, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, showAboutWindow } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
@@ -140,7 +140,11 @@ function setupApplicationMenu(): void {
   } else if (process.platform === 'darwin') {
     Menu.setApplicationMenu(Menu.buildFromTemplate([{
       label: app.name,
-      submenu: [{ role: 'quit' }],
+      submenu: [
+        { label: `About ${app.name}`, click: () => showAboutWindow() },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
     }]));
   } else {
     Menu.setApplicationMenu(null);
