@@ -515,7 +515,7 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
   const shareUrl = getShareUrl(payload);
   if (process.platform === 'darwin' && shareUrl) {
     shareItems.push({
-      label: 'Share...',
+      label: strings.share,
       ...(getMenuIcon('share') ? { icon: getMenuIcon('share') } : {}),
       click: () => {
         const shareMenu = new ShareMenu({ urls: [shareUrl] });

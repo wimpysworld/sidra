@@ -39,7 +39,7 @@ function buildDockMenu(
     const shareUrl = getShareUrl(payload);
     if (shareUrl) {
       items.push({
-        label: 'Share...',
+        label: strings.share,
         click: () => {
           const shareMenu = new ShareMenu({ urls: [shareUrl] });
           shareMenu.popup();
