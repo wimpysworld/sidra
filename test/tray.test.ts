@@ -71,7 +71,7 @@ vi.mock('../src/paths', () => ({
 
 import { Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon, updateNowPlayingState, rebuildTrayMenu } from '../src/tray';
 
 // Helper: extract the template array from the last Menu.buildFromTemplate call
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -454,6 +454,209 @@ describe('createTray - menu template inspection', () => {
       const availableItem = findItem(template, 'Update available');
       expect(availableItem).toBeDefined();
       expect(availableItem!.icon).toBeDefined();
+    });
+  });
+
+  describe('Now Playing menu items', () => {
+    const nowPlayingPayload = {
+      name: 'Test Track',
+      artistName: 'Test Artist',
+      albumName: 'Test Album',
+      artwork: { url: '' },
+    };
+
+    function setupNowPlaying(artworkPath: string | null = '/tmp/artwork.png'): void {
+      updateNowPlayingState(nowPlayingPayload, artworkPath, true, 0.75);
+    }
+
+    function createTrayWithNowPlaying(artworkPath: string | null = '/tmp/artwork.png'): ReturnType<typeof createTray> {
+      setupNowPlaying(artworkPath);
+      const tray = createTray();
+      return tray;
+    }
+
+    afterEach(() => {
+      updateNowPlayingState(null, null, false, 0);
+    });
+
+    describe('Linux Now Playing icons', () => {
+      beforeEach(() => {
+        setPlatform('linux');
+        Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      });
+
+      it('attaches icon to artist item on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const artistItem = findItem(template, 'Test Artist');
+        expect(artistItem).toBeDefined();
+        expect(artistItem!.icon).toBeDefined();
+        expect(artistItem!.label).toBe('Test Artist');
+      });
+
+      it('attaches icon to album item on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const albumItem = findItem(template, 'Test Album');
+        expect(albumItem).toBeDefined();
+        expect(albumItem!.icon).toBeDefined();
+        expect(albumItem!.label).toBe('Test Album');
+      });
+
+      it('attaches icon to Previous on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const prevItem = findItem(template, 'Previous');
+        expect(prevItem).toBeDefined();
+        expect(prevItem!.icon).toBeDefined();
+        expect(prevItem!.label).toBe('Previous');
+      });
+
+      it('attaches pause icon when playing on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const pauseItem = findItem(template, 'Pause');
+        expect(pauseItem).toBeDefined();
+        expect(pauseItem!.icon).toBeDefined();
+        expect(pauseItem!.label).toBe('Pause');
+      });
+
+      it('attaches play icon when paused on Linux', () => {
+        updateNowPlayingState(nowPlayingPayload, '/tmp/artwork.png', false, 0.75);
+        createTray();
+        const template = getLastTemplate();
+        const playItem = findItem(template, 'Play');
+        expect(playItem).toBeDefined();
+        expect(playItem!.icon).toBeDefined();
+        expect(playItem!.label).toBe('Play');
+      });
+
+      it('attaches icon to Next on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const nextItem = findItem(template, 'Next');
+        expect(nextItem).toBeDefined();
+        expect(nextItem!.icon).toBeDefined();
+        expect(nextItem!.label).toBe('Next');
+      });
+
+      it('attaches icon to Volume on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const volumeItem = findItem(template, 'Volume');
+        expect(volumeItem).toBeDefined();
+        expect(volumeItem!.icon).toBeDefined();
+        expect(volumeItem!.label).toBe('Volume: 75%');
+      });
+
+      it('preserves artwork icon on track name item', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const trackItem = findItem(template, 'Test Track');
+        expect(trackItem).toBeDefined();
+        expect(trackItem!.icon).toBeDefined();
+        // Artwork icon is loaded via nativeImage.createFromPath with resize
+        expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith('/tmp/artwork.png');
+      });
+
+      it('uses plain text labels without glyphs on Linux', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const artistItem = findItem(template, 'Test Artist');
+        expect(artistItem!.label).not.toMatch(/[★⦿]/);
+        const prevItem = findItem(template, 'Previous');
+        expect(prevItem!.label).not.toMatch(/[⇤⇥◫🞂🕪]/);
+      });
+    });
+
+    describe('Windows Now Playing icons', () => {
+      beforeEach(() => {
+        setPlatform('win32');
+        Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      });
+
+      it('attaches icons to Now Playing items on Windows', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        for (const label of ['Test Artist', 'Test Album', 'Previous', 'Pause', 'Next']) {
+          const item = findItem(template, label);
+          expect(item, `${label} should exist`).toBeDefined();
+          expect(item!.icon, `${label} should have icon`).toBeDefined();
+        }
+        const volumeItem = findItem(template, 'Volume');
+        expect(volumeItem!.icon).toBeDefined();
+      });
+
+      it('preserves artwork icon on track name item on Windows', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const trackItem = findItem(template, 'Test Track');
+        expect(trackItem).toBeDefined();
+        expect(trackItem!.icon).toBeDefined();
+      });
+    });
+
+    describe('macOS Tahoe+ Now Playing icons', () => {
+      beforeEach(() => {
+        setPlatform('darwin');
+        vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
+      });
+
+      it('attaches SF Symbol icons to Now Playing items on macOS Tahoe+', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        for (const label of ['Test Artist', 'Test Album', 'Previous', 'Pause', 'Next']) {
+          const item = findItem(template, label);
+          expect(item, `${label} should exist`).toBeDefined();
+          expect(item!.icon, `${label} should have icon`).toBeDefined();
+        }
+        const volumeItem = findItem(template, 'Volume');
+        expect(volumeItem!.icon).toBeDefined();
+      });
+
+      it('preserves artwork icon on track name item on macOS Tahoe+', () => {
+        createTrayWithNowPlaying();
+        const template = getLastTemplate();
+        const trackItem = findItem(template, 'Test Track');
+        expect(trackItem).toBeDefined();
+        expect(trackItem!.icon).toBeDefined();
+      });
+    });
+
+    describe('pre-Tahoe macOS Now Playing icons', () => {
+      beforeEach(() => {
+        setPlatform('darwin');
+        vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.2.0');
+      });
+
+      it('does not attach icons to Now Playing items on pre-Tahoe macOS', () => {
+        createTrayWithNowPlaying(null);
+        const template = getLastTemplate();
+        for (const label of ['Test Artist', 'Test Album', 'Previous', 'Pause', 'Next']) {
+          const item = findItem(template, label);
+          expect(item, `${label} should exist`).toBeDefined();
+          expect(item!.icon, `${label} should not have icon`).toBeUndefined();
+        }
+        const volumeItem = findItem(template, 'Volume');
+        expect(volumeItem!.icon).toBeUndefined();
+      });
+
+      it('does not attach icon to track name item without artwork on pre-Tahoe macOS', () => {
+        createTrayWithNowPlaying(null);
+        const template = getLastTemplate();
+        const trackItem = findItem(template, 'Test Track');
+        expect(trackItem).toBeDefined();
+        expect(trackItem!.icon).toBeUndefined();
+      });
+
+      it('uses plain text labels without glyphs on pre-Tahoe macOS', () => {
+        createTrayWithNowPlaying(null);
+        const template = getLastTemplate();
+        const artistItem = findItem(template, 'Test Artist');
+        expect(artistItem!.label).toBe('Test Artist');
+        const prevItem = findItem(template, 'Previous');
+        expect(prevItem!.label).toBe('Previous');
+      });
     });
   });
 });
