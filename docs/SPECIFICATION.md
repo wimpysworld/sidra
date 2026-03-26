@@ -23,6 +23,7 @@ The codebase is tightly focused and as lean as possible. Four runtime dependenci
 - [Theming](#theming)
 - [Discord Rich Presence](#discord-rich-presence)
 - [Track Change Notifications](#track-change-notifications)
+- [Tray](#tray)
 - [Auto-update](#auto-update)
 - [Feature Inventory](#feature-inventory)
 - [Risk Assessment](#risk-assessment)
@@ -693,6 +694,58 @@ async function showTrackNotification(metadata: TrackMetadata, enabled: boolean) 
 On NixOS (dev shell), `libnotify` must be present in `LD_LIBRARY_PATH` or `notification.show()` will silently do nothing. This is a dev shell concern, not an app code concern - ensure `libnotify` is in the Nix dev shell's `LD_LIBRARY_PATH`.
 
 Notifications are toggleable via an `electron-store` boolean setting (default: on).
+
+---
+
+## Tray
+
+`src/tray.ts` manages the system tray icon and context menu. The menu is built from localised strings (`assets/locales/tray.json`) and rebuilds itself on state changes.
+
+### Now Playing
+
+When a track is active, the top of the context menu shows metadata and playback controls. This section is absent when nothing is playing or after 30 seconds of pause (mirrors the Discord integration timeout).
+
+**Metadata items** (disabled, display-only):
+
+| Item | Format | Notes |
+|------|--------|-------|
+| Track name | Label text | Album artwork icon (18x18px `nativeImage`); degrades gracefully if artwork file is unavailable |
+| Artist name | Linux: `★  ArtistName`; other platforms: `ArtistName` | |
+| Album name | Linux: `⦿  AlbumName`; other platforms: `AlbumName` | |
+
+All metadata labels are truncated at 32 characters via `truncateMenuLabel()`: splits on the first `(` or `[` character, falls back to hard truncation with ellipsis (`…`).
+
+**Playback controls:**
+
+| Item | Linux label | Other platforms | Action |
+|------|-------------|-----------------|--------|
+| Previous | `⇤  Previous` | `Previous` | `player:previous` |
+| Play/Pause | `🞂  Play` (paused) / `◫  Pause` (playing) | `Play` / `Pause` | `player:playPause` |
+| Next | `⇥  Next` | `Next` | `player:next` |
+
+**Volume submenu:**
+
+Parent label shows current volume, e.g. `🕪  Volume: 23%` on Linux, `Volume: 23%` on other platforms. Five radio items: Mute, 25%, 50%, 75%, 100%. The checked item reflects the current volume level. Each item sends `player:setVolume` with the corresponding float (0, 0.25, 0.5, 0.75, 1.0).
+
+### Menu rebuild triggers
+
+The context menu rebuilds on track change, playback state change, and volume change. Each rebuild calls `rebuildTrayMenu()`, which reconstructs the full menu template from current state.
+
+### Tray icon
+
+| Platform | Icon | Notes |
+|----------|------|-------|
+| macOS | `sidraTemplate.png` | Template image; OS handles dark/light automatically |
+| Windows | `sidra-tray.png` | Static icon |
+| Linux | `sidra-tray-dark.png` or `sidra-tray-light.png` | Switches on `nativeTheme.shouldUseDarkColors`; listens for theme changes |
+
+### Tooltip
+
+When a track is active, the tooltip shows `TrackName - ArtistName`. Falls back to the product name when nothing is playing.
+
+### Tray menu glyph convention
+
+Unicode glyphs prefix menu labels on Linux only (`process.platform === 'linux'`). On macOS and Windows, labels are plain text. All glyphs use early Unicode blocks (Miscellaneous Technical U+2300-23FF, Letterlike Symbols U+2100-214F, etc.) rather than emoji codepoints (U+1F000+) for reliable rendering in native menu stacks.
 
 ---
 
