@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, nativeTheme, shell, Tray } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
@@ -36,6 +36,21 @@ function getTrayIconPath(): string {
   return getLinuxTrayIconPath();
 }
 
+function truncateMenuLabel(text: string, maxLength = 32): string {
+  const splitIndex = text.search(/[([]/);
+  const trimmed = splitIndex > 0 ? text.slice(0, splitIndex).trimEnd() : text;
+  return trimmed.length > maxLength ? trimmed.slice(0, maxLength).trimEnd() + '…' : trimmed;
+}
+
+interface NowPlayingState {
+  payload: NowPlayingPayload | null;
+  artworkPath: string | null;
+  isPlaying: boolean;
+  volume: number;
+}
+
+let nowPlayingState: NowPlayingState | null = null;
+let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
 let aboutWindow: BrowserWindow | null = null;
 let applyZoomCallback: ((factor: number) => void) | null = null;
 
@@ -279,6 +294,115 @@ function buildUpdateMenuItems(isLinux: boolean): Electron.MenuItemConstructorOpt
   ];
 }
 
+function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Electron.MenuItemConstructorOptions[] {
+  if (!nowPlayingState || !nowPlayingState.payload) {
+    return [];
+  }
+
+  const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
+  const sendCommand = sendCommandCallback;
+
+  // Artwork icon for the track name item
+  let icon: Electron.NativeImage | undefined;
+  if (artworkPath) {
+    const img = nativeImage.createFromPath(artworkPath).resize({ width: 18, height: 18 });
+    if (!img.isEmpty()) {
+      icon = img;
+    }
+  }
+
+  // Metadata items
+  const trackItem: Electron.MenuItemConstructorOptions = {
+    label: truncateMenuLabel(payload.name ?? ''),
+    enabled: false,
+    ...(icon ? { icon } : {}),
+  };
+  const artistGlyph = '★';
+  const artistLabel = truncateMenuLabel(payload.artistName ?? '');
+  const artistItem: Electron.MenuItemConstructorOptions = {
+    label: isLinux ? `${artistGlyph}  ${artistLabel}` : artistLabel,
+    enabled: false,
+  };
+  const albumGlyph = '⦿';
+  const albumLabel = truncateMenuLabel(payload.albumName ?? '');
+  const albumItem: Electron.MenuItemConstructorOptions = {
+    label: isLinux ? `${albumGlyph}  ${albumLabel}` : albumLabel,
+    enabled: false,
+  };
+
+  // Playback control glyphs
+  const previousGlyph = isLinux ? '⇤' : '';
+  const playPauseGlyph = isLinux ? (isPlaying ? '◫' : '🞂') : '';
+  const playPauseLabel = isPlaying ? strings.pause : strings.play;
+  const nextGlyph = isLinux ? '⇥' : '';
+  const volumeGlyph = isLinux ? '🕪' : '';
+
+  // Playback controls
+  const previousItem: Electron.MenuItemConstructorOptions = {
+    label: isLinux ? `${previousGlyph}  ${strings.previous}` : strings.previous,
+    click: () => { if (sendCommand) sendCommand('player:previous'); },
+  };
+  const playPauseItem: Electron.MenuItemConstructorOptions = {
+    label: isLinux ? `${playPauseGlyph}  ${playPauseLabel}` : playPauseLabel,
+    click: () => { if (sendCommand) sendCommand('player:playPause'); },
+  };
+  const nextItem: Electron.MenuItemConstructorOptions = {
+    label: isLinux ? `${nextGlyph}  ${strings.next}` : strings.next,
+    click: () => { if (sendCommand) sendCommand('player:next'); },
+  };
+
+  // Volume submenu with radio items
+  const volumePct = Math.round(volume * 100);
+  const volumeParentLabel = isLinux ? `${volumeGlyph}  ${strings.volume}: ${volumePct}%` : `${strings.volume}: ${volumePct}%`;
+  const volumeItem: Electron.MenuItemConstructorOptions = {
+    label: volumeParentLabel,
+    submenu: [
+      {
+        label: strings.mute,
+        type: 'radio',
+        checked: volume === 0,
+        click: () => { if (sendCommand) sendCommand('player:setVolume', 0); },
+      },
+      {
+        label: '25%',
+        type: 'radio',
+        checked: volume === 0.25,
+        click: () => { if (sendCommand) sendCommand('player:setVolume', 0.25); },
+      },
+      {
+        label: '50%',
+        type: 'radio',
+        checked: volume === 0.5,
+        click: () => { if (sendCommand) sendCommand('player:setVolume', 0.5); },
+      },
+      {
+        label: '75%',
+        type: 'radio',
+        checked: volume === 0.75,
+        click: () => { if (sendCommand) sendCommand('player:setVolume', 0.75); },
+      },
+      {
+        label: '100%',
+        type: 'radio',
+        checked: volume === 1.0,
+        click: () => { if (sendCommand) sendCommand('player:setVolume', 1.0); },
+      },
+    ],
+  };
+
+  return [
+    trackItem,
+    artistItem,
+    albumItem,
+    { type: 'separator' },
+    previousItem,
+    playPauseItem,
+    nextItem,
+    volumeItem,
+    { type: 'separator' },
+  ];
+}
+
 function buildContextMenu(tray: Tray): Menu {
   const refresh = () => tray.setContextMenu(buildContextMenu(tray));
   const strings = getTrayStrings();
@@ -288,6 +412,7 @@ function buildContextMenu(tray: Tray): Menu {
   const quitGlyph = '🆇';
 
   const menuItems: Electron.MenuItemConstructorOptions[] = [
+    ...buildNowPlayingMenuItems(strings, isLinux),
     {
       label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
       click: () => showAboutWindow(),
@@ -310,6 +435,14 @@ function buildContextMenu(tray: Tray): Menu {
 
 export function setApplyZoomCallback(callback: (factor: number) => void): void {
   applyZoomCallback = callback;
+}
+
+export function setSendCommandCallback(callback: (channel: string, ...args: unknown[]) => void): void {
+  sendCommandCallback = callback;
+}
+
+export function updateNowPlayingState(payload: NowPlayingPayload | null, artworkPath: string | null, isPlaying: boolean, volume: number): void {
+  nowPlayingState = { payload, artworkPath, isPlaying, volume };
 }
 
 export function rebuildTrayMenu(tray: Tray): void {

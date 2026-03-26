@@ -42,6 +42,12 @@ export const ON_TEXT: Record<string, string> = trayData.ON_TEXT;
 export const OFF_TEXT: Record<string, string> = trayData.OFF_TEXT;
 export const STYLE_TEXT: Record<string, string> = trayData.STYLE_TEXT;
 export const ZOOM_TEXT: Record<string, string> = trayData.ZOOM_TEXT;
+export const PREVIOUS_TEXT: Record<string, string> = trayData.PREVIOUS_TEXT;
+export const PLAY_TEXT: Record<string, string> = trayData.PLAY_TEXT;
+export const PAUSE_TEXT: Record<string, string> = trayData.PAUSE_TEXT;
+export const NEXT_TEXT: Record<string, string> = trayData.NEXT_TEXT;
+export const VOLUME_TEXT: Record<string, string> = trayData.VOLUME_TEXT;
+export const MUTE_TEXT: Record<string, string> = trayData.MUTE_TEXT;
 
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
@@ -129,6 +135,12 @@ export interface TrayStrings {
   zoom150: string;
   zoom175: string;
   zoom200: string;
+  previous: string;
+  play: string;
+  pause: string;
+  next: string;
+  volume: string;
+  mute: string;
 }
 
 export function getTrayStrings(): TrayStrings {
@@ -156,7 +168,13 @@ export function getTrayStrings(): TrayStrings {
   const zoom150 = ZOOM_150;
   const zoom175 = ZOOM_175;
   const zoom200 = ZOOM_200;
-  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200 };
+  const previous = getLocalizedString(PREVIOUS_TEXT, langs);
+  const play = getLocalizedString(PLAY_TEXT, langs);
+  const pause = getLocalizedString(PAUSE_TEXT, langs);
+  const next = getLocalizedString(NEXT_TEXT, langs);
+  const volume = getLocalizedString(VOLUME_TEXT, langs);
+  const mute = getLocalizedString(MUTE_TEXT, langs);
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute };
 }
 
 export function getAboutStrings(): {

@@ -5,15 +5,15 @@ import log from 'electron-log/main';
 import { getTheme, setLastPageUrl, getZoomFactor } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
-import { Player, PlaybackState, IntegrationContext } from './player';
+import { Player, PlaybackState, IntegrationContext, type NowPlayingPayload } from './player';
 import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
 import { initThemeCSS, setThemeCssKey } from './theme';
-import { createTray, rebuildTrayMenu, setApplyZoomCallback, updateTrayTooltip } from './tray';
+import { createTray, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, updateNowPlayingState, updateTrayTooltip } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
-import { cleanArtworkCache } from './artwork';
+import { cleanArtworkCache, downloadArtwork } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
@@ -374,21 +374,87 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 
       initWedgeDetector({ player, getMainWindow: () => win });
 
-      player.on('nowPlayingItemDidChange', (payload) => {
-        if (!payload || !appTray) {
-          mainLog.debug('nowPlayingItemDidChange (tray handler): null payload ignored');
+      const TRAY_PAUSE_TIMEOUT_MS = 30_000;
+      let currentVolume = 1;
+      let currentPayload: NowPlayingPayload | null = null;
+      let currentArtworkPath: string | null = null;
+      let trayPauseTimer: ReturnType<typeof setTimeout> | null = null;
+      let previousPlaying = false;
+
+      player.on('nowPlayingItemDidChange', async (payload) => {
+        if (!appTray) return;
+        // Cancel pause timer on track change
+        if (trayPauseTimer) {
+          clearTimeout(trayPauseTimer);
+          trayPauseTimer = null;
+        }
+        if (!payload) {
+          mainLog.debug('nowPlayingItemDidChange (tray handler): null payload, clearing state');
+          currentPayload = null;
+          currentArtworkPath = null;
+          updateTrayTooltip(appTray, null);
+          updateNowPlayingState(null, null, false, currentVolume);
+          rebuildTrayMenu(appTray);
           return;
         }
         mainLog.debug('nowPlayingItemDidChange (tray handler):', `"${payload.name}"`);
+        currentPayload = payload;
         updateTrayTooltip(appTray, payload);
+        let artworkPath: string | null = null;
+        if (payload.artworkUrl) {
+          artworkPath = await downloadArtwork(payload.artworkUrl);
+        }
+        currentArtworkPath = artworkPath;
+        const { isPlaying } = player.playbackSnapshot();
+        updateNowPlayingState(payload, artworkPath, isPlaying, currentVolume);
+        rebuildTrayMenu(appTray);
       });
       player.on('playbackStateDidChange', (payload) => {
         if (!appTray) return;
         const state = payload?.state ?? 0;
         if (state === PlaybackState.None || state === PlaybackState.Stopped ||
             state === PlaybackState.Ended || state === PlaybackState.Completed) {
+          if (trayPauseTimer) {
+            clearTimeout(trayPauseTimer);
+            trayPauseTimer = null;
+          }
           updateTrayTooltip(appTray, null);
+          currentPayload = null;
+          currentArtworkPath = null;
+          updateNowPlayingState(null, null, false, currentVolume);
+          rebuildTrayMenu(appTray);
+          return;
         }
+        const { isPlaying } = player.playbackSnapshot();
+
+        // Pause timeout: clear Now Playing after 30s of inactivity
+        if (isPlaying && trayPauseTimer) {
+          clearTimeout(trayPauseTimer);
+          trayPauseTimer = null;
+        }
+        if (!isPlaying && previousPlaying) {
+          trayPauseTimer = setTimeout(() => {
+            trayPauseTimer = null;
+            mainLog.debug('tray pause timeout reached, clearing Now Playing');
+            if (!appTray) return;
+            updateTrayTooltip(appTray, null);
+            currentPayload = null;
+            currentArtworkPath = null;
+            updateNowPlayingState(null, null, false, currentVolume);
+            rebuildTrayMenu(appTray);
+          }, TRAY_PAUSE_TIMEOUT_MS);
+        }
+        previousPlaying = isPlaying;
+
+        updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
+        rebuildTrayMenu(appTray);
+      });
+      player.on('volumeDidChange', (volume) => {
+        if (!appTray || volume == null) return;
+        currentVolume = volume;
+        const { isPlaying } = player.playbackSnapshot();
+        updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
+        rebuildTrayMenu(appTray);
       });
 
       markCssReady();
@@ -415,6 +481,7 @@ app.whenReady().then(async () => {
   cleanArtworkCache();
   const assets = loadAssets();
   const { win, winReady } = createMainWindow(ses);
+  setSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
   setupWindowZoomAndNav(win);
   initThemeCSS(win, assets.CATPPUCCIN_CSS);
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
