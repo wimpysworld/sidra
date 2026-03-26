@@ -36,7 +36,7 @@ function getTrayIconPath(): string {
   return getLinuxTrayIconPath();
 }
 
-function truncateMenuLabel(text: string, maxLength = 32): string {
+export function truncateMenuLabel(text: string, maxLength = 32): string {
   const splitIndex = text.search(/[([]/);
   const trimmed = splitIndex > 0 ? text.slice(0, splitIndex).trimEnd() : text;
   return trimmed.length > maxLength ? trimmed.slice(0, maxLength).trimEnd() + '…' : trimmed;
