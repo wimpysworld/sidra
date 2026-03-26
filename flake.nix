@@ -58,6 +58,7 @@
                 actionlint
                 gh
                 just
+                librsvg # rsvg-convert for tray menu icon generation
                 nodejs # 24.x Active LTS, matches Electron 40's bundled Node
               ]
               ++ lib.optionals stdenv.isDarwin [

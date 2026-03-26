@@ -176,9 +176,9 @@ jobs:
       - name: Install uv
         if: matrix.os == 'macos' || matrix.os == 'windows'
         uses: astral-sh/setup-uv@v5
-      - name: Install RPM tools
+      - name: Install RPM and SVG tools
         if: matrix.os == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin rpm
       - name: Compile TypeScript
         run: npm run build
       - name: Build distributables
