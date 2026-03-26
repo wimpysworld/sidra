@@ -39,10 +39,15 @@ vi.mock('electron', () => ({
   nativeImage: {
     createFromPath: vi.fn(() => ({
       isEmpty: () => false,
-      resize: vi.fn(function (this: { isEmpty: () => boolean }) { return this; }),
+      resize: vi.fn(function (this: { isEmpty: () => boolean; toPNG: () => Buffer }) { return this; }),
+      toPNG: vi.fn(() => Buffer.from([])),
     })),
     createFromNamedImage: vi.fn(() => ({
       isEmpty: () => false,
+    })),
+    createEmpty: vi.fn(() => ({
+      isEmpty: () => true,
+      addRepresentation: vi.fn(),
     })),
   },
   Menu: {
