@@ -14,6 +14,7 @@ import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 import { init as initDock, setDockSendCommandCallback } from './integrations/macos-dock';
+import { init as initWindowsTaskbar, setTaskbarSendCommandCallback } from './integrations/windows-taskbar';
 import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 
@@ -378,6 +379,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
       initNotifications({ player, getMainWindow: () => win });
       initDiscordPresence({ player });
       initDock({ player, getMainWindow: () => win });
+      initWindowsTaskbar({ player, getMainWindow: () => win });
 
       if (process.platform === 'linux') {
         const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
@@ -416,6 +418,7 @@ app.whenReady().then(async () => {
   const { win, winReady } = createMainWindow(ses);
   setSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
   setDockSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
+  setTaskbarSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
   setupWindowZoomAndNav(win);
   initThemeCSS(win, assets.CATPPUCCIN_CSS);
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);

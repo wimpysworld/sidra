@@ -4,13 +4,11 @@ import { Player, PlaybackState, getShareUrl, type NowPlayingPayload, type Integr
 import { getTrayStrings } from '../../i18n';
 import { truncateMenuLabel } from '../../tray';
 import { createPauseTimer } from '../../pauseTimer';
+import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
 
 const dockLog = log.scope('dock');
 
 const DOCK_PAUSE_TIMEOUT_MS = 30_000;
-
-// Microseconds-to-seconds divisor for playbackTimeDidChange payloads
-const US_PER_SEC = 1_000_000;
 
 let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
@@ -69,25 +67,16 @@ function buildDockMenu(
   return Menu.buildFromTemplate(items);
 }
 
-function updateProgressBar(positionUs: number, durationMs: number | undefined): void {
+function updateDockProgressBar(positionUs: number, durationMs: number | undefined): void {
   const win = getMainWindowCallback?.();
   if (!win) return;
-
-  if (!durationMs || durationMs <= 0) {
-    win.setProgressBar(-1);
-    return;
-  }
-
-  const positionSec = positionUs / US_PER_SEC;
-  const durationSec = durationMs / 1000;
-  const progress = Math.min(Math.max(positionSec / durationSec, 0), 1);
-  win.setProgressBar(progress);
+  updateProgressBar(win, positionUs, durationMs);
 }
 
-function clearProgressBar(): void {
+function clearDockProgressBar(): void {
   const win = getMainWindowCallback?.();
   if (!win) return;
-  win.setProgressBar(-1);
+  clearProgressBar(win);
 }
 
 export function init(ctx: IntegrationContext): void {
@@ -106,7 +95,7 @@ export function init(ctx: IntegrationContext): void {
   const clearNowPlaying = (): void => {
     dockLog.debug('dock pause timeout reached, clearing Now Playing');
     currentPayload = null;
-    clearProgressBar();
+    clearDockProgressBar();
     rebuildDock(false);
   };
 
@@ -116,7 +105,7 @@ export function init(ctx: IntegrationContext): void {
     dockPauseTimer.cancel();
     currentPayload = payload;
     if (!payload) {
-      clearProgressBar();
+      clearDockProgressBar();
       rebuildDock(false);
       return;
     }
@@ -130,7 +119,7 @@ export function init(ctx: IntegrationContext): void {
         state === PlaybackState.Ended || state === PlaybackState.Completed) {
       dockPauseTimer.cancel();
       currentPayload = null;
-      clearProgressBar();
+      clearDockProgressBar();
       rebuildDock(false);
       return;
     }
@@ -152,7 +141,7 @@ export function init(ctx: IntegrationContext): void {
   });
 
   player.on('playbackTimeDidChange', (positionUs: number) => {
-    updateProgressBar(positionUs, currentPayload?.durationInMillis);
+    updateDockProgressBar(positionUs, currentPayload?.durationInMillis);
   });
 
   // Initialise with empty dock menu

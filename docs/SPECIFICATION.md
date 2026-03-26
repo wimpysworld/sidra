@@ -24,6 +24,11 @@ The codebase is tightly focused and as lean as possible. Four runtime dependenci
 - [Discord Rich Presence](#discord-rich-presence)
 - [Track Change Notifications](#track-change-notifications)
 - [Tray](#tray)
+- [macOS Dock](#macos-dock)
+- [Windows Taskbar](#windows-taskbar)
+- [Progress Bar](#progress-bar)
+- [Share Sheet](#share-sheet)
+- [Application Menu](#application-menu)
 - [Auto-update](#auto-update)
 - [Feature Inventory](#feature-inventory)
 - [Risk Assessment](#risk-assessment)
@@ -74,7 +79,9 @@ Standard Electron also won't work. CastLabs Electron is non-negotiable for Linux
 | Preload | `contextBridge` IPC bridge | Standard Electron security pattern |
 | MPRIS (Linux) | `dbus-next` directly | Full control, clean service name |
 | Windows controls | Chromium `mediaSession` → GSMTC | Built-in bridge, identity via `setAppUserModelId` |
+| Windows taskbar | `win.setThumbarButtons()` + `win.setOverlayIcon()` | Thumbnail toolbar and overlay badge |
 | macOS controls | Chromium `mediaSession` → MPNowPlayingInfoCenter | Built-in bridge, identity via bundle name |
+| macOS dock | `app.dock.setMenu()` + `win.setProgressBar()` | Right-click menu and progress bar |
 | Config | `electron-store` | Persistent config (window bounds, settings) |
 | Build | `electron-builder` | AppImage + deb + rpm (Linux), DMG (macOS), NSIS (Windows) |
 | Package manager | npm | Simplest option; avoids pnpm's strict semver parsing issues with CastLabs `+wvcus` tag |
@@ -134,6 +141,8 @@ sidra/
 │   │   └── electron.d.ts          — module augmentations for CastLabs type gaps
 │   ├── theme.ts                   — named theme lifecycle: ThemeName, applyTheme(), initThemeCSS(), themeCssMap
 │   ├── utils.ts                   — errorMessage() utility
+│   ├── utils/
+│   │   └── progressBar.ts         — updateProgressBar() / clearProgressBar(); platform-agnostic win.setProgressBar()
 │   └── integrations/
 │       ├── integration.ts         — IIntegration interface (enable/disable)
 │       ├── mpris/
@@ -142,8 +151,12 @@ sidra/
 │       │   └── index.ts           — Discord RPC with retry/debounce
 │       ├── notifications/
 │       │   └── index.ts           — Track change desktop notifications
-│       └── media-session/
-│           └── index.ts           — navigator.mediaSession updates (macOS/Win)
+│       ├── media-session/
+│       │   └── index.ts           — navigator.mediaSession updates (macOS/Win)
+│       ├── macos-dock/
+│       │   └── index.ts           — Dock right-click menu + progress bar (macOS only)
+│       └── windows-taskbar/
+│           └── index.ts           — Thumbnail toolbar + overlay icon + progress bar (Windows only)
 ├── assets/
 │   ├── musicKitHook.js            — Injected into music.apple.com post-load
 │   │                                 Must be listed in electron-builder's `asarUnpack` —
@@ -151,7 +164,7 @@ sidra/
 │   │                                 AppImage builds if packed inside the asar archive
 │   ├── locales/
 │   │   ├── loading.json           — 1 translation record: LOADING_TEXT
-│   │   ├── tray.json              — 14 translation records: tray menu labels
+│   │   ├── tray.json              — 21 translation records: tray menu labels (incl. SHARE_TEXT)
 │   │   ├── about.json             — 4 translation records: about window labels
 │   │   └── update.json            — 5 translation records: auto-update labels
 │   ├── styleFix.css               — CSS overrides injected via webContents.insertCSS()
@@ -207,9 +220,9 @@ Events flow from the renderer (MusicKit hook script) to the main process (player
 
 | Event | Payload | Consumers |
 |---|---|---|
-| `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Notifications |
-| `nowPlayingItemDidChange` | `{ name, albumName, artistName, durationInMillis, artworkUrl, genreNames, trackId }` or `null` | MPRIS, Discord, Notifications |
-| `playbackTimeDidChange` | Position in microseconds | MPRIS, Discord (position only) |
+| `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Notifications, Dock, Taskbar |
+| `nowPlayingItemDidChange` | `{ name, albumName, artistName, durationInMillis, artworkUrl, genreNames, trackId, url?, playParams? }` or `null` | MPRIS, Discord, Notifications, Dock, Taskbar |
+| `playbackTimeDidChange` | Position in microseconds | MPRIS, Discord (position only), Dock, Taskbar |
 | `repeatModeDidChange` | Mode integer (0/1/2) | MPRIS |
 | `shuffleModeDidChange` | Mode integer | MPRIS |
 | `volumeDidChange` | Volume float (0.0-1.0) | MPRIS |
@@ -292,15 +305,26 @@ Injected into `music.apple.com` after page load via `webContents.executeJavaScri
         window.AMWrapper.ipcRenderer.send('nowPlayingItemDidChange', null);
         return;
       }
+      const pp = item.attributes?.playParams;
       window.AMWrapper.ipcRenderer.send('nowPlayingItemDidChange', {
-        name: item.attributes.name,
-        albumName: item.attributes.albumName,
-        artistName: item.attributes.artistName,
-        durationInMillis: item.attributes.durationInMillis,
-        artworkUrl: item.attributes.artwork?.url
+        name: item.attributes?.name,
+        albumName: item.attributes?.albumName,
+        artistName: item.attributes?.artistName,
+        durationInMillis: item.attributes?.durationInMillis,
+        genreNames: item.attributes?.genreNames,
+        artworkUrl: item.attributes?.artwork?.url
           ?.replace('{w}', '512').replace('{h}', '512'),
-        genreNames: item.attributes.genreNames,
         trackId: item.id,
+        url: item.attributes?.url,
+        playParams: pp ? {
+          catalogId: pp.catalogId,
+          globalId: pp.globalId,
+          kind: pp.kind,
+          isLibrary: pp.isLibrary,
+        } : undefined,
+        // additional fields: audioTraits, targetBitrate, trackNumber,
+        // discNumber, composerName, releaseDate, contentRating, itemType,
+        // containerId, containerType, containerName, isrc, queueLength, queueIndex
       });
     });
 
@@ -378,6 +402,12 @@ app.setName('Sidra'); // Belt and braces; actual identity comes from the bundle
 
 `music.apple.com` already calls `navigator.mediaSession` internally, but its updates can lag. The hook script should also update `navigator.mediaSession` explicitly to ensure macOS sees correct metadata promptly.
 
+### macOS: Dock Menu and Progress Bar
+
+`src/integrations/macos-dock/index.ts` adds a right-click dock icon menu via `app.dock.setMenu()`. When a track is playing the menu shows the track and artist name (display-only), a Share item (if a URL is available), and play/pause, next, previous controls. The menu clears to a stub after 30 seconds of pause (matching the tray timeout). The dock progress bar uses `win.setProgressBar()` via `src/utils/progressBar.ts`, updated on every `playbackTimeDidChange` event and cleared on stop, idle, or pause timeout.
+
+Guarded with `process.platform === 'darwin'`.
+
 ### Windows: Chromium's GSMTC Bridge
 
 Chromium maps `navigator.mediaSession` to Global System Media Transport Controls. Identity is set by:
@@ -391,6 +421,18 @@ app.setName('Sidra');
 ```
 
 The GSMTC overlay (media flyout on Windows 11) will show "Sidra" as the controlling app. `app.setAppUserModelId()` is also required for desktop notifications to appear on Windows - without it, `Notification.show()` is silently ignored.
+
+### Windows: Taskbar Thumbnail Toolbar and Overlay Icon
+
+`src/integrations/windows-taskbar/index.ts` provides three integrations via the Windows taskbar thumbnail preview:
+
+**Thumbnail toolbar** (`win.setThumbarButtons()`): previous, play/pause, and next buttons. Icons are loaded from the 18px tray PNGs via `nativeImage.createFromPath()`, switching dark/light variants on `nativeTheme.updated`. Button registration is deferred until `win.once('show', ...)` - Windows silently drops `setThumbarButtons()` calls on hidden windows.
+
+**Overlay icon** (`win.setOverlayIcon()`): displays a play or pause badge on the taskbar button. Cleared on stop or idle. Skipped during transient states (Loading, Seeking, Waiting, Stalled) to prevent flicker.
+
+**Progress bar** (`win.setProgressBar()`): uses the shared `src/utils/progressBar.ts` utility.
+
+Guarded with `process.platform === 'win32'`.
 
 ---
 
@@ -747,6 +789,108 @@ When a track is active, the tooltip shows `TrackName - ArtistName`. Falls back t
 
 Unicode glyphs prefix menu labels on Linux only (`process.platform === 'linux'`). On macOS and Windows, labels are plain text. Glyphs are selected for reliable rendering in native menu stacks, favouring simple symbol forms over emoji-style presentation where possible.
 
+### Tray menu icons (macOS)
+
+On macOS Tahoe (macOS 26) and later, tray menu items display SF Symbol icons. `getMenuIcon(action)` in `src/tray.ts` calls `nativeImage.createFromNamedImage(symbolName, [-1, 0, 1])` - the `[-1, 0, 1]` hsl shift marks the image as a template so macOS automatically adapts its colour to match the menu text in dark and light mode. SF Symbols render at their intrinsic size, which is too large for menu items; the result is resized to 18x18 px with a 2× HiDPI representation added.
+
+On earlier macOS versions, and on Linux and Windows, `getMenuIcon()` loads themed 18px PNGs from `assets/icons/tray/menu/{dark,light}/`.
+
+---
+
+## macOS Dock
+
+`src/integrations/macos-dock/index.ts` manages the macOS dock menu and progress bar. It is a no-op on non-darwin platforms.
+
+### Dock menu
+
+`app.dock.setMenu()` receives a `Menu` built from current player state on every rebuild trigger (track change, playback state change). When a track is active the menu shows:
+
+1. `"TrackName - ArtistName"` (disabled, display-only)
+2. Separator
+3. Share item via `ShareMenu` (present only when `getShareUrl()` resolves a URL)
+4. Separator
+5. Play/Pause, Next, Previous controls
+
+When nothing is playing the menu shows a stub placeholder. The menu reverts to the stub after 30 seconds of pause.
+
+### Dock progress bar
+
+`win.setProgressBar()` is updated on every `playbackTimeDidChange` event via `src/utils/progressBar.ts`. The bar is cleared on stop, idle states (None, Stopped, Ended, Completed), and pause timeout.
+
+---
+
+## Windows Taskbar
+
+`src/integrations/windows-taskbar/index.ts` provides three Windows taskbar integrations. It is a no-op on non-win32 platforms.
+
+### Thumbnail toolbar
+
+`win.setThumbarButtons()` adds previous, play/pause, and next buttons to the thumbnail preview that appears when hovering the taskbar button. Icons are 18px PNGs loaded from `assets/icons/tray/menu/{dark,light}/` via `nativeImage.createFromPath()`. The icon set reloads on `nativeTheme.updated` to track system theme changes.
+
+Registration is deferred until `win.once('show', ...)`. Windows silently drops `setThumbarButtons()` calls made before the window is visible; deferring avoids this failure mode.
+
+### Overlay icon
+
+`win.setOverlayIcon()` places a small badge on the taskbar button:
+
+| State | Badge |
+|-------|-------|
+| Playing | play icon |
+| Paused | pause icon |
+| Stopped / None / Ended / Completed | cleared |
+| Loading, Seeking, Waiting, Stalled (transient) | unchanged (previous value kept to prevent flicker) |
+
+### Taskbar progress bar
+
+`win.setProgressBar()` is driven by `src/utils/progressBar.ts`, identical to the macOS dock integration. Cleared on stop or when track metadata is absent.
+
+---
+
+## Progress Bar
+
+`src/utils/progressBar.ts` is a platform-agnostic utility used by both the macOS dock and Windows taskbar integrations.
+
+```typescript
+updateProgressBar(win: BrowserWindow, positionUs: number, durationMs: number | undefined): void
+clearProgressBar(win: BrowserWindow): void
+```
+
+`positionUs` is in **microseconds** (the unit emitted by `playbackTimeDidChange`). `durationMs` is in **milliseconds** (the unit in `NowPlayingPayload.durationInMillis`). The function converts both to seconds before dividing.
+
+Guard conditions: if `durationMs` is absent or `<= 0`, the bar is cleared (avoids divide-by-zero). Output is clamped to [0, 1] before passing to `win.setProgressBar()`.
+
+---
+
+## Share Sheet
+
+On macOS, the tray menu and dock menu both include a Share item using Electron's `ShareMenu`. The URL is resolved via `getShareUrl(payload)` in `src/player.ts`, which falls back through:
+
+```
+payload.url → playParams.catalogId → playParams.globalId → undefined
+```
+
+When `getShareUrl()` returns `undefined`, the Share item is omitted from the menu. When present, clicking it calls `shareMenu.popup()` to display the native macOS Share sheet with the Apple Music URL.
+
+`SHARE_TEXT` is a localised string added to `assets/locales/tray.json` across all 32 supported languages.
+
+---
+
+## Application Menu
+
+`setupApplicationMenu()` in `src/main.ts` sets the application menu on startup:
+
+| Context | Menu |
+|---------|------|
+| `SIDRA_DEVTOOLS=1` | View menu with "Toggle Developer Tools" |
+| macOS (normal) | Single app-name menu: "About Sidra" + separator + "Quit Sidra" (Cmd+Q via `role: 'quit'`) |
+| Linux / Windows | `Menu.setApplicationMenu(null)` - no menu bar |
+
+The About item uses `getMenuIcon('about')`, which resolves to the `info.circle` SF Symbol on macOS Tahoe or later (undefined on earlier versions, in which case the icon property is omitted entirely).
+
+`productName: "Sidra"` in `package.json` is required for `app.name` to return `"Sidra"` before `app.setName()` runs; electron-builder derives the menu label from this field.
+
+`showAboutWindow()` is exported from `src/tray.ts` and imported by `src/main.ts` for use in the app menu. Both the About window and the splash window set `fullscreenable: false` and `fullscreen: false` to prevent them entering full-screen mode.
+
 ---
 
 ## Auto-update
@@ -821,6 +965,14 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | System tray | Electron `Tray` | Prev/play-pause/next + show/hide |
 | macOS `.app` build | electron-builder | DMG |
 | Windows build | electron-builder | NSIS installer |
+| macOS dock menu | `app.dock.setMenu()` | Now Playing info + playback controls |
+| macOS dock progress bar | `win.setProgressBar()` via `progressBar.ts` | Updated on `playbackTimeDidChange` |
+| macOS share sheet | `ShareMenu` with Apple Music URL | In tray and dock menus; URL from `getShareUrl()` |
+| macOS app menu | `Menu.setApplicationMenu()` | About + Quit; `info.circle` SF Symbol on Tahoe+ |
+| macOS tray menu SF Symbol icons | `nativeImage.createFromNamedImage()` | Template images; macOS Tahoe+ only |
+| Windows thumbnail toolbar | `win.setThumbarButtons()` | Previous, play/pause, next; deferred to `win.once('show')` |
+| Windows overlay icon | `win.setOverlayIcon()` | Play/pause badge; skipped during transient states |
+| Windows taskbar progress bar | `win.setProgressBar()` via `progressBar.ts` | Same utility as macOS dock |
 
 #### Tray Menu Implementation Notes
 
@@ -833,7 +985,6 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 |---|---|
 | Last.fm scrobbling | ~100 lines, proven pattern from Cider/apple-music-wrapper |
 | AirPlay casting | `airtunes2` node module (Cider v1 has this) |
-| Catppuccin theme | CSS variable overrides injected at startup; mocha/latte red accent; stored in electron-store |
 
 ### Explicitly Out of Scope
 

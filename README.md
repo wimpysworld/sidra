@@ -29,12 +29,27 @@ Sidra is under active development; several features in this list are not yet imp
 - **macOS**:
   - Full Widevine DRM with EVS production VMP signing
   - Now Playing widget via Chromium's built-in mediaSession bridge
+  - Dock menu with Now Playing info and playback controls (play/pause, next, previous)
+  - Dock progress bar showing track playback position on the dock icon
+  - App menu with Cmd+Q and About Sidra
+  - Share sheet for sharing the current track's Apple Music URL via native macOS sharing
 - **Windows**:
   - Full Widevine DRM with EVS production VMP signing
   - GSMTC media flyout via Chromium's built-in mediaSession bridge
+  - Taskbar thumbnail toolbar with play/pause, next, previous buttons (shown on taskbar hover)
+  - Taskbar overlay icon showing play/pause state on the taskbar button
+  - Taskbar progress bar showing track playback position on the taskbar button
 - Desktop Notifications
 - Discord Rich Presence
-- Application Indicator (tray)
+- **Application Indicator (tray)**:
+  - Now Playing info: track, artist, album, and artwork
+  - Full playback controls: play/pause, next, previous
+  - Volume control and mute
+  - Set you start page, including last session restore
+  - Style switcher and zoom control
+  - Share current track (macOS)
+  - Auto-update status
+  - Localised in 32 languages
 - Auto-update via GitHub Releases:
   - AppImage (Linux) and NSIS (Windows): silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
   - deb, rpm, Nix, macOS DMG: update notification with link to release page
@@ -129,7 +144,9 @@ music.apple.com
                     ├── MPRIS (Linux, dbus-next, D-Bus session bus)
                     ├── Discord Rich Presence
                     ├── Desktop notifications
-                    └── navigator.mediaSession (macOS/Windows)
+                    ├── navigator.mediaSession (macOS/Windows)
+                    ├── Dock menu + progress bar (macOS)
+                    └── Taskbar toolbar + overlay + progress bar (Windows)
 ```
 
 Controls flow in reverse: MPRIS method calls reach `window.__sidra` via `webContents.executeJavaScript()`, which calls the appropriate MusicKit method directly.
