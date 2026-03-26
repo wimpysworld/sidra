@@ -296,7 +296,7 @@ describe('createTray - menu template inspection', () => {
       const template = getLastTemplate();
       const aboutItem = findItem(template, 'About Sidra');
       expect(aboutItem!.icon).toBeDefined();
-      expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith('info.circle');
+      expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith('info.circle', [-1, 0, 1]);
     });
 
     it('attaches SF Symbol icon to Quit on macOS Tahoe+', () => {
@@ -884,7 +884,7 @@ describe('getMenuIcon', () => {
     it('returns a NativeImage from createFromNamedImage with SF Symbol name', () => {
       const icon = getMenuIcon('about');
       expect(icon).toBeDefined();
-      expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith('info.circle');
+      expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith('info.circle', [-1, 0, 1]);
     });
 
     it('returns undefined for an unknown action', () => {
@@ -911,7 +911,7 @@ describe('getMenuIcon', () => {
       for (const [action, symbol] of cases) {
         vi.mocked(nativeImage.createFromNamedImage).mockClear();
         getMenuIcon(action);
-        expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith(symbol);
+        expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith(symbol, [-1, 0, 1]);
       }
     });
   });
