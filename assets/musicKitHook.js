@@ -26,19 +26,37 @@
           window.AMWrapper.ipcRenderer.send('nowPlayingItemDidChange', null);
           return;
         }
+        const pp = item.attributes?.playParams;
         window.AMWrapper.ipcRenderer.send('nowPlayingItemDidChange', {
-          name: item.attributes.name,
-          albumName: item.attributes.albumName,
-          artistName: item.attributes.artistName,
-          durationInMillis: item.attributes.durationInMillis,
-          genreNames: item.attributes.genreNames,
-          artworkUrl: item.attributes.artwork?.url
+          name: item.attributes?.name,
+          albumName: item.attributes?.albumName,
+          artistName: item.attributes?.artistName,
+          durationInMillis: item.attributes?.durationInMillis,
+          genreNames: item.attributes?.genreNames,
+          artworkUrl: item.attributes?.artwork?.url
             ?.replace('{w}', '512').replace('{h}', '512'),
           trackId: item.id,
           audioTraits: item.attributes?.audioTraits,
-          trackNumber: item.attributes.trackNumber,
+          trackNumber: item.attributes?.trackNumber,
           targetBitrate: mk.bitrate,
-          url: item.attributes.url,
+          url: item.attributes?.url,
+          discNumber: item.attributes?.discNumber,
+          composerName: item.attributes?.composerName,
+          releaseDate: item.attributes?.releaseDate,
+          contentRating: item.attributes?.contentRating,
+          itemType: item.attributes?.playParams?.kind,
+          containerId: item.container?.id,
+          containerType: item.container?.type,
+          containerName: item.container?.attributes?.name,
+          playParams: pp ? {
+            catalogId: pp.catalogId,
+            globalId: pp.globalId,
+            kind: pp.kind,
+            isLibrary: pp.isLibrary,
+          } : undefined,
+          isrc: item.attributes?.isrc,
+          queueLength: mk.queue?.length,
+          queueIndex: mk.nowPlayingItemIndex,
         });
       });
 

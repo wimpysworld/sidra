@@ -4,6 +4,13 @@ import log from 'electron-log/main';
 
 const playerLog = log.scope('player');
 
+export interface PlayParams {
+  catalogId?: string;
+  globalId?: string;
+  kind?: string;
+  isLibrary?: boolean;
+}
+
 export interface NowPlayingPayload {
   name?: string;
   artistName?: string;
@@ -16,6 +23,18 @@ export interface NowPlayingPayload {
   trackNumber?: number;
   audioTraits?: string[];
   targetBitrate?: number;
+  discNumber?: number;
+  composerName?: string;
+  releaseDate?: string;
+  contentRating?: string;
+  itemType?: string;
+  containerId?: string;
+  containerType?: string;
+  containerName?: string;
+  playParams?: PlayParams;
+  isrc?: string;
+  queueLength?: number;
+  queueIndex?: number;
 }
 
 export const PlaybackState = {
