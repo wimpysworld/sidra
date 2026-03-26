@@ -36,6 +36,17 @@ function getTrayIconPath(): string {
   return getLinuxTrayIconPath();
 }
 
+function escapePango(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+export function sanitiseLinuxLabel(text: string): string {
+  return text.replace(/&/g, '\uFF06');
+}
+
 export function truncateMenuLabel(text: string, maxLength = 32): string {
   const splitIndex = text.search(/[([]/);
   const trimmed = splitIndex > 0 ? text.slice(0, splitIndex).trimEnd() : text;
@@ -311,22 +322,26 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     }
   }
 
-  // Metadata items
+  // Metadata items - Electron partially escapes labels for GTK/Pango but
+  // does not escape bare `&`, which Pango consumes as a markup entity start.
+  // sanitiseLinuxLabel replaces `&` with fullwidth ampersand (U+FF06) to
+  // avoid this on Linux without affecting macOS or Windows.
+  const trackLabel = truncateMenuLabel(payload.name ?? '');
   const trackItem: Electron.MenuItemConstructorOptions = {
-    label: truncateMenuLabel(payload.name ?? ''),
+    label: isLinux ? sanitiseLinuxLabel(trackLabel) : trackLabel,
     enabled: false,
     ...(icon ? { icon } : {}),
   };
   const artistGlyph = '★';
   const artistLabel = truncateMenuLabel(payload.artistName ?? '');
   const artistItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${artistGlyph}  ${artistLabel}` : artistLabel,
+    label: isLinux ? `${artistGlyph}  ${sanitiseLinuxLabel(artistLabel)}` : artistLabel,
     enabled: false,
   };
   const albumGlyph = '⦿';
   const albumLabel = truncateMenuLabel(payload.albumName ?? '');
   const albumItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${albumGlyph}  ${albumLabel}` : albumLabel,
+    label: isLinux ? `${albumGlyph}  ${sanitiseLinuxLabel(albumLabel)}` : albumLabel,
     enabled: false,
   };
 
@@ -455,8 +470,9 @@ export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null)
     ? payload.artistName ? `${payload.name} - ${payload.artistName}` : payload.name
     : fallback;
   const tooltip = text || fallback;
-  trayLog.debug('updateTrayTooltip:', payload ? `name=${payload.name}, artistName=${payload.artistName}` : 'null payload', '->', `"${tooltip}"`);
-  tray.setToolTip(tooltip);
+  const escaped = process.platform === 'linux' ? escapePango(tooltip) : tooltip;
+  trayLog.debug('updateTrayTooltip:', payload ? `name=${payload.name}, artistName=${payload.artistName}` : 'null payload', '->', `"${escaped}"`);
+  tray.setToolTip(escaped);
 }
 
 export function createTray(applyZoom?: (factor: number) => void): Tray {
