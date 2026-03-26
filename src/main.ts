@@ -8,11 +8,12 @@ import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
 import { initThemeCSS, setThemeCssKey } from './theme';
-import { createTray, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, showAboutWindow } from './tray';
+import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, showAboutWindow } from './tray';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
+import { init as initDock, setDockSendCommandCallback } from './integrations/macos-dock';
 import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 
@@ -141,7 +142,7 @@ function setupApplicationMenu(): void {
     Menu.setApplicationMenu(Menu.buildFromTemplate([{
       label: app.name,
       submenu: [
-        { label: `About ${app.name}`, click: () => showAboutWindow() },
+        { label: `About ${app.name}`, ...(getMenuIcon('about') ? { icon: getMenuIcon('about') } : {}), click: () => showAboutWindow() },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -376,6 +377,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 
       initNotifications({ player, getMainWindow: () => win });
       initDiscordPresence({ player });
+      initDock({ player, getMainWindow: () => win });
 
       if (process.platform === 'linux') {
         const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
@@ -413,6 +415,7 @@ app.whenReady().then(async () => {
   const assets = loadAssets();
   const { win, winReady } = createMainWindow(ses);
   setSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
+  setDockSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
   setupWindowZoomAndNav(win);
   initThemeCSS(win, assets.CATPPUCCIN_CSS);
   setupSplashTransition(win, splash, minDisplay, cssReady, winReady);

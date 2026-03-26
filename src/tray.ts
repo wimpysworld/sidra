@@ -1,9 +1,9 @@
-import { app, BrowserWindow, Menu, nativeImage, nativeTheme, shell, Tray } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, ShareMenu, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
-import { Player, PlaybackState, type NowPlayingPayload } from './player';
+import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -51,7 +51,8 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'update-ready': 'arrow.clockwise',
   'update-available': 'arrow.down.circle',
   'quit': 'xmark.circle',
-  'artist': 'person',
+  'share': 'square.and.arrow.up',
+  'artist': 'star',
   'album': 'opticaldisc',
   'record-vinyl': 'record.circle',
   'previous': 'backward.end',
@@ -509,6 +510,20 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     ],
   };
 
+  // Share item (macOS only) - uses native share sheet via ShareMenu
+  const shareItems: Electron.MenuItemConstructorOptions[] = [];
+  const shareUrl = getShareUrl(payload);
+  if (process.platform === 'darwin' && shareUrl) {
+    shareItems.push({
+      label: 'Share...',
+      ...(getMenuIcon('share') ? { icon: getMenuIcon('share') } : {}),
+      click: () => {
+        const shareMenu = new ShareMenu({ urls: [shareUrl] });
+        shareMenu.popup();
+      },
+    });
+  }
+
   return [
     trackItem,
     artistItem,
@@ -518,6 +533,7 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     playPauseItem,
     nextItem,
     volumeItem,
+    ...shareItems,
     { type: 'separator' },
   ];
 }

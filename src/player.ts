@@ -37,6 +37,19 @@ export interface NowPlayingPayload {
   queueIndex?: number;
 }
 
+/**
+ * Derives a shareable Apple Music URL from the payload, falling back to
+ * playParams.catalogId or playParams.globalId when payload.url is absent.
+ */
+export function getShareUrl(payload: NowPlayingPayload): string | undefined {
+  if (payload.url) return payload.url;
+  const catalogId = payload.playParams?.catalogId;
+  if (catalogId) return `https://music.apple.com/song/${catalogId}`;
+  const globalId = payload.playParams?.globalId;
+  if (globalId) return `https://music.apple.com/song/${globalId}`;
+  return undefined;
+}
+
 export const PlaybackState = {
   None: 0,
   Loading: 1,

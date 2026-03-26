@@ -900,7 +900,7 @@ describe('getMenuIcon', () => {
 
     it('resolves correct SF Symbol for each Now Playing action', () => {
       const cases: [string, string][] = [
-        ['artist', 'person'],
+        ['artist', 'star'],
         ['album', 'opticaldisc'],
         ['previous', 'backward.end'],
         ['play', 'play'],
