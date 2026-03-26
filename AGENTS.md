@@ -205,7 +205,7 @@ These standards are established and must be maintained.
 
 ### Adding translations
 
-Translation records live in `assets/locales/` as JSON files. Each JSON file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 29 named records.
+Translation records live in `assets/locales/` as JSON files. Each JSON file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 30 named records.
 
 | File | Records |
 |------|---------|
