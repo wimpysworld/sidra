@@ -45,7 +45,7 @@ Sidra is under active development; several features in this list are not yet imp
   - Now Playing info: track, artist, album, and artwork
   - Full playback controls: play/pause, next, previous
   - Volume control and mute
-  - Set you start page, including last session restore
+  - Set your start page, including last session restore
   - Style switcher and zoom control
   - Share current track (macOS)
   - Auto-update status
