@@ -135,6 +135,8 @@ function setupApplicationMenu(): void {
       },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+  } else if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([]));
   } else {
     Menu.setApplicationMenu(null);
   }
