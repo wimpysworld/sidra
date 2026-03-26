@@ -55,7 +55,7 @@ sidra/
 │   ├── icons/
 │   ├── locales/             — Translation record JSON files (loaded by src/i18n.ts)
 │   │   ├── loading.json     — LOADING_TEXT
-│   │   ├── tray.json        — 20 tray menu records
+│   │   ├── tray.json        — 21 tray menu records
 │   │   ├── about.json       — 4 about dialog records
 │   │   └── update.json      — 5 auto-update records
 │   └── source/              — Gimp XCF masters and SVG source files
@@ -205,12 +205,12 @@ These standards are established and must be maintained.
 
 ### Adding translations
 
-Translation records live in `assets/locales/` as JSON files. Each JSON file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 30 named records.
+Translation records live in `assets/locales/` as JSON files. Each JSON file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 31 named records.
 
 | File | Records |
 |------|---------|
 | `assets/locales/loading.json` | `LOADING_TEXT` |
-| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `MUTE_TEXT` |
+| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `MUTE_TEXT`, `SHARE_TEXT` |
 | `assets/locales/about.json` | `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX` |
 | `assets/locales/update.json` | `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `RESTART_NOW_TEXT`, `LATER_TEXT` |
 

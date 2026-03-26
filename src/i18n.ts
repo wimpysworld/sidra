@@ -48,6 +48,7 @@ export const PAUSE_TEXT: Record<string, string> = trayData.PAUSE_TEXT;
 export const NEXT_TEXT: Record<string, string> = trayData.NEXT_TEXT;
 export const VOLUME_TEXT: Record<string, string> = trayData.VOLUME_TEXT;
 export const MUTE_TEXT: Record<string, string> = trayData.MUTE_TEXT;
+export const SHARE_TEXT: Record<string, string> = trayData.SHARE_TEXT;
 
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
@@ -141,6 +142,7 @@ export interface TrayStrings {
   next: string;
   volume: string;
   mute: string;
+  share: string;
 }
 
 export function getTrayStrings(): TrayStrings {
@@ -174,7 +176,8 @@ export function getTrayStrings(): TrayStrings {
   const next = getLocalizedString(NEXT_TEXT, langs);
   const volume = getLocalizedString(VOLUME_TEXT, langs);
   const mute = getLocalizedString(MUTE_TEXT, langs);
-  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute };
+  const share = getLocalizedString(SHARE_TEXT, langs);
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute, share };
 }
 
 export function getAboutStrings(): {
