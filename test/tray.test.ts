@@ -69,8 +69,8 @@ vi.mock('../src/paths', () => ({
   getProductInfo: () => ({ productName: 'Sidra', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
 }));
 
-import { Menu, Tray, nativeTheme } from 'electron';
-import { truncateMenuLabel, sanitiseLinuxLabel, createTray } from '../src/tray';
+import { Menu, Tray, nativeImage, nativeTheme } from 'electron';
+import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon } from '../src/tray';
 
 // Helper: extract the template array from the last Menu.buildFromTemplate call
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -280,6 +280,129 @@ describe('createTray - menu template inspection', () => {
       expect(findItem(template, 'Style')).toBeDefined();
       expect(findItem(template, 'Zoom')).toBeDefined();
       expect(findItem(template, 'Quit')).toBeDefined();
+    });
+  });
+});
+
+describe('getMenuIcon', () => {
+  const originalPlatform = process.platform;
+
+  function setPlatform(platform: string): void {
+    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
+  }
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
+    vi.mocked(nativeImage.createFromPath).mockClear();
+    vi.mocked(nativeImage.createFromNamedImage).mockClear();
+  });
+
+  describe('Linux - themed PNG icons', () => {
+    beforeEach(() => {
+      setPlatform('linux');
+    });
+
+    it('returns a NativeImage from the dark PNG directory when shouldUseDarkColors is true', () => {
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      const icon = getMenuIcon('about');
+      expect(icon).toBeDefined();
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+        expect.stringContaining('tray/menu/dark/circle-info.png')
+      );
+    });
+
+    it('returns a NativeImage from the light PNG directory when shouldUseDarkColors is false', () => {
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: false, configurable: true });
+      const icon = getMenuIcon('quit');
+      expect(icon).toBeDefined();
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+        expect.stringContaining('tray/menu/light/eject.png')
+      );
+    });
+
+    it('returns undefined for an unknown action', () => {
+      expect(getMenuIcon('nonexistent')).toBeUndefined();
+    });
+
+    it('returns undefined when the image is empty', () => {
+      vi.mocked(nativeImage.createFromPath).mockReturnValueOnce({
+        isEmpty: () => true,
+        resize: vi.fn(function (this: { isEmpty: () => boolean }) { return this; }),
+      } as unknown as Electron.NativeImage);
+      expect(getMenuIcon('about')).toBeUndefined();
+    });
+  });
+
+  describe('Windows - themed PNG icons', () => {
+    beforeEach(() => {
+      setPlatform('win32');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    });
+
+    it('returns a NativeImage from the dark PNG directory', () => {
+      const icon = getMenuIcon('play');
+      expect(icon).toBeDefined();
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+        expect.stringContaining('tray/menu/dark/play.png')
+      );
+    });
+  });
+
+  describe('macOS Tahoe+ (26.x) - SF Symbol icons', () => {
+    beforeEach(() => {
+      setPlatform('darwin');
+      vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
+    });
+
+    it('returns a NativeImage from createFromNamedImage with SF Symbol name', () => {
+      const icon = getMenuIcon('about');
+      expect(icon).toBeDefined();
+      expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith('info.circle');
+    });
+
+    it('returns undefined for an unknown action', () => {
+      expect(getMenuIcon('nonexistent')).toBeUndefined();
+    });
+
+    it('returns undefined when the SF Symbol image is empty', () => {
+      vi.mocked(nativeImage.createFromNamedImage).mockReturnValueOnce({
+        isEmpty: () => true,
+      } as unknown as Electron.NativeImage);
+      expect(getMenuIcon('about')).toBeUndefined();
+    });
+
+    it('resolves correct SF Symbol for each Now Playing action', () => {
+      const cases: [string, string][] = [
+        ['artist', 'person'],
+        ['album', 'opticaldisc'],
+        ['previous', 'backward.end'],
+        ['play', 'play'],
+        ['pause', 'pause'],
+        ['next', 'forward.end'],
+        ['volume', 'speaker.wave.2'],
+      ];
+      for (const [action, symbol] of cases) {
+        vi.mocked(nativeImage.createFromNamedImage).mockClear();
+        getMenuIcon(action);
+        expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith(symbol);
+      }
+    });
+  });
+
+  describe('pre-Tahoe macOS - no icons', () => {
+    beforeEach(() => {
+      setPlatform('darwin');
+      vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.2.0');
+    });
+
+    it('returns undefined on pre-Tahoe macOS', () => {
+      expect(getMenuIcon('about')).toBeUndefined();
+    });
+
+    it('does not call createFromPath or createFromNamedImage', () => {
+      getMenuIcon('about');
+      expect(vi.mocked(nativeImage.createFromPath)).not.toHaveBeenCalled();
+      expect(vi.mocked(nativeImage.createFromNamedImage)).not.toHaveBeenCalled();
     });
   });
 });
