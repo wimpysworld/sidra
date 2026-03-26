@@ -398,6 +398,9 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     if (!src.isEmpty()) {
       const img = nativeImage.createEmpty();
       img.addRepresentation({ scaleFactor: 1.0, buffer: src.resize({ width: 18, height: 18 }).toPNG() });
+      img.addRepresentation({ scaleFactor: 1.25, buffer: src.resize({ width: 23, height: 23 }).toPNG() });
+      img.addRepresentation({ scaleFactor: 1.5, buffer: src.resize({ width: 27, height: 27 }).toPNG() });
+      img.addRepresentation({ scaleFactor: 1.75, buffer: src.resize({ width: 32, height: 32 }).toPNG() });
       img.addRepresentation({ scaleFactor: 2.0, buffer: src.resize({ width: 36, height: 36 }).toPNG() });
       icon = img;
     }
