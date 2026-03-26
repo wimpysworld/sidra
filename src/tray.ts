@@ -408,45 +408,50 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     enabled: false,
     ...(icon ? { icon } : {}),
   };
-  const artistGlyph = '★';
   const artistLabel = truncateMenuLabel(payload.artistName ?? '');
+  const artistIcon = getMenuIcon('artist');
   const artistItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${artistGlyph}  ${sanitiseLinuxLabel(artistLabel)}` : artistLabel,
+    label: isLinux ? sanitiseLinuxLabel(artistLabel) : artistLabel,
     enabled: false,
+    ...(artistIcon ? { icon: artistIcon } : {}),
   };
-  const albumGlyph = '⦿';
   const albumLabel = truncateMenuLabel(payload.albumName ?? '');
+  const albumIcon = getMenuIcon('album');
   const albumItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${albumGlyph}  ${sanitiseLinuxLabel(albumLabel)}` : albumLabel,
+    label: isLinux ? sanitiseLinuxLabel(albumLabel) : albumLabel,
     enabled: false,
+    ...(albumIcon ? { icon: albumIcon } : {}),
   };
-
-  // Playback control glyphs
-  const previousGlyph = isLinux ? '⇤' : '';
-  const playPauseGlyph = isLinux ? (isPlaying ? '◫' : '🞂') : '';
-  const playPauseLabel = isPlaying ? strings.pause : strings.play;
-  const nextGlyph = isLinux ? '⇥' : '';
-  const volumeGlyph = isLinux ? '🕪' : '';
 
   // Playback controls
+  const playPauseLabel = isPlaying ? strings.pause : strings.play;
+  const playPauseAction = isPlaying ? 'pause' : 'play';
+  const previousIcon = getMenuIcon('previous');
   const previousItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${previousGlyph}  ${strings.previous}` : strings.previous,
+    label: strings.previous,
+    ...(previousIcon ? { icon: previousIcon } : {}),
     click: () => { if (sendCommand) sendCommand('player:previous'); },
   };
+  const playPauseIcon = getMenuIcon(playPauseAction);
   const playPauseItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${playPauseGlyph}  ${playPauseLabel}` : playPauseLabel,
+    label: playPauseLabel,
+    ...(playPauseIcon ? { icon: playPauseIcon } : {}),
     click: () => { if (sendCommand) sendCommand('player:playPause'); },
   };
+  const nextIcon = getMenuIcon('next');
   const nextItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? `${nextGlyph}  ${strings.next}` : strings.next,
+    label: strings.next,
+    ...(nextIcon ? { icon: nextIcon } : {}),
     click: () => { if (sendCommand) sendCommand('player:next'); },
   };
 
   // Volume submenu with radio items
   const volumePct = Math.round(volume * 100);
-  const volumeParentLabel = isLinux ? `${volumeGlyph}  ${strings.volume}: ${volumePct}%` : `${strings.volume}: ${volumePct}%`;
+  const volumeIcon = getMenuIcon('volume');
+  const volumeParentLabel = `${strings.volume}: ${volumePct}%`;
   const volumeItem: Electron.MenuItemConstructorOptions = {
     label: volumeParentLabel,
+    ...(volumeIcon ? { icon: volumeIcon } : {}),
     submenu: [
       {
         label: strings.mute,
