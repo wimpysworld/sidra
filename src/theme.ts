@@ -30,7 +30,7 @@ export function initThemeCSS(win: BrowserWindow, catppuccinCSS: string): void {
   let themeCssOp = Promise.resolve();
   applyThemeCSSInternal = (name: ThemeName) => {
     themeCssOp = themeCssOp
-      .catch((error) => {
+      .catch((error: unknown) => {
         themeLog.warn('Theme CSS operation failed', error);
       })
       .then(async () => {

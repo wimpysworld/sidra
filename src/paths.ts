@@ -8,6 +8,13 @@ export function getAssetPath(...parts: string[]): string {
   return path.join(base, ...parts);
 }
 
+interface PackageJson {
+  author: string | { name: string };
+  build?: { productName?: string };
+  description?: string;
+  license?: string;
+}
+
 export interface ProductInfo {
   productName: string;
   description: string;
@@ -22,7 +29,7 @@ export function getProductInfo(): ProductInfo {
     return cachedProductInfo;
   }
 
-  const pkg = require(path.join(__dirname, '..', 'package.json'));
+  const pkg = require(path.join(__dirname, '..', 'package.json')) as PackageJson;
   const author = typeof pkg.author === 'string'
     ? pkg.author.replace(/\s*<[^>]+>/, '')
     : (pkg.author?.name ?? '');

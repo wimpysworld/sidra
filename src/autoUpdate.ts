@@ -35,14 +35,12 @@ export function isAutoUpdateSupported(): boolean {
 
 export function quitAndInstall(): void {
   // electron-updater is lazy-required so it never loads on unsupported platforms
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { autoUpdater } = require('electron-updater');
   autoUpdater.quitAndInstall();
 }
 
 export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
   // electron-updater is lazy-required so it never loads on unsupported platforms
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { autoUpdater } = require('electron-updater');
 
   autoUpdater.logger = null;

@@ -6,7 +6,6 @@ import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 
 // @holusion/dbus-next is lazy-required because the MPRIS module only loads on Linux
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const dbus = require('@holusion/dbus-next');
 const {
   Interface,

@@ -367,7 +367,6 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
       initDiscordPresence({ player });
 
       if (process.platform === 'linux') {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
         mpris.init({ player, getMainWindow: () => win });
       }

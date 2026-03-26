@@ -18,7 +18,6 @@ interface StoreSchema {
 // electron-store v10 is ESM-only; under CommonJS moduleResolution TypeScript
 // cannot follow the Conf inheritance chain.  Use require() and type the
 // instance manually so the rest of the codebase stays on module:"commonjs".
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Store = require('electron-store').default;
 
 const store: {
