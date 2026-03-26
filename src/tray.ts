@@ -571,8 +571,15 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
   if (process.platform === 'linux') {
     nativeTheme.on('updated', () => {
       const newIconPath = getLinuxTrayIconPath();
-      trayLog.info('theme changed, switching icon:', newIconPath);
+      trayLog.info('theme changed, switching tray icon:', newIconPath);
       tray.setImage(newIconPath);
+      trayLog.info('theme changed, rebuilding context menu');
+      tray.setContextMenu(buildContextMenu(tray));
+    });
+  } else if (process.platform === 'win32') {
+    nativeTheme.on('updated', () => {
+      trayLog.info('theme changed, rebuilding context menu');
+      tray.setContextMenu(buildContextMenu(tray));
     });
   }
 
