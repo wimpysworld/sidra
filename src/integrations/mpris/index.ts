@@ -165,6 +165,18 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
     metadata['xesam:trackNumber'] = new Variant('i', payload.trackNumber);
   }
 
+  if (payload.discNumber != null) {
+    metadata['xesam:discNumber'] = new Variant('i', payload.discNumber);
+  }
+
+  if (payload.composerName != null && payload.composerName !== '') {
+    metadata['xesam:composer'] = new Variant('as', [payload.composerName]);
+  }
+
+  if (payload.releaseDate != null) {
+    metadata['xesam:contentCreated'] = new Variant('s', payload.releaseDate);
+  }
+
   return metadata;
 }
 
