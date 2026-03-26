@@ -194,7 +194,7 @@ interface SubmenuContext {
 }
 
 function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, isLinux, refresh } = ctx;
+  const { strings, refresh } = ctx;
   const currentStartPage = getStartPage();
   const startPageLabelMap: Record<string, string> = {
     'home': strings.startPageHome,
@@ -203,10 +203,11 @@ function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructo
     'all-playlists': strings.startPageAllPlaylists,
     'last': strings.startPageLast,
   };
-  const startPageGlyph = '♪';
   const parentLabel = `${strings.startPage}: ${startPageLabelMap[currentStartPage]}`;
+  const icon = getMenuIcon('start-page');
   return {
-    label: isLinux ? `${startPageGlyph} ${parentLabel}` : parentLabel,
+    label: parentLabel,
+    ...(icon ? { icon } : {}),
     submenu: [
       {
         label: strings.startPageHome,
@@ -243,12 +244,13 @@ function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructo
 }
 
 function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, isLinux, refresh } = ctx;
+  const { strings, refresh } = ctx;
   const notifEnabled = getNotificationsEnabled();
-  const notifGlyph = '🕭';
   const parentLabel = `${strings.notifications}: ${notifEnabled ? strings.on : strings.off}`;
+  const icon = getMenuIcon('notifications');
   return {
-    label: isLinux ? `${notifGlyph} ${parentLabel}` : parentLabel,
+    label: parentLabel,
+    ...(icon ? { icon } : {}),
     submenu: [
       {
         label: strings.on,
@@ -267,12 +269,13 @@ function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstr
 }
 
 function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, isLinux, refresh } = ctx;
+  const { strings, refresh } = ctx;
   const discordEnabled = getDiscordEnabled();
-  const discordGlyph = '🗫';
   const parentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
+  const icon = getMenuIcon('discord');
   return {
-    label: isLinux ? `${discordGlyph} ${parentLabel}` : parentLabel,
+    label: parentLabel,
+    ...(icon ? { icon } : {}),
     submenu: [
       {
         label: strings.on,
@@ -291,12 +294,13 @@ function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorO
 }
 
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, isLinux, refresh } = ctx;
+  const { strings, refresh } = ctx;
   const currentTheme = getTheme();
-  const styleGlyph = '🌢';
   const parentLabel = `${strings.style}: ${currentTheme === 'catppuccin' ? strings.catppuccin : strings.styleAppleMusic}`;
+  const icon = getMenuIcon('style');
   return {
-    label: isLinux ? `${styleGlyph} ${parentLabel}` : parentLabel,
+    label: parentLabel,
+    ...(icon ? { icon } : {}),
     submenu: [
       {
         label: strings.styleAppleMusic,
@@ -315,14 +319,15 @@ function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOpt
 }
 
 function buildZoomSubmenu(ctx: SubmenuContext & { applyZoom: ((factor: number) => void) | null }): Electron.MenuItemConstructorOptions {
-  const { strings, isLinux, refresh, applyZoom } = ctx;
+  const { strings, refresh, applyZoom } = ctx;
   const zoomFactor = getZoomFactor();
-  const zoomGlyph = '%';
   const zoomLabelMap: Record<number, string> = { 1.0: strings.zoom100, 1.25: strings.zoom125, 1.5: strings.zoom150, 1.75: strings.zoom175, 2.0: strings.zoom200 };
   const parentLabel = `${strings.zoom}: ${zoomLabelMap[zoomFactor] ?? `${Math.round(zoomFactor * 100)}%`}`;
   const makeClick = (factor: number) => () => { setZoomFactor(factor); if (applyZoom) applyZoom(factor); refresh(); };
+  const icon = getMenuIcon('zoom');
   return {
-    label: isLinux ? `${zoomGlyph} ${parentLabel}` : parentLabel,
+    label: parentLabel,
+    ...(icon ? { icon } : {}),
     submenu: [
       { label: strings.zoom100, type: 'radio', checked: zoomFactor === 1.0, click: makeClick(1.0) },
       { label: strings.zoom125, type: 'radio', checked: zoomFactor === 1.25, click: makeClick(1.25) },
@@ -333,26 +338,28 @@ function buildZoomSubmenu(ctx: SubmenuContext & { applyZoom: ((factor: number) =
   };
 }
 
-function buildUpdateMenuItems(isLinux: boolean): Electron.MenuItemConstructorOptions[] {
+function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
   const update = getUpdateInfo();
   const updateStrings = getUpdateStrings();
   if (update && update.ready) {
     const autoUpdateStrings = getAutoUpdateStrings();
-    const readyGlyph = '⟳';
+    const icon = getMenuIcon('update-ready');
     return [
       { type: 'separator' },
       {
-        label: isLinux ? `${readyGlyph} ${autoUpdateStrings.ready}` : autoUpdateStrings.ready,
+        label: autoUpdateStrings.ready,
+        ...(icon ? { icon } : {}),
         click: () => { quitAndInstall(); },
       },
     ];
   } else if (update) {
     const updateLabel = updateStrings.updateAvailable.replace('{version}', update.version);
-    const updateGlyph = '⬆';
+    const icon = getMenuIcon('update-available');
     return [
       { type: 'separator' },
       {
-        label: isLinux ? `${updateGlyph} ${updateLabel}` : updateLabel,
+        label: updateLabel,
+        ...(icon ? { icon } : {}),
         click: () => {
           try {
             const parsed = new URL(update.url);
@@ -492,13 +499,14 @@ function buildContextMenu(tray: Tray): Menu {
   const strings = getTrayStrings();
   const isLinux = process.platform === 'linux';
   const ctx: SubmenuContext = { strings, isLinux, refresh };
-  const aboutGlyph = '🛈';
-  const quitGlyph = '🆇';
+  const aboutIcon = getMenuIcon('about');
+  const quitIcon = getMenuIcon('quit');
 
   const menuItems: Electron.MenuItemConstructorOptions[] = [
     ...buildNowPlayingMenuItems(strings, isLinux),
     {
-      label: isLinux ? `${aboutGlyph} ${strings.about}` : strings.about,
+      label: strings.about,
+      ...(aboutIcon ? { icon: aboutIcon } : {}),
       click: () => showAboutWindow(),
     },
     buildStartPageSubmenu(ctx),
@@ -506,10 +514,11 @@ function buildContextMenu(tray: Tray): Menu {
     buildDiscordSubmenu(ctx),
     buildStyleSubmenu(ctx),
     buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
-    ...buildUpdateMenuItems(isLinux),
+    ...buildUpdateMenuItems(),
     { type: 'separator' },
     {
-      label: isLinux ? `${quitGlyph} ${strings.quit}` : strings.quit,
+      label: strings.quit,
+      ...(quitIcon ? { icon: quitIcon } : {}),
       click: () => app.quit(),
     },
   ];
