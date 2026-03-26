@@ -44,6 +44,8 @@ vi.mock('electron', () => ({
     })),
     createFromNamedImage: vi.fn(() => ({
       isEmpty: () => false,
+      resize: vi.fn(function (this: { isEmpty: () => boolean; toPNG: () => Buffer }) { return this; }),
+      toPNG: vi.fn(() => Buffer.from([])),
     })),
     createEmpty: vi.fn(() => ({
       isEmpty: () => true,

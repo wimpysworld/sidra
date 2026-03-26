@@ -75,8 +75,17 @@ export function getMenuIcon(action: string): Electron.NativeImage | undefined {
     const symbolName = menuIconSFSymbolMap[action];
     if (!symbolName) return undefined;
 
-    const img = nativeImage.createFromNamedImage(symbolName);
-    return img.isEmpty() ? undefined : img;
+    // hslShift [-1, 0, 1] marks the image as a template so macOS
+    // automatically adapts its colour to match the menu text (light/dark).
+    const raw = nativeImage.createFromNamedImage(symbolName, [-1, 0, 1]);
+    if (raw.isEmpty()) return undefined;
+
+    // SF Symbols render at their intrinsic size, which is too large for
+    // menu items. Resize to 18px with HiDPI representations.
+    const img = nativeImage.createEmpty();
+    img.addRepresentation({ scaleFactor: 1.0, buffer: raw.resize({ width: 18, height: 18 }).toPNG() });
+    img.addRepresentation({ scaleFactor: 2.0, buffer: raw.resize({ width: 36, height: 36 }).toPNG() });
+    return img;
   }
 
   // Linux and Windows: resolve themed PNG
