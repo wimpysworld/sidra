@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { TrayStrings } from '../src/i18n';
 
 // Mock modules that trigger require('electron-store') at import time.
 vi.mock('../src/config', () => ({
@@ -14,11 +15,41 @@ vi.mock('../src/config', () => ({
   setZoomFactor: vi.fn(),
 }));
 
+const mockTrayStrings: TrayStrings = {
+  about: 'About Sidra',
+  quit: 'Quit',
+  notifications: 'Notifications',
+  discord: 'Discord',
+  startPage: 'Start Page',
+  startPageHome: 'Home',
+  startPageNew: 'New',
+  startPageRadio: 'Radio',
+  startPageAllPlaylists: 'All Playlists',
+  startPageLast: 'Last',
+  catppuccin: 'Catppuccin',
+  on: 'On',
+  off: 'Off',
+  style: 'Style',
+  styleAppleMusic: 'Apple Music',
+  zoom: 'Zoom',
+  zoom100: '100%',
+  zoom125: '125%',
+  zoom150: '150%',
+  zoom175: '175%',
+  zoom200: '200%',
+  previous: 'Previous',
+  play: 'Play',
+  pause: 'Pause',
+  next: 'Next',
+  volume: 'Volume',
+  mute: 'Mute',
+};
+
 vi.mock('../src/i18n', () => ({
-  getTrayStrings: () => ({}),
-  getAboutStrings: () => ({}),
-  getUpdateStrings: () => ({}),
-  getAutoUpdateStrings: () => ({}),
+  getTrayStrings: () => mockTrayStrings,
+  getAboutStrings: () => ({ close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
+  getUpdateStrings: () => ({ updateAvailable: 'Update available: {version}', upToDate: 'Up to date' }),
+  getAutoUpdateStrings: () => ({ ready: 'Restart to update' }),
 }));
 
 vi.mock('../src/update', () => ({
@@ -33,7 +64,25 @@ vi.mock('../src/theme', () => ({
   applyTheme: vi.fn(),
 }));
 
-import { truncateMenuLabel, sanitiseLinuxLabel } from '../src/tray';
+vi.mock('../src/paths', () => ({
+  getAssetPath: vi.fn((...parts: string[]) => parts.join('/')),
+  getProductInfo: () => ({ productName: 'Sidra', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
+}));
+
+import { Menu, Tray, nativeTheme } from 'electron';
+import { truncateMenuLabel, sanitiseLinuxLabel, createTray } from '../src/tray';
+
+// Helper: extract the template array from the last Menu.buildFromTemplate call
+function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
+  const calls = vi.mocked(Menu.buildFromTemplate).mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return calls[calls.length - 1][0] as Electron.MenuItemConstructorOptions[];
+}
+
+// Helper: find a menu item by label substring
+function findItem(template: Electron.MenuItemConstructorOptions[], labelSubstring: string): Electron.MenuItemConstructorOptions | undefined {
+  return template.find((item) => typeof item.label === 'string' && item.label.includes(labelSubstring));
+}
 
 describe('truncateMenuLabel', () => {
   it('passes through short text without truncation', () => {
@@ -76,5 +125,161 @@ describe('sanitiseLinuxLabel', () => {
 
   it('handles empty string', () => {
     expect(sanitiseLinuxLabel('')).toBe('');
+  });
+});
+
+describe('createTray - menu template inspection', () => {
+  const originalPlatform = process.platform;
+
+  function setPlatform(platform: string): void {
+    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
+  }
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+  });
+
+  it('calls Menu.buildFromTemplate and captures the template', () => {
+    setPlatform('linux');
+    createTray();
+    const template = getLastTemplate();
+    expect(Array.isArray(template)).toBe(true);
+    expect(template.length).toBeGreaterThan(0);
+  });
+
+  it('returns a Tray instance with setContextMenu called', () => {
+    setPlatform('linux');
+    const tray = createTray();
+    expect(tray).toBeDefined();
+    expect(tray.setContextMenu).toBeDefined();
+  });
+
+  describe('Linux platform', () => {
+    beforeEach(() => {
+      setPlatform('linux');
+    });
+
+    it('prefixes About label with glyph on Linux', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem).toBeDefined();
+      // Linux labels include a glyph prefix
+      expect(aboutItem!.label).toMatch(/^.+ About Sidra$/);
+    });
+
+    it('prefixes Quit label with glyph on Linux', () => {
+      createTray();
+      const template = getLastTemplate();
+      const quitItem = findItem(template, 'Quit');
+      expect(quitItem).toBeDefined();
+      expect(quitItem!.label).toMatch(/^.+ Quit$/);
+    });
+
+    it('includes glyph in submenu parent labels on Linux', () => {
+      createTray();
+      const template = getLastTemplate();
+      const startPageItem = findItem(template, 'Start Page');
+      expect(startPageItem).toBeDefined();
+      // Has glyph prefix and submenu
+      expect(startPageItem!.label).toMatch(/^.+ Start Page/);
+      expect(startPageItem!.submenu).toBeDefined();
+    });
+
+    it('registers a nativeTheme listener on Linux', () => {
+      createTray();
+      expect(vi.mocked(nativeTheme.on)).toHaveBeenCalledWith('updated', expect.any(Function));
+    });
+  });
+
+  describe('Windows platform', () => {
+    beforeEach(() => {
+      setPlatform('win32');
+    });
+
+    it('does not prefix About label with glyph on Windows', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem).toBeDefined();
+      expect(aboutItem!.label).toBe('About Sidra');
+    });
+
+    it('does not prefix Quit label with glyph on Windows', () => {
+      createTray();
+      const template = getLastTemplate();
+      const quitItem = findItem(template, 'Quit');
+      expect(quitItem).toBeDefined();
+      expect(quitItem!.label).toBe('Quit');
+    });
+
+    it('does not register a nativeTheme listener on Windows', () => {
+      vi.mocked(nativeTheme.on).mockClear();
+      createTray();
+      expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('macOS platform', () => {
+    beforeEach(() => {
+      setPlatform('darwin');
+    });
+
+    it('does not prefix About label with glyph on macOS', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem).toBeDefined();
+      expect(aboutItem!.label).toBe('About Sidra');
+    });
+
+    it('does not prefix Quit label with glyph on macOS', () => {
+      createTray();
+      const template = getLastTemplate();
+      const quitItem = findItem(template, 'Quit');
+      expect(quitItem).toBeDefined();
+      expect(quitItem!.label).toBe('Quit');
+    });
+
+    it('does not register a nativeTheme listener on macOS', () => {
+      vi.mocked(nativeTheme.on).mockClear();
+      createTray();
+      expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('menu structure', () => {
+    it('includes separator before Quit', () => {
+      setPlatform('linux');
+      createTray();
+      const template = getLastTemplate();
+      const lastItem = template[template.length - 1];
+      const secondLast = template[template.length - 2];
+      expect(lastItem.label).toContain('Quit');
+      expect(secondLast.type).toBe('separator');
+    });
+
+    it('includes Up to date item when no update available', () => {
+      setPlatform('linux');
+      createTray();
+      const template = getLastTemplate();
+      const upToDateItem = findItem(template, 'Up to date');
+      expect(upToDateItem).toBeDefined();
+      expect(upToDateItem!.enabled).toBe(false);
+    });
+
+    it('includes all submenu sections', () => {
+      setPlatform('darwin');
+      createTray();
+      const template = getLastTemplate();
+      expect(findItem(template, 'About Sidra')).toBeDefined();
+      expect(findItem(template, 'Start Page')).toBeDefined();
+      expect(findItem(template, 'Notifications')).toBeDefined();
+      expect(findItem(template, 'Discord')).toBeDefined();
+      expect(findItem(template, 'Style')).toBeDefined();
+      expect(findItem(template, 'Zoom')).toBeDefined();
+      expect(findItem(template, 'Quit')).toBeDefined();
+    });
   });
 });

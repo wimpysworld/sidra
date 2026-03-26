@@ -36,8 +36,25 @@ vi.mock('electron', () => ({
   },
   shell: { openExternal: vi.fn() },
   nativeTheme: { shouldUseDarkColors: true, on: vi.fn() },
-  Menu: { buildFromTemplate: vi.fn(), setApplicationMenu: vi.fn() },
-  Tray: vi.fn(),
+  nativeImage: {
+    createFromPath: vi.fn(() => ({
+      isEmpty: () => false,
+      resize: vi.fn(function (this: { isEmpty: () => boolean }) { return this; }),
+    })),
+    createFromNamedImage: vi.fn(() => ({
+      isEmpty: () => false,
+    })),
+  },
+  Menu: {
+    buildFromTemplate: vi.fn((template: unknown[]) => ({ items: template })),
+    setApplicationMenu: vi.fn(),
+  },
+  Tray: class MockTray {
+    setContextMenu = vi.fn();
+    setToolTip = vi.fn();
+    setImage = vi.fn();
+    on = vi.fn();
+  },
   Notification: vi.fn(),
   dialog: { showMessageBox: vi.fn() },
   net: { fetch: vi.fn() },
