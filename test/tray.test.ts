@@ -262,10 +262,10 @@ describe('createTray - menu template inspection', () => {
       expect(quitItem!.icon).toBeDefined();
     });
 
-    it('does not register a nativeTheme listener on Windows', () => {
+    it('registers a nativeTheme listener on Windows', () => {
       vi.mocked(nativeTheme.on).mockClear();
       createTray();
-      expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
+      expect(vi.mocked(nativeTheme.on)).toHaveBeenCalledWith('updated', expect.any(Function));
     });
   });
 
@@ -658,6 +658,102 @@ describe('createTray - menu template inspection', () => {
         expect(prevItem!.label).toBe('Previous');
       });
     });
+  });
+});
+
+describe('theme change menu refresh', () => {
+  const originalPlatform = process.platform;
+
+  function setPlatform(platform: string): void {
+    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
+  }
+
+  beforeEach(() => {
+    vi.mocked(nativeTheme.on).mockClear();
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
+  });
+
+  it('rebuilds context menu on theme change on Linux', () => {
+    setPlatform('linux');
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    const tray = createTray();
+    const setContextMenuFn = tray.setContextMenu as ReturnType<typeof vi.fn>;
+    const buildCountBefore = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
+    const contextMenuCountBefore = setContextMenuFn.mock.calls.length;
+
+    // Extract and invoke the theme callback
+    const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
+    expect(themeCall).toBeDefined();
+    const callback = themeCall![1] as () => void;
+    callback();
+
+    const buildCountAfter = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
+    expect(buildCountAfter).toBeGreaterThan(buildCountBefore);
+    expect(setContextMenuFn.mock.calls.length).toBeGreaterThan(contextMenuCountBefore);
+  });
+
+  it('updates tray image on theme change on Linux', () => {
+    setPlatform('linux');
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    const tray = createTray();
+    const setImageFn = tray.setImage as ReturnType<typeof vi.fn>;
+
+    const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
+    const callback = themeCall![1] as () => void;
+    callback();
+
+    expect(setImageFn).toHaveBeenCalled();
+  });
+
+  it('rebuilds context menu on theme change on Windows', () => {
+    setPlatform('win32');
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    const tray = createTray();
+    const setContextMenuFn = tray.setContextMenu as ReturnType<typeof vi.fn>;
+    const buildCountBefore = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
+    const contextMenuCountBefore = setContextMenuFn.mock.calls.length;
+
+    const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
+    expect(themeCall).toBeDefined();
+    const callback = themeCall![1] as () => void;
+    callback();
+
+    const buildCountAfter = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
+    expect(buildCountAfter).toBeGreaterThan(buildCountBefore);
+    expect(setContextMenuFn.mock.calls.length).toBeGreaterThan(contextMenuCountBefore);
+  });
+
+  it('does not update tray image on theme change on Windows', () => {
+    setPlatform('win32');
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    const tray = createTray();
+    const setImageFn = tray.setImage as ReturnType<typeof vi.fn>;
+
+    const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
+    const callback = themeCall![1] as () => void;
+    callback();
+
+    expect(setImageFn).not.toHaveBeenCalled();
+  });
+
+  it('does not register a nativeTheme listener on macOS', () => {
+    setPlatform('darwin');
+    vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
+    vi.mocked(nativeTheme.on).mockClear();
+    createTray();
+    expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
+  });
+
+  it('does not register a nativeTheme listener on pre-Tahoe macOS', () => {
+    setPlatform('darwin');
+    vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.2.0');
+    vi.mocked(nativeTheme.on).mockClear();
+    createTray();
+    expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
   });
 });
 
