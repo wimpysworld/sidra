@@ -138,7 +138,10 @@ function setupApplicationMenu(): void {
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
   } else if (process.platform === 'darwin') {
-    Menu.setApplicationMenu(Menu.buildFromTemplate([]));
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{
+      label: app.name,
+      submenu: [{ role: 'quit' }],
+    }]));
   } else {
     Menu.setApplicationMenu(null);
   }
