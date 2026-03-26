@@ -64,6 +64,10 @@ vi.mock('../src/theme', () => ({
   applyTheme: vi.fn(),
 }));
 
+vi.mock('../src/artwork', () => ({
+  downloadArtwork: vi.fn(() => Promise.resolve('/tmp/downloaded-artwork.png')),
+}));
+
 vi.mock('../src/paths', () => ({
   getAssetPath: vi.fn((...parts: string[]) => parts.join('/')),
   getProductInfo: () => ({ productName: 'Sidra', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
@@ -71,7 +75,10 @@ vi.mock('../src/paths', () => ({
 
 import { Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon, updateNowPlayingState, rebuildTrayMenu } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager } from '../src/tray';
+import { downloadArtwork } from '../src/artwork';
+import { Player, PlaybackState } from '../src/player';
+import type { NowPlayingPayload } from '../src/player';
 
 // Helper: extract the template array from the last Menu.buildFromTemplate call
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -923,6 +930,290 @@ describe('getMenuIcon', () => {
       getMenuIcon('about');
       expect(vi.mocked(nativeImage.createFromPath)).not.toHaveBeenCalled();
       expect(vi.mocked(nativeImage.createFromNamedImage)).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('initTrayStateManager', () => {
+  let mockPlayer: {
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
+    playbackSnapshot: ReturnType<typeof vi.fn>;
+    listeners: Record<string, ((...args: unknown[]) => unknown)>;
+  };
+  let mockTray: InstanceType<typeof Tray>;
+
+  function createMockPlayer() {
+    const listeners: Record<string, ((...args: unknown[]) => unknown)> = {};
+    return {
+      listeners,
+      on: vi.fn((event: string, handler: (...args: unknown[]) => unknown) => {
+        listeners[event] = handler;
+      }),
+      off: vi.fn((event: string, _handler: (...args: unknown[]) => unknown) => {
+        delete listeners[event];
+      }),
+      playbackSnapshot: vi.fn(() => ({ isPlaying: false, positionUs: 0, state: 0 })),
+    };
+  }
+
+  beforeEach(() => {
+    mockPlayer = createMockPlayer();
+    mockTray = new Tray('test-icon.png');
+    vi.mocked(Menu.buildFromTemplate).mockClear();
+    vi.mocked(downloadArtwork).mockReset();
+    vi.mocked(downloadArtwork).mockResolvedValue('/tmp/downloaded-artwork.png');
+  });
+
+  describe('event subscription', () => {
+    it('registers all three event listeners on the player', () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+      expect(mockPlayer.on).toHaveBeenCalledWith('nowPlayingItemDidChange', expect.any(Function));
+      expect(mockPlayer.on).toHaveBeenCalledWith('playbackStateDidChange', expect.any(Function));
+      expect(mockPlayer.on).toHaveBeenCalledWith('volumeDidChange', expect.any(Function));
+      expect(mockPlayer.on).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('cleanup function', () => {
+    it('removes all three event listeners from the player', () => {
+      const cleanup = initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+      cleanup();
+      expect(mockPlayer.off).toHaveBeenCalledWith('nowPlayingItemDidChange', expect.any(Function));
+      expect(mockPlayer.off).toHaveBeenCalledWith('playbackStateDidChange', expect.any(Function));
+      expect(mockPlayer.off).toHaveBeenCalledWith('volumeDidChange', expect.any(Function));
+      expect(mockPlayer.off).toHaveBeenCalledTimes(3);
+    });
+
+    it('clears the pause timer when called during an active pause timeout', () => {
+      vi.useFakeTimers();
+      try {
+        const cleanup = initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+        // Simulate playing then pausing to start the pause timer
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Playing });
+
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: false, positionUs: 0, state: PlaybackState.Paused });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Paused });
+
+        // Timer is now pending. Cleanup should clear it.
+        cleanup();
+
+        // Advance past the 30s timeout - should not trigger any state clearing
+        vi.mocked(Menu.buildFromTemplate).mockClear();
+        vi.advanceTimersByTime(35_000);
+
+        // No additional menu rebuild from the timer callback
+        expect(vi.mocked(Menu.buildFromTemplate)).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('pause timeout', () => {
+    it('clears Now Playing after 30s of inactivity when paused', () => {
+      vi.useFakeTimers();
+      try {
+        initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+        // Transition to playing first (sets previousPlaying = true)
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Playing });
+
+        // Transition to paused
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: false, positionUs: 0, state: PlaybackState.Paused });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Paused });
+
+        // Advance 29s - should not have cleared yet
+        vi.mocked(Menu.buildFromTemplate).mockClear();
+        const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
+        setToolTipFn.mockClear();
+
+        vi.advanceTimersByTime(29_000);
+        // The tooltip should not have been cleared to the product name yet
+        expect(setToolTipFn).not.toHaveBeenCalled();
+
+        // Advance past 30s
+        vi.advanceTimersByTime(2_000);
+
+        // Now the tooltip should be reset (updateTrayTooltip(tray, null) sets product name)
+        expect(setToolTipFn).toHaveBeenCalled();
+        // And the menu should be rebuilt
+        expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('cancels the pause timer when playback resumes', () => {
+      vi.useFakeTimers();
+      try {
+        initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+        // Play -> Pause (start timer)
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Playing });
+
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: false, positionUs: 0, state: PlaybackState.Paused });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Paused });
+
+        // Resume playing before timeout
+        vi.advanceTimersByTime(10_000);
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Playing });
+
+        // Advance past original timeout - should not clear
+        vi.mocked(Menu.buildFromTemplate).mockClear();
+        const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
+        setToolTipFn.mockClear();
+        vi.advanceTimersByTime(25_000);
+
+        expect(setToolTipFn).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('cancels the pause timer on track change', async () => {
+      vi.useFakeTimers();
+      try {
+        initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+        // Play -> Pause (start timer)
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Playing });
+
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: false, positionUs: 0, state: PlaybackState.Paused });
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Paused });
+
+        // New track arrives - should cancel timer
+        const payload: NowPlayingPayload = { name: 'New Track', artistName: 'Artist' };
+        vi.mocked(downloadArtwork).mockResolvedValue(null);
+        mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+        await mockPlayer.listeners['nowPlayingItemDidChange'](payload);
+
+        // Advance past original timeout - should not clear
+        vi.mocked(Menu.buildFromTemplate).mockClear();
+        const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
+        setToolTipFn.mockClear();
+        vi.advanceTimersByTime(35_000);
+
+        // No timeout-triggered tooltip reset
+        expect(setToolTipFn).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('nowPlayingItemDidChange handler', () => {
+    it('updates tooltip and menu when a new track arrives', async () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+      const payload: NowPlayingPayload = { name: 'Test Song', artistName: 'Test Artist' };
+      vi.mocked(downloadArtwork).mockResolvedValue(null);
+      mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+
+      await mockPlayer.listeners['nowPlayingItemDidChange'](payload);
+
+      const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
+      expect(setToolTipFn).toHaveBeenCalled();
+      expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+    });
+
+    it('clears state when null payload is received', async () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+      await mockPlayer.listeners['nowPlayingItemDidChange'](null);
+
+      const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
+      expect(setToolTipFn).toHaveBeenCalled();
+      expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+    });
+
+    it('downloads artwork when artworkUrl is present', async () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+      const payload: NowPlayingPayload = { name: 'Song', artworkUrl: 'https://example.com/art.jpg' };
+      mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+
+      await mockPlayer.listeners['nowPlayingItemDidChange'](payload);
+
+      expect(vi.mocked(downloadArtwork)).toHaveBeenCalledWith('https://example.com/art.jpg');
+    });
+
+    it('guards against stale payload after artwork download', async () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+      // First track starts downloading artwork slowly
+      let resolveFirst: (value: string | null) => void;
+      const firstDownload = new Promise<string | null>((resolve) => { resolveFirst = resolve; });
+      vi.mocked(downloadArtwork).mockReturnValueOnce(firstDownload);
+
+      const payload1: NowPlayingPayload = { name: 'First Song', artworkUrl: 'https://example.com/art1.jpg' };
+      const payload2: NowPlayingPayload = { name: 'Second Song', artworkUrl: 'https://example.com/art2.jpg' };
+
+      mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+
+      // Fire first track
+      const firstPromise = mockPlayer.listeners['nowPlayingItemDidChange'](payload1) as Promise<void>;
+
+      // Fire second track before first artwork resolves
+      vi.mocked(downloadArtwork).mockResolvedValueOnce('/tmp/art2.png');
+      await mockPlayer.listeners['nowPlayingItemDidChange'](payload2);
+
+      // Clear the mock calls from the second track handler
+      vi.mocked(Menu.buildFromTemplate).mockClear();
+
+      // Resolve first artwork download - should be discarded (stale)
+      resolveFirst!('/tmp/art1.png');
+      await firstPromise;
+
+      // No additional menu rebuild from the stale first track
+      expect(vi.mocked(Menu.buildFromTemplate)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('playbackStateDidChange handler', () => {
+    it('clears state on terminal playback states', () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+      for (const state of [PlaybackState.None, PlaybackState.Stopped, PlaybackState.Ended, PlaybackState.Completed]) {
+        vi.mocked(Menu.buildFromTemplate).mockClear();
+        mockPlayer.listeners['playbackStateDidChange']({ status: true, state });
+        expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+      }
+    });
+
+    it('rebuilds menu on playback state change', () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+      mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+
+      vi.mocked(Menu.buildFromTemplate).mockClear();
+      mockPlayer.listeners['playbackStateDidChange']({ status: true, state: PlaybackState.Playing });
+
+      expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+    });
+  });
+
+  describe('volumeDidChange handler', () => {
+    it('updates state and rebuilds menu on volume change', () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+      mockPlayer.playbackSnapshot.mockReturnValue({ isPlaying: true, positionUs: 0, state: PlaybackState.Playing });
+
+      vi.mocked(Menu.buildFromTemplate).mockClear();
+      mockPlayer.listeners['volumeDidChange'](0.5);
+
+      expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+    });
+
+    it('ignores null volume', () => {
+      initTrayStateManager(mockPlayer as unknown as Player, mockTray);
+
+      vi.mocked(Menu.buildFromTemplate).mockClear();
+      mockPlayer.listeners['volumeDidChange'](null);
+
+      expect(vi.mocked(Menu.buildFromTemplate)).not.toHaveBeenCalled();
     });
   });
 });
