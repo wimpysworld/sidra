@@ -53,7 +53,7 @@ vi.mock('../src/i18n', () => ({
 }));
 
 vi.mock('../src/update', () => ({
-  getUpdateInfo: () => null,
+  getUpdateInfo: vi.fn(() => null),
 }));
 
 vi.mock('../src/autoUpdate', () => ({
@@ -70,6 +70,7 @@ vi.mock('../src/paths', () => ({
 }));
 
 import { Menu, Tray, nativeImage, nativeTheme } from 'electron';
+import { getUpdateInfo } from '../src/update';
 import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon } from '../src/tray';
 
 // Helper: extract the template array from the last Menu.buildFromTemplate call
@@ -158,33 +159,65 @@ describe('createTray - menu template inspection', () => {
   describe('Linux platform', () => {
     beforeEach(() => {
       setPlatform('linux');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
     });
 
-    it('prefixes About label with glyph on Linux', () => {
+    it('uses plain text label for About on Linux', () => {
       createTray();
       const template = getLastTemplate();
       const aboutItem = findItem(template, 'About Sidra');
       expect(aboutItem).toBeDefined();
-      // Linux labels include a glyph prefix
-      expect(aboutItem!.label).toMatch(/^.+ About Sidra$/);
+      expect(aboutItem!.label).toBe('About Sidra');
     });
 
-    it('prefixes Quit label with glyph on Linux', () => {
+    it('attaches icon to About on Linux', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem!.icon).toBeDefined();
+    });
+
+    it('uses plain text label for Quit on Linux', () => {
       createTray();
       const template = getLastTemplate();
       const quitItem = findItem(template, 'Quit');
       expect(quitItem).toBeDefined();
-      expect(quitItem!.label).toMatch(/^.+ Quit$/);
+      expect(quitItem!.label).toBe('Quit');
     });
 
-    it('includes glyph in submenu parent labels on Linux', () => {
+    it('attaches icon to Quit on Linux', () => {
+      createTray();
+      const template = getLastTemplate();
+      const quitItem = findItem(template, 'Quit');
+      expect(quitItem!.icon).toBeDefined();
+    });
+
+    it('attaches icons to all top-level submenu parents on Linux', () => {
+      createTray();
+      const template = getLastTemplate();
+      for (const labelSubstring of ['Start Page', 'Notifications', 'Discord', 'Style', 'Zoom']) {
+        const item = findItem(template, labelSubstring);
+        expect(item, `${labelSubstring} should exist`).toBeDefined();
+        expect(item!.icon, `${labelSubstring} should have icon`).toBeDefined();
+        expect(item!.submenu, `${labelSubstring} should have submenu`).toBeDefined();
+      }
+    });
+
+    it('uses plain text labels for submenu parents on Linux', () => {
       createTray();
       const template = getLastTemplate();
       const startPageItem = findItem(template, 'Start Page');
-      expect(startPageItem).toBeDefined();
-      // Has glyph prefix and submenu
-      expect(startPageItem!.label).toMatch(/^.+ Start Page/);
-      expect(startPageItem!.submenu).toBeDefined();
+      expect(startPageItem!.label).toBe('Start Page: New');
+    });
+
+    it('does not attach icons to submenu radio items', () => {
+      createTray();
+      const template = getLastTemplate();
+      const startPageItem = findItem(template, 'Start Page');
+      const submenu = startPageItem!.submenu as Electron.MenuItemConstructorOptions[];
+      for (const child of submenu) {
+        expect(child.icon).toBeUndefined();
+      }
     });
 
     it('registers a nativeTheme listener on Linux', () => {
@@ -196,9 +229,10 @@ describe('createTray - menu template inspection', () => {
   describe('Windows platform', () => {
     beforeEach(() => {
       setPlatform('win32');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
     });
 
-    it('does not prefix About label with glyph on Windows', () => {
+    it('uses plain text label for About on Windows', () => {
       createTray();
       const template = getLastTemplate();
       const aboutItem = findItem(template, 'About Sidra');
@@ -206,12 +240,26 @@ describe('createTray - menu template inspection', () => {
       expect(aboutItem!.label).toBe('About Sidra');
     });
 
-    it('does not prefix Quit label with glyph on Windows', () => {
+    it('attaches icon to About on Windows', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem!.icon).toBeDefined();
+    });
+
+    it('uses plain text label for Quit on Windows', () => {
       createTray();
       const template = getLastTemplate();
       const quitItem = findItem(template, 'Quit');
       expect(quitItem).toBeDefined();
       expect(quitItem!.label).toBe('Quit');
+    });
+
+    it('attaches icon to Quit on Windows', () => {
+      createTray();
+      const template = getLastTemplate();
+      const quitItem = findItem(template, 'Quit');
+      expect(quitItem!.icon).toBeDefined();
     });
 
     it('does not register a nativeTheme listener on Windows', () => {
@@ -221,12 +269,13 @@ describe('createTray - menu template inspection', () => {
     });
   });
 
-  describe('macOS platform', () => {
+  describe('macOS Tahoe+ platform', () => {
     beforeEach(() => {
       setPlatform('darwin');
+      vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
     });
 
-    it('does not prefix About label with glyph on macOS', () => {
+    it('uses plain text label for About on macOS Tahoe+', () => {
       createTray();
       const template = getLastTemplate();
       const aboutItem = findItem(template, 'About Sidra');
@@ -234,12 +283,63 @@ describe('createTray - menu template inspection', () => {
       expect(aboutItem!.label).toBe('About Sidra');
     });
 
-    it('does not prefix Quit label with glyph on macOS', () => {
+    it('attaches SF Symbol icon to About on macOS Tahoe+', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem!.icon).toBeDefined();
+      expect(vi.mocked(nativeImage.createFromNamedImage)).toHaveBeenCalledWith('info.circle');
+    });
+
+    it('attaches SF Symbol icon to Quit on macOS Tahoe+', () => {
       createTray();
       const template = getLastTemplate();
       const quitItem = findItem(template, 'Quit');
-      expect(quitItem).toBeDefined();
-      expect(quitItem!.label).toBe('Quit');
+      expect(quitItem!.icon).toBeDefined();
+    });
+
+    it('does not register a nativeTheme listener on macOS', () => {
+      vi.mocked(nativeTheme.on).mockClear();
+      createTray();
+      expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pre-Tahoe macOS platform', () => {
+    beforeEach(() => {
+      setPlatform('darwin');
+      vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.2.0');
+    });
+
+    it('uses plain text label for About on pre-Tahoe macOS', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem).toBeDefined();
+      expect(aboutItem!.label).toBe('About Sidra');
+    });
+
+    it('does not attach icon to About on pre-Tahoe macOS', () => {
+      createTray();
+      const template = getLastTemplate();
+      const aboutItem = findItem(template, 'About Sidra');
+      expect(aboutItem!.icon).toBeUndefined();
+    });
+
+    it('does not attach icon to Quit on pre-Tahoe macOS', () => {
+      createTray();
+      const template = getLastTemplate();
+      const quitItem = findItem(template, 'Quit');
+      expect(quitItem!.icon).toBeUndefined();
+    });
+
+    it('does not attach icons to submenu parents on pre-Tahoe macOS', () => {
+      createTray();
+      const template = getLastTemplate();
+      for (const labelSubstring of ['Start Page', 'Notifications', 'Discord', 'Style', 'Zoom']) {
+        const item = findItem(template, labelSubstring);
+        expect(item!.icon, `${labelSubstring} should not have icon`).toBeUndefined();
+      }
     });
 
     it('does not register a nativeTheme listener on macOS', () => {
@@ -280,6 +380,80 @@ describe('createTray - menu template inspection', () => {
       expect(findItem(template, 'Style')).toBeDefined();
       expect(findItem(template, 'Zoom')).toBeDefined();
       expect(findItem(template, 'Quit')).toBeDefined();
+    });
+  });
+
+  describe('update menu item icons', () => {
+    afterEach(() => {
+      vi.mocked(getUpdateInfo).mockReturnValue(null);
+    });
+
+    it('attaches update-ready icon on Linux when update is ready', () => {
+      setPlatform('linux');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      vi.mocked(getUpdateInfo).mockReturnValue({ version: '1.0.0', url: 'https://example.com', ready: true });
+      createTray();
+      const template = getLastTemplate();
+      const readyItem = findItem(template, 'Restart to update');
+      expect(readyItem).toBeDefined();
+      expect(readyItem!.label).toBe('Restart to update');
+      expect(readyItem!.icon).toBeDefined();
+    });
+
+    it('attaches update-available icon on Linux when update is available', () => {
+      setPlatform('linux');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      vi.mocked(getUpdateInfo).mockReturnValue({ version: '1.1.0', url: 'https://example.com', ready: false });
+      createTray();
+      const template = getLastTemplate();
+      const availableItem = findItem(template, 'Update available');
+      expect(availableItem).toBeDefined();
+      expect(availableItem!.label).toBe('Update available: 1.1.0');
+      expect(availableItem!.icon).toBeDefined();
+    });
+
+    it('does not attach icon to up-to-date item', () => {
+      setPlatform('linux');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      vi.mocked(getUpdateInfo).mockReturnValue(null);
+      createTray();
+      const template = getLastTemplate();
+      const upToDateItem = findItem(template, 'Up to date');
+      expect(upToDateItem).toBeDefined();
+      expect(upToDateItem!.icon).toBeUndefined();
+    });
+
+    it('attaches SF Symbol icon to update-ready on macOS Tahoe+', () => {
+      setPlatform('darwin');
+      vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
+      vi.mocked(getUpdateInfo).mockReturnValue({ version: '1.0.0', url: 'https://example.com', ready: true });
+      createTray();
+      const template = getLastTemplate();
+      const readyItem = findItem(template, 'Restart to update');
+      expect(readyItem).toBeDefined();
+      expect(readyItem!.icon).toBeDefined();
+    });
+
+    it('does not attach icon to update-ready on pre-Tahoe macOS', () => {
+      setPlatform('darwin');
+      vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.2.0');
+      vi.mocked(getUpdateInfo).mockReturnValue({ version: '1.0.0', url: 'https://example.com', ready: true });
+      createTray();
+      const template = getLastTemplate();
+      const readyItem = findItem(template, 'Restart to update');
+      expect(readyItem).toBeDefined();
+      expect(readyItem!.icon).toBeUndefined();
+    });
+
+    it('attaches icon to update-available on Windows', () => {
+      setPlatform('win32');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      vi.mocked(getUpdateInfo).mockReturnValue({ version: '1.1.0', url: 'https://example.com', ready: false });
+      createTray();
+      const template = getLastTemplate();
+      const availableItem = findItem(template, 'Update available');
+      expect(availableItem).toBeDefined();
+      expect(availableItem!.icon).toBeDefined();
     });
   });
 });
