@@ -160,6 +160,8 @@ function showAboutWindow(): void {
     height: Math.round(ABOUT_WINDOW_HEIGHT_PX * zoomFactor),
     frame: false,
     resizable: false,
+    fullscreenable: false,
+    fullscreen: false,
     center: true,
     skipTaskbar: true,
     backgroundColor: '#1a0a10',

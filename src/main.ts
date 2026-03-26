@@ -100,6 +100,8 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
     height: Math.round(SPLASH_HEIGHT_PX * splashZoom),
     frame: false,
     resizable: false,
+    fullscreenable: false,
+    fullscreen: false,
     center: true,
     skipTaskbar: true,
     backgroundColor: '#1a0a10',
