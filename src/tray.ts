@@ -3,11 +3,12 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getAboutStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
-import type { NowPlayingPayload } from './player';
+import { Player, PlaybackState, type NowPlayingPayload } from './player';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 import { applyTheme } from './theme';
+import { downloadArtwork } from './artwork';
 
 const ABOUT_WINDOW_WIDTH_PX = 400;
 const ABOUT_WINDOW_HEIGHT_PX = 400;
@@ -596,4 +597,104 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
   trayLog.info('tray created');
 
   return tray;
+}
+
+export function initTrayStateManager(player: Player, tray: Tray): () => void {
+  const TRAY_PAUSE_TIMEOUT_MS = 30_000;
+  let currentVolume = 1;
+  let currentPayload: NowPlayingPayload | null = null;
+  let currentArtworkPath: string | null = null;
+  let trayPauseTimer: ReturnType<typeof setTimeout> | null = null;
+  let previousPlaying = false;
+
+  const onNowPlayingItemDidChange = async (payload: NowPlayingPayload | null): Promise<void> => {
+    // Cancel pause timer on track change
+    if (trayPauseTimer) {
+      clearTimeout(trayPauseTimer);
+      trayPauseTimer = null;
+    }
+    if (!payload) {
+      trayLog.debug('nowPlayingItemDidChange (tray handler): null payload, clearing state');
+      currentPayload = null;
+      currentArtworkPath = null;
+      updateTrayTooltip(tray, null);
+      updateNowPlayingState(null, null, false, currentVolume);
+      rebuildTrayMenu(tray);
+      return;
+    }
+    trayLog.debug('nowPlayingItemDidChange (tray handler):', `"${payload.name}"`);
+    currentPayload = payload;
+    updateTrayTooltip(tray, payload);
+    let artworkPath: string | null = null;
+    if (payload.artworkUrl) {
+      const expectedPayload = payload;
+      artworkPath = await downloadArtwork(payload.artworkUrl);
+      if (currentPayload !== expectedPayload) return;
+    }
+    currentArtworkPath = artworkPath;
+    const { isPlaying } = player.playbackSnapshot();
+    updateNowPlayingState(payload, artworkPath, isPlaying, currentVolume);
+    rebuildTrayMenu(tray);
+  };
+
+  const onPlaybackStateDidChange = (payload: { status: boolean; state: number } | null): void => {
+    const state = payload?.state ?? 0;
+    if (state === PlaybackState.None || state === PlaybackState.Stopped ||
+        state === PlaybackState.Ended || state === PlaybackState.Completed) {
+      if (trayPauseTimer) {
+        clearTimeout(trayPauseTimer);
+        trayPauseTimer = null;
+      }
+      updateTrayTooltip(tray, null);
+      currentPayload = null;
+      currentArtworkPath = null;
+      updateNowPlayingState(null, null, false, currentVolume);
+      rebuildTrayMenu(tray);
+      return;
+    }
+    const { isPlaying } = player.playbackSnapshot();
+
+    // Pause timeout: clear Now Playing after 30s of inactivity
+    if (isPlaying && trayPauseTimer) {
+      clearTimeout(trayPauseTimer);
+      trayPauseTimer = null;
+    }
+    if (!isPlaying && previousPlaying) {
+      trayPauseTimer = setTimeout(() => {
+        trayPauseTimer = null;
+        trayLog.debug('tray pause timeout reached, clearing Now Playing');
+        updateTrayTooltip(tray, null);
+        currentPayload = null;
+        currentArtworkPath = null;
+        updateNowPlayingState(null, null, false, currentVolume);
+        rebuildTrayMenu(tray);
+      }, TRAY_PAUSE_TIMEOUT_MS);
+    }
+    previousPlaying = isPlaying;
+
+    updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
+    rebuildTrayMenu(tray);
+  };
+
+  const onVolumeDidChange = (volume: number | null): void => {
+    if (volume == null) return;
+    currentVolume = volume;
+    const { isPlaying } = player.playbackSnapshot();
+    updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
+    rebuildTrayMenu(tray);
+  };
+
+  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('volumeDidChange', onVolumeDidChange);
+
+  return () => {
+    if (trayPauseTimer) {
+      clearTimeout(trayPauseTimer);
+      trayPauseTimer = null;
+    }
+    player.off('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.off('playbackStateDidChange', onPlaybackStateDidChange);
+    player.off('volumeDidChange', onVolumeDidChange);
+  };
 }
