@@ -1,6 +1,6 @@
 import { describe, it, expect, expectTypeOf, vi } from 'vitest';
 
-import { PlaybackState, Player, type PlayerEvents } from '../src/player';
+import { PlaybackState, Player, getShareUrl, type PlayerEvents } from '../src/player';
 
 describe('PlaybackState', () => {
   it('None is 0', () => {
@@ -272,5 +272,45 @@ describe('Player handle* payload validation', () => {
     (player.handleVolumeDidChange as (p: unknown) => void)({ volume: 0.5 });
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('getShareUrl', () => {
+  it('returns payload.url when present', () => {
+    expect(getShareUrl({ url: 'https://music.apple.com/album/123?i=456' })).toBe(
+      'https://music.apple.com/album/123?i=456',
+    );
+  });
+
+  it('returns catalogId URL when payload.url is absent', () => {
+    expect(getShareUrl({ playParams: { catalogId: '999' } })).toBe(
+      'https://music.apple.com/song/999',
+    );
+  });
+
+  it('returns globalId URL when both payload.url and catalogId are absent', () => {
+    expect(getShareUrl({ playParams: { globalId: 'abc' } })).toBe(
+      'https://music.apple.com/song/abc',
+    );
+  });
+
+  it('prefers payload.url over playParams ids', () => {
+    expect(
+      getShareUrl({ url: 'https://example.com', playParams: { catalogId: '1', globalId: '2' } }),
+    ).toBe('https://example.com');
+  });
+
+  it('prefers catalogId over globalId', () => {
+    expect(getShareUrl({ playParams: { catalogId: '1', globalId: '2' } })).toBe(
+      'https://music.apple.com/song/1',
+    );
+  });
+
+  it('returns undefined when no URL source is available', () => {
+    expect(getShareUrl({})).toBeUndefined();
+  });
+
+  it('returns undefined when playParams exists but has no ids', () => {
+    expect(getShareUrl({ playParams: { kind: 'song', isLibrary: true } })).toBeUndefined();
   });
 });
