@@ -81,6 +81,14 @@ vi.mock('electron-log/main', () => {
   };
 });
 
+// Mock process.getSystemVersion() - used by tray.ts for macOS version detection.
+// Default returns '15.0.0' (pre-Tahoe). Tests override via vi.spyOn().
+if (!process.getSystemVersion) {
+  (process as unknown as Record<string, unknown>).getSystemVersion = vi.fn(() => '15.0.0');
+} else {
+  vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.0.0');
+}
+
 vi.mock('electron-store', () => {
   const data = new Map<string, unknown>();
   return {

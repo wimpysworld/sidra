@@ -15,6 +15,75 @@ const ABOUT_WINDOW_HEIGHT_PX = 400;
 const trayLog = log.scope('tray');
 
 const iconsDir = getAssetPath('assets', 'icons');
+const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
+
+// Maps tray action keys to PNG basenames (without extension) in assets/icons/tray/menu/{light,dark}/
+const menuIconFileMap: Record<string, string> = {
+  'about': 'circle-info',
+  'start-page': 'music',
+  'notifications': 'bell',
+  'discord': 'discord',
+  'style': 'palette',
+  'zoom': 'expand',
+  'update-ready': 'rotate',
+  'update-available': 'parachute-box',
+  'quit': 'eject',
+  'artist': 'star',
+  'album': 'compact-disc',
+  'previous': 'backward-step',
+  'play': 'play',
+  'pause': 'pause',
+  'next': 'forward-step',
+  'volume': 'volume',
+};
+
+// Maps tray action keys to SF Symbol names for macOS Tahoe+
+const menuIconSFSymbolMap: Record<string, string> = {
+  'about': 'info.circle',
+  'start-page': 'music.note',
+  'notifications': 'bell',
+  'discord': 'bubble.left.and.bubble.right',
+  'style': 'paintpalette',
+  'zoom': 'arrow.up.left.and.arrow.down.right',
+  'update-ready': 'arrow.clockwise',
+  'update-available': 'arrow.down.circle',
+  'quit': 'xmark.circle',
+  'artist': 'person',
+  'album': 'opticaldisc',
+  'previous': 'backward.end',
+  'play': 'play',
+  'pause': 'pause',
+  'next': 'forward.end',
+  'volume': 'speaker.wave.2',
+};
+
+function isMacOSTahoeOrLater(): boolean {
+  if (process.platform !== 'darwin') return false;
+  const version = process.getSystemVersion();
+  const major = parseInt(version.split('.')[0], 10);
+  return !isNaN(major) && major >= 26;
+}
+
+export function getMenuIcon(action: string): Electron.NativeImage | undefined {
+  if (process.platform === 'darwin') {
+    if (!isMacOSTahoeOrLater()) return undefined;
+
+    const symbolName = menuIconSFSymbolMap[action];
+    if (!symbolName) return undefined;
+
+    const img = nativeImage.createFromNamedImage(symbolName);
+    return img.isEmpty() ? undefined : img;
+  }
+
+  // Linux and Windows: resolve themed PNG
+  const baseName = menuIconFileMap[action];
+  if (!baseName) return undefined;
+
+  const variant = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
+  const img = nativeImage.createFromPath(iconPath);
+  return img.isEmpty() ? undefined : img;
+}
 
 function getLinuxTrayIconPath(): string {
   // Dark theme = white icon (dark.png); light theme = black icon (light.png)
