@@ -391,11 +391,14 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
   const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
   const sendCommand = sendCommandCallback;
 
-  // Artwork icon for the track name item
+  // Artwork icon for the track name item - multi-representation for HiDPI
   let icon: Electron.NativeImage | undefined;
   if (artworkPath) {
-    const img = nativeImage.createFromPath(artworkPath).resize({ width: 18, height: 18 });
-    if (!img.isEmpty()) {
+    const src = nativeImage.createFromPath(artworkPath);
+    if (!src.isEmpty()) {
+      const img = nativeImage.createEmpty();
+      img.addRepresentation({ scaleFactor: 1.0, buffer: src.resize({ width: 18, height: 18 }).toPNG() });
+      img.addRepresentation({ scaleFactor: 2.0, buffer: src.resize({ width: 36, height: 36 }).toPNG() });
       icon = img;
     }
   }
