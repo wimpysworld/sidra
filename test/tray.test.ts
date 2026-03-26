@@ -658,6 +658,52 @@ describe('createTray - menu template inspection', () => {
         expect(prevItem!.label).toBe('Previous');
       });
     });
+
+    describe('album icon based on release year', () => {
+      beforeEach(() => {
+        setPlatform('linux');
+        Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      });
+
+      it('uses record-vinyl icon when releaseDate year is 1981 or earlier', () => {
+        const payload = { ...nowPlayingPayload, releaseDate: '1973-09-19' };
+        updateNowPlayingState(payload, '/tmp/artwork.png', true, 0.75);
+        createTray();
+        const template = getLastTemplate();
+        const albumItem = findItem(template, 'Test Album');
+        expect(albumItem).toBeDefined();
+        expect(albumItem!.icon).toBeDefined();
+        // Verify getMenuIcon was called with 'record-vinyl' by checking the resolved path
+        expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+          expect.stringContaining('record-vinyl.png'),
+        );
+      });
+
+      it('uses compact-disc icon when releaseDate year is after 1981', () => {
+        const payload = { ...nowPlayingPayload, releaseDate: '1982-01-01' };
+        updateNowPlayingState(payload, '/tmp/artwork.png', true, 0.75);
+        createTray();
+        const template = getLastTemplate();
+        const albumItem = findItem(template, 'Test Album');
+        expect(albumItem).toBeDefined();
+        expect(albumItem!.icon).toBeDefined();
+        expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+          expect.stringContaining('compact-disc.png'),
+        );
+      });
+
+      it('uses compact-disc icon when releaseDate is not available', () => {
+        updateNowPlayingState(nowPlayingPayload, '/tmp/artwork.png', true, 0.75);
+        createTray();
+        const template = getLastTemplate();
+        const albumItem = findItem(template, 'Test Album');
+        expect(albumItem).toBeDefined();
+        expect(albumItem!.icon).toBeDefined();
+        expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+          expect.stringContaining('compact-disc.png'),
+        );
+      });
+    });
   });
 });
 

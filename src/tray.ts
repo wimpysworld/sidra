@@ -30,6 +30,7 @@ const menuIconFileMap: Record<string, string> = {
   'quit': 'eject',
   'artist': 'star',
   'album': 'compact-disc',
+  'record-vinyl': 'record-vinyl',
   'previous': 'backward-step',
   'play': 'play',
   'pause': 'pause',
@@ -50,6 +51,7 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'quit': 'xmark.circle',
   'artist': 'person',
   'album': 'opticaldisc',
+  'record-vinyl': 'record.circle',
   'previous': 'backward.end',
   'play': 'play',
   'pause': 'pause',
@@ -416,7 +418,9 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     ...(artistIcon ? { icon: artistIcon } : {}),
   };
   const albumLabel = truncateMenuLabel(payload.albumName ?? '');
-  const albumIcon = getMenuIcon('album');
+  const releaseYear = payload.releaseDate ? parseInt(payload.releaseDate.slice(0, 4), 10) : NaN;
+  const albumIconKey = !isNaN(releaseYear) && releaseYear <= 1981 ? 'record-vinyl' : 'album';
+  const albumIcon = getMenuIcon(albumIconKey);
   const albumItem: Electron.MenuItemConstructorOptions = {
     label: isLinux ? sanitiseLinuxLabel(albumLabel) : albumLabel,
     enabled: false,
