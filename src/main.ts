@@ -402,7 +402,9 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
         updateTrayTooltip(appTray, payload);
         let artworkPath: string | null = null;
         if (payload.artworkUrl) {
+          const expectedPayload = payload;
           artworkPath = await downloadArtwork(payload.artworkUrl);
+          if (currentPayload !== expectedPayload) return;
         }
         currentArtworkPath = artworkPath;
         const { isPlaying } = player.playbackSnapshot();

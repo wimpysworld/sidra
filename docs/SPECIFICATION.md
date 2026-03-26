@@ -745,7 +745,7 @@ When a track is active, the tooltip shows `TrackName - ArtistName`. Falls back t
 
 ### Tray menu glyph convention
 
-Unicode glyphs prefix menu labels on Linux only (`process.platform === 'linux'`). On macOS and Windows, labels are plain text. All glyphs use early Unicode blocks (Miscellaneous Technical U+2300-23FF, Letterlike Symbols U+2100-214F, etc.) rather than emoji codepoints (U+1F000+) for reliable rendering in native menu stacks.
+Unicode glyphs prefix menu labels on Linux only (`process.platform === 'linux'`). On macOS and Windows, labels are plain text. Glyphs are selected for reliable rendering in native menu stacks, favouring simple symbol forms over emoji-style presentation where possible.
 
 ---
 
