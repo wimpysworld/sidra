@@ -162,4 +162,22 @@ just run              # build and launch
 
 Sign in on first launch; your session persists across relaunches. Run `just` with no arguments to list all available recipes for building, testing, debugging, and diagnostics.
 
+### Widevine VMP signing
+
+Widevine enforces VMP (Verified Media Path) production signing on macOS and Windows - without it, Apple Music returns "Something went wrong" after login. CastLabs ECS ships with development keys; production signing requires a free [CastLabs EVS](https://github.com/castlabs/electron-releases/wiki/EVS) account.
+
+**One-time setup:**
+
+```bash
+uvx --from castlabs-evs evs-account signup
+```
+
+Credentials are stored at `~/.config/evs/config.json`. The account is portable - use `evs-account reauth` on any new machine.
+
+| Context | Credentials |
+|---------|-------------|
+| Local machine | `~/.config/evs/config.json`; or set `EVS_ACCOUNT_NAME` + `EVS_PASSWD` env vars (e.g. via sops-nix) |
+
+`just install` and `just build` sign the local Electron binary automatically once credentials are in place. Release builds are signed via the `afterPack` hook in `build/afterPack.cjs`.
+
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
