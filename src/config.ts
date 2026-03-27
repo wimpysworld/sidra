@@ -64,7 +64,7 @@ export function setNotificationsEnabled(enabled: boolean): void {
 }
 
 export function getDiscordEnabled(): boolean {
-  return getConfigValue('discord.enabled', true);
+  return getConfigValue('discord.enabled', false);
 }
 
 export function setDiscordEnabled(enabled: boolean): void {
