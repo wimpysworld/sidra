@@ -53,7 +53,7 @@ Express server (localhost:9000)
 
 The audio pipeline intercepted the HTMLMediaElement output via `MediaElementAudioSourceNode`, routed it through a chain of Web Audio API processing nodes, and output to an `AudioContext` destination. This architecture enabled Cider's audio processing features but introduced multiple failure modes (detailed in section 3).
 
-**Runtime dependencies:** Cider v1 shipped approximately 30+ runtime npm dependencies including Express, music-metadata, node-fetch, chokidar, castv2-client, airtunes2, adm-zip, and youtube-search-without-api-key. Sidra ships 5 runtime dependencies: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-log`, `electron-store`, and `electron-updater`.
+**Runtime dependencies:** Cider v1 shipped approximately 30+ runtime npm dependencies including Express, music-metadata, node-fetch, chokidar, castv2-client, airtunes2, adm-zip, and youtube-search-without-api-key. Sidra ships 5 runtime dependencies: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-conf`, `electron-log`, and `electron-updater`.
 
 ### Cider 2+ (proprietary)
 
