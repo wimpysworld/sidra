@@ -35,8 +35,10 @@ log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {t
 log.transports.console.format = '{h}:{i}:{s}.{ms} [{level}]{scope} {text}';
 
 // Override log levels via environment variable (used by `just run-debug`)
-if (process.env.ELECTRON_LOG_LEVEL) {
-  const level = process.env.ELECTRON_LOG_LEVEL as 'error' | 'warn' | 'info' | 'debug' | 'silly';
+const VALID_LEVELS = new Set(['error', 'warn', 'info', 'debug', 'silly']);
+const envLevel = process.env.ELECTRON_LOG_LEVEL;
+if (envLevel && VALID_LEVELS.has(envLevel)) {
+  const level = envLevel as 'error' | 'warn' | 'info' | 'debug' | 'silly';
   log.transports.file.level = level;
   log.transports.console.level = level;
 }
