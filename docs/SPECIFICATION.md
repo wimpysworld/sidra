@@ -104,7 +104,8 @@ sidra/
 │   ├── player.ts                  — TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
 │   ├── storefront.ts              — buildAppleMusicURL(), extractStorefrontFromURL(), handleStorefrontNavigation()
 │   ├── types/
-│   │   └── electron.d.ts          — module augmentations for CastLabs type gaps
+│   │   ├── electron.d.ts          — module augmentations for CastLabs type gaps
+│   │   └── hook.d.ts              — hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
 │   ├── theme.ts                   — named theme lifecycle: ThemeName, applyTheme(), initThemeCSS(), themeCssMap
 │   ├── artwork.ts                 — downloadArtwork(), cleanArtworkCache(); UUID-based multi-file cache
 │   ├── autoUpdate.ts              — isAutoUpdateSupported(), initAutoUpdate(), quitAndInstall(); electron-updater
@@ -114,7 +115,8 @@ sidra/
 │   ├── utils.ts                   — errorMessage() utility
 │   ├── utils/
 │   │   └── progressBar.ts         — updateProgressBar() / clearProgressBar(); platform-agnostic win.setProgressBar()
-│   ├── tray.ts                    — system tray icon, context menu, About window, tray state manager
+│   ├── aboutWindow.ts             — showAboutWindow() and related constants (extracted from tray.ts)
+│   ├── tray.ts                    — system tray icon, context menu, tray state manager
 │   └── integrations/
 │       ├── mpris/
 │       │   └── index.ts           — D-Bus MPRIS service (Linux only)
@@ -257,7 +259,7 @@ Integrations send commands to the renderer via a two-stage bridge:
 3. Preload forwards to the main world via `window.postMessage({ type: 'sidra:command', channel, args }, '*')`
 4. `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
 
-The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and the `COMMANDS` allowlist in `assets/musicKitHook.js`, which must stay in sync.
+The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and the `COMMANDS` allowlist in `assets/musicKitHook.js`, which must stay in sync. `src/types/hook.d.ts` declares `SendChannel` and `ReceiveChannel` union types used by `src/preload.ts` (`Set<SendChannel>`, `Set<ReceiveChannel>`), enforcing channel sync at compile time. Contract tests in `test/player.test.ts` verify alignment via `expectTypeOf`.
 
 | Control | Method | Triggered by |
 |---|---|---|
@@ -745,7 +747,7 @@ The About item uses `getMenuIcon('about')`, which resolves to the `info.circle` 
 
 `productName: "Sidra"` in `package.json` sets `app.name` to `"Sidra"`; electron-builder derives the menu label from this field.
 
-`showAboutWindow()` is exported from `src/tray.ts` and imported by `src/main.ts` for use in the app menu. Both the About window and the splash window set `fullscreenable: false` and `fullscreen: false` to prevent them entering full-screen mode.
+`showAboutWindow()` is exported from `src/aboutWindow.ts` and imported by `src/main.ts` for use in the app menu. Both the About window and the splash window set `fullscreenable: false` and `fullscreen: false` to prevent them entering full-screen mode.
 
 ---
 

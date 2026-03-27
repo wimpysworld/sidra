@@ -48,6 +48,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 - `strict: true` in `tsconfig.json`; zero `any` annotations, `@ts-ignore`, or `@ts-expect-error` in `src/`
 - IPC payloads typed via `TypedEmitter<PlayerEvents>`; no raw string channel dispatch
 - CastLabs type gaps resolved via module augmentations in `src/types/electron.d.ts`, not type casts at call sites
+- Hook-preload contract typed via `src/types/hook.d.ts` - declares `SidraHook`, `AMWrapperBridge`, `SendChannel`, `ReceiveChannel`, `SidraCommandMessage`, and `Window` augmentations; preload uses `Set<SendChannel>` and `Set<ReceiveChannel>` so tsc enforces channel sync at compile time
 
 **Architecture**
 - All integrations follow the `init(ctx: IntegrationContext)` pattern and manage their own lifecycle
@@ -151,6 +152,7 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - `just install` and `just build` invoke `_sign-evs`, signing `node_modules/electron/dist` with production VMP keys; this is a side-effect of both commands
 - `build/afterPack.cjs` runs EVS VMP signing as an electron-builder `afterPack` hook on `darwin` and `win32`; it must execute before macOS code-signing (`afterPack`, not `afterSign`)
 - Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.send()` to the preload, which uses `window.postMessage()` to bridge the context isolation boundary, and `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
+- Three artefacts define the hook-preload contract and must stay in sync: `src/types/hook.d.ts` (type declarations), `assets/musicKitHook.js` (JSDoc-annotated runtime), and `src/preload.ts` (typed channel sets); contract tests in `test/player.test.ts` verify alignment at compile time via `expectTypeOf`
 - `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime; it must be listed in `asarUnpack` in the electron-builder config or AppImage builds will crash on startup
 - Chromium's built-in `MediaSessionService` must be disabled on Linux to avoid conflicting MPRIS registrations; Sidra registers its own `org.mpris.MediaPlayer2.sidra` service via dbus-next
 - macOS and Windows use Chromium's native mediaSession bridges (no extra libraries)
