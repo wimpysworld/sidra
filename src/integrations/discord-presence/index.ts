@@ -176,23 +176,7 @@ export function enable(): void {
 
 export function disable(): void {
   if (!client) return;
-  discordLog.info('disabling Discord presence, cleaning up');
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
-  }
-  pauseTimeout.cancel();
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  retryCount = 0;
-
-  if (client.isConnected) {
-    client.user?.clearActivity().catch(() => {});
-    client.destroy().catch(() => {});
-  }
-  discordLog.info('disconnected from Discord (disabled via toggle)');
+  disconnectClient();
 }
 
 export function init(ctx: IntegrationContext): void {
