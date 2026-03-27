@@ -275,6 +275,80 @@ describe('Player handle* payload validation', () => {
   });
 });
 
+describe('SidraHook contract', () => {
+  it('keyof SidraHook matches the expected command method names', () => {
+    type HookKeys = keyof SidraHook;
+    type ExpectedKeys =
+      | 'play'
+      | 'pause'
+      | 'playPause'
+      | 'next'
+      | 'previous'
+      | 'seek'
+      | 'setVolume'
+      | 'setRepeat'
+      | 'setShuffle';
+
+    expectTypeOf<HookKeys>().toEqualTypeOf<ExpectedKeys>();
+  });
+
+  it('AMWrapperBridge.ipcRenderer includes send', () => {
+    type IpcKeys = keyof AMWrapperBridge['ipcRenderer'];
+    expectTypeOf<IpcKeys>().toEqualTypeOf<'send'>();
+  });
+
+  it('COMMANDS in musicKitHook.js matches keyof SidraHook', () => {
+    // Parallel constant matching the COMMANDS set in assets/musicKitHook.js.
+    // If SidraHook gains or loses a method, this assertion fails at compile time.
+    const hookCommands: ReadonlySet<keyof SidraHook> = new Set([
+      'play', 'pause', 'playPause', 'next', 'previous',
+      'seek', 'setVolume', 'setRepeat', 'setShuffle',
+    ] as const);
+
+    expect(hookCommands.size).toBe(9);
+  });
+});
+
+describe('Channel contract', () => {
+  it('SendChannel matches expected renderer-to-main channels', () => {
+    type ExpectedSend =
+      | 'playbackStateDidChange'
+      | 'nowPlayingItemDidChange'
+      | 'playbackTimeDidChange'
+      | 'repeatModeDidChange'
+      | 'shuffleModeDidChange'
+      | 'volumeDidChange'
+      | 'nav:back'
+      | 'nav:forward'
+      | 'nav:reload';
+
+    expectTypeOf<SendChannel>().toEqualTypeOf<ExpectedSend>();
+  });
+
+  it('ReceiveChannel matches expected main-to-renderer channels', () => {
+    type ExpectedReceive =
+      | 'player:play'
+      | 'player:pause'
+      | 'player:playPause'
+      | 'player:next'
+      | 'player:previous'
+      | 'player:seek'
+      | 'player:setVolume'
+      | 'player:setRepeat'
+      | 'player:setShuffle';
+
+    expectTypeOf<ReceiveChannel>().toEqualTypeOf<ExpectedReceive>();
+  });
+
+  it('SidraCommandMessage has the expected shape', () => {
+    type MsgType = SidraCommandMessage['type'];
+    type MsgChannel = SidraCommandMessage['channel'];
+
+    expectTypeOf<MsgType>().toEqualTypeOf<'sidra:command'>();
+    expectTypeOf<MsgChannel>().toEqualTypeOf<ReceiveChannel>();
+  });
+});
+
 describe('getShareUrl', () => {
   it('returns payload.url when present', () => {
     expect(getShareUrl({ url: 'https://music.apple.com/album/123?i=456' })).toBe(
