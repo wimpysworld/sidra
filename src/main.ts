@@ -221,6 +221,7 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
       nodeIntegration: false,
       contextIsolation: true,
       plugins: true,
+      sandbox: true,
     },
   });
 
