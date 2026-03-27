@@ -8,52 +8,38 @@
 
 <p align="center">Made with 💝 for 🐧🍏🪟</p>
 
+Sidra is Apple Music as a proper desktop citizen on Linux, macOS, and Windows - wired into each platform's native media subsystem, not bolted on top.
+
 Most Apple Music desktop clients break the audio, mangle the playback controls, or bury you under a custom UI that Apple never signed off on - the problem is worst on Linux.
-Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of the way, and let the audio through untouched.
-Runs on Linux, macOS, and Windows. Apple owns the interface and keeps it current - Sidra inherits every improvement automatically.
+Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of the way, and let the audio through untouched. Apple owns the interface and keeps it current; Sidra inherits every improvement automatically.
 
 ---
 
 ## Features
 
-Sidra is under active development; several features in this list are not yet implemented.
-
-- Apple Music desktop client
-- Lossless audio on macOS and Windows via CastLabs EVS production VMP signing
-- Persistent login with localised Apple Music storefront
-- Localised interface in 32 languages
+- Lossless audio on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
+- Localised storefront and interface in 32 languages
+- Desktop notifications and Discord Rich Presence
 - **Linux**:
-  - Standard Widevine DRM via CastLabs Electron
+  - Widevine DRM via CastLabs Electron
   - Wayland and X11 support
-  - Full bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) via D-Bus
+  - Bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) over D-Bus
 - **macOS**:
   - Full Widevine DRM with EVS production VMP signing
-  - Now Playing widget via Chromium's built-in mediaSession bridge
-  - Dock menu with Now Playing info and playback controls (play/pause, next, previous)
-  - Dock progress bar showing track playback position on the dock icon
-  - App menu with Cmd+Q and About Sidra
-  - Share sheet for sharing the current track's Apple Music URL via native macOS sharing
+  - Now Playing widget, Dock menu with playback controls, and Dock progress bar
+  - App menu (Cmd+Q, About) and native share sheet for the current track
 - **Windows**:
   - Full Widevine DRM with EVS production VMP signing
-  - GSMTC media flyout via Chromium's built-in mediaSession bridge
-  - Taskbar thumbnail toolbar with play/pause, next, previous buttons (shown on taskbar hover)
-  - Taskbar overlay icon showing play/pause state on the taskbar button
-  - Taskbar progress bar showing track playback position on the taskbar button
-- Desktop Notifications
-- Discord Rich Presence
-- **Application Indicator (tray)**:
-  - Now Playing info: track, artist, album, and artwork
-  - Full playback controls: play/pause, next, previous
-  - Volume control and mute
-  - Set your start page, including last session restore
-  - Style switcher and zoom control
-  - Share current track (macOS)
-  - Auto-update status
-  - Localised in 32 languages
+  - GSMTC media flyout, taskbar thumbnail toolbar (play/pause, next, previous)
+  - Taskbar overlay icon and progress bar showing playback state and position
+- **Application Indicator**:
+  - Now Playing: track, artist, album, artwork
+  - Playback controls, volume, and mute
+  - Start page and last session restore, style switcher, zoom control
+  - Share current track (macOS), auto-update status
 - Auto-update via GitHub Releases:
-  - AppImage (Linux) and NSIS (Windows): silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
-  - deb, rpm, Nix, macOS DMG: update notification with link to release page
-- AirPlay casting
+  - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
+  - deb, rpm, Nix, macOS DMG: update notification linking to the release page
 
 <p align="center">
   <img src="assets/source/sidra-screenshot.png" alt="Sidra screenshot" width="100%">
@@ -66,33 +52,22 @@ Sidra is under active development; several features in this list are not yet imp
 
 ## Install
 
-Download the latest release from [GitHub Releases](https://github.com/wimpysworld/sidra/releases).
+Grab the latest release from [GitHub Releases](https://github.com/wimpysworld/sidra/releases).
 
 ### Linux
 
-**AppImage** - portable, no installation required:
+**AppImage** - runs anywhere, no installation:
 
 ```bash
-chmod +x Sidra-*.AppImage
-./Sidra-*.AppImage
+chmod +x Sidra-*.AppImage && ./Sidra-*.AppImage
 ```
 
-**Debian/Ubuntu** (`.deb`):
+**Debian/Ubuntu**, **Fedora**, **openSUSE**:
 
 ```bash
-sudo apt install ./Sidra-*.deb
-```
-
-**Fedora** (`.rpm`):
-
-```bash
-sudo dnf install ./Sidra-*.rpm
-```
-
-**openSUSE** (`.rpm`):
-
-```bash
-sudo zypper install ./Sidra-*.rpm
+sudo apt install ./Sidra-*.deb      # Debian/Ubuntu
+sudo dnf install ./Sidra-*.rpm      # Fedora
+sudo zypper install ./Sidra-*.rpm   # openSUSE
 ```
 
 **Nix**:
@@ -101,21 +76,19 @@ sudo zypper install ./Sidra-*.rpm
 nix profile install github:wimpysworld/sidra
 ```
 
-To use Sidra as a NixOS or Home Manager module, add `github:wimpysworld/sidra` as a flake input and reference `inputs.sidra.packages.<system>.default`.
+For NixOS or Home Manager, add `github:wimpysworld/sidra` as a flake input and reference `inputs.sidra.packages.<system>.default`.
 
 ### macOS
 
-**DMG** - open the `.dmg` and drag Sidra to Applications.
+**DMG** - open and drag Sidra to Applications.
 
-Gatekeeper will block the first launch because the app is unsigned. Two ways to proceed:
-
-1. Remove the quarantine attribute:
+The app is unsigned, so Gatekeeper blocks the first launch. Either remove the quarantine attribute:
 
 ```bash
 xattr -d com.apple.quarantine /Applications/Sidra.app
 ```
 
-2. Open System Settings → Privacy & Security and click **Open Anyway** after the first blocked launch attempt.
+Or open System Settings → Privacy & Security and click **Open Anyway** after the first blocked attempt.
 
 **Nix**:
 
@@ -125,9 +98,9 @@ nix profile install github:wimpysworld/sidra
 
 ### Windows
 
-**Installer** (`.exe`) - run the NSIS installer and follow the prompts.
+**Installer** (`.exe`) - run and follow the prompts.
 
-SmartScreen will show "Windows protected your PC" because the installer is unsigned. Click **More info** then **Run anyway**.
+SmartScreen will warn the installer is unsigned. Click **More info** then **Run anyway**.
 
 ---
 
@@ -157,64 +130,29 @@ The codebase is tightly focused and as lean as possible.
 
 ## Why Sidra?
 
-I used Cider for years, but as time passed and the weight of features grew the core experience degraded.
+I used [Cider](https://cider.sh/) for years. Then I started noticing things.
 
-The audio was the first thing I noticed. Cider hardcodes a 96kHz `AudioContext`, so every track - delivered by Apple at 44.1 or 48kHz - is resampled up to 96kHz, then back down to whatever the hardware expects. Twice, unnecessarily. On top of that, all audio routes through a multi-stage DSP chain regardless of whether you have touched any Audio Lab settings. The "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless; it is biquad EQ shaping and cannot recover discarded information.
-The most common advice in community threads was simply to turn Audio Lab off.
+Cider hardcodes a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. The most common advice in the community was simply to turn it off.
 
-Reliability followed the same pattern.
-Authentication reported failure even after succeeding.
-Tracks stopped for no reason. Volume reset mid-session.
-On Linux, MPRIS volume never worked properly - Cider's audio engine sits between the system volume curve and the actual output, so changes via media controls were inconsistent or ignored entirely.
-Playback state drifted from what Apple Music knew about.
-These were not new bugs; they persisted across versions because the architecture that caused them was load-bearing.
+Reliability followed the same arc. Authentication reported failure after succeeding. Tracks stopped for no reason. Volume reset mid-session. On Linux, MPRIS volume never worked right because Cider's audio engine sat between the system volume curve and the actual output. These were not new bugs; they were architectural, and the architecture was load-bearing.
 
-None of this was Cider's fault in any personal sense.
-It is an ambitious project and the ambition is the problem: a custom UI, custom auth, a plugin marketplace, and a custom audio engine all create surface area where things go wrong.
-The settings UI kept accumulating features without ever resolving the underlying instability.
+I wanted something that just worked. That meant going back to the source.
 
-I got to the point where I wanted something that just worked.
-That meant going back to the source.
+**Linux came first.** Every existing Apple Music client either lacks MPRIS, implements it badly, or wrecks the audio in the process. Media keys should work. Desktop notifications should fire. Volume should track. None of that is exotic, and none of it should require a custom audio engine.
 
-**The immediate reason was Linux.**
-Every existing Apple Music client for Linux either lacks MPRIS entirely, implements it badly, or wrecks the audio in the process.
-Media keys should work.
-Desktop notifications should fire.
-Volume should track.
-None of that is exotic, and none of it should require a custom audio engine to achieve.
+**macOS followed, for two reasons.** Devices enrolled in MDM can block personal Apple ID authentication - the native app simply refuses to sign in. Sidra authenticates at the application layer, a glorified browser session, so MDM policy never sees it. Then there is the more relatable problem: a friend's daughter was steadily polluting his Apple Music recommendations with K-pop. Sidra installed alongside the native app gives her a fully isolated session - her listening history, her "For You" shelf, her algorithmic rabbit holes. His recommendations are his own again.
 
-**The second reason is corporate macOS.**
-Devices enrolled in MDM can block authentication with personal Apple IDs, which means the native Apple Music app simply refuses to let you sign in.
-Sidra authenticates at the application layer - little more than a glorified browser session - so MDM policy never sees it.
-If you can reach music.apple.com in Chrome, you can use Sidra.
+**Windows followed** at the request of another friend who wanted a decent Apple Music client that was not Cider.
 
-The third reason is a friend who wanted a decent Apple Music client for Windows that was not Cider.
+The bonus became clear once everything was working. Wrapping `music.apple.com` directly means none of those failure modes can exist. Apple's audio pipeline, Apple's auth, Apple's UI - Sidra never creates an `AudioContext`. Audio flows untouched through Chromium's media stack to the OS. Authentication cannot drift out of sync with Apple's servers. The interface updates whenever Apple ships a change, automatically.
 
-The fourth reason became apparent once it was working: wrapping `music.apple.com` directly means none of those failure modes exist.
-Apple's audio pipeline, Apple's auth, Apple's UI.
-Sidra never creates an `AudioContext` - audio flows untouched from Apple Music through Chromium's media stack to the OS.
-Authentication is Apple's web flow; it cannot get out of sync with Apple's servers.
-The interface updates automatically whenever Apple ships a change.
-Stripping away the abstraction layers improved the sound.
-Less processing, less resampling, less interference between the music library and your ears.
-
-Sidra is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat.
-The name came from a trip to the region for UbuCon Europe 2018.
-No additives, no artifice, nothing between the apple and the glass.
-That felt right.
+*Sidra* is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
 
 ---
 
 ## Development
 
-### Prerequisites
-
-- [Nix](https://nixos.org/) with flakes enabled
-- [direnv](https://direnv.net/) (optional, but recommended)
-
-The project uses npm and TypeScript. The shell is [CastLabs Electron](https://github.com/castlabs/electron-releases) (`wvcus` variant) rather than standard Electron - this is non-negotiable for Widevine DRM support on Linux.
-
-### Quick start
+Requires [Nix](https://nixos.org/) with flakes enabled. [direnv](https://direnv.net/) is recommended. The project uses npm and TypeScript with [CastLabs Electron](https://github.com/castlabs/electron-releases) (`wvcus` variant) - standard Electron cannot be substituted as it lacks Widevine DRM support on Linux.
 
 ```bash
 direnv allow          # or: nix develop
@@ -222,35 +160,6 @@ just install          # install npm dependencies
 just run              # build and launch
 ```
 
-Sign in with your Apple Music account on first launch. Your session persists across relaunches.
-
-### Available recipes
-
-| Recipe | Description |
-|--------|-------------|
-| `just install` | Install npm dependencies |
-| `just build` | Compile TypeScript to `dist/` |
-| `just run` | Build and launch the app |
-| `just run-fast` | Launch without rebuilding (pair with `just watch`) |
-| `just watch` | Rebuild on file changes |
-| `just lint` | Run actionlint and TypeScript type-check |
-| `just clean` | Remove `dist/` build artefacts |
-| `just logs` | Show log file location and tail recent entries |
-
-### Debug and diagnostics
-
-| Recipe | Description |
-|--------|-------------|
-| `just run-debug` | Launch with `ELECTRON_LOG_LEVEL=debug` (verbose file logging) |
-| `just run-devtools` | Launch with DevTools open for inspecting CSS and DOM |
-| `just run-inspect` | Launch with both debug logging and DevTools |
-| `just logs` | Tail `~/.config/sidra/logs/main.log` |
-
-### Typical dev loop
-
-1. `just watch` in one terminal to auto-rebuild on changes
-2. `just run-fast` in another to launch without rebuilding
-3. `just run-devtools` to inspect CSS injection or DOM state
-4. `just logs` to review structured log output
+Sign in on first launch; your session persists across relaunches. Run `just` with no arguments to list all available recipes for building, testing, debugging, and diagnostics.
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
