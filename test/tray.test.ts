@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TrayStrings } from '../src/i18n';
 
-// Mock modules that trigger require('electron-store') at import time.
+// Mock modules that import electron-conf/main at import time.
 vi.mock('../src/config', () => ({
   getNotificationsEnabled: () => true,
   setNotificationsEnabled: vi.fn(),

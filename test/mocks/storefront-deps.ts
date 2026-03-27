@@ -3,7 +3,7 @@
 // (or main.ts, which re-exports storefront functions).
 //
 // These mock the application modules that storefront.ts pulls in transitively.
-// Global mocks for electron, electron-log/main, and electron-store live in
+// Global mocks for electron, electron-log/main, and electron-conf/main live in
 // test/setup.ts and are not duplicated here.
 //
 // Vitest hoists vi.mock() calls to the top of the file they appear in and

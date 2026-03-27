@@ -1,15 +1,14 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
 
-// Mock electron-store at the config module level. config.ts uses
-// require('electron-store').default at module scope; Vitest cannot intercept
-// bare require() calls. Instead, mock the config module and pass through
+// Mock electron-conf at the config module level. config.ts imports
+// electron-conf/main at module scope. Mock the config module and pass through
 // to a manual implementation that mirrors the real store wrapper.
 const data = new Map<string, unknown>();
 
 vi.mock('../src/config', async () => {
   // Provide a standalone implementation matching config.ts getter/setter
   // signatures. This avoids loading the real config.ts (which triggers
-  // require('electron-store') that Vitest cannot intercept).
+  // the electron-conf/main import that Vitest cannot intercept).
   return {
     getStorefront: (): string | undefined => {
       if (!data.has('storefront')) return undefined;
