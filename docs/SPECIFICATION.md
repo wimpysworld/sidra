@@ -48,7 +48,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 | Windows taskbar | `win.setThumbarButtons()` + `win.setOverlayIcon()` | Thumbnail toolbar and overlay badge |
 | macOS controls | Chromium `mediaSession` → MPNowPlayingInfoCenter | Built-in bridge, identity via bundle name |
 | macOS dock | `app.dock.setMenu()` + `win.setProgressBar()` | Right-click menu and progress bar |
-| Config | `electron-store` | Persistent config (storefront, theme, preferences) |
+| Config | `electron-conf` | Persistent config (storefront, theme, preferences) |
 | Build | `electron-builder` | AppImage + deb + rpm (Linux), DMG (macOS), NSIS (Windows) |
 | Package manager | npm | Simplest option; avoids pnpm's strict semver parsing issues with CastLabs `+wvcus` tag |
 
@@ -77,7 +77,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 │  │  └───────┬────────┘  │      │  │  preload.ts  │  │  │
 │  │          │           │      │  │ (IPC bridge) │  │  │
 │  │  ┌───────▼────────┐  │      │  └──────────────┘  │  │
-│  │  │ electron-store │  │      └────────────────────┘  │
+│  │  │ electron-conf  │  │      └────────────────────┘  │
 │  │  └────────────────┘  │                               │
 │  └──────────────────────┘                               │
 └─────────────────────────────────────────────────────────┘
@@ -98,7 +98,7 @@ sidra/
 ├── src/
 │   ├── main.ts                    — bootstrap, Widevine wait, window, IPC hub
 │   ├── preload.ts                 — contextBridge IPC exposure (AMWrapper)
-│   ├── config.ts                  — electron-store wrapper
+│   ├── config.ts                  — electron-conf wrapper
 │   ├── i18n.ts                    — locale detection, JSON loader, and re-exported translation records
 │   ├── paths.ts                   — getAssetPath() and getProductInfo() utilities
 │   ├── player.ts                  — TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
@@ -179,7 +179,7 @@ sidra/
     "@holusion/dbus-next": "^0.11.2",
     "@xhayper/discord-rpc": "^1.3.1",
     "electron-log": "^5.x",
-    "electron-store": "^10.x",
+    "electron-conf": "^1.3.0",
     "electron-updater": "^6.8.3"
   }
 }
@@ -481,7 +481,7 @@ Loading bare `https://music.apple.com` causes Apple's server to 301-redirect all
 Fallback chain at startup:
 
 ```
-1. Read persisted storefront from electron-store
+1. Read persisted storefront from electron-conf
 2. If found → use it
 3. If not found → app.getLocaleCountryCode().toLowerCase()
 4. If empty string (LC_ALL=C, unset locale) → 'us'
@@ -490,7 +490,7 @@ Fallback chain at startup:
 
 ### Persistence
 
-`electron-store` holds two keys: `storefront` (e.g. `gb`) and `language` (BCP 47 tag from the `?l=` parameter, e.g. `fr`, or `null`). A `did-navigate` and `did-navigate-in-page` listener on `win.webContents` parses the URL after each navigation. When the storefront or language changes, the new values are written to the store. Same-storefront navigation does not trigger a write.
+`electron-conf` holds two keys: `storefront` (e.g. `gb`) and `language` (BCP 47 tag from the `?l=` parameter, e.g. `fr`, or `null`). A `did-navigate` and `did-navigate-in-page` listener on `win.webContents` parses the URL after each navigation. When the storefront or language changes, the new values are written to the store. Same-storefront navigation does not trigger a write.
 
 ### Storefront codes
 
@@ -531,7 +531,7 @@ The red accent is used in both variants to preserve Apple Music brand associatio
 
 ### Persistence
 
-Theme preference is stored in `electron-store` as `theme` (`ThemeName`: `'apple-music'` | `'catppuccin'`). Default is `'apple-music'`. Applied immediately via `applyTheme(name)` - no restart required.
+Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-music'` | `'catppuccin'`). Default is `'apple-music'`. Applied immediately via `applyTheme(name)` - no restart required.
 
 ### Implementation
 
@@ -560,7 +560,7 @@ Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmde
 - **Debounce**: 1s debounce on updates to coalesce rapid events (track change + playback state landing together). `scheduleUpdate()` resets the debounce timer; `sendActivity()` calculates timestamps fresh from the cached position.
 - **Pause timeout**: Clear activity after 30s paused (ytmdesktop pattern) - courtesy to users who do not want to broadcast a paused state.
 - **Retry**: Reconnect with exponential backoff (2s base, 60s cap) on Discord IPC disconnection.
-- **Toggle**: `discord.enabled` in `electron-store` (default: false). Tray menu toggle; when disabled, clears activity immediately.
+- **Toggle**: `discord.enabled` in `electron-conf` (default: false). Tray menu toggle; when disabled, clears activity immediately.
 
 ### `playbackTimeDidChange` pitfall
 
@@ -595,7 +595,7 @@ The implementation lives in `src/integrations/notifications/index.ts`:
 
 On NixOS (dev shell), `libnotify` must be present in `LD_LIBRARY_PATH` or `notification.show()` will silently do nothing. This is a dev shell concern, not an app code concern - ensure `libnotify` is in the Nix dev shell's `LD_LIBRARY_PATH`.
 
-Notifications are toggleable via an `electron-store` boolean setting (default: on).
+Notifications are toggleable via an `electron-conf` boolean setting (default: on).
 
 ---
 
@@ -807,7 +807,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Discord Rich Presence | `@xhayper/discord-rpc` | With debounce + pause timeout + retry |
 | Track change notifications | Electron `Notification` | With artwork, suppressable in settings |
 | Regional storefront detection | `app.getLocaleCountryCode()` → `/gb/new`, `/ch/new` etc. | Fallback chain: persisted → detected → `us` |
-| Storefront preference persistence | `electron-store` + `did-navigate` listener | Survives restarts; language parameter preserved |
+| Storefront preference persistence | `electron-conf` + `did-navigate` listener | Survives restarts; language parameter preserved |
 | User-agent spoofing | `webRequest.onBeforeSendHeaders` | Standard Chrome UA |
 | Wayland support | `--enable-features=UseOzonePlatform` | Auto-detected via platform check |
 | App identity | `productName` in `package.json` | Consistent across all platform controls |
@@ -834,7 +834,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Content readiness polling | `amp-lcd[hydrated]` selector | Waits for Apple Music UI to hydrate before removing splash |
 | About window | Frameless `BrowserWindow` + `assets/about.html` | Localised labels via `about.json` |
 | Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar |
-| Zoom factor preference | `zoom` in `electron-store` | 1.0x to 2.0x via tray submenu |
+| Zoom factor preference | `zoom` in `electron-conf` | 1.0x to 2.0x via tray submenu |
 | Wedge detector | `src/wedgeDetector.ts` | Auto-skip on playback stall |
 | Artwork cache | `src/artwork.ts` | UUID-based filenames, 7-day expiry, atomic writes |
 | Pause timer utility | `src/pauseTimer.ts` | `createPauseTimer()` shared by tray, dock, Discord |

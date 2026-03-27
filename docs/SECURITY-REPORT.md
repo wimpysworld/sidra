@@ -16,7 +16,7 @@
 
 **Technology stack:**
 - CastLabs Electron (Chromium fork with Widevine CDM), TypeScript, electron-builder
-- Runtime deps: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-log`, `electron-store`, `electron-updater`
+- Runtime deps: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-conf`, `electron-log`, `electron-updater`
 - No LLM libraries present
 
 **Threat model:** External attacker with no prior access targeting the desktop application.
