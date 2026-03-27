@@ -96,10 +96,10 @@ if (!process.getSystemVersion) {
   vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.0.0');
 }
 
-vi.mock('electron-store', () => {
+vi.mock('electron-conf/main', () => {
   const data = new Map<string, unknown>();
   return {
-    default: class {
+    Conf: class {
       has(key: string) { return data.has(key); }
       get(key: string) { return data.get(key); }
       set(key: string, value: unknown) { data.set(key, value); }
