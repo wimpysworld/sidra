@@ -23,8 +23,15 @@
     'pointer-events: auto !important',
   ].join('; '));
 
+  /** @type {string} */
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
+  /**
+   * Create an SVG element with the given tag and attributes.
+   * @param {string} tag - SVG element tag name (e.g. 'svg', 'polyline', 'path')
+   * @param {Record<string, string>} attrs - Attribute key-value pairs
+   * @returns {SVGElement}
+   */
   function createSvgElement(tag, attrs) {
     var el = document.createElementNS(SVG_NS, tag);
     for (var key in attrs) {
@@ -44,18 +51,21 @@
     'stroke-linejoin': 'round',
   };
 
+  /** @returns {SVGSVGElement} Back chevron icon */
   function createBackSvg() {
     var svg = createSvgElement('svg', sharedAttrs);
     svg.appendChild(createSvgElement('polyline', { points: '15 18 9 12 15 6' }));
     return svg;
   }
 
+  /** @returns {SVGSVGElement} Forward chevron icon */
   function createForwardSvg() {
     var svg = createSvgElement('svg', sharedAttrs);
     svg.appendChild(createSvgElement('polyline', { points: '9 6 15 12 9 18' }));
     return svg;
   }
 
+  /** @returns {SVGSVGElement} Reload/refresh icon */
   function createReloadSvg() {
     var svg = createSvgElement('svg', sharedAttrs);
     svg.appendChild(createSvgElement('polyline', { points: '23 4 23 10 17 10' }));
@@ -63,6 +73,13 @@
     return svg;
   }
 
+  /**
+   * Create a navigation button that sends an IPC message on click.
+   * @param {string} label - Accessible label for the button
+   * @param {SVGSVGElement} svgElement - Icon to display inside the button
+   * @param {string} channel - IPC channel name sent via window.AMWrapper
+   * @returns {HTMLButtonElement}
+   */
   function createButton(label, svgElement, channel) {
     const btn = document.createElement('button');
     btn.setAttribute('aria-label', label);
