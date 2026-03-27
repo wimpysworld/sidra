@@ -517,8 +517,14 @@ class MediaPlayer2Player extends Interface {
   }
 
   OpenUri(uri: string): void {
-    if (!uri.startsWith('https://music.apple.com/')) {
-      mprisLog.warn('OpenUri rejected non-Apple Music URI:', uri);
+    try {
+      const parsed = new URL(uri);
+      if (parsed.hostname !== 'music.apple.com' || parsed.protocol !== 'https:') {
+        mprisLog.warn('OpenUri rejected:', uri);
+        return;
+      }
+    } catch {
+      mprisLog.warn('OpenUri rejected malformed URI:', uri);
       return;
     }
     const win = this._getMainWindow();
