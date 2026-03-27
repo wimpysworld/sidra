@@ -10,8 +10,8 @@
 **Phases completed:** All five (Scope/Context, Automated Scanning, Manual Review, Triage, Report).
 
 **Automated tools run:**
-- Semgrep v1.143.0: `p/security-audit`, `p/owasp-top-ten`, `p/cwe-top-25` (0 findings, internal errors on 3 Pro-only rules across all files - dismissed as tooling limitation)
-- Gitleaks: `detect` and `git` modes (402 commits, 1.79 MB scanned, 0 findings)
+- Semgrep v1.143.0: `p/security-audit`, `p/owasp-top-ten`, `p/cwe-top-25` (0 findings, 332 rules on 235 targets)
+- Gitleaks: `detect` and `git` modes (404 commits, 1.80 MB scanned, 0 findings)
 - OSV-Scanner: recursive scan (473 packages, 0 findings)
 
 **Technology stack:**
@@ -31,15 +31,15 @@
 
 ## Resolved Findings (from prior report)
 
-The following six findings from the prior report have been remediated and verified:
+All seven findings from the prior report have been remediated and verified:
 
 ### W2. [CWE-350] Protocol validation on update URL - `src/update.ts:86-91` - RESOLVED
 
-Protocol validation added. `releaseUrl` is now parsed with `new URL()` and checked for `https:`/`http:` protocol before passing to `shell.openExternal()`. Malformed URLs are caught and silently ignored. Implementation matches the recommended fix exactly.
+Protocol validation added. `releaseUrl` is parsed with `new URL()` and checked for `https:`/`http:` protocol before passing to `shell.openExternal()`. Malformed URLs are caught and silently ignored. The same validation is applied in the tray menu update link (`src/tray.ts:382-384`) using `parsed.toString()` for the final URL, preventing prototype pollution of the original string.
 
-### W3. [CWE-265] Main BrowserWindow sandbox - `src/main.ts:224` - RESOLVED
+### W3. [CWE-265] Main BrowserWindow sandbox - `src/main.ts:226` - RESOLVED
 
-`sandbox: true` added to the main window's `webPreferences`. All three BrowserWindow instances (splash, about, main) now set `sandbox: true`.
+`sandbox: true` added to the main window's `webPreferences`. All three BrowserWindow instances (splash at line 116, about at line 174 in `src/tray.ts`, main at line 226) set `sandbox: true`.
 
 ### O1. [CWE-942] Wildcard postMessage target origin - `src/preload.ts:39` - RESOLVED
 
@@ -51,7 +51,11 @@ Target origin changed from `'*'` to `'https://music.apple.com'`. Messages are no
 
 ### O4. [CWE-20] MPRIS OpenUri validation - `src/integrations/mpris/index.ts:519-529` - RESOLVED
 
-Prefix-based `startsWith()` check replaced with `new URL()` parsing, explicit `hostname` and `protocol` validation. Malformed URIs are caught and rejected.
+Prefix-based `startsWith()` check replaced with `new URL()` parsing, explicit `hostname` (`music.apple.com`) and `protocol` (`https:`) validation. Malformed URIs are caught and rejected.
+
+### O5. [CWE-209] Debug log level controllable via environment variable - `src/main.ts:38-43` - RESOLVED
+
+`ELECTRON_LOG_LEVEL` is now validated against a `Set` of known log levels (`error`, `warn`, `info`, `debug`, `silly`) before use. Invalid values are silently ignored.
 
 ### GHSA-f886-m6hf-6m8v: brace-expansion ReDoS - RESOLVED
 
@@ -100,35 +104,6 @@ The entitlements include:
 
 All three are required by Electron and the Widevine CDM. These entitlements weaken macOS hardened runtime protections but cannot be removed without breaking functionality.
 
----
-
-### O5. [CWE-209] Debug log level controllable via environment variable - `src/main.ts:38-42`
-
-**Confidence:** Confirmed
-
-```typescript
-if (process.env.ELECTRON_LOG_LEVEL) {
-  const level = process.env.ELECTRON_LOG_LEVEL as 'error' | 'warn' | 'info' | 'debug' | 'silly';
-  log.transports.file.level = level;
-  log.transports.console.level = level;
-}
-```
-
-An attacker who can set environment variables on the host can force `silly` or `debug` log level, causing verbose output to the log file. The log file may contain playback metadata, D-Bus messages, and IPC payloads. The `as` cast does not validate the value - any string is accepted, though `electron-log` ignores unrecognised levels.
-
-**Exploitation path:** Requires local access to set environment variables. No remote exploitation path.
-
-**Impact:** Information disclosure via verbose log files on a locally-compromised machine. Low severity because local access is a prerequisite.
-
-**Fix (defence-in-depth):** Validate the environment variable against the known log levels before applying:
-```typescript
-const VALID_LEVELS = new Set(['error', 'warn', 'info', 'debug', 'silly']);
-const envLevel = process.env.ELECTRON_LOG_LEVEL;
-if (envLevel && VALID_LEVELS.has(envLevel)) { ... }
-```
-
----
-
 ### O6. [CWE-319] Discord Client ID exposed as constant - `src/integrations/discord-presence/index.ts:11`
 
 **Confidence:** Confirmed
@@ -161,19 +136,22 @@ All 473 packages in `package-lock.json` are free of known vulnerabilities at sca
 
 ## Beat Summary
 
-**Scope:** 22 TypeScript source files, 2 injected JavaScript scripts, 1 injected CSS file, 2 HTML files, 1 build hook (`afterPack.cjs`), `package.json`, `package-lock.json`, and macOS entitlements. 402 git commits scanned for secrets.
+**Scope:** 22 TypeScript source files, 2 injected JavaScript scripts, 1 injected CSS file, 2 HTML files, 1 build hook (`afterPack.cjs`), `package.json`, `package-lock.json`, and macOS entitlements. 404 git commits scanned for secrets.
 
-**Files patrolled:** 233 (Semgrep), 28 (manual review of all source, asset, and build files).
+**Files patrolled:** 235 (Semgrep), 30 (manual review of all source, asset, and build files).
 
 **Overall security posture:** Strong for an Electron application of this scope.
 
-Six findings from the prior report have been remediated correctly:
+Seven findings from the prior report have been remediated correctly:
 - W2 (protocol validation on update URL) - verified
 - W3 (main window sandbox) - verified
 - O1 (postMessage target origin) - verified
 - O2 (shell interpolation in build hook) - verified
 - O4 (MPRIS OpenUri validation) - verified
+- O5 (log level environment variable validation) - verified
 - GHSA-f886-m6hf-6m8v (brace-expansion ReDoS) - verified
+
+No new findings discovered. The manual review covered all nine vulnerability categories (access control, authentication, injection, cryptography, input validation, configuration, error handling, supply chain, resource limits) and identified no new issues.
 
 The codebase follows Electron security best practices consistently:
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` on all windows
@@ -188,6 +166,7 @@ The codebase follows Electron security best practices consistently:
 - HTML files use `.textContent` assignment, not `.innerHTML`
 - CSP headers on local HTML files (splash, about)
 - Scoped postMessage target origin
+- `ELECTRON_LOG_LEVEL` validated against known values
 
 **Repeat-offender patterns:** None identified. No systemic security issues across the codebase.
 
@@ -196,5 +175,4 @@ The codebase follows Electron security best practices consistently:
 | Priority | Finding | Effort | Action |
 |----------|---------|--------|--------|
 | 1 | W1 - Disabled update signature verification | High | Sign Windows builds, remove `verifyUpdateCodeSignature = false` |
-| 2 | O5 - Unvalidated log level env var | Low | Validate `ELECTRON_LOG_LEVEL` against known values |
-| 3 | O3 - Broad macOS entitlements | N/A | Cannot remediate; required by Electron + Widevine |
+| 2 | O3 - Broad macOS entitlements | N/A | Cannot remediate; required by Electron + Widevine |

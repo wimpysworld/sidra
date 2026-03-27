@@ -181,3 +181,5 @@ Credentials are stored at `~/.config/evs/config.json`. The account is portable -
 `just install` and `just build` sign the local Electron binary automatically once credentials are in place. Release builds are signed via the `afterPack` hook in `build/afterPack.cjs`.
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
+
+Security audits run after significant feature work. The current report, including full remediation history, is at [`docs/SECURITY-REPORT.md`](docs/SECURITY-REPORT.md).
