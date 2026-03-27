@@ -31,6 +31,7 @@
     "electron-updater": "^6.8.3"
   },
   "overrides": {
+    "brace-expansion": ">=5.0.5",
     "undici": ">=6.24.0"
   },
   "build": {
