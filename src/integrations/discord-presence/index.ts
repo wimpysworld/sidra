@@ -63,15 +63,37 @@ function scheduleUpdate(): void {
   }, DEBOUNCE_MS);
 }
 
+function disconnectClient(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  pauseTimeout.cancel();
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  retryCount = 0;
+
+  client.user?.clearActivity().catch(() => {});
+  client.destroy().catch(() => {});
+  discordLog.info('disconnected from Discord (disabled via toggle)');
+}
+
 function sendActivity(): void {
   if (!getDiscordEnabled()) {
-    discordLog.debug('discord disabled, clearing activity');
-    client.user?.clearActivity().catch(() => {});
+    if (client.isConnected) {
+      disconnectClient();
+    }
     return;
   }
 
   if (!client.isConnected) {
-    discordLog.debug('not connected, skipping activity update');
+    discordLog.debug('not connected, attempting login');
+    client.login().catch((err: Error) => {
+      discordLog.warn('login failed:', err.message);
+      scheduleReconnect();
+    });
     return;
   }
 
@@ -124,6 +146,7 @@ function sendActivity(): void {
 }
 
 function scheduleReconnect(): void {
+  if (!getDiscordEnabled()) return;
   if (reconnectTimer) return;
 
   const delay = Math.min(RECONNECT_BASE_MS * 2 ** retryCount, RECONNECT_CAP_MS);
@@ -138,6 +161,23 @@ function scheduleReconnect(): void {
       scheduleReconnect();
     });
   }, delay);
+}
+
+export function enable(): void {
+  if (!client.isConnected) {
+    discordLog.info('enabling Discord presence');
+    client.login().catch((err: Error) => {
+      discordLog.warn('login failed:', err.message);
+      scheduleReconnect();
+    });
+  }
+}
+
+export function disable(): void {
+  if (client.isConnected) {
+    discordLog.info('disabling Discord presence, cleaning up');
+    disconnectClient();
+  }
 }
 
 export function init(ctx: IntegrationContext): void {
@@ -162,10 +202,12 @@ export function init(ctx: IntegrationContext): void {
     scheduleReconnect();
   });
 
-  client.login().catch((err: Error) => {
-    discordLog.warn('initial login failed:', err.message);
-    scheduleReconnect();
-  });
+  if (getDiscordEnabled()) {
+    client.login().catch((err: Error) => {
+      discordLog.warn('initial login failed:', err.message);
+      scheduleReconnect();
+    });
+  }
 
   // Named listener references for removeListener in will-quit
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
