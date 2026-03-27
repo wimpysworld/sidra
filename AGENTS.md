@@ -109,7 +109,7 @@ When adding a language, add an entry to every record in every JSON file:
 | `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
 | `theme` | `ThemeName` (`'apple-music' \| 'catppuccin'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
 | `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
-| `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: true) |
+| `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: false) |
 | `autoUpdate.enabled` | `boolean` | Enable automatic updates (default: true on AppImage and NSIS; disabled on all other platforms) |
 | `startPage` | `'home' \| 'new' \| 'radio' \| 'all-playlists' \| 'last'` | Page to load on launch (default: `'new'`) |
 | `lastPageUrl` | `string` | Last visited page URL; used when `startPage` is `'last'` |
