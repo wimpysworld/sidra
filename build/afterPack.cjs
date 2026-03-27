@@ -22,11 +22,11 @@ exports.default = async function afterPack(context) {
     return;
   }
 
-  const { execSync } = require('child_process');
+  const { execFileSync } = require('child_process');
 
   console.log('EVS: Signing package with production VMP keys...');
   try {
-    execSync(`uvx --from castlabs-evs evs-vmp sign-pkg "${appOutDir}"`, {
+    execFileSync('uvx', ['--from', 'castlabs-evs', 'evs-vmp', 'sign-pkg', appOutDir], {
       stdio: 'inherit',
     });
     console.log('EVS: VMP signing complete.');
