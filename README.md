@@ -20,6 +20,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - Lossless audio on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - Localised storefront and interface in 32 languages
 - Desktop notifications and Discord Rich Presence
+- Injected Back, Forward, and Reload navigation controls
 - **Linux**:
   - Widevine DRM via CastLabs Electron
   - Wayland and X11 support
@@ -130,13 +131,13 @@ The codebase is tightly focused and as lean as possible.
 
 ## Why Sidra?
 
-I used [Cider](https://cider.sh/) for years. Then I started noticing things.
+I used [Cider](https://cider.sh/) for years, but as time passed and the weight of new features grew the core experience degraded.
 
-Cider hardcodes a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. The most common advice in the community was simply to turn it off.
+Cider hardcodes a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. Common advice in the community is to simply turn it off.
 
 Reliability followed the same arc. Authentication reported failure after succeeding. Tracks stopped for no reason. Volume reset mid-session. On Linux, MPRIS volume never worked right because Cider's audio engine sat between the system volume curve and the actual output. These were not new bugs; they were architectural, and the architecture was load-bearing.
 
-I wanted something that just worked. That meant going back to the source.
+I wanted something that just worked. So, I made Sidra.
 
 **Linux came first.** Every existing Apple Music client either lacks MPRIS, implements it badly, or wrecks the audio in the process. Media keys should work. Desktop notifications should fire. Volume should track. None of that is exotic, and none of it should require a custom audio engine.
 
