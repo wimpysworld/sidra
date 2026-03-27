@@ -83,7 +83,12 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
           silent: true,
         });
         notification.on('click', () => {
-          shell.openExternal(releaseUrl);
+          try {
+            const parsed = new URL(releaseUrl);
+            if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+              shell.openExternal(releaseUrl);
+            }
+          } catch { /* ignore malformed URL */ }
         });
         notification.show();
         updateLog.debug('update notification shown');
