@@ -8,6 +8,7 @@ import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, se
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 import { applyTheme } from './theme';
+import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import { downloadArtwork } from './artwork';
 import { createPauseTimer } from './pauseTimer';
 
@@ -297,13 +298,13 @@ function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorO
         label: strings.on,
         type: 'radio',
         checked: discordEnabled,
-        click: () => { setDiscordEnabled(true); refresh(); },
+        click: () => { setDiscordEnabled(true); enableDiscord(); refresh(); },
       },
       {
         label: strings.off,
         type: 'radio',
         checked: !discordEnabled,
-        click: () => { setDiscordEnabled(false); refresh(); },
+        click: () => { setDiscordEnabled(false); disableDiscord(); refresh(); },
       },
     ],
   };
