@@ -20,12 +20,12 @@
     "electron": "github:castlabs/electron-releases#v40.7.0+wvcus",
     "electron-builder": "^26.8.2",
     "shx": "^0.4.0",
-    "typescript": "^5.x",
-    "vitest": "^4.1.1"
+    "typescript": "^6.x",
+    "vitest": "^4.1.2"
   },
   "dependencies": {
     "@holusion/dbus-next": "^0.11.2",
-    "@xhayper/discord-rpc": "^1.3.1",
+    "@xhayper/discord-rpc": "^1.3.3",
     "electron-conf": "^1.3.0",
     "electron-log": "^5.x",
     "electron-updater": "^6.8.3"
