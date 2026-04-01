@@ -175,7 +175,7 @@ jobs:
         run: npm ci
       - name: Install uv
         if: matrix.os == 'macos' || matrix.os == 'windows'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: Install RPM and SVG tools
         if: matrix.os == 'linux'
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin rpm
