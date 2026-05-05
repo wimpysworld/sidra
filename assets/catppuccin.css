@@ -85,17 +85,25 @@
     --systemToolbarTitlebarMaterialSover: rgba(24,24,37,0.8) !important;
   }
 
-  /* Top player bar: amp-chrome-player::before paints the bar background
-     independently of :root variables - must be overridden directly */
-  .wrapper amp-chrome-player::before {
-    background-color: rgba(24, 24, 37, 0.88) !important;
+  /* Scrollbars */
+  * {
+    scrollbar-color: #45475a #181825 !important;
   }
 
-  /* Prevent .player-bar from painting its own light background over the top */
-  .player-bar,
-  .chrome-player.chrome-player__music {
-    background: none !important;
-    box-shadow: none !important;
+  *::-webkit-scrollbar {
+    width: 12px !important;
+    height: 12px !important;
+    background-color: #181825 !important;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #45475a !important;
+    border: 3px solid #181825 !important;
+    border-radius: 999px !important;
+  }
+
+  *::-webkit-scrollbar-track {
+    background-color: #181825 !important;
   }
 
   /* Force variables into shadow-DOM-scoped elements */
@@ -125,14 +133,51 @@
     background-color: rgba(24, 24, 37, 0.97) !important;
   }
 
-  /* LCD now-playing text/info area background */
-  amp-lcd {
-    --lcd-bg-color: #313244 !important;
+  /* Footer */
+  :is(
+    footer,
+    .scrollable-page footer,
+    .dt-footer,
+    [class*="page-footer"],
+    [class*="dt-footer"]
+  ) {
+    background: #11111b !important;
+    background-color: #11111b !important;
+    border-color: rgba(88,91,112,0.2) !important;
+    color: rgba(205,214,244,0.85) !important;
   }
 
-  /* Footer */
-  .scrollable-page > footer {
-    background-color: #11111b !important;
+  :is(
+    footer,
+    .scrollable-page footer,
+    .dt-footer
+  ) :is(a, button, select, [role="button"], [class*="dropdown"]) {
+    background-color: #181825 !important;
+    border-color: rgba(88,91,112,0.25) !important;
+    color: rgba(205,214,244,0.85) !important;
+  }
+
+  /* Country/location banner background */
+  :is(
+    [class*="locale-banner"],
+    [class*="locale-switcher"],
+    [class*="localization"],
+    [class*="country-banner"],
+    [class*="country-picker"],
+    [class*="location-banner"],
+    [class*="location-picker"],
+    [class*="storefront-banner"],
+    [class*="storefront-picker"],
+    [class*="storefront-switcher"],
+    [class*="geo-banner"],
+    [class*="geo-location"],
+    [role="dialog"]:has(select):has(button),
+    body > :is(div, section, aside)[style*="bottom"]:has(select):has(button),
+    body > :is(div, section, aside)[class*="fixed"]:has(select):has(button),
+    body > :is(div, section, aside)[class*="banner"]:has(select):has(button)
+  ) {
+    background: #181825 !important;
+    background-color: #181825 !important;
   }
 }
 
@@ -218,15 +263,25 @@
     --systemToolbarTitlebarMaterialSover: rgba(230,233,239,0.8) !important;
   }
 
-  /* Top player bar */
-  .wrapper amp-chrome-player::before {
-    background-color: rgba(230, 233, 239, 0.88) !important;
+  /* Scrollbars */
+  * {
+    scrollbar-color: #bcc0cc #e6e9ef !important;
   }
 
-  .player-bar,
-  .chrome-player.chrome-player__music {
-    background: none !important;
-    box-shadow: none !important;
+  *::-webkit-scrollbar {
+    width: 12px !important;
+    height: 12px !important;
+    background-color: #e6e9ef !important;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #bcc0cc !important;
+    border: 3px solid #e6e9ef !important;
+    border-radius: 999px !important;
+  }
+
+  *::-webkit-scrollbar-track {
+    background-color: #e6e9ef !important;
   }
 
   * {
@@ -255,14 +310,51 @@
     background-color: rgba(230, 233, 239, 0.97) !important;
   }
 
-  /* LCD now-playing text/info area background */
-  amp-lcd {
-    --lcd-bg-color: #ccd0da !important;
+  /* Footer */
+  :is(
+    footer,
+    .scrollable-page footer,
+    .dt-footer,
+    [class*="page-footer"],
+    [class*="dt-footer"]
+  ) {
+    background: #dce0e8 !important;
+    background-color: #dce0e8 !important;
+    border-color: rgba(172,176,190,0.2) !important;
+    color: rgba(76,79,105,0.85) !important;
   }
 
-  /* Footer */
-  .scrollable-page > footer {
-    background-color: #dce0e8 !important;
+  :is(
+    footer,
+    .scrollable-page footer,
+    .dt-footer
+  ) :is(a, button, select, [role="button"], [class*="dropdown"]) {
+    background-color: #e6e9ef !important;
+    border-color: rgba(172,176,190,0.25) !important;
+    color: rgba(76,79,105,0.85) !important;
+  }
+
+  /* Country/location banner background */
+  :is(
+    [class*="locale-banner"],
+    [class*="locale-switcher"],
+    [class*="localization"],
+    [class*="country-banner"],
+    [class*="country-picker"],
+    [class*="location-banner"],
+    [class*="location-picker"],
+    [class*="storefront-banner"],
+    [class*="storefront-picker"],
+    [class*="storefront-switcher"],
+    [class*="geo-banner"],
+    [class*="geo-location"],
+    [role="dialog"]:has(select):has(button),
+    body > :is(div, section, aside)[style*="bottom"]:has(select):has(button),
+    body > :is(div, section, aside)[class*="fixed"]:has(select):has(button),
+    body > :is(div, section, aside)[class*="banner"]:has(select):has(button)
+  ) {
+    background: #e6e9ef !important;
+    background-color: #e6e9ef !important;
   }
 }
 
