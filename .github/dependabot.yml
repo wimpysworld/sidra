@@ -17,3 +17,8 @@ updates:
       npm:
         patterns:
           - "*"
+
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
