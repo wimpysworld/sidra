@@ -18,8 +18,3 @@
   footer.dt-footer {
     display: none !important;
   }
-
-  /* Bigger transport bar - zoom controls, LCD, and icons */
-  amp-chrome-player {
-    zoom: 1.25;
-  }
