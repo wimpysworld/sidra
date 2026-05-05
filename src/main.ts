@@ -18,6 +18,7 @@ import { init as initDock, setDockSendCommandCallback } from './integrations/mac
 import { init as initWindowsTaskbar, setTaskbarSendCommandCallback } from './integrations/windows-taskbar';
 import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
+import { contentReadyProbeScript } from './contentReady';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
 const CONTENT_READY_POLL_MS = 100;
@@ -234,7 +235,7 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
       win.webContents.once('did-navigate-in-page', () => {
         const poll = () => {
           if (pollCancelled) return;
-          win.webContents.executeJavaScript('!!document.querySelector("amp-lcd[hydrated]")')
+          win.webContents.executeJavaScript(contentReadyProbeScript())
             .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); })
             .catch(() => { if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); });
         };
