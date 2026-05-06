@@ -1,11 +1,22 @@
 
-  /* "Get the App" CTA in sidebar navigation */
-  #navigation > div.navigation__native-cta,
+  /* "Open in Music" CTA — hide just the button and its container, not the wrapper */
+  [data-testid="native-cta"],
+  [data-testid="native-cta-button"],
   .web-navigation__native-upsell,
-  .native-cta,
-  [class*="native-cta"],
   [class*="native-upsell"] {
     display: none !important;
+  }
+
+  /* Re-expose the user profile row (Apple nests account-menu inside the same wrapper as the CTA) */
+  #navigation > div.navigation__native-cta {
+    display: block !important;
+  }
+  #navigation > div.navigation__native-cta > div:not([data-testid="native-cta"]) {
+    display: block !important;
+  }
+  [data-testid="auth-content"],
+  [data-testid="account-menu"] {
+    display: block !important;
   }
 
   /* "Open in Music" upsell banner */
