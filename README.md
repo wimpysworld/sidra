@@ -75,7 +75,11 @@ sudo zypper install ./Sidra-*.rpm   # openSUSE
 
 ```bash
 sudo snap install sidra
+sudo snap connect sidra:mpris :mpris
 ```
+
+The `mpris` interface must be connected manually until the Snap Store grants auto-connect; without it, system media controls (`playerctl`, GSConnect, KDE/GNOME media widgets) cannot reach Sidra.
+The Snap Store currently tracks the `edge` channel; promotions to `beta`, `candidate`, and `stable` will follow as the package is validated.
 
 **Nix**:
 

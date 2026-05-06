@@ -111,8 +111,30 @@
       "summary": "An elegant Apple Music desktop client",
       "plugs": [
         "default",
-        "removable-media"
+        "removable-media",
+        {
+          "graphics-core22": {
+            "interface": "content",
+            "target": "$SNAP/graphics",
+            "default-provider": "mesa-core22"
+          }
+        }
       ],
+      "slots": [
+        {
+          "mpris": {
+            "name": "sidra"
+          }
+        }
+      ],
+      "stagePackages": [
+        "default",
+        "libglu1-mesa",
+        "libvulkan1"
+      ],
+      "environment": {
+        "LD_PRELOAD": "$SNAP/usr/lib/x86_64-linux-gnu/libdbus-1.so.3"
+      },
       "publish": false
     },
     "afterPack": "build/afterPack.cjs",
