@@ -11,7 +11,9 @@ const artworkLog = log.scope('artwork');
 
 const ARTWORK_DOWNLOAD_TIMEOUT_MS = 5000;
 const ARTWORK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const ARTWORK_CACHE_DIR = path.join(app.getPath('cache'), app.getName().toLowerCase(), 'artwork');
+const ARTWORK_CACHE_DIR = process.env.SNAP
+  ? path.join(process.env.XDG_RUNTIME_DIR ?? app.getPath('cache'), app.getName().toLowerCase(), 'artwork')
+  : path.join(app.getPath('cache'), app.getName().toLowerCase(), 'artwork');
 
 function cleanupTmpFile(tmpPath: string): void {
   fsPromises.unlink(tmpPath).catch(() => {});
