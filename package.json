@@ -127,11 +127,6 @@
           }
         }
       ],
-      "stagePackages": [
-        "default",
-        "libglu1-mesa",
-        "libvulkan1"
-      ],
       "environment": {
         "LD_PRELOAD": "$SNAP/usr/lib/x86_64-linux-gnu/libdbus-1.so.3"
       },
