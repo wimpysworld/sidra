@@ -78,8 +78,21 @@
         "rpm"
       ],
       "category": "Audio",
-      "executableName": "sidra"
+      "executableName": "sidra",
+      "desktop": {
+        "entry": {
+          "MimeType": "x-scheme-handler/itms;"
+        }
+      }
     },
+    "protocols": [
+      {
+        "name": "Apple Music URL",
+        "schemes": [
+          "itms"
+        ]
+      }
+    ],
     "appImage": {
       "artifactName": "${productName}-${os}-${arch}.${ext}"
     },

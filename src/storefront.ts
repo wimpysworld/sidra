@@ -1,8 +1,19 @@
 import log from 'electron-log/main';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getStartPage, getLastPageUrl } from './config';
 import { getStorefront as getLocaleStorefront } from './i18n';
+import type { ItmsRouteToken } from './itms';
+
+export type { ItmsRouteToken } from './itms';
 
 const storefrontLog = log.scope('storefront');
+
+const ITMS_ROUTE_PATHS: Record<ItmsRouteToken, string> = {
+  library: 'library',
+  browse: 'browse',
+  radio: 'radio',
+  listenNow: 'listen-now',
+  subscribe: 'subscribe',
+};
 
 function appendLanguage(url: string, language: string | null | undefined): string {
   if (language != null) {
@@ -46,6 +57,16 @@ export function buildAppleMusicURL(): string {
   return appendLanguage(`https://music.apple.com/${storefront}/${pagePath}`, language);
 }
 
+export function buildItmsRouteURL(token: ItmsRouteToken): string {
+  let storefront = getStorefront();
+  if (storefront === undefined) {
+    storefront = getLocaleStorefront();
+  }
+  const language = getLanguage();
+  const path = ITMS_ROUTE_PATHS[token];
+  return appendLanguage(`https://music.apple.com/${storefront}/${path}`, language);
+}
+
 export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
   try {
     const parsed = new URL(url);
@@ -76,7 +97,7 @@ export function handleStorefrontNavigation(url: string): void {
   const currentStorefront = getStorefront();
   const currentLanguage = getLanguage();
 
-  // Only update language when the URL explicitly provides ?l=; absence means no change
+  // Only update language when the URL explicitly provides an "l" parameter. Absence means no change.
   const storefrontChanged = result.storefront !== currentStorefront;
   const languageChanged = result.language !== null && result.language !== currentLanguage;
 

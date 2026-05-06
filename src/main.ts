@@ -6,7 +6,8 @@ import { getTheme, setLastPageUrl, getZoomFactor } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
-import { buildAppleMusicURL, handleStorefrontNavigation } from './storefront';
+import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation } from './storefront';
+import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initThemeCSS, setThemeCssKey } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
@@ -91,6 +92,50 @@ app.userAgentFallback = UA;
 
 // Prevent garbage collection of tray icon
 let appTray: Tray | null = null;
+
+// Promoted to module scope so second-instance and pending-target handlers can
+// access the main window without threading it through closures.
+let win: BrowserWindow | null = null;
+
+// Single-instance lock: forward subsequent launches to the running instance so
+// itms:// URLs from a second invocation are routed instead of opening a new
+// window. macOS uses LSOpenURLSpec (open-url event) and never spawns a second
+// process, so the lock is unnecessary there.
+const gotLock = process.platform === 'darwin' || app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
+// Capture any itms:// argument from initial launch argv. macOS delivers URLs
+// via the open-url event, not argv, and itms:// is not registered there
+// (Music.app handles it natively).
+let pendingItmsTarget: ItmsTarget | null =
+  process.platform !== 'darwin' ? extractItmsUrlFromArgv(process.argv) : null;
+
+function focusMainWindow(): void {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+}
+
+function routeItmsTarget(target: ItmsTarget | null): void {
+  if (!target) return;
+  if (!win) {
+    pendingItmsTarget = target;
+    return;
+  }
+  if (target.kind === 'url') {
+    win.loadURL(target.url, { userAgent: UA }).catch(err =>
+      mainLog.warn('itms loadURL failed:', (err as Error).message)
+    );
+  } else {
+    const url = buildItmsRouteURL(target.token);
+    win.loadURL(url, { userAgent: UA }).catch(err =>
+      mainLog.warn('itms route loadURL failed:', (err as Error).message)
+    );
+  }
+  mainLog.info(`itms target routed: kind=${target.kind}`);
+}
 
 export interface Assets {
   STYLE_FIX_CSS: string;
@@ -411,33 +456,59 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
   });
 }
 
-app.whenReady().then(async () => {
-  mainLog.info('app ready, waiting for Widevine CDM...');
-  const { splash, minDisplay, cssReady, markCssReady } = createSplash();
-  setupApplicationMenu();
-  const player = initPlayerIPC();
-  appTray = createTray();
-  const ses = await initSession();
-  cleanArtworkCache();
-  const assets = loadAssets();
-  const { win, winReady } = createMainWindow(ses);
-  setSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
-  setDockSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
-  setTaskbarSendCommandCallback((channel, ...args) => win.webContents.send(channel, ...args));
-  setupWindowZoomAndNav(win);
-  initThemeCSS(win, assets.CATPPUCCIN_CSS);
-  setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
-  setupSessionHeaders(ses);
-  setupContentHandlers(win, player, markCssReady, assets);
-  setupWindowEvents(win, markCssReady);
-  setupNavigationHandlers(win, assets.navBarScript, assets.hookScript);
-  if (process.env.SIDRA_DEVTOOLS === '1') {
-    win.webContents.openDevTools();
-    mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
-  }
-  mainLog.info('loading Apple Music...');
-  win.loadURL(buildAppleMusicURL(), { userAgent: UA });
-});
+if (gotLock) {
+  app.on('second-instance', (_event, argv) => {
+    const target = extractItmsUrlFromArgv(argv);
+    routeItmsTarget(target);
+    focusMainWindow();
+  });
+
+  app.whenReady().then(async () => {
+    mainLog.info('app ready, waiting for Widevine CDM...');
+    const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+    setupApplicationMenu();
+    const player = initPlayerIPC();
+    appTray = createTray();
+    const ses = await initSession();
+    cleanArtworkCache();
+
+    if (process.platform === 'linux' || process.platform === 'win32') {
+      const ok = app.setAsDefaultProtocolClient('itms');
+      mainLog.info(`itms protocol registration: ${ok ? 'ok' : 'failed'}`);
+    }
+    // macOS open-url intentionally omitted - Music.app handles itms:// natively.
+
+    const assets = loadAssets();
+    const created = createMainWindow(ses);
+    win = created.win;
+    const winReady = created.winReady;
+    setSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
+    setDockSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
+    setTaskbarSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
+    setupWindowZoomAndNav(win);
+    initThemeCSS(win, assets.CATPPUCCIN_CSS);
+    setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
+    setupSessionHeaders(ses);
+    setupContentHandlers(win, player, markCssReady, assets);
+    setupWindowEvents(win, markCssReady);
+    setupNavigationHandlers(win, assets.navBarScript, assets.hookScript);
+    if (process.env.SIDRA_DEVTOOLS === '1') {
+      win.webContents.openDevTools();
+      mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
+    }
+    mainLog.info('loading Apple Music...');
+    win.loadURL(buildAppleMusicURL(), { userAgent: UA });
+
+    // Drain any itms target captured at launch. Routed after the initial home
+    // load so the content-ready probe binds to its first did-navigate-in-page.
+    winReady.then(() => {
+      if (pendingItmsTarget) {
+        routeItmsTarget(pendingItmsTarget);
+        pendingItmsTarget = null;
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   mainLog.info('all windows closed, quitting');
