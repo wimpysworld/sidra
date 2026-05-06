@@ -1,0 +1,63 @@
+# Manual snap publish - escape hatch for iterating on snap fixes without
+# cutting a full release. Do not delete. The tag-driven `publish-snap` job
+# in `builder.yml` is the normal path; this workflow exists for ad-hoc
+# pushes to the edge channel from a branch.
+name: Publish Snap (Manual) 📦
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-snap-manual
+  cancel-in-progress: false
+
+jobs:
+  publish-snap-manual:
+    name: Publish Snap (Manual) 📦
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup Node 🧰
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install Snap Tooling 📦
+        run: |
+          sudo snap install snapcraft --classic
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+      - name: Install Dependencies 📥
+        run: npm ci
+      - name: Compile TypeScript 🛠️
+        run: npm run build
+      - name: Build Snap 🏗️
+        run: npx electron-builder --publish never --linux snap
+        env:
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+          SNAPCRAFT_BUILD_ENVIRONMENT: host
+      - name: Upload Artefacts 📤
+        uses: actions/upload-artifact@v7
+        with:
+          name: sidra-snap-manual
+          path: release/*.snap
+          retention-days: 7
+      - name: Locate Snap File 🔍
+        id: find
+        run: echo "snap=$(ls release/*.snap)" >> "$GITHUB_OUTPUT"
+      - name: Publish to Snap Store Edge 🚀
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.find.outputs.snap }}
+          release: edge
