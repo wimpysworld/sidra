@@ -1,7 +1,7 @@
 {
   "name": "sidra",
   "productName": "Sidra",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
   "scripts": {
@@ -109,7 +109,10 @@
       "grade": "stable",
       "base": "core22",
       "summary": "An elegant Apple Music desktop client",
-      "plugs": ["default", "removable-media"],
+      "plugs": [
+        "default",
+        "removable-media"
+      ],
       "publish": false
     },
     "afterPack": "build/afterPack.cjs",
