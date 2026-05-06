@@ -67,25 +67,17 @@ describe('catppuccin.css', () => {
     expect(lightCss).toContain('background-color: #e6e9ef !important;');
   });
 
-  it('sets country/location banner container backgrounds in both colour-scheme variants', () => {
+  it('sets country/region picker modal backgrounds in both colour-scheme variants', () => {
     const darkCss = mediaBlock(catppuccinCss, 'prefers-color-scheme: dark');
     const lightCss = mediaBlock(catppuccinCss, 'prefers-color-scheme: light');
 
-    expect(darkCss).toContain('/* Country/location banner background */');
-    expect(darkCss).toContain('[class*="country-banner"]');
-    expect(darkCss).toContain('[class*="location-banner"]');
-    expect(darkCss).toContain('[class*="storefront-banner"]');
-    expect(darkCss).toContain('[role="dialog"]:has(select):has(button)');
-    expect(darkCss).toContain('body > :is(div, section, aside)[style*="bottom"]:has(select):has(button)');
+    expect(darkCss).toContain('/* Country/region picker modal background */');
+    expect(darkCss).toContain('[class*="locale-switcher"]');
     expect(darkCss).toContain('background: #181825 !important;');
     expect(darkCss).toContain('background-color: #181825 !important;');
 
-    expect(lightCss).toContain('/* Country/location banner background */');
-    expect(lightCss).toContain('[class*="country-banner"]');
-    expect(lightCss).toContain('[class*="location-banner"]');
-    expect(lightCss).toContain('[class*="storefront-banner"]');
-    expect(lightCss).toContain('[role="dialog"]:has(select):has(button)');
-    expect(lightCss).toContain('body > :is(div, section, aside)[style*="bottom"]:has(select):has(button)');
+    expect(lightCss).toContain('/* Country/region picker modal background */');
+    expect(lightCss).toContain('[class*="locale-switcher"]');
     expect(lightCss).toContain('background: #e6e9ef !important;');
     expect(lightCss).toContain('background-color: #e6e9ef !important;');
   });
