@@ -71,6 +71,12 @@ sudo dnf install ./Sidra-*.rpm      # Fedora
 sudo zypper install ./Sidra-*.rpm   # openSUSE
 ```
 
+**Snap** - Ubuntu and other snapd-enabled distributions:
+
+```bash
+sudo snap install sidra
+```
+
 **Nix**:
 
 ```bash

@@ -142,7 +142,7 @@ jobs:
         include:
           - os: linux
             runner: ubuntu-22.04
-            targets: "--linux AppImage deb rpm"
+            targets: "--linux AppImage deb rpm snap"
           - os: macos
             runner: macos-latest
             targets: "--mac dmg"
@@ -176,9 +176,12 @@ jobs:
       - name: Install uv
         if: matrix.os == 'macos' || matrix.os == 'windows'
         uses: astral-sh/setup-uv@v7
-      - name: Install RPM and SVG tools
+      - name: Install snap tooling
         if: matrix.os == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin rpm
+        run: |
+          sudo snap install snapcraft --classic
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin rpm
       - name: Compile TypeScript
         run: npm run build
       - name: Build distributables
@@ -186,6 +189,7 @@ jobs:
         env:
           EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
           EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+          SNAPCRAFT_BUILD_ENVIRONMENT: host
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
@@ -194,6 +198,7 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.rpm
+            release/*.snap
             release/*.dmg
             release/*.exe
             release/latest*.yml
@@ -228,9 +233,34 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/*.rpm
+            release/*.snap
             release/*.dmg
             release/*.exe
             release/latest*.yml
+
+  publish-snap:
+    name: Publish Snap 📦
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download Linux artefacts
+        uses: actions/download-artifact@v8
+        with:
+          name: sidra-linux
+          path: release/
+      - name: Locate snap file
+        id: find
+        run: echo "snap=$(ls release/*.snap)" >> "$GITHUB_OUTPUT"
+      - name: Publish to Snap Store edge
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.find.outputs.snap }}
+          release: edge
 
   nix-hash:
     name: Nix Hash 🔑
