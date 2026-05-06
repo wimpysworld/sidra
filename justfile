@@ -84,6 +84,18 @@ run-inspect: build
 run-fast:
     npx electron .
 
+# Run with CDP exposed for Playwright attach (builds first)
+run-cdp PORT="9222": build
+    npx electron . --remote-debugging-port={{PORT}} --remote-debugging-address=127.0.0.1
+
+# Run with CDP, debug logging, and DevTools (builds first)
+run-cdp-inspect PORT="9222": build
+    ELECTRON_LOG_LEVEL=debug SIDRA_DEVTOOLS=1 npx electron . --remote-debugging-port={{PORT}} --remote-debugging-address=127.0.0.1
+
+# Run with CDP without building (use after initial build for faster iteration)
+run-cdp-fast PORT="9222":
+    npx electron . --remote-debugging-port={{PORT}} --remote-debugging-address=127.0.0.1
+
 # Watch TypeScript for changes and rebuild
 watch:
     npx tsc --watch
