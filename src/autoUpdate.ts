@@ -17,6 +17,12 @@ export function isAutoUpdateSupported(): boolean {
     return false;
   }
 
+  // Linux snap: snapd handles refresh, so electron-updater must stay disabled
+  if (process.env.SNAP) {
+    autoUpdateLog.info('auto-update not supported: snap detected (snapd handles refresh)');
+    return false;
+  }
+
   // Linux AppImage: process.env.APPIMAGE is set only when running as an AppImage
   if (process.env.APPIMAGE) {
     autoUpdateLog.info('auto-update supported: AppImage detected');

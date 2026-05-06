@@ -75,7 +75,8 @@
       "target": [
         "AppImage",
         "deb",
-        "rpm"
+        "rpm",
+        "snap"
       ],
       "category": "Audio",
       "executableName": "sidra",
@@ -102,6 +103,14 @@
     },
     "rpm": {
       "vendor": "Martin Wimpress"
+    },
+    "snap": {
+      "confinement": "strict",
+      "grade": "stable",
+      "base": "core22",
+      "summary": "An elegant Apple Music desktop client",
+      "plugs": ["default", "removable-media"],
+      "publish": false
     },
     "afterPack": "build/afterPack.cjs",
     "mac": {
