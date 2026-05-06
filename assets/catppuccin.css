@@ -138,27 +138,30 @@
     color: rgba(205,214,244,0.85) !important;
   }
 
-  /* Country/location banner background */
-  :is(
-    [class*="locale-banner"],
-    [class*="locale-switcher"],
-    [class*="localization"],
-    [class*="country-banner"],
-    [class*="country-picker"],
-    [class*="location-banner"],
-    [class*="location-picker"],
-    [class*="storefront-banner"],
-    [class*="storefront-picker"],
-    [class*="storefront-switcher"],
-    [class*="geo-banner"],
-    [class*="geo-location"],
-    [role="dialog"]:has(select):has(button),
-    body > :is(div, section, aside)[style*="bottom"]:has(select):has(button),
-    body > :is(div, section, aside)[class*="fixed"]:has(select):has(button),
-    body > :is(div, section, aside)[class*="banner"]:has(select):has(button)
-  ) {
+  /* Country/region picker modal background */
+  [class*="locale-switcher"] {
     background: #181825 !important;
     background-color: #181825 !important;
+  }
+
+  /* Country/region banner (bottom strip) */
+  [data-testid="banner-container"] {
+    background: #181825 !important;
+    background-color: #181825 !important;
+    color: rgba(205,214,244,0.85) !important;
+    border-color: rgba(88,91,112,0.25) !important;
+  }
+  [data-testid="banner-container"] [data-testid="close-button"] {
+    color: rgba(205,214,244,0.85) !important;
+    fill: rgba(205,214,244,0.85) !important;
+  }
+  [data-testid="banner-container"] [data-testid="close-button"] svg path {
+    fill: rgba(205,214,244,0.85) !important;
+  }
+  [data-testid="banner-container"] [data-testid="dropdown-button"] {
+    background-color: #313244 !important;
+    border-color: rgba(88,91,112,0.4) !important;
+    color: rgba(205,214,244,0.85) !important;
   }
 }
 
@@ -296,27 +299,30 @@
     color: rgba(76,79,105,0.85) !important;
   }
 
-  /* Country/location banner background */
-  :is(
-    [class*="locale-banner"],
-    [class*="locale-switcher"],
-    [class*="localization"],
-    [class*="country-banner"],
-    [class*="country-picker"],
-    [class*="location-banner"],
-    [class*="location-picker"],
-    [class*="storefront-banner"],
-    [class*="storefront-picker"],
-    [class*="storefront-switcher"],
-    [class*="geo-banner"],
-    [class*="geo-location"],
-    [role="dialog"]:has(select):has(button),
-    body > :is(div, section, aside)[style*="bottom"]:has(select):has(button),
-    body > :is(div, section, aside)[class*="fixed"]:has(select):has(button),
-    body > :is(div, section, aside)[class*="banner"]:has(select):has(button)
-  ) {
+  /* Country/region picker modal background */
+  [class*="locale-switcher"] {
     background: #e6e9ef !important;
     background-color: #e6e9ef !important;
+  }
+
+  /* Country/region banner (bottom strip) */
+  [data-testid="banner-container"] {
+    background: #e6e9ef !important;
+    background-color: #e6e9ef !important;
+    color: rgba(76,79,105,0.85) !important;
+    border-color: rgba(172,176,190,0.25) !important;
+  }
+  [data-testid="banner-container"] [data-testid="close-button"] {
+    color: rgba(76,79,105,0.85) !important;
+    fill: rgba(76,79,105,0.85) !important;
+  }
+  [data-testid="banner-container"] [data-testid="close-button"] svg path {
+    fill: rgba(76,79,105,0.85) !important;
+  }
+  [data-testid="banner-container"] [data-testid="dropdown-button"] {
+    background-color: #ccd0da !important;
+    border-color: rgba(172,176,190,0.4) !important;
+    color: rgba(76,79,105,0.85) !important;
   }
 }
 
