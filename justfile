@@ -198,7 +198,7 @@ package: build
     trap 'npm version "$base_version" --no-git-tag-version --allow-same-version >/dev/null 2>&1' EXIT
 
     npm version "$dev_version" --no-git-tag-version --allow-same-version
-    npx electron-builder {{ if os() == "linux" { "--linux AppImage" } else if os() == "macos" { "--mac dmg" } else { "error('Unsupported platform')" } }}
+    npx electron-builder {{ if os() == "linux" { "--linux AppImage" } else if os() == "macos" { "--mac dmg --x64 --arm64" } else { "error('Unsupported platform')" } }}
 
 # Show log file location and tail recent entries
 logs:

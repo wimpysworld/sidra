@@ -145,7 +145,7 @@ jobs:
             targets: "--linux AppImage deb rpm snap"
           - os: macos
             runner: macos-latest
-            targets: "--mac dmg"
+            targets: "--mac dmg --x64 --arm64"
           - os: windows
             runner: windows-latest
             targets: "--win nsis"
