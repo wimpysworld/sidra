@@ -1,0 +1,27 @@
+/* Sign in with iPhone / passkey cross-device buttons in the Apple auth iframe.
+   Apple's auth UI obfuscates class names; use attribute selectors that survive
+   minor renaming. The JS fallback in main.ts catches anything these miss. */
+button[data-component-name*="passkey" i],
+button[data-component-name*="iphone" i],
+button[data-component-name*="cross-device" i],
+button[data-testid*="passkey" i],
+button[data-testid*="iphone" i],
+button[aria-label*="iPhone" i],
+button[aria-label*="passkey" i],
+button[id*="passkey" i],
+button[id*="iphone" i],
+[class*="passkey" i] > button,
+[class*="passkey-option" i],
+[class*="cross-device" i] {
+  display: none !important;
+}
+
+/* Container variants that group the cross-device sign-in option */
+[class*="passkey-section" i],
+[class*="passkey-container" i],
+[class*="iphone-signin" i],
+[class*="cross-device-section" i],
+[data-component-name*="passkey" i],
+[data-testid*="passkey" i][role="group"] {
+  display: none !important;
+}

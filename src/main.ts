@@ -1,4 +1,4 @@
-import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray, webFrameMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
@@ -140,6 +140,7 @@ function routeItmsTarget(target: ItmsTarget | null): void {
 export interface Assets {
   STYLE_FIX_CSS: string;
   CATPPUCCIN_CSS: string;
+  AUTH_STYLE_FIX_CSS: string;
   navBarScript: string;
   hookScript: string;
 }
@@ -249,11 +250,13 @@ function loadAssets(): Assets {
   const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, 'utf-8');
   const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
   const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
+  const authStyleFixCssPath = getAssetPath('assets', 'authStyleFix.css');
+  const AUTH_STYLE_FIX_CSS = fs.readFileSync(authStyleFixCssPath, 'utf-8');
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
   const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
   const hookScript = fs.readFileSync(hookPath, 'utf-8');
-  return { STYLE_FIX_CSS, CATPPUCCIN_CSS, navBarScript, hookScript };
+  return { STYLE_FIX_CSS, CATPPUCCIN_CSS, AUTH_STYLE_FIX_CSS, navBarScript, hookScript };
 }
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
@@ -360,6 +363,156 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
     } catch (e: unknown) {
       mainLog.warn('failed to inject navBarScript on SPA navigation:', e);
     }
+  });
+}
+
+const AUTH_FRAME_HOSTS = new Set<string>(['auth.music.apple.com', 'idmsa.apple.com']);
+const AUTH_FRAME_LOG_PREFIX = '[sidra] auth-frame hide:';
+
+function buildAuthFrameInjectionScript(authCss: string): string {
+  // The script runs in the iframe's main world via executeJavaScript. It must
+  // be self-contained - no closure on outer variables. The CSS payload is
+  // embedded as a JSON-stringified literal so it survives escaping safely.
+  const cssLiteral = JSON.stringify(authCss);
+  return `(() => {
+    const css = ${cssLiteral};
+    const STYLE_ID = 'sidra-auth-fix';
+    const TEXT_RE = /(sign in with )?iphone|passkey/i;
+    const CAPTION_RE = /requires .{0,30}(ios|iphone|ipad)|(ios|ipados) ?\\d+ or later/i;
+    const CONTAINER_SELECTOR = '[class*="passkey" i], [class*="iphone" i], [class*="cross-device" i], [role="group"], fieldset';
+    const CAPTION_TAGS = 'p, small, span, div';
+    const CAPTION_MAX_LEN = 200;
+
+    const root = document.head || document.documentElement;
+    if (root) {
+      const existing = document.getElementById(STYLE_ID);
+      if (existing) existing.remove();
+      const style = document.createElement('style');
+      style.id = STYLE_ID;
+      style.textContent = css;
+      root.appendChild(style);
+    }
+
+    function hideEl(el) {
+      el.style.setProperty('display', 'none', 'important');
+    }
+
+    function isHidden(el) {
+      return el.style && el.style.display === 'none';
+    }
+
+    function hideContainerFor(btn) {
+      // Prefer a structural container matched by class/role; fall back to a
+      // shallow parent walk (max 2 levels) whose textContent matches the
+      // caption regex. Strictly capped so we never collapse the whole form.
+      const container = btn.closest(CONTAINER_SELECTOR);
+      if (container && container !== document.body && container !== document.documentElement) {
+        hideEl(container);
+        return 1;
+      }
+      let parent = btn.parentElement;
+      for (let depth = 0; depth < 2 && parent; depth++) {
+        if (parent === document.body || parent === document.documentElement) break;
+        const text = (parent.textContent || '').trim();
+        if (text && CAPTION_RE.test(text)) {
+          hideEl(parent);
+          return 1;
+        }
+        parent = parent.parentElement;
+      }
+      return 0;
+    }
+
+    function hideMatchingButtons() {
+      let buttonsHidden = 0;
+      let containersHidden = 0;
+      const buttons = document.querySelectorAll('button');
+      for (const el of buttons) {
+        const text = (el.textContent || '').trim();
+        if (text && TEXT_RE.test(text)) {
+          hideEl(el);
+          buttonsHidden++;
+          containersHidden += hideContainerFor(el);
+        }
+      }
+      return { buttonsHidden, containersHidden };
+    }
+
+    function hideCaptionElements() {
+      // Standalone caption scan: the helper text may sit outside any passkey
+      // container. Skip elements that wrap interactive controls so legitimate
+      // form rows survive.
+      let count = 0;
+      const candidates = document.querySelectorAll(CAPTION_TAGS);
+      for (const el of candidates) {
+        if (isHidden(el)) continue;
+        const text = (el.textContent || '').trim();
+        if (!text || text.length > CAPTION_MAX_LEN) continue;
+        if (!CAPTION_RE.test(text)) continue;
+        if (el.querySelector('input, button, a[href]')) continue;
+        hideEl(el);
+        count++;
+      }
+      return count;
+    }
+
+    function runHidePasses() {
+      const { buttonsHidden, containersHidden } = hideMatchingButtons();
+      const captionsHidden = hideCaptionElements();
+      return { buttonsHidden, captionsHidden, containersHidden };
+    }
+
+    const result = runHidePasses();
+
+    if (!window.__sidraAuthFixInstalled) {
+      window.__sidraAuthFixInstalled = true;
+      const target = document.body || document.documentElement;
+      if (target && typeof MutationObserver !== 'undefined') {
+        const observer = new MutationObserver(() => { runHidePasses(); });
+        observer.observe(target, { childList: true, subtree: true });
+      }
+    }
+
+    const cssRuleCount = css.split('}').length - 1;
+    console.info('${AUTH_FRAME_LOG_PREFIX} ' + cssRuleCount + ' CSS rules injected, ' + result.buttonsHidden + ' buttons hidden, ' + result.captionsHidden + ' captions hidden, ' + result.containersHidden + ' containers hidden');
+  })();`;
+}
+
+function setupAuthFrameInjection(win: BrowserWindow, authCss: string): void {
+  const authLog = log.scope('auth-frame');
+  const script = buildAuthFrameInjectionScript(authCss);
+
+  win.webContents.on('did-frame-finish-load', (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+    if (isMainFrame) return;
+    const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+    if (!frame) {
+      authLog.warn(`webFrameMain.fromId returned null for processId=${frameProcessId} routingId=${frameRoutingId}`);
+      return;
+    }
+    let host: string;
+    try {
+      host = new URL(frame.url).hostname;
+    } catch {
+      return;
+    }
+    if (!AUTH_FRAME_HOSTS.has(host)) return;
+    authLog.info(`auth iframe detected: ${frame.url}`);
+    frame.executeJavaScript(script).catch(err => {
+      authLog.warn('auth iframe injection failed:', (err as Error).message);
+    });
+  });
+
+  win.webContents.on('console-message', (event) => {
+    if (!event.message.startsWith(AUTH_FRAME_LOG_PREFIX)) return;
+    const frameHost = (() => {
+      try {
+        return new URL(event.frame.url).hostname;
+      } catch {
+        return '';
+      }
+    })();
+    if (!AUTH_FRAME_HOSTS.has(frameHost)) return;
+    authLog.info(event.message.slice(AUTH_FRAME_LOG_PREFIX.length).trim());
   });
 }
 
@@ -492,6 +645,7 @@ if (gotLock) {
     setupContentHandlers(win, player, markCssReady, assets);
     setupWindowEvents(win, markCssReady);
     setupNavigationHandlers(win, assets.navBarScript, assets.hookScript);
+    setupAuthFrameInjection(win, assets.AUTH_STYLE_FIX_CSS);
     if (process.env.SIDRA_DEVTOOLS === '1') {
       win.webContents.openDevTools();
       mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
