@@ -20,6 +20,10 @@
 - `npm audit --package-lock-only --json`
 - `osv-scanner scan source -r . --format json`
 
+**Dependency remediation verification run on 2026-05-23:**
+- `npm audit --package-lock-only --json` (0 vulnerabilities)
+- `osv-scanner scan --recursive . --format json` (0 findings)
+
 **Technology stack:**
 - CastLabs Electron (Chromium fork with Widevine CDM), TypeScript, electron-builder
 - Runtime deps: `@holusion/dbus-next`, `@xhayper/discord-rpc`, `electron-conf`, `electron-log`, `electron-updater`
@@ -65,7 +69,11 @@ Prefix-based `startsWith()` check replaced with `new URL()` parsing, explicit `h
 
 ### GHSA-f886-m6hf-6m8v: brace-expansion ReDoS - RESOLVED
 
-`package.json` override `"brace-expansion": ">=5.0.5"` forces the fixed version. `package-lock.json` confirms `brace-expansion` at version 5.0.5.
+`package.json` override `"brace-expansion": ">=5.0.6"` forces a version that resolves both known `brace-expansion` advisories. `package-lock.json` confirms `brace-expansion` at version 5.0.6.
+
+### GHSA-jxxr-4gwj-5jf2 / CVE-2026-45149: brace-expansion resource exhaustion - RESOLVED
+
+The 2026-05-23 dependency addendum initially found `brace-expansion` 5.0.5 vulnerable to resource exhaustion when large numeric ranges defeat the documented `max` protection. The override has been raised from `>=5.0.5` to `>=5.0.6`, and the lockfile now resolves `brace-expansion` to 5.0.6.
 
 ### Post-report dependency remediations - RESOLVED
 
@@ -141,15 +149,15 @@ The Discord application client ID is hardcoded. This is a public identifier (not
 
 At the 2026-03-27 scan point, all 473 packages in `package-lock.json` were free of known vulnerabilities. The `brace-expansion` and `undici` overrides were both effective for the advisories known at that time.
 
-### Dependency addendum scan: 1 current finding
+### Dependency addendum scan: 0 current findings
 
-The 2026-05-23 lockfile scan reports one remaining moderate dependency advisory:
+The 2026-05-23 lockfile scan initially reported one moderate dependency advisory:
 
 | Advisory | Package | Current version | Fixed version | Scope | Status |
 |----------|---------|-----------------|---------------|-------|--------|
-| `GHSA-jxxr-4gwj-5jf2` / `CVE-2026-45149` | `brace-expansion` | 5.0.5 | 5.0.6 | Dev dependency | Open |
+| `GHSA-jxxr-4gwj-5jf2` / `CVE-2026-45149` | `brace-expansion` | 5.0.6 | 5.0.6 | Dev dependency | Resolved |
 
-This is a separate advisory from the earlier `GHSA-f886-m6hf-6m8v` ReDoS finding. The existing override to `>=5.0.5` resolves the older issue but no longer clears all known `brace-expansion` findings. Update the override and lockfile to `brace-expansion` 5.0.6 or later.
+This is a separate advisory from the earlier `GHSA-f886-m6hf-6m8v` ReDoS finding. Raising the override to `>=5.0.6` and regenerating `package-lock.json` clears both npm audit and OSV-Scanner.
 
 Resolved dependency findings since the prior report:
 
@@ -159,6 +167,7 @@ Resolved dependency findings since the prior report:
 - `@xmldom/xmldom` XML injection and DOM traversal denial of service issues - resolved by #76
 - `fast-uri` malformed URI handling advisories - resolved by #92
 - `ws` uninitialised memory disclosure - resolved by #102
+- `brace-expansion` resource exhaustion - resolved by the `>=5.0.6` override and lockfile update
 
 ### Supply chain observations
 
@@ -167,7 +176,7 @@ Resolved dependency findings since the prior report:
 | Caret version ranges | All 5 runtime deps use `^` ranges in `package.json` | Mitigated by `package-lock.json`; a missing or stale lock file would pull untested versions |
 | CastLabs Electron fork | `electron` pinned to `v40.8.6+wvcus` from `castlabs/electron-releases` | Pinned to a specific tag, actively maintained; April 2026 audit advisory set resolved |
 | `undici` override | `"undici": ">=6.24.0"` forces a minimum version | Addresses a prior vulnerability; the override is correct |
-| `brace-expansion` override | `"brace-expansion": ">=5.0.5"` forces a fixed version for the older ReDoS advisory | `GHSA-f886-m6hf-6m8v` resolved; new `GHSA-jxxr-4gwj-5jf2` requires 5.0.6 |
+| `brace-expansion` override | `"brace-expansion": ">=5.0.6"` forces the fixed version | `GHSA-f886-m6hf-6m8v` and `GHSA-jxxr-4gwj-5jf2` resolved |
 | No `postinstall` scripts | No runtime dependencies declare `postinstall` hooks | No supply chain execution risk at install time |
 
 ---
@@ -208,12 +217,11 @@ The codebase follows Electron security best practices consistently:
 
 **Repeat-offender patterns:** None identified. No systemic security issues across the codebase.
 
-**Dependency addendum status:** The named Dependabot security updates have been merged and are reflected in `package-lock.json`. A newer moderate `brace-expansion` advisory remains open as of 2026-05-23.
+**Dependency addendum status:** The named Dependabot security updates have been merged and are reflected in `package-lock.json`. The newer moderate `brace-expansion` advisory has been resolved as of 2026-05-23.
 
 ## Remediation Roadmap
 
 | Priority | Finding | Effort | Action |
 |----------|---------|--------|--------|
 | 1 | W1 - Disabled update signature verification | High | Sign Windows builds, remove `verifyUpdateCodeSignature = false` |
-| 2 | `GHSA-jxxr-4gwj-5jf2` - `brace-expansion` resource exhaustion | Low | Update override and lockfile to `brace-expansion` 5.0.6 or later |
-| 3 | O3 - Broad macOS entitlements | N/A | Cannot remediate; required by Electron + Widevine |
+| 2 | O3 - Broad macOS entitlements | N/A | Cannot remediate; required by Electron + Widevine |
