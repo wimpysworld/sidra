@@ -9,6 +9,7 @@ import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initThemeCSS, setThemeCssKey } from './theme';
+import { applyCustomCss, initCustomCss } from './customCss';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
@@ -566,6 +567,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
       setThemeCssKey(await win.webContents.insertCSS(assets.CATPPUCCIN_CSS));
       mainLog.debug(`Theme CSS injected: ${theme}`);
     }
+    await applyCustomCss(win);
     await win.webContents.executeJavaScript(assets.hookScript);
     mainLog.debug('MusicKit hook injected');
     await win.webContents.executeJavaScript(assets.navBarScript);
@@ -640,6 +642,7 @@ if (gotLock) {
     setTaskbarSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     setupWindowZoomAndNav(win);
     initThemeCSS(win, assets.CATPPUCCIN_CSS);
+    initCustomCss(win);
     setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
     setupSessionHeaders(ses);
     setupContentHandlers(win, player, markCssReady, assets);
