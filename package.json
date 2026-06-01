@@ -18,10 +18,10 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "github:castlabs/electron-releases#v40.8.6+wvcus",
-    "electron-builder": "^26.9.0",
+    "electron-builder": "^26.13.0",
     "shx": "^0.4.0",
     "typescript": "^6.x",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@holusion/dbus-next": "^0.11.2",
