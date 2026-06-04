@@ -35,7 +35,14 @@ async function main() {
   }
   console.log("  \u2713 no deprecated options detected");
 
-  // 4. Validate package.json author has email (required by RPM/DEB FPM targets)
+  // 4. Avoid image-backed DMG backgrounds: their helper files can appear as
+  //    visible icons in Finder on newer macOS releases.
+  if (config.dmg != null && config.dmg.background != null) {
+    throw new Error("dmg.background must not be set; use dmg.backgroundColor to avoid visible background helper files");
+  }
+  console.log("  \u2713 DMG uses backgroundColor instead of background image");
+
+  // 5. Validate package.json author has email (required by RPM/DEB FPM targets)
   const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
   const author = pkg.author;
   const emailRegex = /<[^>]+@[^>]+>/;

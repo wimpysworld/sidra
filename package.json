@@ -148,7 +148,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
-      "background": "build/background.png",
+      "backgroundColor": "#1a0a10",
       "window": {
         "width": 540,
         "height": 380
