@@ -16,7 +16,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 **As featured on [Linux Matters](https://linuxmatters.sh) podcast!** 🎙️ I am a presenter on Linux Matters and I discussed some of the backstory and how came to create Sidra on [Episode 79 - Pouring out the Sidra](https://linuxmatters.sh/79/).
 
 <div align="center">
-  <a href="https://linuxmatters.sh" target="_blank"><img src="https://github.com/wimpysworld/nix-config/raw/main/.github/screenshots/linuxmatters.png" alt="Linux Matters Podcast"/></a>
+  <a href="https://linuxmatters.sh" target="_blank"><img src="https://github.com/wimpysworld/nix-config/raw/main/assets/linuxmatters.png" alt="Linux Matters Podcast"/></a>
   <br />
   <em>Linux Matters Podcast</em>
 </div>
