@@ -13,6 +13,8 @@ vi.mock('../src/config', () => ({
   setStartPage: vi.fn(),
   getZoomFactor: () => 1.0,
   setZoomFactor: vi.fn(),
+  getCloseToTrayEnabled: () => false,
+  setCloseToTrayEnabled: vi.fn(),
 }));
 
 const mockTrayStrings: TrayStrings = {
@@ -43,6 +45,8 @@ const mockTrayStrings: TrayStrings = {
   next: 'Next',
   volume: 'Volume',
   mute: 'Mute',
+  share: 'Share',
+  closeToTray: 'Close to tray',
 };
 
 vi.mock('../src/i18n', () => ({

@@ -8,6 +8,7 @@ interface StoreSchema {
   language: string | null;
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
+  'closeToTray.enabled': boolean;
   theme: ThemeName;
   'autoUpdate.enabled': boolean;
   startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
@@ -54,6 +55,15 @@ export function getNotificationsEnabled(): boolean {
 export function setNotificationsEnabled(enabled: boolean): void {
   store.set('notifications.enabled', enabled);
   configLog.info('notifications.enabled set:', enabled);
+}
+
+export function getCloseToTrayEnabled(): boolean {
+  return getConfigValue('closeToTray.enabled', false);
+}
+
+export function setCloseToTrayEnabled(enabled: boolean): void {
+  store.set('closeToTray.enabled', enabled);
+  configLog.info('closeToTray.enabled set:', enabled);
 }
 
 export function getDiscordEnabled(): boolean {

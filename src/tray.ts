@@ -1,10 +1,10 @@
-import { app, Menu, nativeImage, nativeTheme, ShareMenu, shell, Tray } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, ShareMenu, shell, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -37,6 +37,7 @@ const menuIconFileMap: Record<string, string> = {
   'pause': 'pause',
   'next': 'forward-step',
   'volume': 'volume',
+  'close-to-tray': 'toggle-on',
 };
 
 // Maps tray action keys to SF Symbol names for macOS Tahoe+
@@ -59,6 +60,7 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'pause': 'pause',
   'next': 'forward.end',
   'volume': 'speaker.wave.2',
+  'close-to-tray': 'menubar.dock.rectangle',
 };
 
 function isMacOSTahoeOrLater(): boolean {
@@ -145,6 +147,7 @@ interface NowPlayingState {
 let nowPlayingState: NowPlayingState | null = null;
 let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
 let applyZoomCallback: ((factor: number) => void) | null = null;
+let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 
 interface SubmenuContext {
   strings: TrayStrings;
@@ -222,6 +225,31 @@ function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstr
         type: 'radio',
         checked: !notifEnabled,
         click: () => { setNotificationsEnabled(false); refresh(); },
+      },
+    ],
+  };
+}
+
+function buildCloseToTraySubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const { strings, refresh } = ctx;
+  const enabled = getCloseToTrayEnabled();
+  const parentLabel = `${strings.closeToTray}: ${enabled ? strings.on : strings.off}`;
+  const icon = getMenuIcon('close-to-tray');
+  return {
+    label: parentLabel,
+    ...(icon ? { icon } : {}),
+    submenu: [
+      {
+        label: strings.on,
+        type: 'radio',
+        checked: enabled,
+        click: () => { setCloseToTrayEnabled(true); refresh(); },
+      },
+      {
+        label: strings.off,
+        type: 'radio',
+        checked: !enabled,
+        click: () => { setCloseToTrayEnabled(false); refresh(); },
       },
     ],
   };
@@ -505,6 +533,7 @@ function buildContextMenu(tray: Tray): Menu {
     },
     buildStartPageSubmenu(ctx),
     buildNotificationsSubmenu(ctx),
+    buildCloseToTraySubmenu(ctx),
     buildDiscordSubmenu(ctx),
     buildStyleSubmenu(ctx),
     buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
@@ -526,6 +555,10 @@ export function setApplyZoomCallback(callback: (factor: number) => void): void {
 
 export function setSendCommandCallback(callback: (channel: string, ...args: unknown[]) => void): void {
   sendCommandCallback = callback;
+}
+
+export function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
+  getMainWindowCallback = callback;
 }
 
 export function updateNowPlayingState(payload: NowPlayingPayload | null, artworkPath: string | null, isPlaying: boolean, volume: number): void {
@@ -556,6 +589,17 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
   tray.setToolTip(getProductInfo().productName);
 
   tray.setContextMenu(buildContextMenu(tray));
+
+  tray.on('click', () => {
+    const mainWin = getMainWindowCallback?.();
+    if (!mainWin) return;
+    if (mainWin.isVisible()) {
+      mainWin.focus();
+    } else {
+      mainWin.show();
+      mainWin.focus();
+    }
+  });
 
   if (process.platform === 'linux') {
     nativeTheme.on('updated', () => {

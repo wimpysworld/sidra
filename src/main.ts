@@ -2,14 +2,14 @@ import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray, we
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getTheme, setLastPageUrl, getZoomFactor } from './config';
+import { getTheme, setLastPageUrl, getZoomFactor, getCloseToTrayEnabled } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initThemeCSS, setThemeCssKey } from './theme';
-import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback } from './tray';
+import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, setGetMainWindowCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -92,6 +92,9 @@ app.userAgentFallback = UA;
 
 // Prevent garbage collection of tray icon
 let appTray: Tray | null = null;
+
+let isQuitting = false;
+app.on('before-quit', () => { isQuitting = true; });
 
 // Promoted to module scope so second-instance and pending-target handlers can
 // access the main window without threading it through closures.
@@ -538,6 +541,14 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
     event.preventDefault();
   });
 
+  win.on('close', (event) => {
+    if (!isQuitting && getCloseToTrayEnabled()) {
+      event.preventDefault();
+      win.hide();
+      mainLog.info('close intercepted: hiding window to tray');
+    }
+  });
+
   // Open external links in the system browser (only http/https)
   win.webContents.setWindowOpenHandler(({ url }) => {
     try {
@@ -636,6 +647,7 @@ if (gotLock) {
     win = created.win;
     const winReady = created.winReady;
     setSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
+    setGetMainWindowCallback(() => win);
     setDockSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     setTaskbarSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     setupWindowZoomAndNav(win);
