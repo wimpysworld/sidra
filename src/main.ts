@@ -117,8 +117,11 @@ let pendingItmsTarget: ItmsTarget | null =
 
 function focusMainWindow(): void {
   if (!win) return;
+  const wasHidden = !win.isVisible();
+  if (wasHidden) win.show();
   if (win.isMinimized()) win.restore();
   win.focus();
+  if (wasHidden && appTray) rebuildTrayMenu(appTray);
 }
 
 function routeItmsTarget(target: ItmsTarget | null): void {
@@ -546,6 +549,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
       event.preventDefault();
       win.hide();
       mainLog.info('close intercepted: hiding window to tray');
+      if (appTray) rebuildTrayMenu(appTray);
     }
   });
 
@@ -679,4 +683,13 @@ if (gotLock) {
 app.on('window-all-closed', () => {
   mainLog.info('all windows closed, quitting');
   app.quit();
+});
+
+// macOS: clicking the dock icon when the window is hidden (close-to-tray)
+// should restore it rather than doing nothing.
+app.on('activate', () => {
+  if (win && !win.isVisible()) {
+    win.show();
+    if (appTray) rebuildTrayMenu(appTray);
+  }
 });

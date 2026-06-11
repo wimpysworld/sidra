@@ -38,6 +38,7 @@ const menuIconFileMap: Record<string, string> = {
   'next': 'forward-step',
   'volume': 'volume',
   'close-to-tray': 'toggle-on',
+  'show-window': 'apple',
 };
 
 // Maps tray action keys to SF Symbol names for macOS Tahoe+
@@ -61,6 +62,7 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'next': 'forward.end',
   'volume': 'speaker.wave.2',
   'close-to-tray': 'menubar.dock.rectangle',
+  'show-window': 'macwindow',
 };
 
 function isMacOSTahoeOrLater(): boolean {
@@ -249,7 +251,12 @@ function buildCloseToTraySubmenu(ctx: SubmenuContext): Electron.MenuItemConstruc
         label: strings.off,
         type: 'radio',
         checked: !enabled,
-        click: () => { setCloseToTrayEnabled(false); refresh(); },
+        click: () => {
+          setCloseToTrayEnabled(false);
+          const mainWin = getMainWindowCallback?.();
+          if (mainWin && !mainWin.isVisible()) { mainWin.show(); mainWin.focus(); }
+          refresh();
+        },
       },
     ],
   };
@@ -524,7 +531,28 @@ function buildContextMenu(tray: Tray): Menu {
   const aboutIcon = getMenuIcon('about');
   const quitIcon = getMenuIcon('quit');
 
+  const showWindowItems: Electron.MenuItemConstructorOptions[] = [];
+  if (getCloseToTrayEnabled()) {
+    const mainWin = getMainWindowCallback?.();
+    const windowVisible = mainWin?.isVisible() ?? true;
+    const windowIcon = getMenuIcon('show-window');
+    if (windowVisible) {
+      showWindowItems.push({
+        label: strings.hideWindow,
+        ...(windowIcon ? { icon: windowIcon } : {}),
+        click: () => { mainWin?.hide(); refresh(); },
+      });
+    } else {
+      showWindowItems.push({
+        label: strings.showWindow,
+        ...(windowIcon ? { icon: windowIcon } : {}),
+        click: () => { mainWin?.show(); mainWin?.focus(); refresh(); },
+      });
+    }
+  }
+
   const menuItems: Electron.MenuItemConstructorOptions[] = [
+    ...showWindowItems,
     ...buildNowPlayingMenuItems(strings, isLinux),
     {
       label: strings.about,
@@ -598,6 +626,7 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
     } else {
       mainWin.show();
       mainWin.focus();
+      tray.setContextMenu(buildContextMenu(tray));
     }
   });
 

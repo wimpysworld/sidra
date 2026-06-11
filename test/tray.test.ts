@@ -46,6 +46,8 @@ const mockTrayStrings: TrayStrings = {
   volume: 'Volume',
   mute: 'Mute',
   share: 'Share',
+  hideWindow: 'Hide Sidra',
+  showWindow: 'Show Sidra',
   closeToTray: 'Close to tray',
 };
 
