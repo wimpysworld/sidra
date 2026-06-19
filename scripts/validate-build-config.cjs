@@ -1,5 +1,4 @@
-const validateSchema = require("@develar/schema-utils");
-const { getConfig } = require("app-builder-lib/out/util/config/config");
+const { getConfig, validateConfiguration } = require("app-builder-lib/out/util/config/config");
 const { DebugLogger } = require("builder-util");
 const fs = require("fs");
 const path = require("path");
@@ -11,11 +10,9 @@ async function main() {
   //    parent configs, and package.json "build" field - same as a real build)
   const config = await getConfig(projectDir, null, null);
 
-  // 2. Validate against electron-builder's JSON schema using @develar/schema-utils
-  //    directly. This is the technique electron-builder uses internally and gives
-  //    detailed, actionable error messages for any schema violation.
-  const schema = require("app-builder-lib/scheme.json");
-  validateSchema(schema, config, { name: "electron-builder" });
+  // 2. Validate against electron-builder's JSON schema using the current
+  //    electron-builder validator API.
+  await validateConfiguration(config, new DebugLogger(false));
   console.log("  \u2713 electron-builder config schema: valid");
 
   // 3. Check for deprecated options that schema validation does not catch

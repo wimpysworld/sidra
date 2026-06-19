@@ -18,7 +18,7 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "github:castlabs/electron-releases#v40.8.6+wvcus",
-    "electron-builder": "^26.13.0",
+    "electron-builder": "^26.15.5",
     "shx": "^0.4.0",
     "typescript": "^6.x",
     "vitest": "^4.1.8"
@@ -105,34 +105,34 @@
     "rpm": {
       "vendor": "Martin Wimpress"
     },
-    "snap": {
-      "confinement": "strict",
-      "grade": "stable",
-      "base": "core22",
-      "summary": "An elegant Apple Music desktop client",
-      "plugs": [
-        "default",
-        "removable-media",
-        {
-          "graphics-core22": {
-            "interface": "content",
-            "target": "$SNAP/graphics",
-            "default-provider": "mesa-core22"
+    "snapcraft": {
+      "base": "core24",
+      "core24": {
+        "confinement": "strict",
+        "grade": "stable",
+        "summary": "An elegant Apple Music desktop client",
+        "plugs": [
+          "default",
+          {
+            "browser-support": {
+              "interface": "browser-support",
+              "allow-sandbox": true
+            }
+          },
+          "removable-media"
+        ],
+        "slots": [
+          {
+            "mpris": {
+              "name": "sidra"
+            }
           }
-        }
-      ],
-      "slots": [
-        {
-          "mpris": {
-            "name": "sidra"
-          }
-        }
-      ],
-      "environment": {
-        "TMPDIR": "$XDG_RUNTIME_DIR",
-        "LD_PRELOAD": "$SNAP/usr/lib/x86_64-linux-gnu/libdbus-1.so.3"
-      },
-      "publish": false
+        ],
+        "environment": {
+          "TMPDIR": "$XDG_RUNTIME_DIR"
+        },
+        "publish": false
+      }
     },
     "afterPack": "build/afterPack.cjs",
     "mac": {
