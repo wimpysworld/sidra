@@ -33,15 +33,16 @@ const MAIN_WINDOW_HEIGHT_PX = 800;
 // --- Logging: initialise before anything else ---
 log.initialize();
 log.transports.file.level = 'info';
-log.transports.console.level = 'debug';
+log.transports.console.level = app.isPackaged ? false : 'debug';
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {text}';
 log.transports.console.format = '{h}:{i}:{s}.{ms} [{level}]{scope} {text}';
 
-// Override log levels via environment variable (used by `just run-debug`)
-const VALID_LEVELS = new Set(['error', 'warn', 'info', 'debug', 'silly']);
+// Override log levels via environment variable (used by `just run-debug`).
+type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silly';
+const VALID_LEVELS = new Set<LogLevel>(['error', 'warn', 'info', 'debug', 'silly']);
 const envLevel = process.env.ELECTRON_LOG_LEVEL;
-if (envLevel && VALID_LEVELS.has(envLevel)) {
-  const level = envLevel as 'error' | 'warn' | 'info' | 'debug' | 'silly';
+if (envLevel && VALID_LEVELS.has(envLevel as LogLevel)) {
+  const level = envLevel as LogLevel;
   log.transports.file.level = level;
   log.transports.console.level = level;
 }
