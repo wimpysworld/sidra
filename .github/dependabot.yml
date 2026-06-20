@@ -13,6 +13,10 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: electron
+      - dependency-name: electron-builder
+      - dependency-name: electron-updater
     groups:
       npm:
         patterns:

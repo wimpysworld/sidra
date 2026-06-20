@@ -180,7 +180,7 @@ jobs:
         run: npm ci
       - name: Install uv
         if: matrix.os == 'macos' || matrix.os == 'windows'
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.2.0
       - name: Install snap tooling
         if: matrix.os == 'linux'
         run: |

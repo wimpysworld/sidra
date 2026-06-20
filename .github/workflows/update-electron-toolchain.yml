@@ -1,0 +1,67 @@
+name: Update Electron Toolchain
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: update-electron-toolchain
+  cancel-in-progress: false
+
+jobs:
+  update-electron-toolchain:
+    name: Update Electron Toolchain
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Update package metadata
+        run: node scripts/update-electron-toolchain.cjs
+      - name: Refresh lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Create pull request
+        env:
+          BRANCH: ci/update-electron-toolchain
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "Electron toolchain is current"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
+          git checkout -B "$BRANCH"
+          git add package.json package-lock.json
+          git commit -m "build(deps): update Electron toolchain"
+          git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH" || true
+          git push --force-with-lease --set-upstream origin "$BRANCH"
+
+          if gh pr view "$BRANCH" --json url --jq .url >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" \
+              --title "build(deps): update Electron toolchain" \
+              --body "Update CastLabs Electron, electron-builder, and electron-updater to current stable releases."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "build(deps): update Electron toolchain" \
+              --body "Update CastLabs Electron, electron-builder, and electron-updater to current stable releases."
+          fi
