@@ -164,6 +164,16 @@
           "y": 150,
           "type": "link",
           "path": "/Applications"
+        },
+        {
+          "x": 10000,
+          "y": 10000,
+          "path": ".background.tiff"
+        },
+        {
+          "x": 10000,
+          "y": 10000,
+          "path": ".VolumeIcon.icns"
         }
       ]
     },
