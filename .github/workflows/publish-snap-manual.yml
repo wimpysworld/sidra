@@ -40,11 +40,10 @@ jobs:
       - name: Compile TypeScript 🛠️
         run: npm run build
       - name: Build Snap 🏗️
-        run: npx electron-builder --publish never --linux snap
+        run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
         env:
           EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
           EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
-          SNAPCRAFT_BUILD_ENVIRONMENT: host
       - name: Upload Artefacts 📤
         uses: actions/upload-artifact@v7
         with:

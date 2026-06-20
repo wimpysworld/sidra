@@ -147,7 +147,7 @@ jobs:
         include:
           - os: linux
             runner: ubuntu-24.04
-            targets: "--linux AppImage deb rpm snap"
+            targets: "--linux AppImage deb rpm"
           - os: macos
             runner: macos-latest
             targets: "--mac dmg --x64 --arm64"
@@ -194,7 +194,12 @@ jobs:
         env:
           EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
           EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
-          SNAPCRAFT_BUILD_ENVIRONMENT: host
+      - name: Build snap
+        if: matrix.os == 'linux'
+        run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
+        env:
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
