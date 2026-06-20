@@ -146,7 +146,7 @@ jobs:
       matrix:
         include:
           - os: linux
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             targets: "--linux AppImage deb rpm snap"
           - os: macos
             runner: macos-latest
