@@ -55,6 +55,43 @@ async function main() {
   }
   console.log("  \u2713 package.json author email: present");
 
+  // 5. Validate Linux desktop actions used for launcher MPRIS controls
+  const desktop = pkg.build?.linux?.desktop;
+  const expectedActions = {
+    PlayPause: {
+      Name: "Play-Pause",
+      "Name[de]": "Abspielen-Pausieren",
+      Exec: "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause",
+    },
+    Next: {
+      Name: "Next",
+      "Name[de]": "Nächstes",
+      Exec: "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next",
+    },
+    Previous: {
+      Name: "Previous",
+      "Name[de]": "Vorheriges",
+      Exec: "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous",
+    },
+    Stop: {
+      Name: "Stop",
+      "Name[de]": "Stop",
+      Exec: "dbus-send --print-reply --dest=org.mpris.MediaPlayer2.sidra /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop",
+    },
+  };
+  if (desktop?.entry?.Actions !== "PlayPause;Next;Previous;Stop;") {
+    throw new Error("Linux desktop entry Actions must be PlayPause;Next;Previous;Stop;");
+  }
+  for (const [action, expected] of Object.entries(expectedActions)) {
+    const actual = desktop.desktopActions?.[action];
+    for (const [key, value] of Object.entries(expected)) {
+      if (actual?.[key] !== value) {
+        throw new Error(`Linux desktop action ${action}.${key} must be "${value}"`);
+      }
+    }
+  }
+  console.log("  \u2713 Linux desktop actions: present");
+
   console.log("\nAll configuration checks passed.");
 }
 
