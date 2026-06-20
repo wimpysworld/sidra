@@ -51,7 +51,7 @@ let
 
   src = fetchurl {
     url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
-    hash = "sha256-BzZOkYeM+QHIc60uCNPBR42A6U7bNIbQkRp8ceNWGr0=";
+    hash = "sha256-aMcumabAkwKiDJ/NdtWF/Mm6jsKQhFyKvr6FWKqG6/Y=";
   };
 
   # Unpack the deb into a plain derivation. No patching - the CastLabs
