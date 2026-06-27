@@ -74,6 +74,14 @@ vi.mock('../src/i18n', () => ({
   getAutoUpdateStrings: () => ({ ready: 'Restart to update' }),
 }));
 
+vi.mock('../src/integrations/lastfm', () => ({
+  enable: vi.fn(),
+  disable: vi.fn(),
+  startAuth: vi.fn(),
+  disconnect: vi.fn(),
+  isConfigured: () => false,
+}));
+
 vi.mock('../src/update', () => ({
   getUpdateInfo: vi.fn(() => null),
 }));
