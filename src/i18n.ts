@@ -32,6 +32,7 @@ export const ABOUT_TEXT: Record<string, string> = trayData.ABOUT_TEXT;
 export const QUIT_TEXT: Record<string, string> = trayData.QUIT_TEXT;
 export const NOTIFICATIONS_TEXT: Record<string, string> = trayData.NOTIFICATIONS_TEXT;
 export const DISCORD_TEXT: Record<string, string> = trayData.DISCORD_TEXT;
+export const LASTFM_DISCONNECT_TEXT: Record<string, string> = trayData.LASTFM_DISCONNECT_TEXT;
 export const START_PAGE_TEXT: Record<string, string> = trayData.START_PAGE_TEXT;
 export const START_PAGE_HOME_TEXT: Record<string, string> = trayData.START_PAGE_HOME_TEXT;
 export const START_PAGE_NEW_TEXT: Record<string, string> = trayData.START_PAGE_NEW_TEXT;
@@ -128,6 +129,7 @@ export interface TrayStrings {
   notifications: string;
   discord: string;
   player: string;
+  lastfmDisconnect: string;
   startPage: string;
   startPageHome: string;
   startPageNew: string;
@@ -169,6 +171,7 @@ export function getTrayStrings(): TrayStrings {
   const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
   const discord = getLocalizedString(DISCORD_TEXT, langs);
   const player = getLocalizedString(PLAYER_TEXT, langs);
+  const lastfmDisconnect = getLocalizedString(LASTFM_DISCONNECT_TEXT, langs);
   const startPage = getLocalizedString(START_PAGE_TEXT, langs);
   const startPageHome = getLocalizedString(START_PAGE_HOME_TEXT, langs);
   const startPageNew = getLocalizedString(START_PAGE_NEW_TEXT, langs);
@@ -199,7 +202,7 @@ export function getTrayStrings(): TrayStrings {
   const hideWindow = getLocalizedString(HIDE_WINDOW_TEXT, langs).replace('{name}', productName);
   const showWindow = getLocalizedString(SHOW_WINDOW_TEXT, langs).replace('{name}', productName);
   const closeToTray = getLocalizedString(CLOSE_TO_TRAY_TEXT, langs);
-  return { about, quit, notifications, discord, player, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageBrowse, startPageLibrary, startPagePlaylists, startPageSearch, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute, share, hideWindow, showWindow, closeToTray };
+  return { about, quit, notifications, discord, player, lastfmDisconnect, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageBrowse, startPageLibrary, startPagePlaylists, startPageSearch, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute, share, hideWindow, showWindow, closeToTray };
 }
 
 export function getAboutStrings(): {
