@@ -76,12 +76,12 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 ### Adding translations
 
-Translation records live in `assets/locales/` as JSON files. Each file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 31 named records.
+Translation records live in `assets/locales/` as JSON files. Each file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 32 named records.
 
 | File | Records |
 |------|---------|
 | `assets/locales/loading.json` | `LOADING_TEXT` |
-| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `MUTE_TEXT`, `SHARE_TEXT` |
+| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `LASTFM_DISCONNECT_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `MUTE_TEXT`, `SHARE_TEXT` |
 | `assets/locales/about.json` | `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX` |
 | `assets/locales/update.json` | `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `RESTART_NOW_TEXT`, `LATER_TEXT` |
 
@@ -111,6 +111,9 @@ When adding a language, add an entry to every record in every JSON file:
 | `theme` | `ThemeName` (`'apple-music' \| BundledThemeName \| 'custom'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
 | `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
 | `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: false) |
+| `lastfm.enabled` | `boolean` | Toggle Last.fm scrobbling (default: false) |
+| `lastfm.sessionKey` | `string \| null` | Last.fm session key obtained via the desktop auth flow |
+| `lastfm.username` | `string \| null` | Authenticated Last.fm username (shown in the tray) |
 | `autoUpdate.enabled` | `boolean` | Enable automatic updates (default: true on AppImage and NSIS; disabled on all other platforms) |
 | `startPage` | `'home' \| 'new' \| 'radio' \| 'all-playlists' \| 'last'` | Page to load on launch (default: `'new'`) |
 | `lastPageUrl` | `string` | Last visited page URL; used when `startPage` is `'last'` |
@@ -172,6 +175,7 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 
 - `just install` and `just build` invoke `_sign-evs`, signing `node_modules/electron/dist` with production VMP keys; this is a side-effect of both commands
 - `build/afterPack.cjs` runs EVS VMP signing as an electron-builder `afterPack` hook on `darwin` and `win32`; it must execute before macOS code-signing (`afterPack`, not `afterSign`)
+- Last.fm scrobbling (`src/integrations/lastfm`) requires a Last.fm API key and shared secret; set the `API_KEY`/`API_SECRET` constants (or the `SIDRA_LASTFM_API_KEY`/`SIDRA_LASTFM_API_SECRET` env vars) from an account registered at https://www.last.fm/api/account/create. Without credentials the integration loads but is inert. Auth uses the desktop token flow (`auth.getToken` → browser approval → polled `auth.getSession`); the session key is persisted in config. Now-playing is sent on track start/resume; a track is scrobbled once it has played for half its duration or 4 minutes (whichever first), and never twice, matching Last.fm's scrobbling rules. All requests go through `net.fetch` and are signed with an MD5 `api_sig`
 - Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.send()` to the preload, which uses `window.postMessage()` to bridge the context isolation boundary, and `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
 - Three artefacts define the hook-preload contract and must stay in sync: `src/types/hook.d.ts` (type declarations), `assets/musicKitHook.js` (JSDoc-annotated runtime), and `src/preload.ts` (typed channel sets); contract tests in `test/player.test.ts` verify alignment at compile time via `expectTypeOf`
 - `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime; it must be listed in `asarUnpack` in the electron-builder config or AppImage builds will crash on startup

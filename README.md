@@ -27,7 +27,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 - Lossless audio on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - Localised storefront and interface in 32 languages
-- Desktop notifications and Discord Rich Presence
+- Desktop notifications, Discord Rich Presence, and Last.fm scrobbling
 - Injected Back, Forward, and Reload navigation controls
 - Apple Music Classical support (switchable at runtime from the tray Player submenu)
 - **Linux**:
@@ -166,6 +166,7 @@ music.apple.com
               └── IPC → player.ts (EventEmitter)
                     ├── MPRIS (Linux, dbus-next, D-Bus session bus)
                     ├── Discord Rich Presence
+                    ├── Last.fm scrobbling
                     ├── Desktop notifications
                     ├── navigator.mediaSession (macOS/Windows)
                     ├── Dock menu + progress bar (macOS)
