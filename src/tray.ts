@@ -27,6 +27,7 @@ const menuIconFileMap: Record<string, string> = {
   'start-page': 'music',
   'notifications': 'bell',
   'discord': 'discord',
+  'lastfm': 'lastfm',
   'style': 'palette',
   'zoom': 'expand',
   'update-ready': 'rotate',
@@ -50,6 +51,7 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'start-page': 'music.note',
   'notifications': 'bell',
   'discord': 'bubble.left.and.bubble.right',
+  'lastfm': 'dot.radiowaves.left.and.right',
   'style': 'paintpalette',
   'zoom': 'arrow.up.left.and.arrow.down.right',
   'update-ready': 'arrow.clockwise',
@@ -373,12 +375,14 @@ function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
   const { strings, refresh } = ctx;
   const connected = !!getLastfmSessionKey();
   const username = getLastfmUsername();
+  const icon = getMenuIcon('lastfm');
 
   // Not yet linked: a single, obvious call to action that opens the browser
   // approval flow. No API keys or configuration for the user to deal with.
   if (!connected) {
     return {
       label: 'Last.fm',
+      ...(icon ? { icon } : {}),
       submenu: [
         {
           label: strings.lastfmConnect,
@@ -391,6 +395,7 @@ function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
   const enabled = getLastfmEnabled();
   return {
     label: `Last.fm: ${enabled ? strings.on : strings.off}`,
+    ...(icon ? { icon } : {}),
     submenu: [
       {
         label: strings.on,
