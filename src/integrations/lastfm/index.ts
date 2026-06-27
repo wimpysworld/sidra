@@ -10,7 +10,7 @@ import {
   setLastfmEnabled,
   getNotificationsEnabled,
 } from '../../config';
-import { getLastfmConnectedText } from '../../i18n';
+import { getLastfmConnectedText, getLastfmConnectFailedText } from '../../i18n';
 import { errorMessage } from '../../utils';
 
 const lastfmLog = log.scope('lastfm');
@@ -110,10 +110,10 @@ let previousState = 0;
 let authInProgress = false;
 let getWindow: () => BrowserWindow | null = () => null;
 
-function notifyConnected(name: string): void {
+function notify(body: string): void {
   if (!getNotificationsEnabled()) return;
   try {
-    const notification = new Notification({ title: 'Last.fm', body: getLastfmConnectedText(name), silent: true });
+    const notification = new Notification({ title: 'Last.fm', body, silent: true });
     notification.on('click', () => {
       const win = getWindow();
       if (win) {
@@ -123,7 +123,7 @@ function notifyConnected(name: string): void {
     });
     notification.show();
   } catch (err: unknown) {
-    lastfmLog.warn('connect notification failed:', errorMessage(err));
+    lastfmLog.warn('notification failed:', errorMessage(err));
   }
 }
 
@@ -233,6 +233,7 @@ export function startAuth(onComplete?: () => void): void {
   if (!isConfigured()) {
     lastfmLog.warn('cannot authenticate: no API credentials configured');
     setLastfmEnabled(false);
+    notify(getLastfmConnectFailedText());
     onComplete?.();
     return;
   }
@@ -251,6 +252,7 @@ export function startAuth(onComplete?: () => void): void {
       authInProgress = false;
       lastfmLog.warn('auth.getToken failed:', err.message);
       setLastfmEnabled(false);
+      notify(getLastfmConnectFailedText());
       onComplete?.();
     });
 }
@@ -264,7 +266,7 @@ function pollForSession(token: string, startedAt: number, onComplete?: () => voi
         authInProgress = false;
         setLastfmSession(key, name);
         lastfmLog.info('authenticated as', name);
-        notifyConnected(name);
+        notify(getLastfmConnectedText(name));
         enable();
         onComplete?.();
         return;
@@ -276,6 +278,7 @@ function pollForSession(token: string, startedAt: number, onComplete?: () => voi
         authInProgress = false;
         lastfmLog.warn('authorisation timed out');
         setLastfmEnabled(false);
+        notify(getLastfmConnectFailedText());
         onComplete?.();
         return;
       }
