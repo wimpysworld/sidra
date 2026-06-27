@@ -34,6 +34,7 @@ export const NOTIFICATIONS_TEXT: Record<string, string> = trayData.NOTIFICATIONS
 export const DISCORD_TEXT: Record<string, string> = trayData.DISCORD_TEXT;
 export const LASTFM_CONNECT_TEXT: Record<string, string> = trayData.LASTFM_CONNECT_TEXT;
 export const LASTFM_CONNECTED_TEXT: Record<string, string> = trayData.LASTFM_CONNECTED_TEXT;
+export const LASTFM_CONNECT_FAILED_TEXT: Record<string, string> = trayData.LASTFM_CONNECT_FAILED_TEXT;
 export const LASTFM_DISCONNECT_TEXT: Record<string, string> = trayData.LASTFM_DISCONNECT_TEXT;
 export const START_PAGE_TEXT: Record<string, string> = trayData.START_PAGE_TEXT;
 export const START_PAGE_HOME_TEXT: Record<string, string> = trayData.START_PAGE_HOME_TEXT;
@@ -212,6 +213,10 @@ export function getTrayStrings(): TrayStrings {
 export function getLastfmConnectedText(name: string): string {
   const langs = getSystemLanguages();
   return getLocalizedString(LASTFM_CONNECTED_TEXT, langs).replace('{name}', name);
+}
+
+export function getLastfmConnectFailedText(): string {
+  return getLocalizedString(LASTFM_CONNECT_FAILED_TEXT, getSystemLanguages());
 }
 
 export function getAboutStrings(): {
