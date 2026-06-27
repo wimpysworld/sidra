@@ -11,7 +11,7 @@ import { quitAndInstall } from './autoUpdate';
 import { BUNDLED_THEMES, themeLabel } from './palettes';
 import { applyTheme, hasCustomCss, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
-import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm } from './integrations/lastfm';
+import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { createPauseTimer } from './pauseTimer';
 import { allServices } from './musicService';
@@ -371,40 +371,44 @@ function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorO
 
 function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
-  const enabled = getLastfmEnabled();
   const connected = !!getLastfmSessionKey();
   const username = getLastfmUsername();
-  const parentLabel = `Last.fm: ${enabled ? strings.on : strings.off}`;
-  const submenu: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: strings.on,
-      type: 'radio',
-      checked: enabled,
-      click: () => {
-        setLastfmEnabled(true);
-        if (getLastfmSessionKey()) {
-          enableLastfm();
-        } else {
-          startLastfmAuth(refresh);
-        }
-        refresh();
+
+  // Not yet linked: a single, obvious call to action that opens the browser
+  // approval flow. No API keys or configuration for the user to deal with.
+  if (!connected) {
+    return {
+      label: 'Last.fm',
+      submenu: [
+        {
+          label: strings.lastfmConnect,
+          click: () => { setLastfmEnabled(true); startLastfmAuth(refresh); refresh(); },
+        },
+      ],
+    };
+  }
+
+  const enabled = getLastfmEnabled();
+  return {
+    label: `Last.fm: ${enabled ? strings.on : strings.off}`,
+    submenu: [
+      {
+        label: strings.on,
+        type: 'radio',
+        checked: enabled,
+        click: () => { setLastfmEnabled(true); enableLastfm(); refresh(); },
       },
-    },
-    {
-      label: strings.off,
-      type: 'radio',
-      checked: !enabled,
-      click: () => { setLastfmEnabled(false); disableLastfm(); refresh(); },
-    },
-  ];
-  if (connected && username) {
-    submenu.push(
+      {
+        label: strings.off,
+        type: 'radio',
+        checked: !enabled,
+        click: () => { setLastfmEnabled(false); disableLastfm(); refresh(); },
+      },
       { type: 'separator' },
       { label: `✓ ${username}`, enabled: false },
       { label: strings.lastfmDisconnect, click: () => { disconnectLastfm(); refresh(); } },
-    );
-  }
-  return { label: parentLabel, submenu };
+    ],
+  };
 }
 
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
@@ -694,7 +698,7 @@ function buildContextMenu(tray: Tray): Menu {
     buildNotificationsSubmenu(ctx),
     buildCloseToTraySubmenu(ctx),
     buildDiscordSubmenu(ctx),
-    buildLastfmSubmenu(ctx),
+    ...(isLastfmConfigured() ? [buildLastfmSubmenu(ctx)] : []),
     buildStyleSubmenu(ctx),
     buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
     ...buildUpdateMenuItems(),

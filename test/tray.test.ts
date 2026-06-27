@@ -33,6 +33,7 @@ const mockTrayStrings: TrayStrings = {
   notifications: 'Notifications',
   discord: 'Discord',
   player: 'Player',
+  lastfmConnect: 'Connect to Last.fm…',
   lastfmDisconnect: 'Disconnect',
   startPage: 'Start Page',
   startPageHome: 'Home',
