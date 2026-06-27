@@ -16,6 +16,7 @@ import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
 import { getService, allServices } from './musicService';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
+import { init as initLastfm } from './integrations/lastfm';
 import { init as initDock, setDockSendCommandCallback } from './integrations/macos-dock';
 import { init as initWindowsTaskbar, setTaskbarSendCommandCallback } from './integrations/windows-taskbar';
 import { cleanArtworkCache } from './artwork';
@@ -608,6 +609,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 
       initNotifications({ player, getMainWindow: () => win });
       initDiscordPresence({ player });
+      initLastfm({ player });
       initDock({ player, getMainWindow: () => win });
       initWindowsTaskbar({ player, getMainWindow: () => win });
 
