@@ -6,6 +6,7 @@
   "main": "dist/main.js",
   "scripts": {
     "start": "npm run build && electron .",
+    "prebuild": "node scripts/inject-lastfm-credentials.cjs",
     "build": "tsc",
     "dist": "electron-builder",
     "watch": "tsc --watch",
@@ -47,6 +48,7 @@
     "asar": true,
     "asarUnpack": [
       "assets/icons/**",
+      "assets/lastfm-credentials.json",
       "assets/locales/about.json",
       "assets/locales/loading.json",
       "assets/locales/tray.json",

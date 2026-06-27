@@ -1,6 +1,8 @@
 import { app, net, shell, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
 import { createHash } from 'crypto';
+import { readFileSync } from 'fs';
+import { getAssetPath } from '../../paths';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import {
   getLastfmEnabled,
@@ -18,11 +20,35 @@ const lastfmLog = log.scope('lastfm');
 const API_ROOT = 'https://ws.audioscrobbler.com/2.0/';
 const AUTH_URL = 'https://www.last.fm/api/auth/';
 
-// Register a Last.fm API account at https://www.last.fm/api/account/create and
-// fill these in. The SIDRA_LASTFM_API_KEY / SIDRA_LASTFM_API_SECRET environment
-// variables override the constants, which is convenient during development.
-const API_KEY = process.env.SIDRA_LASTFM_API_KEY ?? '';
-const API_SECRET = process.env.SIDRA_LASTFM_API_SECRET ?? '';
+/**
+ * Resolves the app-level Last.fm API credentials. These identify the Sidra
+ * application to Last.fm (not the user - each user authenticates their own
+ * account via the browser flow). Resolution order:
+ *
+ * 1. `SIDRA_LASTFM_API_KEY` / `SIDRA_LASTFM_API_SECRET` env vars - for local dev.
+ * 2. `assets/lastfm-credentials.json` - written at build time by
+ *    `scripts/inject-lastfm-credentials.cjs` from CI secrets, so the real secret
+ *    ships only in official builds and never lives in the public source tree.
+ *
+ * Absent both, the credentials are empty and the integration stays inert (the
+ * tray hides the Last.fm menu via `isConfigured()`).
+ */
+function loadCredentials(): { apiKey: string; apiSecret: string } {
+  const envKey = process.env.SIDRA_LASTFM_API_KEY;
+  const envSecret = process.env.SIDRA_LASTFM_API_SECRET;
+  if (envKey && envSecret) return { apiKey: envKey, apiSecret: envSecret };
+  try {
+    const parsed = JSON.parse(readFileSync(getAssetPath('assets', 'lastfm-credentials.json'), 'utf8')) as {
+      apiKey?: string;
+      apiSecret?: string;
+    };
+    return { apiKey: parsed.apiKey ?? '', apiSecret: parsed.apiSecret ?? '' };
+  } catch {
+    return { apiKey: '', apiSecret: '' };
+  }
+}
+
+const { apiKey: API_KEY, apiSecret: API_SECRET } = loadCredentials();
 
 // Last.fm scrobbling rules: a track must be longer than 30 seconds and must have
 // played for at least half its duration, or 4 minutes, whichever comes first.
