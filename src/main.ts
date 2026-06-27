@@ -609,7 +609,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 
       initNotifications({ player, getMainWindow: () => win });
       initDiscordPresence({ player });
-      initLastfm({ player });
+      initLastfm({ player, getMainWindow: () => win });
       initDock({ player, getMainWindow: () => win });
       initWindowsTaskbar({ player, getMainWindow: () => win });
 

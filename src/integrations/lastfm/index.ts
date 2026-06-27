@@ -1,4 +1,4 @@
-import { app, net, shell } from 'electron';
+import { app, net, shell, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
 import { createHash } from 'crypto';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
@@ -8,7 +8,10 @@ import {
   setLastfmSession,
   clearLastfmSession,
   setLastfmEnabled,
+  getNotificationsEnabled,
 } from '../../config';
+import { getLastfmConnectedText } from '../../i18n';
+import { errorMessage } from '../../utils';
 
 const lastfmLog = log.scope('lastfm');
 
@@ -38,7 +41,11 @@ interface LastfmResponse {
   session?: { name?: string; key?: string };
 }
 
-function isConfigured(): boolean {
+/**
+ * True when the app ships with Last.fm API credentials. The tray hides the
+ * Last.fm menu entirely when this is false, so users never see a dead feature.
+ */
+export function isConfigured(): boolean {
   return API_KEY !== '' && API_SECRET !== '';
 }
 
@@ -101,6 +108,24 @@ let scrobbled = false;
 let scrobbleTimer: ReturnType<typeof setTimeout> | null = null;
 let previousState = 0;
 let authInProgress = false;
+let getWindow: () => BrowserWindow | null = () => null;
+
+function notifyConnected(name: string): void {
+  if (!getNotificationsEnabled()) return;
+  try {
+    const notification = new Notification({ title: 'Last.fm', body: getLastfmConnectedText(name), silent: true });
+    notification.on('click', () => {
+      const win = getWindow();
+      if (win) {
+        win.show();
+        win.focus();
+      }
+    });
+    notification.show();
+  } catch (err: unknown) {
+    lastfmLog.warn('connect notification failed:', errorMessage(err));
+  }
+}
 
 function clearScrobbleTimer(): void {
   if (scrobbleTimer) {
@@ -239,6 +264,7 @@ function pollForSession(token: string, startedAt: number, onComplete?: () => voi
         authInProgress = false;
         setLastfmSession(key, name);
         lastfmLog.info('authenticated as', name);
+        notifyConnected(name);
         enable();
         onComplete?.();
         return;
@@ -266,6 +292,7 @@ export function disconnect(): void {
 
 export function init(ctx: IntegrationContext): void {
   playerRef = ctx.player;
+  getWindow = ctx.getMainWindow ?? (() => null);
   lastfmLog.info('Last.fm module initialised');
   if (!isConfigured()) {
     lastfmLog.info('no API credentials configured; scrobbling is inert until set');
