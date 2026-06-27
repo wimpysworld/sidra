@@ -10,6 +10,9 @@ interface StoreSchema {
   'notifications.enabled': boolean;
   'discord.enabled': boolean;
   'closeToTray.enabled': boolean;
+  'lastfm.enabled': boolean;
+  'lastfm.sessionKey': string | null;
+  'lastfm.username': string | null;
   theme: ThemeName;
   'autoUpdate.enabled': boolean;
   startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
@@ -77,6 +80,35 @@ export function getDiscordEnabled(): boolean {
 export function setDiscordEnabled(enabled: boolean): void {
   store.set('discord.enabled', enabled);
   configLog.info('discord.enabled set:', enabled);
+}
+
+export function getLastfmEnabled(): boolean {
+  return getConfigValue('lastfm.enabled', false);
+}
+
+export function setLastfmEnabled(enabled: boolean): void {
+  store.set('lastfm.enabled', enabled);
+  configLog.info('lastfm.enabled set:', enabled);
+}
+
+export function getLastfmSessionKey(): string | null | undefined {
+  return getConfigValueOptional('lastfm.sessionKey');
+}
+
+export function getLastfmUsername(): string | null | undefined {
+  return getConfigValueOptional('lastfm.username');
+}
+
+export function setLastfmSession(sessionKey: string, username: string): void {
+  store.set('lastfm.sessionKey', sessionKey);
+  store.set('lastfm.username', username);
+  configLog.info('lastfm session set for user:', username);
+}
+
+export function clearLastfmSession(): void {
+  store.set('lastfm.sessionKey', null);
+  store.set('lastfm.username', null);
+  configLog.info('lastfm session cleared');
 }
 
 export function getTheme(): ThemeName {
