@@ -134,6 +134,8 @@ let scrobbled = false;
 let scrobbleTimer: ReturnType<typeof setTimeout> | null = null;
 let previousState = 0;
 let authInProgress = false;
+let authPollTimer: ReturnType<typeof setTimeout> | null = null;
+let authGeneration = 0;
 let getWindow: () => BrowserWindow | null = () => null;
 
 function notify(body: string): void {
@@ -158,6 +160,20 @@ function clearScrobbleTimer(): void {
     clearTimeout(scrobbleTimer);
     scrobbleTimer = null;
   }
+}
+
+/**
+ * Cancels any in-progress auth flow. Bumping the generation invalidates in-flight
+ * `apiCall` promises so a late response cannot reconnect the user, clears the poll
+ * timer, and resets `authInProgress` so a fresh attempt is not blocked.
+ */
+function cancelAuth(): void {
+  authGeneration += 1;
+  if (authPollTimer) {
+    clearTimeout(authPollTimer);
+    authPollTimer = null;
+  }
+  authInProgress = false;
 }
 
 function active(): boolean {
@@ -224,10 +240,23 @@ function resetTrack(payload: NowPlayingPayload | null): void {
   track = payload?.name ?? null;
   album = payload?.albumName ?? null;
   durationSec = payload?.durationInMillis ? Math.round(payload.durationInMillis / 1000) : 0;
-  trackStartUnix = nowUnix();
+  trackStartUnix = 0;
   accumulatedMs = 0;
   lastResumeAt = null;
   scrobbled = false;
+}
+
+/**
+ * Marks the moment the current track actually starts or resumes playing.
+ * `trackStartUnix` is captured on the first real play transition rather than at
+ * metadata change, so the scrobble timestamp reflects when playback began even
+ * when a track is selected while paused and played later.
+ */
+function markPlaybackStarted(): void {
+  if (trackStartUnix === 0) trackStartUnix = nowUnix();
+  lastResumeAt = Date.now();
+  sendNowPlaying();
+  armScrobbleTimer();
 }
 
 export function enable(): void {
@@ -236,9 +265,7 @@ export function enable(): void {
     return;
   }
   if (playerRef?.playbackSnapshot().isPlaying) {
-    lastResumeAt = Date.now();
-    sendNowPlaying();
-    armScrobbleTimer();
+    markPlaybackStarted();
   }
   lastfmLog.info('scrobbling enabled');
 }
@@ -264,17 +291,20 @@ export function startAuth(onComplete?: () => void): void {
     return;
   }
   authInProgress = true;
+  const generation = ++authGeneration;
 
   apiCall({ method: 'auth.getToken', api_key: API_KEY }, false)
     .then((res) => {
+      if (generation !== authGeneration) return;
       const token = res.token;
       if (!token) throw new Error('no token returned');
       const url = `${AUTH_URL}?api_key=${API_KEY}&token=${token}`;
       shell.openExternal(url).catch((err: Error) => lastfmLog.warn('failed to open browser:', err.message));
       lastfmLog.info('waiting for browser authorisation');
-      pollForSession(token, Date.now(), onComplete);
+      pollForSession(token, Date.now(), generation, onComplete);
     })
     .catch((err: Error) => {
+      if (generation !== authGeneration) return;
       authInProgress = false;
       lastfmLog.warn('auth.getToken failed:', err.message);
       setLastfmEnabled(false);
@@ -283,13 +313,15 @@ export function startAuth(onComplete?: () => void): void {
     });
 }
 
-function pollForSession(token: string, startedAt: number, onComplete?: () => void): void {
+function pollForSession(token: string, startedAt: number, generation: number, onComplete?: () => void): void {
   apiCall({ method: 'auth.getSession', api_key: API_KEY, token }, false)
     .then((res) => {
+      if (generation !== authGeneration) return;
       const key = res.session?.key;
       const name = res.session?.name;
       if (key && name) {
         authInProgress = false;
+        authPollTimer = null;
         setLastfmSession(key, name);
         lastfmLog.info('authenticated as', name);
         notify(getLastfmConnectedText(name));
@@ -300,19 +332,22 @@ function pollForSession(token: string, startedAt: number, onComplete?: () => voi
       throw new Error('session not yet authorised');
     })
     .catch(() => {
+      if (generation !== authGeneration) return;
       if (Date.now() - startedAt >= AUTH_POLL_TIMEOUT_MS) {
         authInProgress = false;
+        authPollTimer = null;
         lastfmLog.warn('authorisation timed out');
         setLastfmEnabled(false);
         notify(getLastfmConnectFailedText());
         onComplete?.();
         return;
       }
-      setTimeout(() => pollForSession(token, startedAt, onComplete), AUTH_POLL_INTERVAL_MS);
+      authPollTimer = setTimeout(() => pollForSession(token, startedAt, generation, onComplete), AUTH_POLL_INTERVAL_MS);
     });
 }
 
 export function disconnect(): void {
+  cancelAuth();
   disable();
   clearLastfmSession();
   setLastfmEnabled(false);
@@ -330,9 +365,7 @@ export function init(ctx: IntegrationContext): void {
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     resetTrack(payload);
     if (playerRef?.playbackSnapshot().isPlaying) {
-      lastResumeAt = Date.now();
-      sendNowPlaying();
-      armScrobbleTimer();
+      markPlaybackStarted();
     }
   };
 
@@ -342,9 +375,7 @@ export function init(ctx: IntegrationContext): void {
     previousState = payload?.state ?? 0;
 
     if (nowPlaying && !wasPlaying) {
-      lastResumeAt = Date.now();
-      sendNowPlaying();
-      armScrobbleTimer();
+      markPlaybackStarted();
     } else if (!nowPlaying && wasPlaying) {
       if (lastResumeAt !== null) {
         accumulatedMs += Date.now() - lastResumeAt;
