@@ -533,20 +533,19 @@ function buildContextMenu(tray: Tray): Menu {
 
   const showWindowItems: Electron.MenuItemConstructorOptions[] = [];
   if (getCloseToTrayEnabled()) {
-    const mainWin = getMainWindowCallback?.();
-    const windowVisible = mainWin?.isVisible() ?? true;
+    const windowVisible = getMainWindowCallback?.()?.isVisible() ?? true;
     const windowIcon = getMenuIcon('show-window');
     if (windowVisible) {
       showWindowItems.push({
         label: strings.hideWindow,
         ...(windowIcon ? { icon: windowIcon } : {}),
-        click: () => { mainWin?.hide(); refresh(); },
+        click: () => { getMainWindowCallback?.()?.hide(); refresh(); },
       });
     } else {
       showWindowItems.push({
         label: strings.showWindow,
         ...(windowIcon ? { icon: windowIcon } : {}),
-        click: () => { mainWin?.show(); mainWin?.focus(); refresh(); },
+        click: () => { const w = getMainWindowCallback?.(); w?.show(); w?.focus(); refresh(); },
       });
     }
   }

@@ -13,7 +13,7 @@ vi.mock('../src/config', () => ({
   setStartPage: vi.fn(),
   getZoomFactor: () => 1.0,
   setZoomFactor: vi.fn(),
-  getCloseToTrayEnabled: () => false,
+  getCloseToTrayEnabled: vi.fn(() => false),
   setCloseToTrayEnabled: vi.fn(),
 }));
 
@@ -79,9 +79,10 @@ vi.mock('../src/paths', () => ({
   getProductInfo: () => ({ productName: 'Sidra', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
 }));
 
-import { Menu, Tray, nativeImage, nativeTheme } from 'electron';
+import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback } from '../src/tray';
+import { getCloseToTrayEnabled } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { Player, PlaybackState } from '../src/player';
 import type { NowPlayingPayload } from '../src/player';
@@ -394,6 +395,70 @@ describe('createTray - menu template inspection', () => {
       expect(findItem(template, 'Style')).toBeDefined();
       expect(findItem(template, 'Zoom')).toBeDefined();
       expect(findItem(template, 'Quit')).toBeDefined();
+    });
+  });
+
+  describe('close-to-tray enabled state', () => {
+    let mockWin: { isVisible: ReturnType<typeof vi.fn>; show: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn>; focus: ReturnType<typeof vi.fn> };
+
+    beforeEach(() => {
+      setPlatform('linux');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      mockWin = { isVisible: vi.fn(() => true), show: vi.fn(), hide: vi.fn(), focus: vi.fn() };
+      setGetMainWindowCallback(() => mockWin as unknown as BrowserWindow);
+      vi.mocked(getCloseToTrayEnabled).mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      setGetMainWindowCallback(() => null);
+      vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
+    });
+
+    it('shows Hide Sidra when window is visible', () => {
+      createTray();
+      const template = getLastTemplate();
+      expect(findItem(template, 'Hide Sidra')).toBeDefined();
+      expect(findItem(template, 'Show Sidra')).toBeUndefined();
+    });
+
+    it('shows Show Sidra when window is hidden', () => {
+      mockWin.isVisible.mockReturnValue(false);
+      createTray();
+      const template = getLastTemplate();
+      expect(findItem(template, 'Show Sidra')).toBeDefined();
+      expect(findItem(template, 'Hide Sidra')).toBeUndefined();
+    });
+
+    it('shows neither item when close-to-tray is disabled', () => {
+      vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
+      createTray();
+      const template = getLastTemplate();
+      expect(findItem(template, 'Hide Sidra')).toBeUndefined();
+      expect(findItem(template, 'Show Sidra')).toBeUndefined();
+    });
+
+    it('shows and focuses the window when disabling close-to-tray while hidden', () => {
+      mockWin.isVisible.mockReturnValue(false);
+      createTray();
+      const template = getLastTemplate();
+      const closeToTrayItem = findItem(template, 'Close to tray');
+      const submenu = closeToTrayItem!.submenu as Electron.MenuItemConstructorOptions[];
+      const offItem = submenu.find(item => item.label === 'Off');
+      expect(offItem).toBeDefined();
+      (offItem!.click as Function)();
+      expect(mockWin.show).toHaveBeenCalled();
+      expect(mockWin.focus).toHaveBeenCalled();
+    });
+
+    it('tray click shows and focuses the window when hidden', () => {
+      mockWin.isVisible.mockReturnValue(false);
+      const tray = createTray();
+      const onFn = tray.on as ReturnType<typeof vi.fn>;
+      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      expect(clickCall).toBeDefined();
+      (clickCall![1] as () => void)();
+      expect(mockWin.show).toHaveBeenCalled();
+      expect(mockWin.focus).toHaveBeenCalled();
     });
   });
 
