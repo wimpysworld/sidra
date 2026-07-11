@@ -1,6 +1,9 @@
 (function () {
   if (window.MusicKit && window.__sidraHookedMk === MusicKit.getInstance()) return;
 
+  if (window.__sidraHookInitializing) return;
+  window.__sidraHookInitializing = true;
+
   const waitForMK = setInterval(() => {
     if (!window.MusicKit) return;
     clearInterval(waitForMK);
