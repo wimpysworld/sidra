@@ -44,7 +44,7 @@ function isThemeName(value: string): value is ThemeName {
 export function resolveTheme(): ThemeName {
   const theme = getTheme();
   if (!isThemeName(theme)) return 'apple-music';
-  if (theme === 'custom' && !hasCustomCss()) return 'apple-music';
+  if (theme === 'custom' && getThemeCss('custom') === null) return 'apple-music';
   return theme;
 }
 

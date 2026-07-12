@@ -52,8 +52,14 @@ describe('theme helpers', () => {
 
   it('keeps custom when custom.css exists', () => {
     vi.mocked(getTheme).mockReturnValue('custom');
-    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     expect(resolveTheme()).toBe('custom');
+  });
+
+  it('falls back to apple-music when custom.css is empty or whitespace', () => {
+    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(fs.readFileSync).mockReturnValue('\n  \n');
+    expect(resolveTheme()).toBe('apple-music');
   });
 
   it('returns null for missing custom.css', () => {

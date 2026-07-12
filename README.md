@@ -64,7 +64,7 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 
 - Linux: `~/.config/sidra/custom.css`
 - macOS: `~/Library/Application Support/sidra/custom.css`
-- Windows: `%APPDATA%/sidra/custom.css`
+- Windows: `%APPDATA%\sidra\custom.css`
 
 The **Custom** menu entry only appears when that file exists.
 
