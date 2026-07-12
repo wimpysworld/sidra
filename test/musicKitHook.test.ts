@@ -11,9 +11,11 @@ const hookScript = fs.readFileSync(
 function createHarness({
   musicKitOverrides = {},
   navigatorOverrides,
+  repeatInjection = false,
 }: {
   musicKitOverrides?: Record<string, unknown>;
   navigatorOverrides?: Record<string, unknown>;
+  repeatInjection?: boolean;
 } = {}) {
   const intervalCallbacks: Array<() => void> = [];
   const messageListeners: Array<(event: unknown) => void> = [];
@@ -61,7 +63,7 @@ function createHarness({
   });
 
   vm.runInContext(hookScript, context);
-  vm.runInContext(hookScript, context);
+  if (repeatInjection) vm.runInContext(hookScript, context);
 
   const musicKitApi = {
     getInstance: () => musicKit,
@@ -86,6 +88,7 @@ describe('musicKitHook', () => {
     const skipToNextItem = vi.fn();
     const { messageListeners, musicKit, window } = createHarness({
       musicKitOverrides: { skipToNextItem },
+      repeatInjection: true,
     });
 
     const event = {

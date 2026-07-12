@@ -42,7 +42,7 @@
           return;
         }
 
-        let duration = undefined;
+        let duration;
         if (Number.isFinite(mk.currentPlaybackDuration) &&
             mk.currentPlaybackDuration > 0) {
           duration = mk.currentPlaybackDuration;
@@ -58,7 +58,7 @@
           navigator.mediaSession.setPositionState({
             duration,
             playbackRate: 1,
-            position: position > duration ? duration : position,
+            position: Math.min(position, duration),
           });
         } catch (_) {
           // Ignore media session position state errors.
