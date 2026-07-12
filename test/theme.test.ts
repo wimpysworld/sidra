@@ -21,7 +21,7 @@ vi.mock('fs', () => ({
 }));
 
 import { getTheme } from '../src/config';
-import { customCssPath, getThemeCss, hasCustomCss, resolveTheme } from '../src/theme';
+import { customCssPath, getThemeCss, hasCustomCss, initThemeCSS, resolveTheme, setThemeCssKey } from '../src/theme';
 
 describe('theme helpers', () => {
   beforeEach(() => {
@@ -78,5 +78,34 @@ describe('theme helpers', () => {
     expect(css).toContain('@media (prefers-color-scheme: dark)');
     expect(css).toContain('@media (prefers-color-scheme: light)');
     expect(css).toContain('--pageBG: #1e1e2e !important;');
+  });
+
+  it('removes injected css when custom.css disappears for stored custom theme', async () => {
+    vi.useFakeTimers();
+    const removeInsertedCSS = vi.fn().mockResolvedValue(undefined);
+    const insertCSS = vi.fn().mockResolvedValue('unused');
+    let watchHandler: ((eventType: string, filename: string | Buffer | null) => void) | undefined;
+    vi.mocked(fs.watch).mockImplementation((_, __, listener) => {
+      watchHandler = listener;
+      return {
+        on: vi.fn(),
+        close: vi.fn(),
+      } as unknown as fs.FSWatcher;
+    });
+    const win = {
+      isDestroyed: vi.fn().mockReturnValue(false),
+      webContents: { removeInsertedCSS, insertCSS },
+    } as unknown as Parameters<typeof initThemeCSS>[0];
+    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    setThemeCssKey('stale-theme-css-key');
+    initThemeCSS(win);
+    watchHandler?.('change', 'custom.css');
+    vi.advanceTimersByTime(151);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(removeInsertedCSS).toHaveBeenCalledWith('stale-theme-css-key');
+    expect(insertCSS).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

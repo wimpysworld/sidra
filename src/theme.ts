@@ -117,8 +117,12 @@ export function initThemeCSS(win: BrowserWindow): void {
       if (customCssTimer) clearTimeout(customCssTimer);
       customCssTimer = setTimeout(() => {
         customCssTimer = null;
-        if (!win.isDestroyed() && resolveTheme() === 'custom') {
+        if (win.isDestroyed()) return;
+        const resolved = resolveTheme();
+        if (resolved === 'custom') {
           void applyThemeCSSInternal('custom');
+        } else if (getTheme() === 'custom') {
+          void applyThemeCSSInternal('apple-music');
         }
       }, THEME_RELOAD_DEBOUNCE_MS);
     });
