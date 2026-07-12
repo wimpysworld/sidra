@@ -618,6 +618,7 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
   tray.setContextMenu(buildContextMenu(tray));
 
   tray.on('click', () => {
+    if (!getCloseToTrayEnabled()) return;
     const mainWin = getMainWindowCallback?.();
     if (!mainWin) return;
     if (mainWin.isVisible()) {
@@ -625,7 +626,7 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
     } else {
       mainWin.show();
       mainWin.focus();
-      tray.setContextMenu(buildContextMenu(tray));
+      rebuildTrayMenu(tray);
     }
   });
 

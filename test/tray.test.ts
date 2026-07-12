@@ -460,6 +460,18 @@ describe('createTray - menu template inspection', () => {
       expect(mockWin.show).toHaveBeenCalled();
       expect(mockWin.focus).toHaveBeenCalled();
     });
+
+    it('tray click is a no-op when close-to-tray is disabled', () => {
+      mockWin.isVisible.mockReturnValue(false);
+      vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
+      const tray = createTray();
+      const onFn = tray.on as ReturnType<typeof vi.fn>;
+      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      expect(clickCall).toBeDefined();
+      (clickCall![1] as () => void)();
+      expect(mockWin.show).not.toHaveBeenCalled();
+      expect(mockWin.focus).not.toHaveBeenCalled();
+    });
   });
 
   describe('update menu item icons', () => {
