@@ -46,13 +46,14 @@
         if (Number.isFinite(mk.currentPlaybackDuration) &&
             mk.currentPlaybackDuration > 0) {
           duration = mk.currentPlaybackDuration;
-        } else if (Number.isFinite(mk.nowPlayingItem?.attributes?.durationInMillis)) {
+        } else if (Number.isFinite(mk.nowPlayingItem?.attributes?.durationInMillis) &&
+                   mk.nowPlayingItem.attributes.durationInMillis > 0) {
           duration = mk.nowPlayingItem.attributes.durationInMillis / 1000;
         }
         if (!Number.isFinite(duration) || duration <= 0) return;
 
         const position = mk.currentPlaybackTime;
-        if (position < 0) return;
+        if (!Number.isFinite(position) || position < 0) return;
 
         try {
           navigator.mediaSession.setPositionState({
