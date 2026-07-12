@@ -8,52 +8,83 @@ const hookScript = fs.readFileSync(
   'utf-8',
 );
 
+function createHarness({
+  musicKitOverrides = {},
+  navigatorOverrides,
+}: {
+  musicKitOverrides?: Record<string, unknown>;
+  navigatorOverrides?: Record<string, unknown>;
+} = {}) {
+  const intervalCallbacks: Array<() => void> = [];
+  const messageListeners: Array<(event: unknown) => void> = [];
+  const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
+  const mediaSession = { setPositionState: vi.fn() };
+  const navigator = navigatorOverrides ?? { mediaSession };
+  const musicKit = {
+    addEventListener: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      musicKitListeners.set(event, listener);
+    }),
+    currentPlaybackDuration: undefined,
+    currentPlaybackTime: 0,
+    isPlaying: true,
+    nowPlayingItem: undefined,
+    pause: vi.fn(),
+    play: vi.fn(),
+    queue: { length: 1 },
+    repeatMode: 0,
+    seekToTime: vi.fn(),
+    setVolume: vi.fn(),
+    shuffleMode: 0,
+    skipToNextItem: vi.fn(),
+    skipToPreviousItem: vi.fn(),
+    volume: 1,
+    ...musicKitOverrides,
+  };
+  const window = {
+    AMWrapper: { ipcRenderer: { send: vi.fn() } },
+    addEventListener: vi.fn((event: string, listener: (event: unknown) => void) => {
+      if (event === 'message') messageListeners.push(listener);
+    }),
+    navigator,
+  };
+  const context = vm.createContext({
+    clearInterval: vi.fn(),
+    console,
+    navigator,
+    setInterval: vi.fn((callback: () => void) => {
+      intervalCallbacks.push(callback);
+      return intervalCallbacks.length;
+    }),
+    window,
+  });
+
+  vm.runInContext(hookScript, context);
+  vm.runInContext(hookScript, context);
+
+  const musicKitApi = {
+    getInstance: () => musicKit,
+    PlaybackStates: { playing: 2 },
+  };
+  Object.assign(context, { MusicKit: musicKitApi });
+  Object.assign(window, { MusicKit: musicKitApi });
+  for (const callback of intervalCallbacks.slice()) callback();
+
+  return {
+    mediaSession,
+    messageListeners,
+    musicKit,
+    musicKitListeners,
+    navigator,
+    window,
+  };
+}
+
 describe('musicKitHook', () => {
   it('handles one player command after repeated injection before MusicKit loads', () => {
-    const intervalCallbacks: Array<() => void> = [];
-    const messageListeners: Array<(event: unknown) => void> = [];
     const skipToNextItem = vi.fn();
-    const musicKit = {
-      addEventListener: vi.fn(),
-      currentPlaybackTime: 0,
-      isPlaying: true,
-      pause: vi.fn(),
-      play: vi.fn(),
-      queue: { length: 1 },
-      repeatMode: 0,
-      seekToTime: vi.fn(),
-      setVolume: vi.fn(),
-      shuffleMode: 0,
-      skipToNextItem,
-      skipToPreviousItem: vi.fn(),
-      volume: 1,
-    };
-    const window = {
-      AMWrapper: { ipcRenderer: { send: vi.fn() } },
-      addEventListener: vi.fn((event: string, listener: (event: unknown) => void) => {
-        if (event === 'message') messageListeners.push(listener);
-      }),
-    };
-    const context = vm.createContext({
-      clearInterval: vi.fn(),
-      console,
-      setInterval: vi.fn((callback: () => void) => {
-        intervalCallbacks.push(callback);
-        return intervalCallbacks.length;
-      }),
-      window,
+    const { messageListeners, musicKit, window } = createHarness({
+      musicKitOverrides: { skipToNextItem },
     });
-
-    vm.runInContext(hookScript, context);
-    vm.runInContext(hookScript, context);
-
-    const musicKitApi = {
-      getInstance: () => musicKit,
-      PlaybackStates: { playing: 2 },
-    };
-    Object.assign(context, { MusicKit: musicKitApi });
-    Object.assign(window, { MusicKit: musicKitApi });
-    for (const callback of intervalCallbacks.slice()) callback();
 
     const event = {
       data: { type: 'sidra:command', channel: 'player:next', args: [] },
@@ -62,5 +93,60 @@ describe('musicKitHook', () => {
     for (const listener of messageListeners) listener(event);
 
     expect(skipToNextItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports explicit media session position state on playback time changes', () => {
+    const { mediaSession, musicKitListeners } = createHarness({
+      musicKitOverrides: {
+        currentPlaybackDuration: 180,
+        currentPlaybackTime: 42,
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith({
+      duration: 180,
+      playbackRate: 1,
+      position: 42,
+    });
+  });
+
+  it('clears media session position state when the now-playing item becomes null', () => {
+    const { mediaSession, musicKitListeners } = createHarness();
+
+    expect(() => musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null })).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith();
+  });
+
+  it.each([0, undefined])(
+    'does not report media session position state when duration is %s',
+    (currentPlaybackDuration) => {
+      const { mediaSession, musicKitListeners } = createHarness({
+        musicKitOverrides: {
+          currentPlaybackDuration,
+          currentPlaybackTime: 42,
+          nowPlayingItem: undefined,
+        },
+      });
+
+      expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+      expect(mediaSession.setPositionState).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does nothing when navigator.mediaSession is unavailable', () => {
+    const { musicKitListeners } = createHarness({
+      navigatorOverrides: {},
+      musicKitOverrides: {
+        currentPlaybackDuration: 180,
+        currentPlaybackTime: 42,
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() => musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null })).not.toThrow();
   });
 });
