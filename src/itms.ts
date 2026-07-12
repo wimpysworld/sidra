@@ -3,6 +3,8 @@
 // No imports from electron, electron-log, or config: keep this module
 // dependency-free so it is trivially unit-testable.
 
+import { MUSIC_SERVICES } from './musicService';
+
 export type ItmsRouteToken = 'library' | 'browse' | 'radio' | 'listenNow' | 'subscribe';
 
 export type ItmsTarget =
@@ -32,7 +34,8 @@ export function transformItmsUrl(input: string): ItmsTarget | null {
   if (parsed.protocol !== 'itms:') {
     return null;
   }
-  if (parsed.hostname !== 'music.apple.com') {
+  // itms:// is permanently pinned to the music service
+  if (parsed.hostname !== MUSIC_SERVICES['music'].host) {
     return null;
   }
 
@@ -45,7 +48,7 @@ export function transformItmsUrl(input: string): ItmsTarget | null {
   }
 
   // Catalogue URL: rebuild as https, strip the `app` parameter.
-  const rebuilt = new URL('https://music.apple.com/');
+  const rebuilt = new URL(`${MUSIC_SERVICES['music'].origin}/`);
   rebuilt.pathname = parsed.pathname;
   const params = new URLSearchParams(parsed.searchParams);
   params.delete('app');

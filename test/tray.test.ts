@@ -15,6 +15,7 @@ vi.mock('../src/config', () => ({
   setZoomFactor: vi.fn(),
   getCloseToTrayEnabled: vi.fn(() => false),
   setCloseToTrayEnabled: vi.fn(),
+  getMusicService: vi.fn(() => 'music'),
 }));
 
 const mockTrayStrings: TrayStrings = {

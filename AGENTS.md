@@ -114,6 +114,7 @@ When adding a language, add an entry to every record in every JSON file:
 | `autoUpdate.enabled` | `boolean` | Enable automatic updates (default: true on AppImage and NSIS; disabled on all other platforms) |
 | `startPage` | `'home' \| 'new' \| 'radio' \| 'all-playlists' \| 'last'` | Page to load on launch (default: `'new'`) |
 | `lastPageUrl` | `string` | Last visited page URL; used when `startPage` is `'last'` |
+| `musicService` | `MusicServiceId` (`'music'`) | Active music service (default: `'music'`; reserved for future Classical support) |
 
 - Getters return `undefined` when no value has been persisted - absence of a key is intentional and drives the storefront fallback chain in `main.ts`; do not add default values to the store schema
 - When adding new persistent settings, add typed getter/setter pairs to `config.ts` following the existing pattern; do not use `electron-conf` directly elsewhere

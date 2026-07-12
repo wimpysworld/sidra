@@ -4,6 +4,8 @@ import log from 'electron-log/main';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
+import { getMusicService } from '../../config';
+import { getService } from '../../musicService';
 
 // @holusion/dbus-next is lazy-required because the MPRIS module only loads on Linux
 const dbus = require('@holusion/dbus-next');
@@ -519,7 +521,7 @@ class MediaPlayer2Player extends Interface {
   OpenUri(uri: string): void {
     try {
       const parsed = new URL(uri);
-      if (parsed.hostname !== 'music.apple.com' || parsed.protocol !== 'https:') {
+      if (parsed.hostname !== getService(getMusicService()).host || parsed.protocol !== 'https:') {
         mprisLog.warn('OpenUri rejected:', uri);
         return;
       }

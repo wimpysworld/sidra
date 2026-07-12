@@ -1,5 +1,6 @@
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
+import type { MusicServiceId } from './musicService';
 
 const configLog = log.scope('config');
 
@@ -14,6 +15,7 @@ interface StoreSchema {
   startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
   lastPageUrl: string;
   zoomFactor: number;
+  musicService: MusicServiceId;
 }
 
 import { Conf } from 'electron-conf/main';
@@ -118,5 +120,14 @@ export function getZoomFactor(): number {
 export function setZoomFactor(factor: number): void {
   store.set('zoomFactor', factor);
   configLog.info('zoomFactor set:', factor);
+}
+
+export function getMusicService(): MusicServiceId {
+  return getConfigValue('musicService', 'music');
+}
+
+export function setMusicService(id: MusicServiceId): void {
+  store.set('musicService', id);
+  configLog.info('musicService set:', id);
 }
 

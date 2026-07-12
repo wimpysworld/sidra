@@ -21,6 +21,7 @@ vi.mock('../../src/config', () => ({
   getStartPage: vi.fn(() => 'new'),
   getLastPageUrl: vi.fn(),
   getZoomFactor: vi.fn(() => 1.0),
+  getMusicService: vi.fn(() => 'music'),
 }));
 
 vi.mock('../../src/i18n', () => ({

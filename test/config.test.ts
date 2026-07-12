@@ -64,6 +64,12 @@ vi.mock('../src/config', async () => {
       return data.get('zoomFactor') as number;
     },
     setZoomFactor: (factor: number): void => { data.set('zoomFactor', factor); },
+
+    getMusicService: (): 'music' => {
+      if (!data.has('musicService')) return 'music';
+      return data.get('musicService') as 'music';
+    },
+    setMusicService: (id: 'music'): void => { data.set('musicService', id); },
   };
 });
 
@@ -77,7 +83,9 @@ import {
   getLastPageUrl, setLastPageUrl,
   getStartPage, setStartPage,
   getZoomFactor, setZoomFactor,
+  getMusicService, setMusicService,
 } from '../src/config';
+import type { MusicServiceId } from '../src/musicService';
 
 // Type assertions verify that each getter return type matches its StoreSchema key type.
 // These are compile-time checks via expectTypeOf.
@@ -154,6 +162,14 @@ describe('Config store type assertions', () => {
   it('setZoomFactor accepts number', () => {
     expectTypeOf(setZoomFactor).parameter(0).toEqualTypeOf<number>();
   });
+
+  it('getMusicService returns MusicServiceId', () => {
+    expectTypeOf(getMusicService).returns.toEqualTypeOf<MusicServiceId>();
+  });
+
+  it('setMusicService accepts MusicServiceId', () => {
+    expectTypeOf(setMusicService).parameter(0).toEqualTypeOf<MusicServiceId>();
+  });
 });
 
 describe('Config store runtime behaviour', () => {
@@ -192,5 +208,14 @@ describe('Config store runtime behaviour', () => {
 
   it('getZoomFactor defaults to 1.0', () => {
     expect(getZoomFactor()).toBe(1.0);
+  });
+
+  it('getMusicService defaults to music', () => {
+    expect(getMusicService()).toBe('music');
+  });
+
+  it('setMusicService persists value', () => {
+    setMusicService('music');
+    expect(getMusicService()).toBe('music');
   });
 });

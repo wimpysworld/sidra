@@ -1,6 +1,7 @@
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getStartPage, getLastPageUrl } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getStartPage, getLastPageUrl, getMusicService } from './config';
 import { getStorefront as getLocaleStorefront } from './i18n';
+import { getService } from './musicService';
 import type { ItmsRouteToken } from './itms';
 
 export type { ItmsRouteToken } from './itms';
@@ -41,7 +42,7 @@ export function buildAppleMusicURL(): string {
   if (startPage === 'last') {
     const lastPath = getLastPageUrl();
     if (lastPath) {
-      return appendLanguage(`https://music.apple.com/${storefront}/${lastPath}`, language);
+      return appendLanguage(`${getService(getMusicService()).origin}/${storefront}/${lastPath}`, language);
     }
     // fall through: no stored path yet, use 'new'
   }
@@ -54,7 +55,7 @@ export function buildAppleMusicURL(): string {
   };
   const pagePath = pagePathMap[startPage] ?? pagePathMap['new'];
 
-  return appendLanguage(`https://music.apple.com/${storefront}/${pagePath}`, language);
+  return appendLanguage(`${getService(getMusicService()).origin}/${storefront}/${pagePath}`, language);
 }
 
 export function buildItmsRouteURL(token: ItmsRouteToken): string {
@@ -64,13 +65,13 @@ export function buildItmsRouteURL(token: ItmsRouteToken): string {
   }
   const language = getLanguage();
   const path = ITMS_ROUTE_PATHS[token];
-  return appendLanguage(`https://music.apple.com/${storefront}/${path}`, language);
+  return appendLanguage(`${getService(getMusicService()).origin}/${storefront}/${path}`, language);
 }
 
 export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
   try {
     const parsed = new URL(url);
-    if (parsed.hostname !== 'music.apple.com') {
+    if (parsed.hostname !== getService(getMusicService()).host) {
       return null;
     }
     const segments = parsed.pathname.split('/').filter(Boolean);

@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
 import { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
+import { getMusicService } from './config';
+import { getService } from './musicService';
 
 const playerLog = log.scope('player');
 
@@ -43,10 +45,11 @@ export interface NowPlayingPayload {
  */
 export function getShareUrl(payload: NowPlayingPayload): string | undefined {
   if (payload.url) return payload.url;
+  const origin = getService(getMusicService()).origin;
   const catalogId = payload.playParams?.catalogId;
-  if (catalogId) return `https://music.apple.com/song/${catalogId}`;
+  if (catalogId) return `${origin}/song/${catalogId}`;
   const globalId = payload.playParams?.globalId;
-  if (globalId) return `https://music.apple.com/song/${globalId}`;
+  if (globalId) return `${origin}/song/${globalId}`;
   return undefined;
 }
 

@@ -2,7 +2,7 @@ import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray, we
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { setLastPageUrl, getZoomFactor, getCloseToTrayEnabled } from './config';
+import { setLastPageUrl, getZoomFactor, getCloseToTrayEnabled, getMusicService } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
@@ -13,6 +13,7 @@ import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setAppl
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
+import { getService } from './musicService';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 import { init as initDock, setDockSendCommandCallback } from './integrations/macos-dock';
@@ -229,7 +230,7 @@ async function initSession(): Promise<Electron.Session> {
     components.whenReady(),
     ses.clearData({
       dataTypes: ['serviceWorkers', 'cache'],
-      origins: ['https://music.apple.com'],
+      origins: [getService(getMusicService()).origin],
     }),
   ]);
   interface CdmComponentStatus {
@@ -314,7 +315,7 @@ function setupSessionHeaders(ses: Electron.Session): void {
   ses.setUserAgent(UA);
 
   // Strip Electron and app name tokens from outgoing request headers
-  ses.webRequest.onBeforeSendHeaders({ urls: ['https://music.apple.com/*'] }, (details, callback) => {
+  ses.webRequest.onBeforeSendHeaders({ urls: [`${getService(getMusicService()).origin}/*`] }, (details, callback) => {
     const ua = details.requestHeaders['User-Agent'];
     if (ua && ua !== UA) {
       details.requestHeaders['User-Agent'] = UA;
@@ -349,7 +350,7 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
     handleStorefrontNavigation(url);
     try {
       const parsed = new URL(url);
-      if (parsed.hostname === 'music.apple.com') {
+      if (parsed.hostname === getService(getMusicService()).host) {
         const segments = parsed.pathname.split('/').filter(Boolean);
         const pageSegments = segments[0] && /^[a-z]{2}$/.test(segments[0]) ? segments.slice(1) : segments;
         if (pageSegments.length > 0) setLastPageUrl(pageSegments.join('/'));
@@ -370,7 +371,7 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
   });
 }
 
-const AUTH_FRAME_HOSTS = new Set<string>(['auth.music.apple.com', 'idmsa.apple.com']);
+const AUTH_FRAME_HOSTS = new Set<string>(getService(getMusicService()).authFrameHosts);
 const AUTH_FRAME_LOG_PREFIX = '[sidra] auth-frame hide:';
 
 function buildAuthFrameInjectionScript(authCss: string): string {
