@@ -19,7 +19,9 @@ function createHarness({
   const messageListeners: Array<(event: unknown) => void> = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
-  const navigator = navigatorOverrides ?? { mediaSession };
+  const navigator = navigatorOverrides === undefined
+    ? { mediaSession }
+    : navigatorOverrides;
   const musicKit = {
     addEventListener: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       musicKitListeners.set(event, listener);
@@ -127,7 +129,6 @@ describe('musicKitHook', () => {
         musicKitOverrides: {
           currentPlaybackDuration,
           currentPlaybackTime: 42,
-          nowPlayingItem: undefined,
         },
       });
 
