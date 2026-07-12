@@ -21,8 +21,7 @@ function createHarness({
   const messageListeners: Array<(event: unknown) => void> = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
-  const hasNavigatorOverride = navigatorOverrides !== undefined;
-  const navigator = hasNavigatorOverride ? navigatorOverrides : { mediaSession };
+  const navigator = navigatorOverrides ?? { mediaSession };
   const musicKit = {
     addEventListener: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
       musicKitListeners.set(event, listener);
