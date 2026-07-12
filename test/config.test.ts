@@ -1,4 +1,5 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import type { ThemeName } from '../src/theme';
 
 // Mock electron-conf at the config module level. config.ts imports
 // electron-conf/main at module scope. Mock the config module and pass through
@@ -34,11 +35,11 @@ vi.mock('../src/config', async () => {
     },
     setDiscordEnabled: (enabled: boolean): void => { data.set('discord.enabled', enabled); },
 
-    getTheme: (): 'apple-music' | 'catppuccin' => {
+    getTheme: (): ThemeName => {
       if (!data.has('theme')) return 'apple-music';
-      return data.get('theme') as 'apple-music' | 'catppuccin';
+      return data.get('theme') as ThemeName;
     },
-    setTheme: (name: 'apple-music' | 'catppuccin'): void => { data.set('theme', name); },
+    setTheme: (name: ThemeName): void => { data.set('theme', name); },
 
     getAutoUpdateEnabled: (): boolean => {
       if (!data.has('autoUpdate.enabled')) return true;
@@ -77,8 +78,6 @@ import {
   getStartPage, setStartPage,
   getZoomFactor, setZoomFactor,
 } from '../src/config';
-
-import type { ThemeName } from '../src/theme';
 
 // Type assertions verify that each getter return type matches its StoreSchema key type.
 // These are compile-time checks via expectTypeOf.

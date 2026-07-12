@@ -108,7 +108,7 @@ When adding a language, add an entry to every record in every JSON file:
 |-----|------|---------|
 | `storefront` | `string` | Apple Music storefront code (e.g. `gb`, `us`) |
 | `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
-| `theme` | `ThemeName` (`'apple-music' \| 'catppuccin'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
+| `theme` | `ThemeName` (`'apple-music' \| BundledThemeName \| 'custom'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
 | `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
 | `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: false) |
 | `autoUpdate.enabled` | `boolean` | Enable automatic updates (default: true on AppImage and NSIS; disabled on all other platforms) |
@@ -185,7 +185,7 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - CastLabs Electron type definitions omit `App.setDesktopName()` and `'cache'` from `app.getPath()` - both methods work at runtime; use module augmentations in `src/types/electron.d.ts` rather than type casts at call sites
 - `dbus-next` has no public API to fully close its socket; `bus.disconnect()` calls `stream.end()` only (half-close); `(bus as DbusMessageBusInternals)._connection?.stream?.destroy()` is the only way to force-close - the `DbusMessageBusInternals` interface in `src/integrations/mpris/index.ts` documents this and is compatible with `@holusion/dbus-next ^0.11.2`
 - `setupContentHandlers()` uses a single `on('did-finish-load')` handler with an `initialized` flag (not `once`/`on` split) - both `once` and `on` fire on the first load, and async `executeJavaScript` injection cannot rely on script-level idempotency guards to prevent double event listener registration
-- Theme system uses `ThemeName = 'apple-music' | 'catppuccin'` and `applyTheme(name)` in `src/theme.ts`; `'apple-music'` means no override CSS is injected; adding a new theme requires: add to `ThemeName` union, add to `themeCssMap`, add CSS file to `assets/`, list in `asarUnpack` in `package.json`, add radio option to tray
+- Theme system uses `ThemeName = 'apple-music' | BundledThemeName | 'custom'` and `applyTheme(name)` in `src/theme.ts`; `'apple-music'` means no override CSS is injected; adding a bundled theme only requires adding a palette entry in `src/palettes.ts`
 - `test/mocks/storefront-deps.ts` contains shared `vi.mock()` declarations for tests that import storefront code; Vitest hoists `vi.mock()` calls within the fixture file itself, so the fixture uses `../../src/` paths (relative to `test/mocks/`, not `test/`) - do not change these paths
 - `itms://` is registered as a default protocol handler on Linux and Windows only; macOS uses Music.app natively and is intentionally excluded
 - Single-instance lock (`app.requestSingleInstanceLock()`) is acquired synchronously before `app.whenReady()` on non-macOS platforms; the `second-instance` handler forwards the launch URL via `extractItmsUrlFromArgv(argv)` and focuses the existing window

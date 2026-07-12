@@ -2,13 +2,13 @@ import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray, we
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getTheme, setLastPageUrl, getZoomFactor, getCloseToTrayEnabled } from './config';
+import { setLastPageUrl, getZoomFactor, getCloseToTrayEnabled } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
-import { initThemeCSS, setThemeCssKey } from './theme';
+import { getThemeCss, initThemeCSS, resolveTheme, setThemeCssKey } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, setGetMainWindowCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
@@ -146,7 +146,6 @@ function routeItmsTarget(target: ItmsTarget | null): void {
 
 export interface Assets {
   STYLE_FIX_CSS: string;
-  CATPPUCCIN_CSS: string;
   AUTH_STYLE_FIX_CSS: string;
   navBarScript: string;
   hookScript: string;
@@ -255,15 +254,13 @@ async function initSession(): Promise<Electron.Session> {
 function loadAssets(): Assets {
   const styleFixCssPath = getAssetPath('assets', 'styleFix.css');
   const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, 'utf-8');
-  const catppuccinCssPath = getAssetPath('assets', 'catppuccin.css');
-  const CATPPUCCIN_CSS = fs.readFileSync(catppuccinCssPath, 'utf-8');
   const authStyleFixCssPath = getAssetPath('assets', 'authStyleFix.css');
   const AUTH_STYLE_FIX_CSS = fs.readFileSync(authStyleFixCssPath, 'utf-8');
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
   const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
   const hookScript = fs.readFileSync(hookPath, 'utf-8');
-  return { STYLE_FIX_CSS, CATPPUCCIN_CSS, AUTH_STYLE_FIX_CSS, navBarScript, hookScript };
+  return { STYLE_FIX_CSS, AUTH_STYLE_FIX_CSS, navBarScript, hookScript };
 }
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
@@ -577,10 +574,15 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     win.webContents.setZoomFactor(getZoomFactor());
     await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
-    const theme = getTheme();
+    const theme = resolveTheme();
     if (theme !== 'apple-music') {
-      setThemeCssKey(await win.webContents.insertCSS(assets.CATPPUCCIN_CSS));
-      mainLog.debug(`Theme CSS injected: ${theme}`);
+      const css = getThemeCss(theme);
+      if (css !== null) {
+        setThemeCssKey(await win.webContents.insertCSS(css));
+        mainLog.debug(`Theme CSS injected: ${theme}`);
+      } else {
+        mainLog.warn(`Theme CSS unavailable: ${theme}`);
+      }
     }
     await win.webContents.executeJavaScript(assets.hookScript);
     mainLog.debug('MusicKit hook injected');
@@ -656,7 +658,7 @@ if (gotLock) {
     setDockSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     setTaskbarSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     setupWindowZoomAndNav(win);
-    initThemeCSS(win, assets.CATPPUCCIN_CSS);
+    initThemeCSS(win);
     setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
     setupSessionHeaders(ses);
     setupContentHandlers(win, player, markCssReady, assets);

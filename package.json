@@ -47,7 +47,6 @@
     "asar": true,
     "asarUnpack": [
       "assets/icons/**",
-      "assets/catppuccin.css",
       "assets/locales/about.json",
       "assets/locales/loading.json",
       "assets/locales/tray.json",

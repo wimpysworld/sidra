@@ -4,11 +4,12 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
-import { applyTheme } from './theme';
+import { BUNDLED_THEMES, themeLabel } from './palettes';
+import { applyTheme, hasCustomCss, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import { downloadArtwork } from './artwork';
 import { createPauseTimer } from './pauseTimer';
@@ -289,26 +290,35 @@ function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorO
 
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
-  const currentTheme = getTheme();
-  const parentLabel = `${strings.style}: ${currentTheme === 'catppuccin' ? strings.catppuccin : strings.styleAppleMusic}`;
+  const currentTheme = resolveTheme();
+  const parentLabel = `${strings.style}: ${currentTheme === 'apple-music' ? strings.styleAppleMusic : themeLabel(currentTheme)}`;
   const icon = getMenuIcon('style');
+  const items: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: strings.styleAppleMusic,
+      type: 'radio',
+      checked: currentTheme === 'apple-music',
+      click: () => { setTheme('apple-music'); applyTheme('apple-music'); refresh(); },
+    },
+    ...BUNDLED_THEMES.map(theme => ({
+      label: theme.label,
+      type: 'radio' as const,
+      checked: currentTheme === theme.name,
+      click: () => { setTheme(theme.name); applyTheme(theme.name); refresh(); },
+    })),
+  ];
+  if (hasCustomCss()) {
+    items.push({
+      label: themeLabel('custom'),
+      type: 'radio',
+      checked: currentTheme === 'custom',
+      click: () => { setTheme('custom'); applyTheme('custom'); refresh(); },
+    });
+  }
   return {
     label: parentLabel,
     ...(icon ? { icon } : {}),
-    submenu: [
-      {
-        label: strings.styleAppleMusic,
-        type: 'radio',
-        checked: currentTheme === 'apple-music',
-        click: () => { setTheme('apple-music'); applyTheme('apple-music'); refresh(); },
-      },
-      {
-        label: strings.catppuccin,
-        type: 'radio',
-        checked: currentTheme === 'catppuccin',
-        click: () => { setTheme('catppuccin'); applyTheme('catppuccin'); refresh(); },
-      },
-    ],
+    submenu: items,
   };
 }
 

@@ -18,7 +18,6 @@ vi.mock('../../src/config', () => ({
   setStorefront: vi.fn(),
   getLanguage: vi.fn(),
   setLanguage: vi.fn(),
-  getCatppuccinEnabled: vi.fn(() => false),
   getStartPage: vi.fn(() => 'new'),
   getLastPageUrl: vi.fn(),
   getZoomFactor: vi.fn(() => 1.0),

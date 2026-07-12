@@ -56,6 +56,20 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 ---
 
+## Theming
+
+Theme selection lives in the tray **Style** submenu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
+
+As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
+
+- Linux: `~/.config/sidra/custom.css`
+- macOS: `~/Library/Application Support/sidra/custom.css`
+- Windows: `%APPDATA%/sidra/custom.css`
+
+The **Custom** menu entry only appears when that file exists.
+
+---
+
 > [!IMPORTANT]
 > Sidra's macOS and Windows releases are currently unsigned, requiring Gatekeeper and SmartScreen workarounds at install time. [Sponsoring the project](https://github.com/sponsors/flexiondotorg) 🩷 goes directly towards code-signing certificates to remove that friction for every user.
 

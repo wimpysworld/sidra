@@ -128,7 +128,6 @@ export interface TrayStrings {
   startPageRadio: string;
   startPageAllPlaylists: string;
   startPageLast: string;
-  catppuccin: string;
   on: string;
   off: string;
   style: string;
@@ -165,7 +164,6 @@ export function getTrayStrings(): TrayStrings {
   const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
   const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
   const startPageLast = getLocalizedString(START_PAGE_LAST_TEXT, langs);
-  const catppuccin = 'Catppuccin';
   const on = getLocalizedString(ON_TEXT, langs);
   const off = getLocalizedString(OFF_TEXT, langs);
   const style = getLocalizedString(STYLE_TEXT, langs);
@@ -186,7 +184,7 @@ export function getTrayStrings(): TrayStrings {
   const hideWindow = getLocalizedString(HIDE_WINDOW_TEXT, langs).replace('{name}', productName);
   const showWindow = getLocalizedString(SHOW_WINDOW_TEXT, langs).replace('{name}', productName);
   const closeToTray = getLocalizedString(CLOSE_TO_TRAY_TEXT, langs);
-  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, catppuccin, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute, share, hideWindow, showWindow, closeToTray };
+  return { about, quit, notifications, discord, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute, share, hideWindow, showWindow, closeToTray };
 }
 
 export function getAboutStrings(): {

@@ -106,7 +106,9 @@ sidra/
 │   ├── types/
 │   │   ├── electron.d.ts          — module augmentations for CastLabs type gaps
 │   │   └── hook.d.ts              — hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
-│   ├── theme.ts                   — named theme lifecycle: ThemeName, applyTheme(), initThemeCSS(), themeCssMap
+│   ├── theme.ts                   — theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), initThemeCSS()
+│   ├── palettes.ts                — bundled theme registry (BUNDLED_THEMES), BundledThemeName, themeLabel()
+│   ├── themeTemplate.ts           — pure palette→CSS renderer (buildThemeCss())
 │   ├── artwork.ts                 — downloadArtwork(), cleanArtworkCache(); UUID-based multi-file cache
 │   ├── autoUpdate.ts              — isAutoUpdateSupported(), initAutoUpdate(), quitAndInstall(); electron-updater
 │   ├── update.ts                  — checkForUpdates() via GitHub API; UpdateInfo state
@@ -147,8 +149,6 @@ sidra/
 │   │                                 that Apple shows to push users toward native apps
 │   ├── authStyleFix.css           — CSS injected into Apple auth iframes to hide
 │   │                                 unsupported passkey and "Sign in with iPhone" options
-│   ├── catppuccin.css             — Optional Catppuccin palette overrides; injected when
-│   │                                 the theme preference is set to catppuccin
 │   └── icons/
 │       ├── sidraTemplate.png      — macOS tray (template image)
 │       ├── sidra-tray.png         — Windows tray
@@ -529,28 +529,32 @@ This is standard Chromium/Electron behaviour, not CastLabs-specific. The same is
 
 ## Theming
 
-The default colour scheme is Apple Music's own. When the `catppuccin` theme is selected, a CSS override file is injected via `webContents.insertCSS()` immediately after `styleFix.css`. No custom UI components are introduced - colour tokens only.
-
-### Palette
-
-| Context | Variant | Background | Text | Accent |
-|---|---|---|---|---|
-| Dark | Catppuccin Mocha | `#1e1e2e` (Base) | `#cdd6f4` (Text) | `#f38ba8` (Red) |
-| Light | Catppuccin Latte | `#eff1f5` (Base) | `#4c4f69` (Text) | `#d20f39` (Red) |
-
-The red accent is used in both variants to preserve Apple Music brand association. Light/dark variant selection follows the system `prefers-color-scheme` media query.
+The default colour scheme is Apple Music's own (`'apple-music'`). Bundled themes are registry-driven: `src/palettes.ts` defines `BUNDLED_THEMES` (Catppuccin, Dracula, Gruvbox, Nord, Rosé Pine, Solarized), and `src/themeTemplate.ts` renders each 12-slot palette into a full override stylesheet.
 
 ### Persistence
 
-Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-music'` | `'catppuccin'`). Default is `'apple-music'`. Applied immediately via `applyTheme(name)` - no restart required.
+Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-music'` | `BundledThemeName` | `'custom'`). `resolveTheme()` guards startup/runtime behaviour:
+
+- Unknown stored values fall back to `'apple-music'`
+- `'custom'` falls back to `'apple-music'` when `custom.css` does not exist
+- Bundled values pass through directly
 
 ### Implementation
 
-`theme.ts` exposes `applyTheme(name: ThemeName)`: unloads the current CSS key (if any) then injects the new theme's CSS via `webContents.insertCSS()`. `'apple-music'` maps to `null` in `themeCssMap` - no CSS is injected. A promise queue inside `initThemeCSS()` serialises all inject/remove operations to prevent race conditions. Adding a new theme: add the name to `ThemeName`, add the CSS string to `themeCssMap`, add the CSS file to `assets/`, and list it in `asarUnpack` in `package.json`.
+`theme.ts` exposes `applyTheme(name: ThemeName)` and keeps the existing promise queue inside `initThemeCSS()` to serialise `removeInsertedCSS()/insertCSS()` operations. CSS sourcing now comes from `getThemeCss(name)`:
 
-`catppuccin.css` overrides CSS custom properties on `:root` and targets specific elements that fall outside the normal cascade. `webContents.insertCSS()` injects at author-level cascade origin, so all overrides use `!important` to win specificity ties against Apple's own stylesheets after navigation.
+- `'apple-music'` → `null` (remove any injected override)
+- bundled themes → lazily rendered via `buildThemeCss(...)` and cached in memory
+- `'custom'` → `userData/custom.css`, read fresh on each apply; missing/empty/whitespace-only files are treated as absent
 
-`@media (prefers-color-scheme: dark)` and `@media (prefers-color-scheme: light)` resolve correctly in Electron's Chromium renderer against `nativeTheme.shouldUseDarkColors`. A single CSS file with both blocks covers both variants.
+`custom.css` lifecycle:
+
+- Path: `path.join(app.getPath('userData'), 'custom.css')`
+- `initThemeCSS()` ensures the user data directory exists, then installs `fs.watch(..., { persistent: false })`
+- Watcher reacts to `filename === 'custom.css'` and `filename === null` (macOS behaviour), debounced by 150ms
+- Re-apply occurs only when `resolveTheme() === 'custom'` and the window is still alive
+- Watcher setup and runtime errors are logged as warnings; they never crash the app
+- Timer cleanup and watcher close run on `app.on('will-quit')`
 
 ---
 
