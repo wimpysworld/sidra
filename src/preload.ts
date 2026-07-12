@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { getService, DEFAULT_SERVICE_ID } from './musicService';
 
 // Channels the renderer is allowed to send to the main process.
 // Extend this list as new renderer-to-main IPC messages are added.
@@ -37,7 +36,9 @@ const RECEIVE_CHANNELS = new Set<ReceiveChannel>([
 // musicKitHook.js listens for these messages and dispatches to __sidra methods.
 for (const channel of RECEIVE_CHANNELS) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
-    window.postMessage({ type: 'sidra:command', channel, args }, getService(DEFAULT_SERVICE_ID).origin);
+    // Intentionally a literal: sandboxed preload scripts cannot require local
+    // modules. Sync is enforced by the contract test in test/musicService.test.ts.
+    window.postMessage({ type: 'sidra:command', channel, args }, 'https://music.apple.com');
   });
 }
 

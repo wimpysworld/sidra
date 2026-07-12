@@ -1,4 +1,5 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
+import fs from 'fs';
 import {
   MUSIC_SERVICES,
   DEFAULT_SERVICE_ID,
@@ -60,5 +61,12 @@ describe('getService', () => {
 
   it('returns same object as MUSIC_SERVICES registry', () => {
     expect(getService('music')).toBe(MUSIC_SERVICES['music']);
+  });
+});
+
+describe('preload contract', () => {
+  it('postMessage origin literal matches music service registry', () => {
+    const preload = fs.readFileSync('src/preload.ts', 'utf-8');
+    expect(preload).toContain(`'${MUSIC_SERVICES['music'].origin}'`);
   });
 });
