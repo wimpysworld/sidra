@@ -46,11 +46,11 @@
         if (Number.isFinite(mk.currentPlaybackDuration) &&
             mk.currentPlaybackDuration > 0) {
           duration = mk.currentPlaybackDuration;
-        } else if (Number.isFinite(mk.nowPlayingItem?.attributes?.durationInMillis) &&
-                   mk.nowPlayingItem.attributes.durationInMillis > 0) {
-          duration = mk.nowPlayingItem.attributes.durationInMillis / 1000;
+        } else {
+          const durationInMillis = mk.nowPlayingItem?.attributes?.durationInMillis;
+          if (!Number.isFinite(durationInMillis) || durationInMillis <= 0) return;
+          duration = durationInMillis / 1000;
         }
-        if (!Number.isFinite(duration) || duration <= 0) return;
 
         const position = mk.currentPlaybackTime;
         if (!Number.isFinite(position) || position < 0) return;
