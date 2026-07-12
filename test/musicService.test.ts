@@ -1,5 +1,6 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
-import fs from 'fs';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   MUSIC_SERVICES,
   DEFAULT_SERVICE_ID,
@@ -66,7 +67,11 @@ describe('getService', () => {
 
 describe('preload contract', () => {
   it('postMessage origin literal matches music service registry', () => {
-    const preload = fs.readFileSync('src/preload.ts', 'utf-8');
-    expect(preload).toContain(`'${MUSIC_SERVICES['music'].origin}'`);
+    const preload = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'preload.ts'),
+      'utf-8',
+    );
+    const origin = MUSIC_SERVICES['music'].origin;
+    expect(preload).toMatch(new RegExp(`window\\.postMessage\\(.*'${origin}'\\)`));
   });
 });
