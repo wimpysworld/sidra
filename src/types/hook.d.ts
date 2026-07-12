@@ -68,7 +68,7 @@ interface SidraCommandMessage {
 
 interface Window {
   __sidra: SidraHook;
-  __sidraHookInitializing: boolean;
+  __sidraHookInjected: boolean;
   __sidraHookedMk: unknown;
   AMWrapper: AMWrapperBridge;
 }

@@ -1,8 +1,12 @@
 (function () {
   if (window.MusicKit && window.__sidraHookedMk === MusicKit.getInstance()) return;
 
-  if (window.__sidraHookInitializing) return;
-  window.__sidraHookInitializing = true;
+  // This flag persists for the page lifetime and is never cleared. Re-injection
+  // must not re-run the IIFE: the 5-second monitor inside the hook already
+  // handles MusicKit instance replacement, and re-running would install
+  // duplicate message listeners (the bug fixed in #154 / issue #153).
+  if (window.__sidraHookInjected) return;
+  window.__sidraHookInjected = true;
 
   const waitForMK = setInterval(() => {
     if (!window.MusicKit) return;
