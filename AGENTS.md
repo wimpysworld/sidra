@@ -76,12 +76,12 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 ### Adding translations
 
-Translation records live in `assets/locales/` as JSON files. Each file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 34 named records.
+Translation records live in `assets/locales/` as JSON files. Each file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 43 named records.
 
 | File | Records |
 |------|---------|
 | `assets/locales/loading.json` | `LOADING_TEXT` |
-| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `LASTFM_CONNECT_TEXT`, `LASTFM_CONNECTED_TEXT`, `LASTFM_DISCONNECT_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `MUTE_TEXT`, `SHARE_TEXT` |
+| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `LASTFM_CONNECT_TEXT`, `LASTFM_CONNECTED_TEXT`, `LASTFM_CONNECT_FAILED_TEXT`, `LASTFM_DISCONNECT_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `SHARE_TEXT`, `MUTE_TEXT`, `HIDE_WINDOW_TEXT`, `SHOW_WINDOW_TEXT`, `CLOSE_TO_TRAY_TEXT`, `PLAYER_TEXT`, `START_PAGE_BROWSE_TEXT`, `START_PAGE_LIBRARY_TEXT`, `START_PAGE_PLAYLISTS_TEXT`, `START_PAGE_SEARCH_TEXT` |
 | `assets/locales/about.json` | `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX` |
 | `assets/locales/update.json` | `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `RESTART_NOW_TEXT`, `LATER_TEXT` |
 
