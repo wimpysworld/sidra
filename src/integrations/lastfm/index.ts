@@ -52,7 +52,7 @@ const { apiKey: API_KEY, apiSecret: API_SECRET } = loadCredentials();
 
 // Last.fm scrobbling rules: a track must be longer than 30 seconds and must have
 // played for at least half its duration, or 4 minutes, whichever comes first.
-const MIN_TRACK_LENGTH_SEC = 30;
+const MIN_TRACK_LENGTH_MS = 30_000;
 const SCROBBLE_CAP_MS = 240_000;
 
 // Authentication poll: Last.fm has no callback, so poll auth.getSession until the
@@ -96,10 +96,10 @@ export function signParams(params: Record<string, string>, secret: string): stri
  * Returns the play time after which a track should be scrobbled, or null if the
  * track is too short to ever scrobble.
  */
-export function scrobbleThresholdMs(durationSec: number): number | null {
-  if (durationSec > 0 && durationSec < MIN_TRACK_LENGTH_SEC) return null;
-  if (durationSec <= 0) return SCROBBLE_CAP_MS;
-  return Math.min((durationSec * 1000) / 2, SCROBBLE_CAP_MS);
+export function scrobbleThresholdMs(durationMs: number): number | null {
+  if (durationMs > 0 && durationMs <= MIN_TRACK_LENGTH_MS) return null;
+  if (durationMs <= 0) return SCROBBLE_CAP_MS;
+  return Math.min(durationMs / 2, SCROBBLE_CAP_MS);
 }
 
 async function apiCall(params: Record<string, string>, post: boolean): Promise<LastfmResponse> {
@@ -126,13 +126,14 @@ let playerRef: Player | null = null;
 let artist: string | null = null;
 let track: string | null = null;
 let album: string | null = null;
-let durationSec = 0;
+let durationMs = 0;
 let trackStartUnix = 0;
 let accumulatedMs = 0;
 let lastResumeAt: number | null = null;
 let scrobbled = false;
 let scrobbleTimer: ReturnType<typeof setTimeout> | null = null;
 let previousState = 0;
+let trackGeneration = 0;
 let authInProgress = false;
 let authPollTimer: ReturnType<typeof setTimeout> | null = null;
 let authGeneration = 0;
@@ -190,7 +191,7 @@ function sendNowPlaying(): void {
     sk: getLastfmSessionKey()!,
   };
   if (album) params.album = album;
-  if (durationSec > 0) params.duration = String(durationSec);
+  if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
 
   apiCall(params, true)
     .then(() => lastfmLog.debug('now playing:', `${artist} - ${track}`))
@@ -211,12 +212,16 @@ function doScrobble(): void {
     sk: getLastfmSessionKey()!,
   };
   if (album) params.album = album;
-  if (durationSec > 0) params.duration = String(durationSec);
+  if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
 
+  // The rollback is scoped to the track that issued the request: by the time a
+  // failure lands the track may have changed, and clearing the flag then would
+  // let the new track scrobble twice.
+  const generation = trackGeneration;
   apiCall(params, true)
     .then(() => lastfmLog.info('scrobbled:', `${artist} - ${track}`))
     .catch((err: Error) => {
-      scrobbled = false;
+      if (generation === trackGeneration) scrobbled = false;
       lastfmLog.warn('scrobble failed:', err.message);
     });
 }
@@ -224,7 +229,7 @@ function doScrobble(): void {
 function armScrobbleTimer(): void {
   clearScrobbleTimer();
   if (scrobbled || !active()) return;
-  const threshold = scrobbleThresholdMs(durationSec);
+  const threshold = scrobbleThresholdMs(durationMs);
   if (threshold === null) return;
   const remaining = threshold - accumulatedMs;
   if (remaining <= 0) {
@@ -239,7 +244,8 @@ function resetTrack(payload: NowPlayingPayload | null): void {
   artist = payload?.artistName ?? null;
   track = payload?.name ?? null;
   album = payload?.albumName ?? null;
-  durationSec = payload?.durationInMillis ? Math.round(payload.durationInMillis / 1000) : 0;
+  durationMs = payload?.durationInMillis ?? 0;
+  trackGeneration += 1;
   trackStartUnix = 0;
   accumulatedMs = 0;
   lastResumeAt = null;
@@ -395,7 +401,7 @@ export function init(ctx: IntegrationContext): void {
     artist = null;
     track = null;
     album = null;
-    durationSec = 0;
+    durationMs = 0;
     accumulatedMs = 0;
     lastResumeAt = null;
     scrobbled = false;

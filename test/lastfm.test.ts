@@ -18,15 +18,23 @@ describe('signParams', () => {
 
 describe('scrobbleThresholdMs', () => {
   it('returns null for tracks shorter than 30 seconds', () => {
-    expect(scrobbleThresholdMs(20)).toBeNull();
+    expect(scrobbleThresholdMs(20_000)).toBeNull();
+  });
+
+  it('returns null for tracks of exactly 30 seconds', () => {
+    expect(scrobbleThresholdMs(30_000)).toBeNull();
+  });
+
+  it('returns null for sub-30-second tracks that would round up to 30', () => {
+    expect(scrobbleThresholdMs(29_600)).toBeNull();
   });
 
   it('returns half the duration for typical tracks', () => {
-    expect(scrobbleThresholdMs(180)).toBe(90_000);
+    expect(scrobbleThresholdMs(180_000)).toBe(90_000);
   });
 
   it('caps at 4 minutes for long tracks', () => {
-    expect(scrobbleThresholdMs(1200)).toBe(240_000);
+    expect(scrobbleThresholdMs(1_200_000)).toBe(240_000);
   });
 
   it('falls back to the 4 minute cap when duration is unknown', () => {
