@@ -124,7 +124,7 @@ yay -S sidra-bin
 **Nix**:
 
 ```bash
-nix profile install github:wimpysworld/sidra
+nix profile add github:wimpysworld/sidra
 ```
 
 For NixOS or Home Manager, add `github:wimpysworld/sidra` as a flake input and reference `inputs.sidra.packages.<system>.default`.
