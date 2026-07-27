@@ -55,6 +55,11 @@ const { apiKey: API_KEY, apiSecret: API_SECRET } = loadCredentials();
 const MIN_TRACK_LENGTH_MS = 30_000;
 const SCROBBLE_CAP_MS = 240_000;
 
+// The renderer reports the playhead a few hundred milliseconds behind wall
+// time, and the scrobble timer fires on wall time, so an honest play arrives at
+// the threshold marginally short. Allow for that before refusing a scrobble.
+const POSITION_TOLERANCE_MS = 2000;
+
 // Authentication poll: Last.fm has no callback, so poll auth.getSession until the
 // user approves the token in their browser, then give up.
 const AUTH_POLL_INTERVAL_MS = 4000;
@@ -198,9 +203,39 @@ function sendNowPlaying(): void {
     .catch((err: Error) => lastfmLog.warn('now playing failed:', err.message));
 }
 
+/**
+ * True when live playback confirms the track really reached its scrobble
+ * threshold.
+ *
+ * The scrobble is armed with a wall-clock timer, and a page load cancels
+ * nothing: the fresh page emits no playback state transition, so the timer
+ * survives it and the cached state in `Player` freezes at its pre-reload values
+ * - the playing flag and the playhead each have a single writer, and neither
+ * fires on an idle page. Re-reading the snapshot at submission time catches
+ * that, because a track abandoned mid-play leaves the playhead short of the
+ * threshold.
+ *
+ * The comparison is absolute rather than a delta against the position sampled
+ * when the timer was armed. A delta cannot work: a track abandoned after some
+ * real playback has moved its playhead, and repeat-one re-arms on the play
+ * transition that precedes the first position report of the new loop, so the
+ * baseline would be the end of the previous loop.
+ */
+function playbackReachedThreshold(): boolean {
+  const snapshot = playerRef?.playbackSnapshot();
+  if (!snapshot?.isPlaying) return false;
+  const threshold = scrobbleThresholdMs(durationMs);
+  if (threshold === null) return false;
+  return snapshot.positionUs / 1000 + POSITION_TOLERANCE_MS >= threshold;
+}
+
 function doScrobble(): void {
   clearScrobbleTimer();
   if (scrobbled || !active()) return;
+  if (!playbackReachedThreshold()) {
+    lastfmLog.debug('scrobble skipped, playback did not reach the threshold:', `${artist} - ${track}`);
+    return;
+  }
   scrobbled = true;
 
   const params: Record<string, string> = {
