@@ -9,7 +9,7 @@
 
 **If you want audio fidelity and reliability:** Sidra. It passes audio through untouched, never creates an AudioContext, and inherits Apple's own playback pipeline. No double-resampling, no DSP artefacts, no AudioContext suspension stalls.
 
-**If you want a custom UI with equaliser, visualisations, and themes:** Cider. It offers a full-featured replacement interface with audio processing tools, Last.fm scrobbling, immersive mode, and extensive theming.
+**If you want a custom UI with equaliser, visualisations, and themes:** Cider. It has a full-featured replacement interface with audio processing tools, immersive mode, and extensive theming.
 
 **If you care about security and auditability:** Sidra. Cider v1's source code shows `contextIsolation: false`, `nodeIntegration: true`, `webSecurity: false`, and an embedded Express server. Cider 2+ is proprietary and cannot be audited. Sidra follows Electron security best practices with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, and an IPC channel allowlist.
 
@@ -259,7 +259,7 @@ Sidra's security posture, verified by a full security audit (Semgrep, Gitleaks, 
 | **Integrations** | | |
 | MPRIS (Linux) | Full bi-directional | Present but unreliable (open bugs) |
 | Discord Rich Presence | Yes (opt-in) | Yes |
-| Last.fm scrobbling | No | Yes (built-in) |
+| Last.fm scrobbling | Yes (opt-in) | Yes (built-in) |
 | ListenBrainz | No | Unknown |
 | Desktop notifications | Yes | Yes |
 | Chromecast / AirPlay | No | Yes (Cider v1 had Chromecast/AirPlay; status in 2+ unclear) |
@@ -329,7 +329,6 @@ The primary residual risk is MusicKit.js bugs in Apple's own web player, which a
 
 - Want a custom UI that differs from Apple's web player
 - Use the equaliser, spatial audio effect, or audio normalisation features
-- Want Last.fm scrobbling built into the client
 - Want immersive/fullscreen visualisation mode
 - Want extensive theming beyond what Sidra offers
 - Need Android support

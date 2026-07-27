@@ -21,6 +21,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 - [Authentication](#authentication)
 - [Theming](#theming)
 - [Discord Rich Presence](#discord-rich-presence)
+- [Last.fm Scrobbling](#lastfm-scrobbling)
 - [Track Change Notifications](#track-change-notifications)
 - [Tray](#tray)
 - [macOS Dock](#macos-dock)
@@ -203,8 +204,8 @@ Events flow from the renderer (MusicKit hook script) to the main process (player
 
 | Event | Payload | Consumers |
 |---|---|---|
-| `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Notifications, Dock, Taskbar |
-| `nowPlayingItemDidChange` | `NowPlayingPayload` (see `src/player.ts`) or `null` | MPRIS, Discord, Notifications, Dock, Taskbar |
+| `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
+| `nowPlayingItemDidChange` | `NowPlayingPayload` (see `src/player.ts`) or `null` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
 | `playbackTimeDidChange` | Position in microseconds | MPRIS, Discord (position only), Dock, Taskbar |
 | `repeatModeDidChange` | Mode integer (0/1/2) | MPRIS |
 | `shuffleModeDidChange` | Mode integer | MPRIS |
@@ -591,6 +592,57 @@ Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmde
 
 ---
 
+## Last.fm Scrobbling
+
+`src/integrations/lastfm` talks to the [Last.fm API 2.0](https://www.last.fm/api) through `net.fetch`. No library. Every request is signed with an MD5 `api_sig` over the sorted parameters plus the shared secret.
+
+### Credentials
+
+Two levels, and they are easy to confuse:
+
+| Credential | Scope | Where it lives |
+|---|---|---|
+| API key + shared secret | The Sidra application, shared by every user | `SIDRA_LASTFM_API_KEY` / `SIDRA_LASTFM_API_SECRET` env vars, else `assets/lastfm-credentials.json` (gitignored, written at build time, `asarUnpack`ed) |
+| Session key | One Last.fm account | `lastfm.sessionKey` in `electron-conf` |
+
+`isConfigured()` is false when the app-level pair is missing, and the tray then omits the Last.fm submenu entirely rather than showing a dead toggle.
+
+### Authentication
+
+The desktop token flow, because Last.fm offers no callback for a desktop app:
+
+1. `auth.getToken` returns a token.
+2. Sidra opens `https://www.last.fm/api/auth/` with the API key and token, assembled through `URL.searchParams` so both values are percent-encoded.
+3. `auth.getSession` is polled every 4s until the user approves, or 120s elapses.
+4. On success the session key and username are persisted, and a notification confirms it when notifications are enabled.
+
+`authGeneration` invalidates in-flight promises, so a late response cannot reconnect an account the user has since disconnected. `cancelAuth()` runs on `will-quit`.
+
+### Scrobbling rules
+
+- Now-playing (`track.updateNowPlaying`) is sent when a track starts or resumes.
+- `scrobbleThresholdMs()` returns `null` for a track of 30 seconds or less; those never scrobble.
+- Anything longer scrobbles at half its duration or 4 minutes, whichever comes first, measured against accumulated play time rather than wall time since the track began.
+- `trackStartUnix` is captured at the first real play transition, so a track queued while paused carries an honest timestamp.
+- A track scrobbles once. A failed submission is dropped, never retried.
+
+### Error handling
+
+`apiCall()` reads the response body and checks the API error code before the HTTP status, because Last.fm returns several of its own codes with a non-2xx status. Error 9 (invalid session key) means the user revoked Sidra at Last.fm: the session is cleared, the tray returns to **Connect to Last.fm…**, and a notification says so even when notifications are switched off.
+
+### Playback verification
+
+The scrobble timer is wall-clock and a page load cancels nothing - a reload, a service switch and `itms://` routing all emit no playback state transition. `doScrobble()` therefore re-reads `player.playbackSnapshot()` at submission time and refuses unless playback is still live and the playhead has reached the threshold. The comparison is absolute, never a delta against a position sampled when the timer was armed.
+
+### Event subscriptions
+
+| Event | Action |
+|---|---|
+| `nowPlayingItemDidChange` | Reset track state, send now-playing and arm the timer if already playing |
+| `playbackStateDidChange` | Arm the timer on a play transition; bank the play time and clear the timer on a pause |
+
+---
+
 ## Track Change Notifications
 
 Electron's built-in `Notification` API, works on all three platforms. Notification source shows as "Sidra" (app name) automatically.
@@ -856,6 +908,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Pause timer utility | `src/pauseTimer.ts` | `createPauseTimer()` shared by tray, dock, Discord |
 | Update checking (non-auto-update) | `src/update.ts` | GitHub API check for deb/rpm/Nix/DMG platforms |
 | Service worker cache clearing | `session.defaultSession.clearStorageData` | Clears on startup to prevent stale assets |
+| Last.fm scrobbling | `src/integrations/lastfm` + Last.fm API 2.0 | Opt-in; browser auth from the tray, per-user session key in `electron-conf` |
 
 #### Tray Menu Implementation Notes
 
@@ -865,7 +918,6 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 
 | Feature | Notes |
 |---|---|
-| Last.fm scrobbling | ~100 lines, proven pattern from Cider/apple-music-wrapper |
 | AirPlay casting | `airtunes2` node module (Cider v1 has this) |
 
 ### Explicitly Out of Scope

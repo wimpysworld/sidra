@@ -17,7 +17,9 @@ When the feature is active, Sidra passes the following to your local Discord cli
 
 ## What Sidra does not collect or store
 
-Sidra does not collect, store, or transmit any personal data. No data leaves your machine through Sidra. There is no server, no analytics, no account, and no telemetry.
+This feature collects and stores nothing, and needs no account. Track metadata reaches Discord over a local socket, so nothing leaves your machine through it. Sidra has no server, no analytics, and no telemetry.
+
+Other Sidra features can send data off your machine once you switch them on. Last.fm scrobbling is opt-in and sends your listening to Last.fm; see [`LASTFM-PRIVACY.md`](LASTFM-PRIVACY.md).
 
 ## Discord's privacy policy
 

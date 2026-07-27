@@ -27,7 +27,8 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 - Lossless audio on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - Localised storefront and interface in 32 languages
-- Desktop notifications, Discord Rich Presence, and Last.fm scrobbling
+- Desktop notifications and Discord Rich Presence
+- Last.fm scrobbling, opt-in: connect from the tray and approve Sidra on the page that opens in your browser
 - Injected Back, Forward, and Reload navigation controls
 - Apple Music Classical support (switchable at runtime from the tray Player submenu)
 - **Linux**:
@@ -68,6 +69,25 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 - Windows: `%APPDATA%\sidra\custom.css`
 
 The **Custom** menu entry only appears when that file exists.
+
+---
+
+## Last.fm scrobbling
+
+Nothing is sent to Last.fm until you connect an account. Open the tray menu, choose **Last.fm** → **Connect to Last.fm…**, and Sidra opens the Last.fm approval page in your browser. Approve Sidra there and the tray shows your username, along with a notification if you have those switched on.
+
+Once connected, the **Last.fm** submenu turns scrobbling on and off and offers **Disconnect**. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's.
+
+Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
+
+- Linux: `~/.config/sidra/config.json`
+- macOS: `~/Library/Application Support/sidra/config.json`
+- Windows: `%APPDATA%\sidra\config.json`
+
+> [!IMPORTANT]
+> Last.fm session keys never expire, and the Last.fm API has no call to revoke one. **Disconnect** deletes Sidra's copy of the key, which stops this installation scrobbling, but only Last.fm can invalidate the key itself. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that. Sidra notices the revoked session on its next request, disconnects, and tells you.
+
+What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md).
 
 ---
 
@@ -230,6 +250,26 @@ Credentials are stored at `~/.config/evs/config.json`. The account is portable -
 | Local machine | `~/.config/evs/config.json`; or set `EVS_ACCOUNT_NAME` + `EVS_PASSWD` env vars (e.g. via sops-nix) |
 
 `just install` and `just build` sign the local Electron binary automatically once credentials are in place. Release builds are signed via the `afterPack` hook in `build/afterPack.cjs`.
+
+### Last.fm API credentials
+
+Official releases ship Last.fm API credentials; a build from this repository does not. Without them the tray hides the Last.fm menu entirely, so the advertised feature is simply absent rather than broken.
+
+Register an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create), then export the key and secret before building:
+
+```bash
+export SIDRA_LASTFM_API_KEY=your-api-key
+export SIDRA_LASTFM_API_SECRET=your-shared-secret
+just run
+```
+
+| Context | Credentials |
+|---------|-------------|
+| Local machine | `SIDRA_LASTFM_API_KEY` + `SIDRA_LASTFM_API_SECRET` env vars (e.g. via direnv or sops-nix) |
+| Packaged build | `assets/lastfm-credentials.json`, written from those env vars by `just build` and `npm run build` |
+| CI | The same two names as repository secrets |
+
+Environment variables win at runtime; the JSON file is the fallback that packaged builds use. That file is gitignored - the shared secret must never be committed. With neither variable set the build writes it empty, unless it already holds credentials, in which case it is left alone.
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
 

@@ -163,6 +163,18 @@ const CLIENT_ID = '1485248818688688318';
 
 The Discord application client ID is hardcoded. This is a public identifier (not a secret) - Discord client IDs are inherently public and visible in any Discord Rich Presence integration. No remediation needed. Documented for completeness.
 
+### O7. [CWE-798] Last.fm shared secret shipped in release artefacts - `assets/lastfm-credentials.json`
+
+**Confidence:** Confirmed
+
+Unlike the Discord client ID above, the Last.fm shared secret is a real secret. It is not in the source tree: the file is gitignored and written at build time by `scripts/inject-lastfm-credentials.cjs` from CI secrets. It is, however, listed in `asarUnpack`, so every official artefact carries it in plain text at `app.asar.unpacked/assets/lastfm-credentials.json`, where any user can read it.
+
+This is inherent to a desktop application using the Last.fm API. Signing a request needs the secret, and Sidra has no server to hold it on the user's behalf.
+
+**Impact:** Bounded. The secret identifies the application, never a user. Every authenticated call additionally needs a per-user session key that exists only after that user approves Sidra in a browser, so an extracted secret alone cannot read or write any Last.fm account. The realistic outcomes are a third party impersonating Sidra to the Last.fm API, and Last.fm revoking the key in response, which would stop scrobbling for every user until a replacement key ships.
+
+**Fix:** None available short of a Sidra-operated proxy, which the project does not have and does not want. Rotate the key if abuse is observed. The "No secrets in source or git history" line below remains accurate - the secret reaches artefacts from CI, never from the repository.
+
 ---
 
 ## Dependencies
@@ -247,3 +259,4 @@ The codebase follows Electron security best practices consistently:
 |----------|---------|--------|--------|
 | 1 | Disabled update signature verification | High | Sign Windows builds, remove `verifyUpdateCodeSignature = false` |
 | 2 | O3 - Broad macOS entitlements | N/A | Cannot remediate; required by Electron + Widevine |
+| 3 | O7 - Last.fm shared secret in artefacts | N/A | Cannot remediate without a proxy server; rotate the key if abused |
