@@ -72,6 +72,19 @@ interface LastfmResponse {
   session?: { name?: string; key?: string };
 }
 
+// Last.fm error 9, "Invalid session key - Please re-authenticate". Session keys
+// never expire on their own, so this is what the user revoking Sidra under their
+// account's Applications settings looks like. No retry can recover it.
+const INVALID_SESSION_ERROR = 9;
+
+/** An error the Last.fm API reported in its response body, with its code intact. */
+class LastfmApiError extends Error {
+  constructor(readonly code: number, message: string) {
+    super(message);
+    this.name = 'LastfmApiError';
+  }
+}
+
 /**
  * True when the app ships with Last.fm API credentials. The tray hides the
  * Last.fm menu entirely when this is false, so users never see a dead feature.
@@ -121,7 +134,7 @@ async function apiCall(params: Record<string, string>, post: boolean): Promise<L
 
   const json = (await response.json()) as LastfmResponse;
   if (json.error) {
-    throw new Error(`Last.fm error ${json.error}: ${json.message ?? 'unknown'}`);
+    throw new LastfmApiError(json.error, `Last.fm error ${json.error}: ${json.message ?? 'unknown'}`);
   }
   return json;
 }
@@ -186,6 +199,27 @@ function active(): boolean {
   return isConfigured() && getLastfmEnabled() && !!getLastfmSessionKey() && !!artist && !!track;
 }
 
+/**
+ * Disconnects the account when Last.fm rejects the session key, and reports it.
+ * Returns true once the error is handled, so callers skip their own logging.
+ *
+ * Without this the session stays set, nothing retries, and the tray still shows
+ * the account as connected: scrobbling is dead and the UI says otherwise.
+ *
+ * A session key that is already gone means an earlier failure did the work, so
+ * requests still in flight at that moment settle here silently. That keeps the
+ * user to one notification, and stops a late failure carrying the dead key from
+ * tearing down a session they have since reconnected.
+ */
+function handleInvalidSession(err: unknown): boolean {
+  if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR) return false;
+  if (!getLastfmSessionKey()) return true;
+  lastfmLog.warn('session rejected by Last.fm; reconnect from the tray to resume scrobbling');
+  disconnect();
+  notify(getLastfmConnectFailedText());
+  return true;
+}
+
 function sendNowPlaying(): void {
   if (!active()) return;
   const params: Record<string, string> = {
@@ -200,7 +234,10 @@ function sendNowPlaying(): void {
 
   apiCall(params, true)
     .then(() => lastfmLog.debug('now playing:', `${artist} - ${track}`))
-    .catch((err: Error) => lastfmLog.warn('now playing failed:', err.message));
+    .catch((err: Error) => {
+      if (handleInvalidSession(err)) return;
+      lastfmLog.warn('now playing failed:', err.message);
+    });
 }
 
 /**
@@ -257,6 +294,7 @@ function doScrobble(): void {
     .then(() => lastfmLog.info('scrobbled:', `${artist} - ${track}`))
     .catch((err: Error) => {
       if (generation === trackGeneration) scrobbled = false;
+      if (handleInvalidSession(err)) return;
       lastfmLog.warn('scrobble failed:', err.message);
     });
 }

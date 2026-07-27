@@ -1,17 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'crypto';
-import { net } from 'electron';
+import { net, Notification } from 'electron';
 import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
 
+// The stored session key drives both the request path and the tray's connected
+// state, so the mock holds it as state rather than a constant: a test can then
+// see clearLastfmSession() take effect the way production does.
+const session = vi.hoisted(() => ({ key: 'session-key' as string | null, enabled: true }));
+
 vi.mock('../src/config', () => ({
-  getLastfmEnabled: vi.fn(() => true),
-  getLastfmSessionKey: vi.fn(() => 'session-key'),
-  setLastfmSession: vi.fn(),
-  clearLastfmSession: vi.fn(),
-  setLastfmEnabled: vi.fn(),
-  getNotificationsEnabled: vi.fn(() => false),
+  getLastfmEnabled: vi.fn(() => session.enabled),
+  getLastfmSessionKey: vi.fn(() => session.key),
+  setLastfmSession: vi.fn((key: string) => { session.key = key; }),
+  clearLastfmSession: vi.fn(() => { session.key = null; }),
+  setLastfmEnabled: vi.fn((enabled: boolean) => { session.enabled = enabled; }),
+  getNotificationsEnabled: vi.fn(() => true),
   getMusicService: vi.fn(() => 'music'),
 }));
 
@@ -103,18 +108,25 @@ function play(player: FakePlayer, ms: number): void {
   }
 }
 
-describe('scrobble submission', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
-    vi.useFakeTimers();
-    vi.setSystemTime(START);
-  });
+/** A connected account, an accepting API and a clock under test control. */
+function startFromConnected(): void {
+  vi.clearAllMocks();
+  session.key = 'session-key';
+  session.enabled = true;
+  vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+  vi.mocked(Notification).mockImplementation(() => ({ on: vi.fn(), show: vi.fn() }) as unknown as Notification);
+  vi.useFakeTimers();
+  vi.setSystemTime(START);
+}
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllEnvs();
-  });
+function restoreRealTime(): void {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+}
+
+describe('scrobble submission', () => {
+  beforeEach(startFromConnected);
+  afterEach(restoreRealTime);
 
   it('does not scrobble a track abandoned by a page load', async () => {
     const lastfm = await loadLastfm();
@@ -186,5 +198,100 @@ describe('scrobble submission', () => {
     expect(submitted).toHaveLength(2);
     expect(submitted[0].get('timestamp')).toBe(START_UNIX);
     expect(submitted[1].get('timestamp')).toBe(String(Number(START_UNIX) + 400));
+  });
+});
+
+/** A Last.fm API refusal: HTTP 200 with an error code in the body. */
+function apiError(code: number): Response {
+  return new Response(JSON.stringify({ error: code, message: 'refused' }));
+}
+
+/** Refuses scrobbles with `code` while still accepting now-playing updates. */
+function refuseScrobbles(code: number): void {
+  vi.mocked(net.fetch).mockImplementation((_input, init) => {
+    const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
+    return Promise.resolve(method === 'track.scrobble' ? apiError(code) : new Response('{}'));
+  });
+}
+
+/** Settles the request promises the timers have started. */
+function flush(): Promise<void> {
+  return vi.advanceTimersByTimeAsync(0);
+}
+
+/** Plays `TRACK` past its scrobble threshold. */
+function playPastThreshold(player: FakePlayer): void {
+  player.emitNowPlaying(TRACK);
+  player.emitPlaybackState(PlaybackState.Playing);
+  play(player, 210_000);
+}
+
+describe('revoked session', () => {
+  beforeEach(startFromConnected);
+  afterEach(restoreRealTime);
+
+  it('disconnects the account when the API returns error 9', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    refuseScrobbles(9);
+
+    playPastThreshold(player);
+    await flush();
+
+    // The tray reads connection state from the session key alone, so clearing
+    // it is what returns the menu to the connect action.
+    expect(session.key).toBeNull();
+    expect(session.enabled).toBe(false);
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+  });
+
+  it('notifies once when requests already in flight are refused too', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    const pending: Array<(response: Response) => void> = [];
+    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => pending.push(resolve)));
+
+    playPastThreshold(player);
+
+    // The now-playing update and the scrobble are both awaiting a response when
+    // the revocation lands.
+    expect(pending).toHaveLength(2);
+    for (const resolve of pending) resolve(apiError(9));
+    await flush();
+
+    expect(session.key).toBeNull();
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the session through a transient error', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 16: the service is temporarily unavailable, so the session is still good.
+    refuseScrobbles(16);
+
+    playPastThreshold(player);
+    await flush();
+
+    expect(session.key).toBe('session-key');
+    expect(session.enabled).toBe(true);
+    expect(vi.mocked(Notification)).not.toHaveBeenCalled();
+  });
+
+  it('keeps the session through a failure with no JSON body', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('<html>502</html>', { status: 502 })));
+
+    playPastThreshold(player);
+    await flush();
+
+    expect(session.key).toBe('session-key');
+    expect(session.enabled).toBe(true);
+    expect(vi.mocked(Notification)).not.toHaveBeenCalled();
   });
 });
