@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'crypto';
-import { net, shell, Notification } from 'electron';
+import { app, net, shell, Notification } from 'electron';
+import log from 'electron-log/main';
 import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
@@ -211,6 +212,30 @@ describe('scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
+  it('keeps the play time already earned when scrobbling is toggled off and on', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 50_000);
+
+    // The tray toggle, off then on, exactly as buildLastfmSubmenu drives it.
+    session.enabled = false;
+    lastfm.disable();
+    play(player, 60_000);
+    session.enabled = true;
+    lastfm.enable();
+
+    // The first 50 seconds are banked, so 150 more reach the 200 second
+    // threshold. Losing them would push the scrobble out to 200 seconds from
+    // here, which is past the end of this test.
+    play(player, 150_000);
+
+    expect(scrobbles()).toHaveLength(1);
+  });
+
   it('scrobbles each pass of a repeated track with its own timestamp', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
@@ -312,6 +337,40 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).not.toHaveBeenCalled();
   });
 
+  it('submits a track once, even when that submission fails', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 16: a temporary error, the case a retry would exist for.
+    refuseScrobbles(16);
+
+    playPastThreshold(player);
+    await flush();
+
+    // Pause and resume re-arms the timer past the threshold, which is the one
+    // path that used to resubmit a track the API had already refused.
+    player.emitPlaybackState(PlaybackState.Paused);
+    await vi.advanceTimersByTimeAsync(30_000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 210_000);
+    await flush();
+
+    expect(scrobbles()).toHaveLength(1);
+  });
+
+  it('reports the HTTP status when a failure carries no JSON body', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('<html>500</html>', { status: 500 })));
+
+    playPastThreshold(player);
+    await flush();
+
+    const logged = vi.mocked(log.scope('lastfm').warn).mock.calls.flat().join(' ');
+    expect(logged).toContain('HTTP 500');
+  });
+
   it('keeps the session through a failure with no JSON body', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
@@ -349,6 +408,16 @@ function respondToAuth(sessionResponse: () => Response): void {
 }
 
 /**
+ * Runs the `will-quit` handlers the integration registered, as quitting does.
+ * The electron mock records them rather than firing them, and its `app.on` is a
+ * plain `vi.fn()`, so the overloaded signature is narrowed to what is stored.
+ */
+function quit(): void {
+  const registered = vi.mocked(app.on).mock.calls as unknown as Array<[string, () => void]>;
+  for (const [event, handler] of registered) if (event === 'will-quit') handler();
+}
+
+/**
  * These tests import the module through loadLastfm() for the same reason the
  * scrobble tests do: API_KEY and API_SECRET are resolved once at module load,
  * and the statically imported copy has neither, so every request path
@@ -369,6 +438,47 @@ describe('authentication', () => {
     expect(vi.mocked(shell.openExternal)).toHaveBeenCalledWith(expect.stringContaining('token=auth-token'));
     expect(session.key).toBe('new-key');
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+  });
+
+  it('percent-encodes the token it puts in the approval URL', async () => {
+    const lastfm = await loadLastfm();
+    noSession();
+    vi.mocked(net.fetch).mockImplementation((input) =>
+      Promise.resolve(
+        String(input).includes('auth.getToken')
+          ? new Response(JSON.stringify({ token: 'tok&foo=bar#frag' }))
+          : apiError(14),
+      ),
+    );
+
+    lastfm.startAuth();
+    await flush();
+
+    // Interpolated, the `&` added a parameter and the `#` truncated the query.
+    const opened = new URL(String(vi.mocked(shell.openExternal).mock.calls[0][0]));
+    expect(opened.searchParams.get('token')).toBe('tok&foo=bar#frag');
+    expect(opened.hash).toBe('');
+
+    lastfm.disconnect();
+  });
+
+  it('stops polling for a session when the app quits', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    noSession();
+    respondToAuth(() => apiError(14));
+
+    lastfm.startAuth();
+    await flush();
+
+    // One auth.getToken and one auth.getSession poll.
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(2);
+
+    quit();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(2);
   });
 
   it('stops polling for a session once the account is disconnected', async () => {

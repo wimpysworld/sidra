@@ -132,10 +132,22 @@ async function apiCall(params: Record<string, string>, post: boolean): Promise<L
       })
     : await net.fetch(`${API_ROOT}?${query.toString()}`);
 
-  const json = (await response.json()) as LastfmResponse;
+  // The body is read before the status because Last.fm reports its own errors
+  // in the body and sends several of them with a non-2xx status: checking the
+  // status first would collapse error 9 into a generic failure and leave a
+  // revoked session connected. The status only speaks up when the body carries
+  // no code, which is what an outage or a proxy error looks like.
+  const body = await response.text();
+  let json: LastfmResponse;
+  try {
+    json = JSON.parse(body) as LastfmResponse;
+  } catch {
+    throw new Error(`Last.fm HTTP ${response.status}: response was not JSON`);
+  }
   if (json.error) {
     throw new LastfmApiError(json.error, `Last.fm error ${json.error}: ${json.message ?? 'unknown'}`);
   }
+  if (!response.ok) throw new Error(`Last.fm HTTP ${response.status}`);
   return json;
 }
 
@@ -151,14 +163,19 @@ let lastResumeAt: number | null = null;
 let scrobbled = false;
 let scrobbleTimer: ReturnType<typeof setTimeout> | null = null;
 let previousState = 0;
-let trackGeneration = 0;
 let authInProgress = false;
 let authPollTimer: ReturnType<typeof setTimeout> | null = null;
 let authGeneration = 0;
 let getWindow: () => BrowserWindow | null = () => null;
 
-function notify(body: string): void {
-  if (!getNotificationsEnabled()) return;
+/**
+ * Shows a Last.fm notification. `force` sends it even when the user has turned
+ * notifications off: a connect failure answers an action the user just took in
+ * the tray, and without it the menu silently returns to "Connect" with no
+ * explanation. Routine confirmations stay gated on the preference.
+ */
+function notify(body: string, force = false): void {
+  if (!force && !getNotificationsEnabled()) return;
   try {
     const notification = new Notification({ title: 'Last.fm', body, silent: true });
     notification.on('click', () => {
@@ -179,6 +196,17 @@ function clearScrobbleTimer(): void {
     clearTimeout(scrobbleTimer);
     scrobbleTimer = null;
   }
+}
+
+/**
+ * Banks the time played since the last resume. Every path that stops counting
+ * play time goes through this, so the running total survives a pause and a
+ * disable alike and the scrobble threshold is measured against real listening.
+ */
+function foldPlayTime(): void {
+  if (lastResumeAt === null) return;
+  accumulatedMs += Date.now() - lastResumeAt;
+  lastResumeAt = null;
 }
 
 /**
@@ -216,7 +244,7 @@ function handleInvalidSession(err: unknown): boolean {
   if (!getLastfmSessionKey()) return true;
   lastfmLog.warn('session rejected by Last.fm; reconnect from the tray to resume scrobbling');
   disconnect();
-  notify(getLastfmConnectFailedText());
+  notify(getLastfmConnectFailedText(), true);
   return true;
 }
 
@@ -286,16 +314,17 @@ function doScrobble(): void {
   if (album) params.album = album;
   if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
 
-  // The rollback is scoped to the track that issued the request: by the time a
-  // failure lands the track may have changed, and clearing the flag then would
-  // let the new track scrobble twice.
-  const generation = trackGeneration;
+  // A failure is final for this track. `scrobbled` stays set, so the track is
+  // submitted once and once only. Clearing it re-opened the submission without
+  // re-arming anything, so the only way back to a request was the user pausing
+  // and resuming; a retry that fires on a failed submission is a retry loop,
+  // and the remaining time it would wait comes from `accumulatedMs`, which is
+  // only folded at pause and so means nothing mid-play.
   apiCall(params, true)
     .then(() => lastfmLog.info('scrobbled:', `${artist} - ${track}`))
     .catch((err: Error) => {
-      if (generation === trackGeneration) scrobbled = false;
       if (handleInvalidSession(err)) return;
-      lastfmLog.warn('scrobble failed:', err.message);
+      lastfmLog.warn('scrobble failed, not retried:', err.message);
     });
 }
 
@@ -318,7 +347,6 @@ function resetTrack(payload: NowPlayingPayload | null): void {
   track = payload?.name ?? null;
   album = payload?.albumName ?? null;
   durationMs = payload?.durationInMillis ?? 0;
-  trackGeneration += 1;
   trackStartUnix = 0;
   accumulatedMs = 0;
   lastResumeAt = null;
@@ -351,8 +379,20 @@ export function enable(): void {
 
 export function disable(): void {
   clearScrobbleTimer();
-  lastResumeAt = null;
+  foldPlayTime();
   lastfmLog.info('scrobbling disabled');
+}
+
+/**
+ * Hands a URL to the system browser, checking the protocol first as every other
+ * `shell.openExternal` call in the app does.
+ */
+function openInBrowser(url: URL): void {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    lastfmLog.warn('refusing to open a non-web URL:', url.protocol);
+    return;
+  }
+  shell.openExternal(url.toString()).catch((err: Error) => lastfmLog.warn('failed to open browser:', err.message));
 }
 
 /**
@@ -365,7 +405,7 @@ export function startAuth(onComplete?: () => void): void {
   if (!isConfigured()) {
     lastfmLog.warn('cannot authenticate: no API credentials configured');
     setLastfmEnabled(false);
-    notify(getLastfmConnectFailedText());
+    notify(getLastfmConnectFailedText(), true);
     onComplete?.();
     return;
   }
@@ -377,8 +417,12 @@ export function startAuth(onComplete?: () => void): void {
       if (generation !== authGeneration) return;
       const token = res.token;
       if (!token) throw new Error('no token returned');
-      const url = `${AUTH_URL}?api_key=${API_KEY}&token=${token}`;
-      shell.openExternal(url).catch((err: Error) => lastfmLog.warn('failed to open browser:', err.message));
+      // URLSearchParams percent-encodes both values. Interpolating them left a
+      // token carrying `&` or `#` to rewrite or truncate the query.
+      const url = new URL(AUTH_URL);
+      url.searchParams.set('api_key', API_KEY);
+      url.searchParams.set('token', token);
+      openInBrowser(url);
       lastfmLog.info('waiting for browser authorisation');
       pollForSession(token, Date.now(), generation, onComplete);
     })
@@ -387,7 +431,7 @@ export function startAuth(onComplete?: () => void): void {
       authInProgress = false;
       lastfmLog.warn('auth.getToken failed:', err.message);
       setLastfmEnabled(false);
-      notify(getLastfmConnectFailedText());
+      notify(getLastfmConnectFailedText(), true);
       onComplete?.();
     });
 }
@@ -417,7 +461,7 @@ function pollForSession(token: string, startedAt: number, generation: number, on
         authPollTimer = null;
         lastfmLog.warn('authorisation timed out');
         setLastfmEnabled(false);
-        notify(getLastfmConnectFailedText());
+        notify(getLastfmConnectFailedText(), true);
         onComplete?.();
         return;
       }
@@ -456,10 +500,7 @@ export function init(ctx: IntegrationContext): void {
     if (nowPlaying && !wasPlaying) {
       markPlaybackStarted();
     } else if (!nowPlaying && wasPlaying) {
-      if (lastResumeAt !== null) {
-        accumulatedMs += Date.now() - lastResumeAt;
-        lastResumeAt = null;
-      }
+      foldPlayTime();
       clearScrobbleTimer();
     }
   };
@@ -469,6 +510,7 @@ export function init(ctx: IntegrationContext): void {
 
   app.on('will-quit', () => {
     clearScrobbleTimer();
+    cancelAuth();
     ctx.player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     ctx.player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     artist = null;
