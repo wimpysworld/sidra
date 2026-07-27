@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'crypto';
-import { net, Notification } from 'electron';
+import { net, shell, Notification } from 'electron';
 import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
@@ -180,6 +180,37 @@ describe('scrobble submission', () => {
     expect(submitted[0].get('timestamp')).toBe(START_UNIX);
   });
 
+  it('timestamps a scrobble from the moment playback starts', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // The track is selected while paused and only played a minute later, so
+    // the metadata change is not when listening began.
+    player.emitNowPlaying(TRACK);
+    vi.advanceTimersByTime(60_000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 210_000);
+
+    const submitted = scrobbles();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('timestamp')).toBe(String(Number(START_UNIX) + 60));
+  });
+
+  it('scrobbles a track once, however often it is paused and resumed after the threshold', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    playPastThreshold(player);
+    player.emitPlaybackState(PlaybackState.Paused);
+    vi.advanceTimersByTime(30_000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 210_000);
+
+    expect(scrobbles()).toHaveLength(1);
+  });
+
   it('scrobbles each pass of a repeated track with its own timestamp', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
@@ -293,5 +324,70 @@ describe('revoked session', () => {
     expect(session.key).toBe('session-key');
     expect(session.enabled).toBe(true);
     expect(vi.mocked(Notification)).not.toHaveBeenCalled();
+  });
+});
+
+// Last.fm has no auth callback, so the flow polls auth.getSession on this
+// interval until the user approves the token in their browser.
+const AUTH_POLL_INTERVAL_MS = 4000;
+
+/** No linked account, as it is before the first successful authentication. */
+function noSession(): void {
+  session.key = null;
+  session.enabled = false;
+}
+
+/** Answers auth.getToken with a token, and every auth.getSession with `session`. */
+function respondToAuth(sessionResponse: () => Response): void {
+  vi.mocked(net.fetch).mockImplementation((input) =>
+    Promise.resolve(
+      String(input).includes('auth.getToken')
+        ? new Response(JSON.stringify({ token: 'auth-token' }))
+        : sessionResponse(),
+    ),
+  );
+}
+
+/**
+ * These tests import the module through loadLastfm() for the same reason the
+ * scrobble tests do: API_KEY and API_SECRET are resolved once at module load,
+ * and the statically imported copy has neither, so every request path
+ * short-circuits before it reaches the network.
+ */
+describe('authentication', () => {
+  beforeEach(startFromConnected);
+  afterEach(restoreRealTime);
+
+  it('opens the browser, then stores and announces the session the user approves', async () => {
+    const lastfm = await loadLastfm();
+    noSession();
+    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'wimpy' } })));
+
+    lastfm.startAuth();
+    await flush();
+
+    expect(vi.mocked(shell.openExternal)).toHaveBeenCalledWith(expect.stringContaining('token=auth-token'));
+    expect(session.key).toBe('new-key');
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops polling for a session once the account is disconnected', async () => {
+    const lastfm = await loadLastfm();
+    noSession();
+    // 14: the token is not yet authorised, which is every poll until the user
+    // approves it, so the flow keeps polling.
+    respondToAuth(() => apiError(14));
+
+    lastfm.startAuth();
+    await flush();
+    await vi.advanceTimersByTimeAsync(AUTH_POLL_INTERVAL_MS);
+
+    // One auth.getToken and two auth.getSession polls.
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(3);
+
+    lastfm.disconnect();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(3);
   });
 });

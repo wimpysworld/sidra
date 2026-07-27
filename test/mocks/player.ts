@@ -30,11 +30,15 @@ export class FakePlayer extends Player {
     this.setPositionUs(this.snapshot.positionUs + ms * 1000);
   }
 
+  /** Updates the snapshot to match `state` without emitting. */
+  setPlaybackState(state: number): void {
+    this.snapshot = { ...this.snapshot, state, isPlaying: state === PlaybackState.Playing };
+  }
+
   /** Updates the snapshot to match `state`, then emits, exactly as the real Player does. */
   emitPlaybackState(state: number): void {
-    const isPlaying = state === PlaybackState.Playing;
-    this.snapshot = { ...this.snapshot, state, isPlaying };
-    this.emit('playbackStateDidChange', { status: isPlaying, state });
+    this.setPlaybackState(state);
+    this.emit('playbackStateDidChange', { status: this.snapshot.isPlaying, state });
   }
 
   emitNowPlaying(payload: NowPlayingPayload | null): void {
