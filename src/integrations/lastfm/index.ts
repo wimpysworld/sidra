@@ -161,6 +161,7 @@ let trackStartUnix = 0;
 let accumulatedMs = 0;
 let lastResumeAt: number | null = null;
 let scrobbled = false;
+let positionReported = false;
 let scrobbleTimer: ReturnType<typeof setTimeout> | null = null;
 let previousState = 0;
 let authInProgress = false;
@@ -280,6 +281,14 @@ function sendNowPlaying(): void {
  * that, because a track abandoned mid-play leaves the playhead short of the
  * threshold.
  *
+ * The playhead belongs to the player, not to the track held here, so it is only
+ * trusted once a position report has arrived for this track: `positionReported`
+ * is cleared with the rest of the track state. Without it, the fresh page after
+ * a reload announces a new track while the frozen playhead still carries the
+ * previous one's play time, and a short track would be scrobbled off it having
+ * never played. An idle page reports no position, so the stale value never
+ * counts.
+ *
  * The comparison is absolute rather than a delta against the position sampled
  * when the timer was armed. A delta cannot work: a track abandoned after some
  * real playback has moved its playhead, and repeat-one re-arms on the play
@@ -287,6 +296,7 @@ function sendNowPlaying(): void {
  * baseline would be the end of the previous loop.
  */
 function playbackReachedThreshold(): boolean {
+  if (!positionReported) return false;
   const snapshot = playerRef?.playbackSnapshot();
   if (!snapshot?.isPlaying) return false;
   const threshold = scrobbleThresholdMs(durationMs);
@@ -351,6 +361,7 @@ function resetTrack(payload: NowPlayingPayload | null): void {
   accumulatedMs = 0;
   lastResumeAt = null;
   scrobbled = false;
+  positionReported = false;
 }
 
 /**
@@ -505,14 +516,22 @@ export function init(ctx: IntegrationContext): void {
     }
   };
 
+  // Stores a flag only, and starts nothing: a debounced send from this event
+  // would reset its own timer on every position report and never expire.
+  const onPlaybackTimeDidChange = (): void => {
+    positionReported = true;
+  };
+
   ctx.player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   ctx.player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  ctx.player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
 
   app.on('will-quit', () => {
     clearScrobbleTimer();
     cancelAuth();
     ctx.player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     ctx.player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    ctx.player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
     artist = null;
     track = null;
     album = null;
@@ -520,6 +539,7 @@ export function init(ctx: IntegrationContext): void {
     accumulatedMs = 0;
     lastResumeAt = null;
     scrobbled = false;
+    positionReported = false;
     previousState = 0;
   });
 }

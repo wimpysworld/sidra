@@ -74,6 +74,14 @@ const TRACK: NowPlayingPayload = {
   durationInMillis: 400_000,
 };
 
+// A 60 second track, so the scrobble threshold is 30 seconds: well inside the
+// playhead a longer track leaves behind.
+const SHORT_TRACK: NowPlayingPayload = {
+  name: 'Temptation',
+  artistName: 'New Order',
+  durationInMillis: 60_000,
+};
+
 const START = new Date('2026-01-01T00:00:00Z');
 const START_UNIX = String(Math.floor(START.getTime() / 1000));
 
@@ -144,6 +152,48 @@ describe('scrobble submission', () => {
     vi.advanceTimersByTime(600_000);
 
     expect(scrobbles()).toHaveLength(0);
+  });
+
+  it('does not scrobble a new track on the playhead the last one left behind', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // 100 seconds of the 400 second track: short of its own 200 second
+    // threshold, so it never scrobbles, but well past the next track's.
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 100_000);
+
+    // The page load announces a different track. It emits no state transition
+    // and no position report, so the cached playing flag and the 100 second
+    // playhead both still belong to the track that went away. The timer arms
+    // for the new track's 30 second threshold and fires having played none of
+    // it.
+    player.emitNowPlaying(SHORT_TRACK);
+    vi.advanceTimersByTime(60_000);
+
+    expect(scrobbles()).toHaveLength(0);
+  });
+
+  it('scrobbles a new track once its own playhead reaches the threshold', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 100_000);
+
+    // The same handover, but this page plays: the new track reports its own
+    // playhead from the start, so it earns its scrobble.
+    player.emitNowPlaying(SHORT_TRACK);
+    player.setPositionUs(0);
+    play(player, 40_000);
+
+    const submitted = scrobbles();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('track')).toBe('Temptation');
   });
 
   it('scrobbles once when a track plays past its threshold', async () => {

@@ -20,9 +20,15 @@ export class FakePlayer extends Player {
     return { ...this.snapshot };
   }
 
-  /** Moves the reported playhead, as position reports from the renderer would. */
+  /**
+   * Moves the reported playhead and emits, as position reports from the
+   * renderer do. Both halves matter: the real Player stores the position and
+   * emits it from the same handler, and an integration may only trust the
+   * stored value once it has seen the event.
+   */
   setPositionUs(positionUs: number): void {
     this.snapshot = { ...this.snapshot, positionUs };
+    this.emit('playbackTimeDidChange', positionUs);
   }
 
   /** Advances the playhead by `ms` of playback. */
