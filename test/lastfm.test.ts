@@ -372,6 +372,43 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a reconnected session when a request signed with the old key is refused', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    const pending: Array<(response: Response) => void> = [];
+    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => pending.push(resolve)));
+
+    // The now-playing update and the scrobble are both signed with the key the
+    // account is connected with, and both are still awaiting a response.
+    playPastThreshold(player);
+    expect(pending).toHaveLength(2);
+
+    // The first refusal disconnects the account, as it should.
+    pending[0](apiError(9));
+    await flush();
+    expect(session.key).toBeNull();
+
+    // The user reconnects from the tray and approves a new key. The tray sets
+    // the preference before starting the flow, as buildLastfmSubmenu does.
+    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'wimpy' } })));
+    session.enabled = true;
+    lastfm.startAuth();
+    await flush();
+    expect(session.key).toBe('new-key');
+
+    // Only now does the second request fail, still carrying the dead key. It
+    // says nothing about the session that replaced it.
+    pending[1](apiError(9));
+    await flush();
+
+    expect(session.key).toBe('new-key');
+    expect(session.enabled).toBe(true);
+    // The failure and the reconnection, and nothing from the stale refusal.
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the session through a transient error', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();

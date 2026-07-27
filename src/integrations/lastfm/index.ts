@@ -235,14 +235,16 @@ function active(): boolean {
  * Without this the session stays set, nothing retries, and the tray still shows
  * the account as connected: scrobbling is dead and the UI says otherwise.
  *
- * A session key that is already gone means an earlier failure did the work, so
- * requests still in flight at that moment settle here silently. That keeps the
- * user to one notification, and stops a late failure carrying the dead key from
- * tearing down a session they have since reconnected.
+ * The rejection only counts against the key the request was signed with, which
+ * is why the caller passes it in rather than reading the stored one again. A
+ * second request in flight when the first is refused names a key that is gone,
+ * so it settles here silently and the user sees one notification. A refusal
+ * that arrives after the user has reconnected names the old key too, so it
+ * cannot tear down the session that replaced it.
  */
-function handleInvalidSession(err: unknown): boolean {
+function handleInvalidSession(err: unknown, requestKey: string): boolean {
   if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR) return false;
-  if (!getLastfmSessionKey()) return true;
+  if (getLastfmSessionKey() !== requestKey) return true;
   lastfmLog.warn('session rejected by Last.fm; reconnect from the tray to resume scrobbling');
   disconnect();
   notify(getLastfmConnectFailedText(), true);
@@ -251,12 +253,13 @@ function handleInvalidSession(err: unknown): boolean {
 
 function sendNowPlaying(): void {
   if (!active()) return;
+  const sessionKey = getLastfmSessionKey()!;
   const params: Record<string, string> = {
     method: 'track.updateNowPlaying',
     artist: artist!,
     track: track!,
     api_key: API_KEY,
-    sk: getLastfmSessionKey()!,
+    sk: sessionKey,
   };
   if (album) params.album = album;
   if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
@@ -264,7 +267,7 @@ function sendNowPlaying(): void {
   apiCall(params, true)
     .then(() => lastfmLog.debug('now playing:', `${artist} - ${track}`))
     .catch((err: Error) => {
-      if (handleInvalidSession(err)) return;
+      if (handleInvalidSession(err, sessionKey)) return;
       lastfmLog.warn('now playing failed:', err.message);
     });
 }
@@ -313,13 +316,14 @@ function doScrobble(): void {
   }
   scrobbled = true;
 
+  const sessionKey = getLastfmSessionKey()!;
   const params: Record<string, string> = {
     method: 'track.scrobble',
     artist: artist!,
     track: track!,
     timestamp: String(trackStartUnix),
     api_key: API_KEY,
-    sk: getLastfmSessionKey()!,
+    sk: sessionKey,
   };
   if (album) params.album = album;
   if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
@@ -333,7 +337,7 @@ function doScrobble(): void {
   apiCall(params, true)
     .then(() => lastfmLog.info('scrobbled:', `${artist} - ${track}`))
     .catch((err: Error) => {
-      if (handleInvalidSession(err)) return;
+      if (handleInvalidSession(err, sessionKey)) return;
       lastfmLog.warn('scrobble failed, not retried:', err.message);
     });
 }
