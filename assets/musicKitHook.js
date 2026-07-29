@@ -42,18 +42,27 @@
           return;
         }
 
+        // An unresolvable duration or position clears the state rather than
+        // reporting duration: Infinity, because the hook cannot tell genuinely
+        // unbounded media (a radio station) from a duration not yet resolved.
         let duration;
         if (Number.isFinite(mk.currentPlaybackDuration) &&
             mk.currentPlaybackDuration > 0) {
           duration = mk.currentPlaybackDuration;
         } else {
           const durationInMillis = mk.nowPlayingItem?.attributes?.durationInMillis;
-          if (!Number.isFinite(durationInMillis) || durationInMillis <= 0) return;
+          if (!Number.isFinite(durationInMillis) || durationInMillis <= 0) {
+            clearPositionState();
+            return;
+          }
           duration = durationInMillis / 1000;
         }
 
         const position = mk.currentPlaybackTime;
-        if (!Number.isFinite(position) || position < 0) return;
+        if (!Number.isFinite(position) || position < 0) {
+          clearPositionState();
+          return;
+        }
 
         try {
           navigator.mediaSession.setPositionState({

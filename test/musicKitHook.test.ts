@@ -124,7 +124,7 @@ describe('musicKitHook', () => {
   });
 
   it.each([0, undefined])(
-    'does not report media session position state when duration is %s',
+    'clears media session position state when duration is %s',
     (currentPlaybackDuration) => {
       const { mediaSession, musicKitListeners } = createHarness({
         musicKitOverrides: {
@@ -135,7 +135,7 @@ describe('musicKitHook', () => {
 
       expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
 
-      expect(mediaSession.setPositionState).not.toHaveBeenCalled();
+      expect(mediaSession.setPositionState).toHaveBeenCalledWith();
     },
   );
 
@@ -150,5 +150,88 @@ describe('musicKitHook', () => {
 
     expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
     expect(() => musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null })).not.toThrow();
+  });
+
+  it('reports the item duration in seconds when the playback duration is unavailable', () => {
+    const { mediaSession, musicKitListeners } = createHarness({
+      musicKitOverrides: {
+        currentPlaybackDuration: undefined,
+        currentPlaybackTime: 42,
+        nowPlayingItem: { attributes: { durationInMillis: 180_000 } },
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith({
+      duration: 180,
+      playbackRate: 1,
+      position: 42,
+    });
+  });
+
+  it('prefers the playback duration over the item duration when both are usable', () => {
+    const { mediaSession, musicKitListeners } = createHarness({
+      musicKitOverrides: {
+        currentPlaybackDuration: 180,
+        currentPlaybackTime: 42,
+        nowPlayingItem: { attributes: { durationInMillis: 999_000 } },
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith({
+      duration: 180,
+      playbackRate: 1,
+      position: 42,
+    });
+  });
+
+  it('clamps a position that runs past the duration', () => {
+    const { mediaSession, musicKitListeners } = createHarness({
+      musicKitOverrides: {
+        currentPlaybackDuration: 180,
+        currentPlaybackTime: 200,
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith({
+      duration: 180,
+      playbackRate: 1,
+      position: 180,
+    });
+  });
+
+  it('clears media session position state rather than reporting a negative position', () => {
+    const { mediaSession, musicKitListeners } = createHarness({
+      musicKitOverrides: {
+        currentPlaybackDuration: 180,
+        currentPlaybackTime: -5,
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith();
+    expect(mediaSession.setPositionState).not.toHaveBeenCalledWith(
+      expect.objectContaining({ position: -5 }),
+    );
+  });
+
+  it('clears media session position state for a radio stream with no duration', () => {
+    const { mediaSession, musicKitListeners } = createHarness({
+      musicKitOverrides: {
+        currentPlaybackDuration: Number.POSITIVE_INFINITY,
+        currentPlaybackTime: 42,
+        nowPlayingItem: { attributes: {} },
+      },
+    });
+
+    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+
+    expect(mediaSession.setPositionState).toHaveBeenCalledWith();
   });
 });
