@@ -171,18 +171,20 @@ generate-menu-icons:
 clean:
     rm -rf dist/
 
+# The cache directory is lowercase because src/artwork.ts builds it from app.getName().toLowerCase()
 # Clear all Sidra user data and caches
 [macos]
 clear:
     rm -rf ~/Library/Application\ Support/Sidra
-    rm -rf ~/Library/Caches/Sidra
+    rm -rf ~/Library/Caches/sidra
     rm -rf ~/Library/Logs/Sidra
     @echo "Sidra data cleared"
 
+# The cache directory is lowercase because src/artwork.ts builds it from app.getName().toLowerCase()
 # Clear all Sidra user data and caches
 [linux]
 clear:
-    rm -rf ~/.config/sidra
+    rm -rf ~/.config/Sidra
     rm -rf ~/.cache/sidra
     @echo "Sidra data cleared"
 
@@ -202,9 +204,16 @@ package: build
     npx electron-builder {{ if os() == "linux" { "--linux AppImage" } else if os() == "macos" { "--mac dmg --x64 --arm64" } else { "error('Unsupported platform')" } }}
 
 # Show log file location and tail recent entries
+[linux]
 logs:
-    @echo "Log file: ~/.config/sidra/logs/main.log"
-    @tail -50 ~/.config/sidra/logs/main.log 2>/dev/null || echo "No log file yet. Run the app first."
+    @echo "Log file: ~/.config/Sidra/logs/main.log"
+    @tail -50 ~/.config/Sidra/logs/main.log 2>/dev/null || echo "No log file yet. Run the app first."
+
+# Show log file location and tail recent entries
+[macos]
+logs:
+    @echo "Log file: ~/Library/Logs/Sidra/main.log"
+    @tail -50 ~/Library/Logs/Sidra/main.log 2>/dev/null || echo "No log file yet. Run the app first."
 
 # Cut a release: just release 1.2.3
 release VERSION:

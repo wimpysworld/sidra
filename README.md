@@ -64,9 +64,9 @@ Theme selection lives in the tray **Style** submenu. Sidra ships with **Catppucc
 
 As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
 
-- Linux: `~/.config/sidra/custom.css`
-- macOS: `~/Library/Application Support/sidra/custom.css`
-- Windows: `%APPDATA%\sidra\custom.css`
+- Linux: `~/.config/Sidra/custom.css`
+- macOS: `~/Library/Application Support/Sidra/custom.css`
+- Windows: `%APPDATA%\Sidra\custom.css`
 
 The **Custom** menu entry only appears when that file exists.
 
@@ -80,9 +80,9 @@ Once connected, the **Last.fm** submenu turns scrobbling on and off and offers *
 
 Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
 
-- Linux: `~/.config/sidra/config.json`
-- macOS: `~/Library/Application Support/sidra/config.json`
-- Windows: `%APPDATA%\sidra\config.json`
+- Linux: `~/.config/Sidra/config.json`
+- macOS: `~/Library/Application Support/Sidra/config.json`
+- Windows: `%APPDATA%\Sidra\config.json`
 
 > [!IMPORTANT]
 > Last.fm session keys never expire, and the Last.fm API has no call to revoke one. **Disconnect** deletes Sidra's copy of the key, which stops this installation scrobbling, but only Last.fm can invalidate the key itself. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that. Sidra notices the revoked session on its next request, disconnects, and tells you.
