@@ -508,11 +508,20 @@ describe('createTray - menu template inspection', () => {
       const startPageItem = findItem(template, 'Start Page');
       const submenu = startPageItem!.submenu as Electron.MenuItemConstructorOptions[];
       const labels = submenu.map(item => item.label);
-      expect(labels).toContain('Home');
-      expect(labels).toContain('Browse');
-      expect(labels).toContain('Library');
+      expect(labels).toEqual(['Home', 'Browse', 'Playlists', 'Search', 'Last']);
       expect(labels).not.toContain('New');
       expect(labels).not.toContain('Radio');
+    });
+
+    it('falls back to Home when a stored library page is no longer offered', () => {
+      vi.mocked(getClassicalStartPage).mockReturnValue('library');
+      createTray();
+      const template = getLastTemplate();
+      const startPageItem = findItem(template, 'Start Page');
+      expect(startPageItem!.label).toBe('Start Page: Home');
+      const submenu = startPageItem!.submenu as Electron.MenuItemConstructorOptions[];
+      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
+      expect(ticked).toEqual(['Home']);
     });
   });
 

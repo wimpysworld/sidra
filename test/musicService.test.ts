@@ -71,6 +71,21 @@ describe('MUSIC_SERVICES registry', () => {
     expect(MUSIC_SERVICES['classical'].startPages.map(p => p.id)).toContain('home');
   });
 
+  it('classical entry declares exactly the reachable start pages', () => {
+    expect(MUSIC_SERVICES['classical'].startPages.map(p => p.id)).toEqual([
+      'home',
+      'browse',
+      'playlists',
+      'search',
+    ]);
+  });
+
+  it('classical browse start page points at browse/catalog', () => {
+    const browse = MUSIC_SERVICES['classical'].startPages.find(p => p.id === 'browse');
+    expect(browse).toBeDefined();
+    expect(browse!.path).toBe('browse/catalog');
+  });
+
   it('classical entry has a defaultStartPage', () => {
     expect(MUSIC_SERVICES['classical'].defaultStartPage).toBe('home');
   });

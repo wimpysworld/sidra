@@ -4,6 +4,7 @@ import './mocks/storefront-deps';
 
 import { handleStorefrontNavigation, buildAppleMusicURL, extractStorefrontFromURL, handleLastPageNavigation } from '../src/storefront';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getMusicService, getStartPage, getLastPageUrl, getClassicalStartPage, getClassicalLastPageUrl, setLastPageUrl, setClassicalLastPageUrl } from '../src/config';
+import { MUSIC_SERVICES } from '../src/musicService';
 
 const mockedGetStorefront = vi.mocked(getStorefront);
 const mockedSetStorefront = vi.mocked(setStorefront);
@@ -173,13 +174,31 @@ describe('buildAppleMusicURL - classical service', () => {
   it('builds classical browse URL', () => {
     mockedGetClassicalStartPage.mockReturnValue('browse');
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb/browse');
+    expect(url).toBe('https://classical.music.apple.com/gb/browse/catalog');
   });
 
-  it('builds classical library URL', () => {
+  it('falls back to home when a removed library start page is still persisted', () => {
     mockedGetClassicalStartPage.mockReturnValue('library');
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb/library');
+    expect(url).toBe('https://classical.music.apple.com/gb');
+  });
+
+  it('builds a probed URL for every declared classical start page id', () => {
+    // Every URL here returned 200 unauthenticated; a new id must be probed before it is added.
+    const expected: Record<string, string> = {
+      'home': 'https://classical.music.apple.com/gb',
+      'browse': 'https://classical.music.apple.com/gb/browse/catalog',
+      'playlists': 'https://classical.music.apple.com/gb/browse/playlists',
+      'search': 'https://classical.music.apple.com/gb/search',
+    };
+    const ids = MUSIC_SERVICES.classical.startPages.map(p => p.id);
+    expect(ids).toEqual(Object.keys(expected));
+    for (const id of ids) {
+      mockedGetClassicalStartPage.mockReturnValue(id);
+      const url = buildAppleMusicURL();
+      expect(url).toBe(expected[id]);
+      expect(new URL(url).pathname.split('/').filter(Boolean)).not.toContain('library');
+    }
   });
 
   it('builds classical playlists URL', () => {

@@ -118,7 +118,7 @@ When adding a language, add an entry to every record in every JSON file:
 | `startPage` | `'home' \| 'new' \| 'radio' \| 'all-playlists' \| 'last'` | Page to load on launch (default: `'new'`) |
 | `lastPageUrl` | `string` | Last visited page URL; used when `startPage` is `'last'` |
 | `musicService` | `MusicServiceId` (`'music' \| 'classical'`) | Active music service (default: `'music'`) |
-| `classical.startPage` | `string` | Start page for Apple Music Classical (default: `'home'`); valid values: `'home'`, `'browse'`, `'library'`, `'playlists'`, `'search'`, `'last'` |
+| `classical.startPage` | `string` | Start page for Apple Music Classical (default: `'home'`); valid values: `'home'`, `'browse'`, `'playlists'`, `'search'`, `'last'`. Classical has no library route on the web, so none is offered; an unknown stored id falls back to `'home'` |
 | `classical.lastPageUrl` | `string` | Last visited Classical page URL; used when `classical.startPage` is `'last'` |
 
 - Getters return `undefined` when no value has been persisted - absence of a key is intentional and drives the storefront fallback chain in `main.ts`; do not add default values to the store schema

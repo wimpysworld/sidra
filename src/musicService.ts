@@ -47,8 +47,7 @@ export const MUSIC_SERVICES: Record<MusicServiceId, MusicService> = {
     contentReadySelector: SHARED_CONTENT_READY_SELECTOR,
     startPages: [
       { id: 'home', path: '' },
-      { id: 'browse', path: 'browse' },
-      { id: 'library', path: 'library' },
+      { id: 'browse', path: 'browse/catalog' },
       { id: 'playlists', path: 'browse/playlists' },
       { id: 'search', path: 'search' },
     ],

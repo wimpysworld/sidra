@@ -190,16 +190,17 @@ function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructo
   const icon = getMenuIcon('start-page');
 
   if (activeServiceId === 'classical') {
-    const currentPage = getClassicalStartPage();
+    const storedPage = getClassicalStartPage();
     const classicalPageLabelMap: Record<string, string> = {
       'home': strings.startPageHome,
       'browse': strings.startPageBrowse,
-      'library': strings.startPageLibrary,
       'playlists': strings.startPagePlaylists,
       'search': strings.startPageSearch,
       'last': strings.startPageLast,
     };
-    const parentLabel = `${strings.startPage}: ${classicalPageLabelMap[currentPage] ?? strings.startPageHome}`;
+    // A page id no longer offered resolves to home, matching buildAppleMusicURL's defaultStartPage fallback.
+    const currentPage = classicalPageLabelMap[storedPage] !== undefined ? storedPage : 'home';
+    const parentLabel = `${strings.startPage}: ${classicalPageLabelMap[currentPage]}`;
     return {
       label: parentLabel,
       ...(icon ? { icon } : {}),
@@ -215,12 +216,6 @@ function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructo
           type: 'radio',
           checked: currentPage === 'browse',
           click: () => { setClassicalStartPage('browse'); refresh(); },
-        },
-        {
-          label: strings.startPageLibrary,
-          type: 'radio',
-          checked: currentPage === 'library',
-          click: () => { setClassicalStartPage('library'); refresh(); },
         },
         {
           label: strings.startPagePlaylists,
