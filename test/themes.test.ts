@@ -15,6 +15,74 @@ function mediaBlock(css: string, query: string): string {
 }
 
 const HEX_RE = /^#[0-9a-f]{6}$/;
+const CSS_HEX_RE = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/;
+const CSS_RGBA_RE = /^rgba\((\d+),(\d+),(\d+),([0-9.]+)\)$/;
+
+/** WCAG 2.x AA floor for body text. */
+const CONTRAST_FLOOR = 4.5;
+
+// Catppuccin Latte ships subtext0 at #6c6f85, which lands at 4.37:1. Latte is
+// the one palette that was checked on screen, and WW-101 leaves every
+// Catppuccin value untouched, so it holds its shipped ratio.
+const SECONDARY_FLOORS: Record<string, number> = {
+  'catppuccin light': 4.37,
+};
+
+type Rgb = [number, number, number];
+
+/** Reads one custom property out of a generated scheme block. */
+function cssVar(block: string, name: string): string {
+  const match = new RegExp(`--${name}: ([^;]+) !important;`).exec(block);
+  if (match === null) {
+    throw new Error(`--${name} is missing from the generated block`);
+  }
+  return match[1];
+}
+
+function parseHex(value: string): Rgb {
+  const match = CSS_HEX_RE.exec(value);
+  if (match === null) {
+    throw new Error(`${value} is not a six-digit hex colour`);
+  }
+  return [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)];
+}
+
+function parseRgba(value: string): { rgb: Rgb; alpha: number } {
+  const match = CSS_RGBA_RE.exec(value);
+  if (match === null) {
+    throw new Error(`${value} is not an rgba() colour`);
+  }
+  return {
+    rgb: [Number(match[1]), Number(match[2]), Number(match[3])],
+    alpha: Number(match[4]),
+  };
+}
+
+/** Paints a translucent colour over an opaque one. */
+function composite(fg: Rgb, alpha: number, bg: Rgb): Rgb {
+  return [
+    fg[0] * alpha + bg[0] * (1 - alpha),
+    fg[1] * alpha + bg[1] * (1 - alpha),
+    fg[2] * alpha + bg[2] * (1 - alpha),
+  ];
+}
+
+function relativeLuminance([r, g, b]: Rgb): number {
+  const channel = (value: number): number => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/** WCAG 2.x contrast ratio, rounded to the two decimals the failures report. */
+function contrastRatio(a: Rgb, b: Rgb): number {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return Number(((lighter + 0.05) / (darker + 0.05)).toFixed(2));
+}
+
+const SCHEMES = ['dark', 'light'] as const;
 
 describe('palettes', () => {
   it('has unique kebab-case names and unique labels', () => {
@@ -43,6 +111,53 @@ describe('palettes', () => {
     expect(themeLabel('custom')).toBe('Custom');
     expect(themeLabel('apple-music')).toBe('Apple Music');
     expect(themeLabel('no-such-theme')).toBe('Apple Music');
+  });
+});
+
+describe('palette ladders and text contrast', () => {
+  it('gives each background and foreground slot its own hex', () => {
+    for (const theme of BUNDLED_THEMES) {
+      for (const scheme of SCHEMES) {
+        const c = theme[scheme];
+        expect(
+          c.overlay,
+          `${theme.name} ${scheme}: overlay and subtext0 both use ${c.overlay}`,
+        ).not.toBe(c.subtext0);
+        expect(
+          c.crust,
+          `${theme.name} ${scheme}: crust and surface0 both use ${c.crust}`,
+        ).not.toBe(c.surface0);
+      }
+    }
+  });
+
+  // Read from the generated CSS, not the palette, so the alpha values come from
+  // the template itself and cannot drift out of sync with this test.
+  // --systemSecondary sits below the floor in every scheme by design, so it is
+  // not asserted here.
+  it('keeps primary and secondary text at or above the WCAG floor', () => {
+    for (const theme of BUNDLED_THEMES) {
+      const css = buildThemeCss(theme);
+      for (const scheme of SCHEMES) {
+        const block = mediaBlock(css, `prefers-color-scheme: ${scheme}`);
+        const pageBG = parseHex(cssVar(block, 'pageBG'));
+
+        const primary = parseRgba(cssVar(block, 'systemPrimary'));
+        const primaryRatio = contrastRatio(composite(primary.rgb, primary.alpha, pageBG), pageBG);
+        expect(
+          primaryRatio,
+          `${theme.name} ${scheme}: --systemPrimary is ${primaryRatio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(CONTRAST_FLOOR);
+
+        const secondary = parseHex(cssVar(block, 'systemSecondary-vibrant'));
+        const secondaryRatio = contrastRatio(secondary, pageBG);
+        const floor = SECONDARY_FLOORS[`${theme.name} ${scheme}`] ?? CONTRAST_FLOOR;
+        expect(
+          secondaryRatio,
+          `${theme.name} ${scheme}: --systemSecondary-vibrant is ${secondaryRatio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(floor);
+      }
+    }
   });
 });
 

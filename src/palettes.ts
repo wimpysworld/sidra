@@ -5,6 +5,12 @@
 // marked "derived" have no upstream equivalent and are interpolated to
 // fit the slot's role.
 //
+// Two rules, checked by test/themes.test.ts:
+// - overlay differs from subtext0, and crust from surface0. Each pair
+//   paints a different part of the UI, so one hex in both flattens it.
+// - text and subtext0 reach 4.5:1 against base once the template applies
+//   its alpha. Catppuccin Latte holds its shipped 4.37:1 instead.
+//
 // Upstream palettes (colour values only; palettes are not creative
 // works, attribution given as a courtesy):
 // - Catppuccin (Mocha/Latte)  https://github.com/catppuccin/palette      MIT
@@ -107,10 +113,10 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       base: '#fbf1c7',
       mantle: '#f2e5bc',
       crust: '#ebdbb2',
-      surface0: '#ebdbb2',
-      surface1: '#d5c4a1',
-      surface2: '#bdae93',
-      overlay: '#a89984',
+      surface0: '#d5c4a1',
+      surface1: '#bdae93',
+      surface2: '#a89984',
+      overlay: '#928374',
       text: '#3c3836',
       subtext1: '#504945',
       subtext0: '#665c54',
@@ -141,7 +147,7 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       base: '#eceff4',
       mantle: '#e5e9f0',
       crust: '#d8dee9',
-      surface0: '#d8dee9',
+      surface0: '#cdd4e0', // derived
       surface1: '#c2c9d6', // derived
       surface2: '#aab2c4', // derived
       overlay: '#7b88a1', // derived
@@ -165,8 +171,8 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       surface2: '#524f67',
       overlay: '#6e6a86',
       text: '#e0def4',
-      subtext1: '#908caa',
-      subtext0: '#6e6a86',
+      subtext1: '#b8b5cf', // derived
+      subtext0: '#908caa',
       accent: '#ebbcba',
       accentHover: '#eb6f92',
     },
@@ -181,7 +187,7 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       overlay: '#9893a5',
       text: '#575279',
       subtext1: '#797593',
-      subtext0: '#9893a5',
+      subtext0: '#686486', // derived
       accent: '#d7827e',
       accentHover: '#b4637a',
     },
@@ -197,9 +203,9 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       surface1: '#0e4552', // derived
       surface2: '#586e75',
       overlay: '#657b83',
-      text: '#93a1a1',
+      text: '#eee8d5',
       subtext1: '#839496',
-      subtext0: '#657b83',
+      subtext0: '#93a1a1',
       accent: '#268bd2',
       accentHover: '#2aa198',
     },
@@ -207,13 +213,13 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       base: '#fdf6e3',
       mantle: '#f5eed9', // derived
       crust: '#eee8d5',
-      surface0: '#eee8d5',
+      surface0: '#e6dfcb', // derived
       surface1: '#ddd6c1', // derived
       surface2: '#93a1a1',
       overlay: '#839496',
-      text: '#586e75',
+      text: '#073642',
       subtext1: '#657b83',
-      subtext0: '#839496',
+      subtext0: '#586e75',
       accent: '#268bd2',
       accentHover: '#2aa198',
     },
