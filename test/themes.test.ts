@@ -188,7 +188,6 @@ describe('buildThemeCss', () => {
 
       it('retains player variables and the accent button override', () => {
         expect(darkCss).toContain('--playerBackground:');
-        expect(darkCss).toContain('--playerBGFill:');
         expect(darkCss).toContain('--keyColor:');
         expect(css).toContain('.button.primary button.click-action');
         expect(css).toContain('background-color: var(--keyColor) !important;');
@@ -199,6 +198,18 @@ describe('buildThemeCss', () => {
         expect(css).not.toContain('.player-bar');
         expect(css).not.toContain('.chrome-player.chrome-player__music');
         expect(css).not.toContain('amp-lcd');
+      });
+
+      it('keeps selectors and properties Apple no longer ships out', () => {
+        expect(css).not.toContain('dt-footer');
+        expect(css).not.toContain('page-footer');
+        expect(css).not.toContain('--lovedBGColor');
+        expect(css).not.toContain('--playerBGFill');
+        expect(css).not.toContain('--playerScrubberPlayhead');
+        expect(css).not.toContain('--playerVolumeFill');
+        expect(css).not.toContain('--playerVolumeIconFill');
+        expect(css).not.toContain('--playerVolumeTrack');
+        expect(css).not.toContain('--systemAccentBG');
       });
 
       it('keeps country/location banner control styling on Apple Music defaults', () => {
@@ -232,7 +243,6 @@ describe('catppuccin regression against the retired static asset', () => {
     expect(darkCss).toContain('--keyColor-disabled: rgba(243,139,168,0.35) !important;');
     expect(darkCss).toContain('--systemPrimary: rgba(205,214,244,0.85) !important;');
     expect(darkCss).toContain('--playerBackground: rgba(24,24,37,0.88) !important;');
-    expect(darkCss).toContain('--playerBGFill: rgba(24, 24, 37, 0.88) !important;');
     expect(darkCss).toContain('scrollbar-color: #45475a #181825 !important;');
     expect(darkCss).toContain('background: #11111b !important;');
     expect(darkCss).toContain('background-color: #181825 !important;');
@@ -243,7 +253,6 @@ describe('catppuccin regression against the retired static asset', () => {
     expect(lightCss).toContain('--pageBG: #eff1f5 !important;');
     expect(lightCss).toContain('--keyColor: #d20f39 !important;');
     expect(lightCss).toContain('--playerBackground: rgba(230,233,239,0.88) !important;');
-    expect(lightCss).toContain('--playerBGFill: rgba(230, 233, 239, 0.88) !important;');
     expect(lightCss).toContain('scrollbar-color: #bcc0cc #e6e9ef !important;');
     expect(lightCss).toContain('background: #dce0e8 !important;');
     expect(lightCss).toContain('background-color: #e6e9ef !important;');

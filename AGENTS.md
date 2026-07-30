@@ -164,17 +164,20 @@ Most Apple Music styling responds to `:root` custom property overrides. These el
 
 | Element | Selector | Reason |
 |---------|----------|--------|
-| Player bar background | `.wrapper amp-chrome-player::before` | `::before` pseudo paints the bar |
+| Player bar background | `.chrome-player::before` | The bar is transparent and the pseudo paints it, but the two services read different properties: music uses `var(--glassMaterialBackground)`, Classical uses `var(--chromePlayerBGFill)` under a `--playerGradientTop` to `--playerGradientBottom` gradient. Neither property has a consumer in the other service's bundle, so one `var()` override cannot cover both, and theming the bar means handling the fill and the gradient |
+| Player LCD box (Classical only) | `.lcd` | Paints `var(--lcd-bg-color, var(--playerLCDBGFill))`, and Classical declares `--lcd-bg-color: #4d4d4d`, so the fallback never applies |
 | Side panels (Lyrics/Up Next) | `.side-panel`, `.side-panel-header-wrapper` | Direct `background-color` |
-| Page footer | `.scrollable-page > footer` | Direct `background-color` |
+| Page footer | `.scrollable-page footer` | Direct `background-color` |
 | Accent-coloured buttons | `.button.primary button.click-action` | Direct `background-color: rgb(214, 0, 23)` ignores `--keyColor` |
 | Accent CSS variables (`--keyColor` and variants) | `*` | Shadow DOM of `amp-*` elements does not inherit from `:root` |
+
+Sidra styles neither the player bar nor the LCD box; both read a property it does not set. Every other row has an override in `src/themeTemplate.ts`.
 
 **Pattern:** when a `:root` variable override has no visible effect, the element either (a) uses a shadow-DOM-scoped custom property (set the variable on the host element), or (b) paints its own background via `::before` or a direct property (use a direct selector with `!important`).
 
 ### CSS variable audit
 
-Active Apple Music userstyle repositories provide reliable cross-referenced variable lists: PitchBlack (`sprince0031/PitchBlack-UserStyle-themes`), Native AM (`dantelin2009`), AppleMusic-Tui. Search with `mcp__exa__get_code_context_exa` using `"apple music userstyle css variables site:github.com"`.
+Active Apple Music userstyle repositories provide reliable cross-referenced variable lists: PitchBlack (`sprince0031/PitchBlack-UserStyle-themes`) and AppleMusic-Tui. Search with `mcp__exa__get_code_context_exa` using `"apple music userstyle css variables site:github.com"`.
 
 ### Asset packaging
 

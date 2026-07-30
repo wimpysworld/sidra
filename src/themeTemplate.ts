@@ -24,9 +24,9 @@ export interface SchemeColours {
   text: string;
   /** Secondary text */
   subtext1: string;
-  /** Vibrant secondary text and scrubber playhead */
+  /** Emphasised secondary text */
   subtext0: string;
-  /** Key colour: buttons, scrubber, volume, selection, loved */
+  /** Key colour: brand, selection, scrubber fill, platter buttons */
   accent: string;
   /** Accent rollover and pressed states */
   accentHover: string;
@@ -51,9 +51,8 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex)},${alpha})`;
 }
 
-// The original stylesheet used spaced rgba() in the shadow-DOM and
-// side-panel blocks; preserved for byte compatibility with the previous
-// catppuccin.css asset.
+// The original stylesheet used spaced rgba() in the side-panel block;
+// preserved for byte compatibility with the previous catppuccin.css asset.
 function rgbaSpaced(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex).split(',').join(', ')}, ${alpha})`;
 }
@@ -76,10 +75,8 @@ function schemeBlock(c: SchemeColours): string {
     --keyColor-deepPressed: ${c.accentHover} !important;
     --keyColor-disabled: ${rgba(c.accent, 0.35)} !important;
     --musicKeyColor: ${c.accent} !important;
-    --systemAccentBG: ${c.accent} !important;
     --musicBrandBG: ${c.accent} !important;
     --selectionColor: ${c.accent} !important;
-    --lovedBGColor: ${c.accent} !important;
 
     /* Text */
     --systemPrimary: ${rgba(c.text, 0.85)} !important;
@@ -100,10 +97,6 @@ function schemeBlock(c: SchemeColours): string {
     --playerLCDBGFill: ${c.surface0} !important;
     --playerScrubberFill: ${c.accent} !important;
     --playerScrubberTrack: ${rgba(c.surface1, 0.2)} !important;
-    --playerScrubberPlayhead: ${c.subtext0} !important;
-    --playerVolumeFill: ${c.accent} !important;
-    --playerVolumeTrack: ${rgba(c.surface1, 0.2)} !important;
-    --playerVolumeIconFill: ${rgba(c.subtext1, 0.5)} !important;
     --playerPlatterButtonBGFill: ${c.accent} !important;
     --playerPlatterButtonIconFill: ${c.base} !important;
     --playerDropShadow2: ${rgba(c.crust, 0.1)} !important;
@@ -145,7 +138,6 @@ function schemeBlock(c: SchemeColours): string {
 
   /* Force variables into shadow-DOM-scoped elements */
   * {
-    --playerBGFill: ${rgbaSpaced(c.mantle, 0.88)} !important;
     --keyColor: ${c.accent} !important;
     --keyColor-rgb: ${rgbTriplet(c.accent)} !important;
     --keyColor-rollover: ${c.accentHover} !important;
@@ -153,10 +145,8 @@ function schemeBlock(c: SchemeColours): string {
     --keyColor-deepPressed: ${c.accentHover} !important;
     --keyColor-disabled: ${rgba(c.accent, 0.35)} !important;
     --musicKeyColor: ${c.accent} !important;
-    --systemAccentBG: ${c.accent} !important;
     --musicBrandBG: ${c.accent} !important;
     --selectionColor: ${c.accent} !important;
-    --lovedBGColor: ${c.accent} !important;
   }
 
   /* Side panels (Lyrics + Up Next): not covered by :root variables */
@@ -173,9 +163,7 @@ function schemeBlock(c: SchemeColours): string {
   /* Footer */
   :is(
     footer,
-    .scrollable-page footer,
-    .dt-footer,
-    [class*="page-footer"]
+    .scrollable-page footer
   ) {
     background: ${c.crust} !important;
     background-color: ${c.crust} !important;
@@ -185,8 +173,7 @@ function schemeBlock(c: SchemeColours): string {
 
   :is(
     footer,
-    .scrollable-page footer,
-    .dt-footer
+    .scrollable-page footer
   ) :is(a, button, select, [role="button"], [class*="dropdown"]) {
     background-color: ${c.mantle} !important;
     border-color: ${rgba(c.surface2, 0.25)} !important;
