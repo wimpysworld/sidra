@@ -60,15 +60,20 @@ describe('theme helpers', () => {
 
   // Fake timers plus a captured fs.watch listener, so a test can drive the
   // watcher and step past the 150ms debounce.
-  function watcherHarness(options: { isDestroyed?: boolean } = {}) {
+  // init defaults to the statically imported module; the cache-disable tests
+  // pass a freshly loaded copy so the flag they flip stays out of other tests.
+  function watcherHarness(options: { isDestroyed?: boolean; init?: typeof initThemeCSS } = {}) {
     vi.useFakeTimers();
     const removeInsertedCSS = vi.fn().mockResolvedValue(undefined);
     const insertCSS = vi.fn().mockResolvedValue('unused');
     let watchHandler: fs.WatchListener<string | Buffer> | undefined;
+    const watcherListeners = new Map<string, (error: Error) => void>();
     vi.mocked(fs.watch as unknown as WatchWithOptions).mockImplementation((_filename, _options, listener) => {
       watchHandler = listener;
       return {
-        on: vi.fn(),
+        on: vi.fn((event: string, handler: (error: Error) => void) => {
+          watcherListeners.set(event, handler);
+        }),
         close: vi.fn(),
       } as unknown as fs.FSWatcher;
     });
@@ -81,7 +86,11 @@ describe('theme helpers', () => {
       insertCSS,
       removeInsertedCSS,
       win,
-      start: () => { initThemeCSS(win); },
+      start: () => { (options.init ?? initThemeCSS)(win); },
+      // Fire the watcher's own error event, which Node follows by closing it.
+      fireError(error: Error = new Error('EBADF: bad file descriptor')) {
+        watcherListeners.get('error')?.(error);
+      },
       // Fire a watcher event without running the debounce.
       fire(eventType: 'rename' | 'change', filename = 'custom.css') {
         watchHandler?.(eventType, filename);
@@ -272,6 +281,60 @@ describe('theme helpers', () => {
     expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
+  });
+
+  it('reads custom.css on every call once the watcher has failed to start', async () => {
+    // Two reads, two filesystem calls: the cache is off, not merely cleared.
+    vi.resetModules();
+    vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
+    const theme = await import('../src/theme');
+    const win = {
+      isDestroyed: vi.fn().mockReturnValue(false),
+      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn() },
+    } as unknown as Parameters<typeof initThemeCSS>[0];
+    theme.initThemeCSS(win);
+
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the warm custom.css cache when the watcher reports an error', async () => {
+    // Node closes the watcher on error, so the cache it warmed is now stale
+    // with nothing left to clear it.
+    vi.resetModules();
+    const theme = await import('../src/theme');
+    const harness = watcherHarness({ init: theme.initThemeCSS });
+    harness.start();
+
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+
+    harness.fireError();
+
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads custom.css on every call after a watcher error', async () => {
+    vi.resetModules();
+    const theme = await import('../src/theme');
+    const harness = watcherHarness({ init: theme.initThemeCSS });
+    harness.start();
+
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    harness.fireError();
+
+    // Two reads after the error, two filesystem calls: caching stays off rather
+    // than warming again on the next read.
+    vi.mocked(fs.readFileSync).mockClear();
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
   it('renders bundled theme CSS', () => {
