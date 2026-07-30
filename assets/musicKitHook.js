@@ -1,6 +1,4 @@
 (function () {
-  if (window.MusicKit && window.__sidraHookedMk === MusicKit.getInstance()) return;
-
   // This flag persists for the page lifetime and is never cleared. Re-injection
   // must not re-run the IIFE: the 5-second monitor inside the hook already
   // handles MusicKit instance replacement, and re-running would install

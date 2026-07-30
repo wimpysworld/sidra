@@ -10,10 +10,12 @@ const hookScript = fs.readFileSync(
 
 function createHarness({
   musicKitOverrides = {},
+  musicKitThrowsAtInjection = false,
   navigatorOverrides,
   repeatInjection = false,
 }: {
   musicKitOverrides?: Record<string, unknown>;
+  musicKitThrowsAtInjection?: boolean;
   navigatorOverrides?: Record<string, unknown>;
   repeatInjection?: boolean;
 } = {}) {
@@ -60,13 +62,26 @@ function createHarness({
     window,
   });
 
+  // MusicKit can be present but mid-initialisation when the script is injected,
+  // so getInstance() throws until it settles. Clearing the flag after the
+  // injection run models it settling before the 500ms poll first fires.
+  let getInstanceThrows = musicKitThrowsAtInjection;
+  const musicKitApi = {
+    getInstance: () => {
+      if (getInstanceThrows) throw new Error('MusicKit is re-initialising');
+      return musicKit;
+    },
+    PlaybackStates: { playing: 2 },
+  };
+  if (musicKitThrowsAtInjection) {
+    Object.assign(context, { MusicKit: musicKitApi });
+    Object.assign(window, { MusicKit: musicKitApi });
+  }
+
   vm.runInContext(hookScript, context);
   if (repeatInjection) vm.runInContext(hookScript, context);
 
-  const musicKitApi = {
-    getInstance: () => musicKit,
-    PlaybackStates: { playing: 2 },
-  };
+  getInstanceThrows = false;
   Object.assign(context, { MusicKit: musicKitApi });
   Object.assign(window, { MusicKit: musicKitApi });
   for (const callback of intervalCallbacks.slice()) callback();
@@ -77,6 +92,15 @@ function createHarness({
     musicKit,
     musicKitListeners,
     navigator,
+    // Runs the script again against the same window, then drains only the
+    // timers that second run added. The message listener is installed inside
+    // the waitForMK callback rather than the script body, so a re-run that
+    // slipped past the injection guard would go unnoticed without the drain.
+    reinject: () => {
+      const alreadyRun = intervalCallbacks.length;
+      vm.runInContext(hookScript, context);
+      for (const callback of intervalCallbacks.slice(alreadyRun)) callback();
+    },
     window,
   };
 }
@@ -96,6 +120,26 @@ describe('musicKitHook', () => {
     for (const listener of messageListeners) listener(event);
 
     expect(skipToNextItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw when MusicKit.getInstance() throws during injection', () => {
+    expect(() => createHarness({ musicKitThrowsAtInjection: true })).not.toThrow();
+  });
+
+  it('still hooks MusicKit after a getInstance() that threw during injection', () => {
+    const { musicKitListeners } = createHarness({ musicKitThrowsAtInjection: true });
+
+    expect(musicKitListeners.has('playbackStateDidChange')).toBe(true);
+  });
+
+  it('installs no second message listener when the script is injected again', () => {
+    const { messageListeners, reinject } = createHarness();
+
+    expect(messageListeners).toHaveLength(1);
+
+    reinject();
+
+    expect(messageListeners).toHaveLength(1);
   });
 
   it('reports explicit media session position state on playback time changes', () => {
