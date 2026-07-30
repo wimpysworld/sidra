@@ -2,12 +2,13 @@ import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray, we
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
-import { getZoomFactor, getCloseToTrayEnabled, getMusicService, setMusicService } from './config';
+import { getZoomFactor, getCloseToTrayEnabled, getMusicService } from './config';
 import { getLoadingText } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
+import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
 import { getThemeCss, initThemeCSS, resolveTheme, setRebuildTrayCallback, setThemeCssKey } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
@@ -133,22 +134,9 @@ function routeItmsTarget(target: ItmsTarget | null): void {
     pendingItmsTarget = target;
     return;
   }
-  // itms:// always targets the music service; switch back if classical is active
-  if (getMusicService() !== 'music') {
-    setMusicService('music');
-    if (appTray) rebuildTrayMenu(appTray);
-    resetWedgeDetector();
-  }
-  if (target.kind === 'url') {
-    win.loadURL(target.url, { userAgent: UA }).catch(err =>
-      mainLog.warn('itms loadURL failed:', (err as Error).message)
-    );
-  } else {
-    const url = buildItmsRouteURL(target.token);
-    win.loadURL(url, { userAgent: UA }).catch(err =>
-      mainLog.warn('itms route loadURL failed:', (err as Error).message)
-    );
-  }
+  // Resolved before the switch; buildItmsRouteURL pins the music origin itself.
+  const url = target.kind === 'url' ? target.url : buildItmsRouteURL(target.token);
+  routeToMusicService(url);
   mainLog.info(`itms target routed: kind=${target.kind}`);
 }
 
@@ -683,11 +671,15 @@ if (gotLock) {
     setGetMainWindowCallback(() => win);
     setDockSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     setTaskbarSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
-    setSwitchServiceCallback((_serviceId) => {
-      resetWedgeDetector();
-      setThemeCssKey(null);
-      win!.loadURL(buildAppleMusicURL(), { userAgent: UA });
+    initServiceSwitch({
+      getTray: () => appTray,
+      loadURL: url => {
+        win?.loadURL(url, { userAgent: UA }).catch(err =>
+          mainLog.warn('service navigation loadURL failed:', (err as Error).message)
+        );
+      },
     });
+    setSwitchServiceCallback(switchService);
     setRebuildTrayCallback(() => {
       if (appTray) rebuildTrayMenu(appTray);
     });

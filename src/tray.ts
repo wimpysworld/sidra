@@ -4,7 +4,7 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, setMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
@@ -14,7 +14,7 @@ import { enable as enableDiscord, disable as disableDiscord } from './integratio
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { createPauseTimer } from './pauseTimer';
-import { allServices, getService } from './musicService';
+import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
 
 const trayLog = log.scope('tray');
 
@@ -155,7 +155,7 @@ let nowPlayingState: NowPlayingState | null = null;
 let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
 let applyZoomCallback: ((factor: number) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
-let switchServiceCallback: ((serviceId: string) => void) | null = null;
+let switchServiceCallback: ((serviceId: MusicServiceId) => void) | null = null;
 
 interface SubmenuContext {
   strings: TrayStrings;
@@ -164,7 +164,7 @@ interface SubmenuContext {
 }
 
 function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
+  const { strings } = ctx;
   const activeServiceId = getMusicService();
   const activeService = getService(activeServiceId);
   const parentLabel = `${strings.player}: ${activeService.displayName}`;
@@ -174,116 +174,63 @@ function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
       label: svc.displayName,
       type: 'radio' as const,
       checked: activeServiceId === svc.id,
+      // switchService in ./serviceSwitch persists the new id and rebuilds this
+      // menu, so the click does neither itself.
       click: () => {
         if (activeServiceId === svc.id) return;
-        setMusicService(svc.id);
         if (switchServiceCallback) switchServiceCallback(svc.id);
-        refresh();
       },
     })),
   };
 }
 
-function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const activeServiceId = getMusicService();
-  const icon = getMenuIcon('start-page');
-
-  if (activeServiceId === 'classical') {
-    const storedPage = getClassicalStartPage();
-    const classicalPageLabelMap: Record<string, string> = {
-      'home': strings.startPageHome,
-      'browse': strings.startPageBrowse,
-      'playlists': strings.startPagePlaylists,
-      'search': strings.startPageSearch,
-      'last': strings.startPageLast,
-    };
-    // A page id no longer offered resolves to home, matching buildAppleMusicURL's defaultStartPage fallback.
-    const currentPage = classicalPageLabelMap[storedPage] !== undefined ? storedPage : 'home';
-    const parentLabel = `${strings.startPage}: ${classicalPageLabelMap[currentPage]}`;
-    return {
-      label: parentLabel,
-      ...(icon ? { icon } : {}),
-      submenu: [
-        {
-          label: strings.startPageHome,
-          type: 'radio',
-          checked: currentPage === 'home',
-          click: () => { setClassicalStartPage('home'); refresh(); },
-        },
-        {
-          label: strings.startPageBrowse,
-          type: 'radio',
-          checked: currentPage === 'browse',
-          click: () => { setClassicalStartPage('browse'); refresh(); },
-        },
-        {
-          label: strings.startPagePlaylists,
-          type: 'radio',
-          checked: currentPage === 'playlists',
-          click: () => { setClassicalStartPage('playlists'); refresh(); },
-        },
-        {
-          label: strings.startPageSearch,
-          type: 'radio',
-          checked: currentPage === 'search',
-          click: () => { setClassicalStartPage('search'); refresh(); },
-        },
-        {
-          label: strings.startPageLast,
-          type: 'radio',
-          checked: currentPage === 'last',
-          click: () => { setClassicalStartPage('last'); refresh(); },
-        },
-      ],
-    };
-  }
-
-  const currentStartPage = getStartPage();
-  const startPageLabelMap: Record<string, string> = {
+// Typed over every registry id, so adding a start page without a translation
+// fails tsc rather than rendering a blank menu entry.
+function startPageLabels(strings: TrayStrings): Record<AnyStartPageId | 'last', string> {
+  return {
     'home': strings.startPageHome,
     'new': strings.startPageNew,
     'radio': strings.startPageRadio,
     'all-playlists': strings.startPageAllPlaylists,
+    'browse': strings.startPageBrowse,
+    'playlists': strings.startPagePlaylists,
+    'search': strings.startPageSearch,
     'last': strings.startPageLast,
   };
-  const parentLabel = `${strings.startPage}: ${startPageLabelMap[currentStartPage]}`;
+}
+
+function buildStartPageSubmenuFor<PageId extends AnyStartPageId>(
+  service: MusicService<PageId>,
+  storedPage: PageId | 'last',
+  setPage: (page: PageId | 'last') => void,
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
+  const { strings, refresh } = ctx;
+  const labels = startPageLabels(strings);
+  // 'last' is not a registry page: it is a stored-URL mode both services offer.
+  const pageIds: (PageId | 'last')[] = [...service.startPages.map(page => page.id), 'last'];
+  // A page id no longer offered resolves to the service's defaultStartPage, matching buildAppleMusicURL.
+  const currentPage = pageIds.includes(storedPage) ? storedPage : service.defaultStartPage;
+  const icon = getMenuIcon('start-page');
   return {
-    label: parentLabel,
+    label: `${strings.startPage}: ${labels[currentPage]}`,
     ...(icon ? { icon } : {}),
-    submenu: [
-      {
-        label: strings.startPageHome,
-        type: 'radio',
-        checked: currentStartPage === 'home',
-        click: () => { setStartPage('home'); refresh(); },
-      },
-      {
-        label: strings.startPageNew,
-        type: 'radio',
-        checked: currentStartPage === 'new',
-        click: () => { setStartPage('new'); refresh(); },
-      },
-      {
-        label: strings.startPageRadio,
-        type: 'radio',
-        checked: currentStartPage === 'radio',
-        click: () => { setStartPage('radio'); refresh(); },
-      },
-      {
-        label: strings.startPageAllPlaylists,
-        type: 'radio',
-        checked: currentStartPage === 'all-playlists',
-        click: () => { setStartPage('all-playlists'); refresh(); },
-      },
-      {
-        label: strings.startPageLast,
-        type: 'radio',
-        checked: currentStartPage === 'last',
-        click: () => { setStartPage('last'); refresh(); },
-      },
-    ],
+    submenu: pageIds.map(id => ({
+      label: labels[id],
+      type: 'radio' as const,
+      checked: currentPage === id,
+      click: () => { setPage(id); refresh(); },
+    })),
   };
+}
+
+// The registry entries are passed directly rather than through getService(), which
+// returns the widened MusicService and would lose each service's page id union.
+function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  if (getMusicService() === 'classical') {
+    return buildStartPageSubmenuFor(MUSIC_SERVICES.classical, getClassicalStartPage(), setClassicalStartPage, ctx);
+  }
+  return buildStartPageSubmenuFor(MUSIC_SERVICES.music, getStartPage(), setStartPage, ctx);
 }
 
 function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
@@ -734,7 +681,7 @@ export function setGetMainWindowCallback(callback: () => BrowserWindow | null): 
   getMainWindowCallback = callback;
 }
 
-export function setSwitchServiceCallback(callback: (serviceId: string) => void): void {
+export function setSwitchServiceCallback(callback: (serviceId: MusicServiceId) => void): void {
   switchServiceCallback = callback;
 }
 

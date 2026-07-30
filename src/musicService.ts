@@ -2,6 +2,8 @@
 // Pure music service registry: no imports from electron, electron-log, or config.
 // Kept dependency-free so itms.ts and tests can import without pulling in Electron.
 
+import { CONTENT_READY_SELECTOR } from './contentReady';
+
 export type MusicServiceId = 'music' | 'classical';
 
 export interface StartPage<PageId extends string = string> {
@@ -32,7 +34,6 @@ function defineService<const PageId extends string>(
   return def;
 }
 
-const SHARED_CONTENT_READY_SELECTOR = '[data-testid="app-container"] amp-playback-controls-play[hydrated]';
 const SHARED_AUTH_FRAME_HOSTS = ['auth.music.apple.com', 'idmsa.apple.com'] as const;
 
 export const MUSIC_SERVICES = {
@@ -42,7 +43,7 @@ export const MUSIC_SERVICES = {
     origin: 'https://music.apple.com',
     displayName: 'Apple Music',
     authFrameHosts: SHARED_AUTH_FRAME_HOSTS,
-    contentReadySelector: SHARED_CONTENT_READY_SELECTOR,
+    contentReadySelector: CONTENT_READY_SELECTOR,
     startPages: [
       { id: 'home', path: 'home' },
       { id: 'new', path: 'new' },
@@ -57,7 +58,7 @@ export const MUSIC_SERVICES = {
     origin: 'https://classical.music.apple.com',
     displayName: 'Apple Music Classical',
     authFrameHosts: SHARED_AUTH_FRAME_HOSTS,
-    contentReadySelector: SHARED_CONTENT_READY_SELECTOR,
+    contentReadySelector: CONTENT_READY_SELECTOR,
     startPages: [
       { id: 'home', path: '' },
       { id: 'browse', path: 'browse/catalog' },
@@ -68,8 +69,14 @@ export const MUSIC_SERVICES = {
   }),
 } satisfies Record<MusicServiceId, MusicService>;
 
+/** Start page ids offered by Apple Music, derived from the registry. */
+export type MusicStartPageId = typeof MUSIC_SERVICES.music.startPages[number]['id'];
+
 /** Start page ids offered by Apple Music Classical, derived from the registry. */
 export type ClassicalStartPageId = typeof MUSIC_SERVICES.classical.startPages[number]['id'];
+
+/** Every start page id in the registry, for records that must cover both services. */
+export type AnyStartPageId = MusicStartPageId | ClassicalStartPageId;
 
 export const DEFAULT_SERVICE_ID: MusicServiceId = 'music';
 

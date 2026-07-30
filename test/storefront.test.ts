@@ -231,6 +231,36 @@ describe('buildAppleMusicURL - classical service', () => {
   });
 });
 
+describe('buildAppleMusicURL - registry-driven page paths', () => {
+  // Adding a start page to MUSIC_SERVICES must need no edit in storefront.ts.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetStorefront.mockReturnValue('gb');
+    mockedGetLanguage.mockReturnValue(null);
+  });
+
+  it('resolves every music start page from the registry', () => {
+    mockedGetMusicService.mockReturnValue('music');
+    for (const page of MUSIC_SERVICES.music.startPages) {
+      mockedGetStartPage.mockReturnValue(page.id);
+      expect(buildAppleMusicURL()).toBe(`${MUSIC_SERVICES.music.origin}/gb/${page.path}`);
+    }
+    expect(mockedGetLastPageUrl).not.toHaveBeenCalled();
+  });
+
+  it('resolves every classical start page from the registry', () => {
+    mockedGetMusicService.mockReturnValue('classical');
+    for (const page of MUSIC_SERVICES.classical.startPages) {
+      mockedGetClassicalStartPage.mockReturnValue(page.id);
+      const expected = page.path === ''
+        ? `${MUSIC_SERVICES.classical.origin}/gb`
+        : `${MUSIC_SERVICES.classical.origin}/gb/${page.path}`;
+      expect(buildAppleMusicURL()).toBe(expected);
+    }
+    expect(mockedGetClassicalLastPageUrl).not.toHaveBeenCalled();
+  });
+});
+
 describe('buildItmsRouteURL', () => {
   // The Record type fails to compile if an ItmsRouteToken is missed.
   const routePaths: Record<ItmsRouteToken, string> = {

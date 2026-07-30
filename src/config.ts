@@ -1,6 +1,12 @@
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
-import { DEFAULT_SERVICE_ID, isMusicServiceId, type ClassicalStartPageId, type MusicServiceId } from './musicService';
+import {
+  DEFAULT_SERVICE_ID,
+  isMusicServiceId,
+  type ClassicalStartPageId,
+  type MusicServiceId,
+  type MusicStartPageId,
+} from './musicService';
 
 const configLog = log.scope('config');
 
@@ -15,7 +21,7 @@ interface StoreSchema {
   'lastfm.username': string | null;
   theme: ThemeName;
   'autoUpdate.enabled': boolean;
-  startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
+  startPage: MusicStartPageId | 'last';
   lastPageUrl: string;
   'classical.startPage': ClassicalStartPageId | 'last';
   'classical.lastPageUrl': string;
@@ -138,11 +144,11 @@ export function setLastPageUrl(url: string): void {
   configLog.info('lastPageUrl set:', url);
 }
 
-export function getStartPage(): 'home' | 'new' | 'radio' | 'all-playlists' | 'last' {
+export function getStartPage(): MusicStartPageId | 'last' {
   return getConfigValue('startPage', 'new');
 }
 
-export function setStartPage(page: 'home' | 'new' | 'radio' | 'all-playlists' | 'last'): void {
+export function setStartPage(page: MusicStartPageId | 'last'): void {
   store.set('startPage', page);
   configLog.info('startPage set:', page);
 }

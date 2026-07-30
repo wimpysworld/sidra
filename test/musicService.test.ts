@@ -11,7 +11,14 @@ import {
   ALLOWED_NAVIGATION_HOSTS,
   isAllowedNavigationUrl,
 } from '../src/musicService';
-import type { MusicServiceId, MusicService } from '../src/musicService';
+import type {
+  MusicServiceId,
+  MusicService,
+  MusicStartPageId,
+  ClassicalStartPageId,
+  AnyStartPageId,
+} from '../src/musicService';
+import { CONTENT_READY_SELECTOR } from '../src/contentReady';
 
 describe('MusicService types', () => {
   it('DEFAULT_SERVICE_ID is MusicServiceId', () => {
@@ -20,6 +27,23 @@ describe('MusicService types', () => {
 
   it('getService returns MusicService', () => {
     expectTypeOf(getService).returns.toEqualTypeOf<MusicService>();
+  });
+
+  // Pins the derived unions: adding or renaming a registry start page must be a deliberate edit
+  // here too, because config keys and the tray label record are typed from these.
+  it('MusicStartPageId covers exactly the music start pages', () => {
+    expectTypeOf<MusicStartPageId>().toEqualTypeOf<'home' | 'new' | 'radio' | 'all-playlists'>();
+  });
+
+  it('ClassicalStartPageId covers exactly the classical start pages', () => {
+    expectTypeOf<ClassicalStartPageId>().toEqualTypeOf<'home' | 'browse' | 'playlists' | 'search'>();
+  });
+
+  it('AnyStartPageId is the union of both services', () => {
+    expectTypeOf<AnyStartPageId>().toEqualTypeOf<MusicStartPageId | ClassicalStartPageId>();
+    expectTypeOf<AnyStartPageId>().toEqualTypeOf<
+      'home' | 'new' | 'radio' | 'all-playlists' | 'browse' | 'playlists' | 'search'
+    >();
   });
 });
 
@@ -91,6 +115,18 @@ describe('MUSIC_SERVICES registry', () => {
 
   it('classical entry has a defaultStartPage', () => {
     expect(MUSIC_SERVICES['classical'].defaultStartPage).toBe('home');
+  });
+});
+
+// Both services probe readiness with the same selector; a second copy of the literal would
+// drift silently, so the registry must reference the one in contentReady.ts.
+describe('content ready selector', () => {
+  it('music entry uses CONTENT_READY_SELECTOR', () => {
+    expect(MUSIC_SERVICES['music'].contentReadySelector).toBe(CONTENT_READY_SELECTOR);
+  });
+
+  it('classical entry uses CONTENT_READY_SELECTOR', () => {
+    expect(MUSIC_SERVICES['classical'].contentReadySelector).toBe(CONTENT_READY_SELECTOR);
   });
 });
 

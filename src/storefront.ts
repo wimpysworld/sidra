@@ -40,44 +40,25 @@ export function buildAppleMusicURL(): string {
   const serviceId = getMusicService();
   const service = getService(serviceId);
 
-  if (serviceId === 'classical') {
-    const classicalStartPage = getClassicalStartPage();
-    if (classicalStartPage === 'last') {
-      const lastPath = getClassicalLastPageUrl();
-      if (lastPath) {
-        return appendLanguage(`${service.origin}/${storefront}/${lastPath}`, language);
-      }
-      // fall through: no stored path yet, use default
-    }
-    const pageEntry = service.startPages.find(p => p.id === classicalStartPage)
-      ?? service.startPages.find(p => p.id === service.defaultStartPage)
-      ?? service.startPages[0];
-    const pagePath = pageEntry.path;
-    if (pagePath === '') {
-      return appendLanguage(`${service.origin}/${storefront}`, language);
-    }
-    return appendLanguage(`${service.origin}/${storefront}/${pagePath}`, language);
-  }
+  const isClassical = serviceId === 'classical';
+  const startPage = isClassical ? getClassicalStartPage() : getStartPage();
 
-  // music service
-  const startPage = getStartPage();
   if (startPage === 'last') {
-    const lastPath = getLastPageUrl();
+    // Read the stored path only in this branch; the getters stay untouched for every other page.
+    const lastPath = isClassical ? getClassicalLastPageUrl() : getLastPageUrl();
     if (lastPath) {
       return appendLanguage(`${service.origin}/${storefront}/${lastPath}`, language);
     }
-    // fall through: no stored path yet, use 'new'
+    // fall through: no stored path yet, use the service default
   }
 
-  const pagePathMap: Record<string, string> = {
-    'home': 'home',
-    'new': 'new',
-    'radio': 'radio',
-    'all-playlists': 'library/all-playlists/',
-  };
-  const pagePath = pagePathMap[startPage] ?? pagePathMap['new'];
+  const pageEntry = service.startPages.find(p => p.id === startPage)
+    ?? service.startPages.find(p => p.id === service.defaultStartPage)
+    ?? service.startPages[0];
+  // The classical home entry has an empty path and must not gain a trailing slash.
+  const pagePath = pageEntry.path === '' ? '' : `/${pageEntry.path}`;
 
-  return appendLanguage(`${service.origin}/${storefront}/${pagePath}`, language);
+  return appendLanguage(`${service.origin}/${storefront}${pagePath}`, language);
 }
 
 export function buildItmsRouteURL(token: ItmsRouteToken): string {

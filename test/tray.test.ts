@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'vitest';
 import type { TrayStrings } from '../src/i18n';
 
 // Mock modules that import electron-conf/main at import time.
@@ -67,6 +67,18 @@ const mockTrayStrings: TrayStrings = {
   closeToTray: 'Close to tray',
 };
 
+// Expected menu label per registry page id. Typed over the union, so a new page
+// with no expectation here fails tsc rather than going untested.
+const TEST_START_PAGE_LABELS: Record<AnyStartPageId, string> = {
+  'home': mockTrayStrings.startPageHome,
+  'new': mockTrayStrings.startPageNew,
+  'radio': mockTrayStrings.startPageRadio,
+  'all-playlists': mockTrayStrings.startPageAllPlaylists,
+  'browse': mockTrayStrings.startPageBrowse,
+  'playlists': mockTrayStrings.startPagePlaylists,
+  'search': mockTrayStrings.startPageSearch,
+};
+
 vi.mock('../src/i18n', () => ({
   getTrayStrings: () => mockTrayStrings,
   getAboutStrings: () => ({ close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
@@ -107,15 +119,15 @@ vi.mock('../src/paths', () => ({
 
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback } from '../src/tray';
-import { getCloseToTrayEnabled, getTheme, setTheme, getMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
+import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback } from '../src/tray';
+import { getCloseToTrayEnabled, getTheme, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload, PlayerEvents } from '../src/player';
 import { applyTheme, hasCustomCss, resolveTheme } from '../src/theme';
 import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from '../src/integrations/lastfm';
 import { FakePlayer } from './mocks/player';
-import type { ClassicalStartPageId, MusicServiceId } from '../src/musicService';
+import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type MusicServiceId } from '../src/musicService';
 
 // Helper: extract the template array from the last Menu.buildFromTemplate call
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -494,6 +506,55 @@ describe('createTray - menu template inspection', () => {
     });
   });
 
+  describe('Player submenu service switch', () => {
+    const onSwitch = vi.fn();
+
+    beforeEach(() => {
+      setPlatform('linux');
+      vi.mocked(getMusicService).mockReturnValue('music');
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+      vi.mocked(setMusicService).mockClear();
+      onSwitch.mockClear();
+      setSwitchServiceCallback(onSwitch);
+    });
+
+    // Mocks are not reset between tests, so hand back the state the rest of the
+    // file builds the menu in.
+    afterEach(() => {
+      setSwitchServiceCallback(() => {});
+      vi.mocked(getMusicService).mockReturnValue('music');
+    });
+
+    function playerSubmenu(): Electron.MenuItemConstructorOptions[] {
+      createTray();
+      const playerItem = findItem(getLastTemplate(), 'Player');
+      expect(playerItem).toBeDefined();
+      return playerItem!.submenu as Electron.MenuItemConstructorOptions[];
+    }
+
+    it('hands the clicked service id to the wired callback', () => {
+      const classicalItem = playerSubmenu().find(item => item.label === 'Apple Music Classical');
+      expect(classicalItem).toBeDefined();
+      (classicalItem!.click as Function)();
+      expect(onSwitch).toHaveBeenCalledTimes(1);
+      expect(onSwitch).toHaveBeenCalledWith('classical');
+    });
+
+    it('does nothing when the active service is clicked', () => {
+      const musicItem = playerSubmenu().find(item => item.label === 'Apple Music');
+      expect(musicItem).toBeDefined();
+      (musicItem!.click as Function)();
+      expect(onSwitch).not.toHaveBeenCalled();
+      expect(vi.mocked(setMusicService)).not.toHaveBeenCalled();
+    });
+
+    it('takes a service id rather than any string', () => {
+      expectTypeOf(setSwitchServiceCallback).parameter(0).parameter(0).toEqualTypeOf<MusicServiceId>();
+      expectTypeOf(setSwitchServiceCallback).parameter(0).parameter(0).not.toEqualTypeOf<string>();
+    });
+  });
+
   describe('Player submenu with an unregistered service id', () => {
     // Stands in for a hand-edited config file, or for a downgrade past a future
     // release that adds a third service id.
@@ -567,6 +628,48 @@ describe('createTray - menu template inspection', () => {
       const submenu = startPageItem!.submenu as Electron.MenuItemConstructorOptions[];
       const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
       expect(ticked).toEqual(['Home']);
+    });
+  });
+
+  describe('Start Page submenu covers the registry', () => {
+    beforeEach(() => {
+      setPlatform('linux');
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+    });
+
+    // Mocks are not reset between tests, so hand back the state the rest of the
+    // file builds the menu in.
+    afterEach(() => {
+      vi.mocked(getMusicService).mockReturnValue('music');
+      vi.mocked(getClassicalStartPage).mockReturnValue('home');
+    });
+
+    function startPageSubmenu(): Electron.MenuItemConstructorOptions[] {
+      createTray();
+      const startPageItem = findItem(getLastTemplate(), 'Start Page');
+      expect(startPageItem).toBeDefined();
+      return startPageItem!.submenu as Electron.MenuItemConstructorOptions[];
+    }
+
+    it('offers a radio entry for every music start page in the registry', () => {
+      vi.mocked(getMusicService).mockReturnValue('music');
+      const submenu = startPageSubmenu();
+      for (const page of MUSIC_SERVICES.music.startPages) {
+        const entry = submenu.find(item => item.label === TEST_START_PAGE_LABELS[page.id]);
+        expect(entry, `${page.id} should have a menu entry`).toBeDefined();
+        expect(entry!.type).toBe('radio');
+      }
+    });
+
+    it('offers a radio entry for every classical start page in the registry', () => {
+      vi.mocked(getMusicService).mockReturnValue('classical');
+      const submenu = startPageSubmenu();
+      for (const page of MUSIC_SERVICES.classical.startPages) {
+        const entry = submenu.find(item => item.label === TEST_START_PAGE_LABELS[page.id]);
+        expect(entry, `${page.id} should have a menu entry`).toBeDefined();
+        expect(entry!.type).toBe('radio');
+      }
     });
   });
 
