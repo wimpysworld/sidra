@@ -746,6 +746,36 @@ export function rebuildTrayMenu(tray: Tray): void {
   tray.setContextMenu(buildContextMenu(tray));
 }
 
+// Playback, volume and now-playing events arrive in bursts: the hook polls
+// mk.volume every 250ms while the slider moves, and the renderer can emit far
+// faster than that. Each rebuild walks every submenu, reads custom.css and
+// resizes the artwork five times, so a burst is collapsed into one rebuild.
+const TRAY_REBUILD_COALESCE_MS = 250;
+
+let rebuildTimer: NodeJS.Timeout | null = null;
+let pendingRebuildTray: Tray | null = null;
+
+// A fixed window rather than a debounce: a debounce that restarts on every
+// event never expires under a sustained flood, so the menu would never rebuild.
+function scheduleTrayRebuild(tray: Tray): void {
+  pendingRebuildTray = tray;
+  if (rebuildTimer) return;
+  rebuildTimer = setTimeout(() => {
+    rebuildTimer = null;
+    const target = pendingRebuildTray;
+    pendingRebuildTray = null;
+    if (target) rebuildTrayMenu(target);
+  }, TRAY_REBUILD_COALESCE_MS);
+}
+
+export function cancelTrayRebuild(): void {
+  if (rebuildTimer) {
+    clearTimeout(rebuildTimer);
+    rebuildTimer = null;
+  }
+  pendingRebuildTray = null;
+}
+
 export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null): void {
   const fallback = getProductInfo().productName;
   const text = payload?.name
@@ -813,7 +843,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     currentPayload = null;
     currentArtworkPath = null;
     updateNowPlayingState(null, null, false, currentVolume);
-    rebuildTrayMenu(tray);
+    scheduleTrayRebuild(tray);
   };
 
   const trayPauseTimer = createPauseTimer(TRAY_PAUSE_TIMEOUT_MS, clearNowPlaying);
@@ -827,7 +857,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
       currentArtworkPath = null;
       updateTrayTooltip(tray, null);
       updateNowPlayingState(null, null, false, currentVolume);
-      rebuildTrayMenu(tray);
+      scheduleTrayRebuild(tray);
       return;
     }
     trayLog.debug('nowPlayingItemDidChange (tray handler):', `"${payload.name}"`);
@@ -842,7 +872,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     currentArtworkPath = artworkPath;
     const { isPlaying } = player.playbackSnapshot();
     updateNowPlayingState(payload, artworkPath, isPlaying, currentVolume);
-    rebuildTrayMenu(tray);
+    scheduleTrayRebuild(tray);
   };
 
   const onPlaybackStateDidChange = (payload: { status: boolean; state: number } | null): void => {
@@ -854,7 +884,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
       currentPayload = null;
       currentArtworkPath = null;
       updateNowPlayingState(null, null, false, currentVolume);
-      rebuildTrayMenu(tray);
+      scheduleTrayRebuild(tray);
       return;
     }
     const { isPlaying } = player.playbackSnapshot();
@@ -869,7 +899,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     previousPlaying = isPlaying;
 
     updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
-    rebuildTrayMenu(tray);
+    scheduleTrayRebuild(tray);
   };
 
   const onVolumeDidChange = (volume: number | null): void => {
@@ -877,7 +907,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     currentVolume = volume;
     const { isPlaying } = player.playbackSnapshot();
     updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
-    rebuildTrayMenu(tray);
+    scheduleTrayRebuild(tray);
   };
 
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
@@ -886,6 +916,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
 
   return () => {
     trayPauseTimer.destroy();
+    cancelTrayRebuild();
     player.off('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.off('playbackStateDidChange', onPlaybackStateDidChange);
     player.off('volumeDidChange', onVolumeDidChange);

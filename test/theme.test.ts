@@ -8,18 +8,17 @@ vi.mock('../src/config', () => ({
   getMusicService: vi.fn(() => 'music'),
 }));
 
-vi.mock('fs', () => ({
-  default: {
-    readFileSync: vi.fn(),
-    existsSync: vi.fn(),
-    watch: vi.fn(),
-    mkdirSync: vi.fn(),
-  },
+// Hoisted so the same mock functions survive vi.resetModules(): the
+// watcher-failure test loads a second copy of src/theme.ts and has to drive the
+// same fs.
+const fsMock = vi.hoisted(() => ({
   readFileSync: vi.fn(),
   existsSync: vi.fn(),
   watch: vi.fn(),
   mkdirSync: vi.fn(),
 }));
+
+vi.mock('fs', () => ({ default: fsMock, ...fsMock }));
 
 import { getTheme } from '../src/config';
 import {
@@ -27,6 +26,7 @@ import {
   getThemeCss,
   hasCustomCss,
   initThemeCSS,
+  invalidateCustomCssCache,
   resolveTheme,
   setRebuildTrayCallback,
   setThemeCssKey,
@@ -37,6 +37,11 @@ describe('theme helpers', () => {
     vi.mocked(getTheme).mockReturnValue('apple-music');
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fs.readFileSync).mockReturnValue('');
+    vi.mocked(fs.readFileSync).mockClear();
+    vi.mocked(fs.watch).mockReset();
+    // custom.css contents are cached for the life of the process, so each test
+    // starts from a cold cache.
+    invalidateCustomCssCache();
   });
 
   afterEach(() => {
@@ -75,6 +80,10 @@ describe('theme helpers', () => {
       removeInsertedCSS,
       win,
       start: () => { initThemeCSS(win); },
+      // Fire a watcher event without running the debounce.
+      fire(eventType: 'rename' | 'change', filename = 'custom.css') {
+        watchHandler?.(eventType, filename);
+      },
       // Fire a watcher event, then run the debounce and the CSS promise chain.
       async emit(eventType: 'rename' | 'change') {
         watchHandler?.(eventType, 'custom.css');
@@ -157,6 +166,73 @@ describe('theme helpers', () => {
   it('returns custom.css content when present', () => {
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     expect(getThemeCss('custom')).toBe('body { color: red; }');
+  });
+
+  it('reads custom.css once across repeated resolveTheme calls', () => {
+    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe('custom');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves hasCustomCss and getThemeCss from the same cached read', () => {
+    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(hasCustomCss()).toBe(true);
+    expect(getThemeCss('custom')).toBe('body { color: red; }');
+    expect(resolveTheme()).toBe('custom');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches the absence of custom.css rather than retrying the read', () => {
+    throwEnoent();
+    expect(hasCustomCss()).toBe(false);
+    expect(hasCustomCss()).toBe(false);
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads custom.css as soon as the watcher fires, before the debounce', () => {
+    const harness = watcherHarness();
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    harness.start();
+    expect(getThemeCss('custom')).toBe('body { color: red; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
+    harness.fire('change');
+    expect(getThemeCss('custom')).toBe('body { color: blue; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the cache when the watcher event names another file', () => {
+    const harness = watcherHarness();
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    harness.start();
+    expect(getThemeCss('custom')).toBe('body { color: red; }');
+
+    harness.fire('change', 'config.json');
+    expect(getThemeCss('custom')).toBe('body { color: red; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops caching when the watcher cannot start', async () => {
+    // Nothing would clear a cache the watcher never populates events for, so a
+    // failed watcher has to fall back to reading on every call.
+    vi.resetModules();
+    vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
+    const theme = await import('../src/theme');
+    const win = {
+      isDestroyed: vi.fn().mockReturnValue(false),
+      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn() },
+    } as unknown as Parameters<typeof initThemeCSS>[0];
+    theme.initThemeCSS(win);
+
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
+    expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
   });
 
   it('renders bundled theme CSS', () => {

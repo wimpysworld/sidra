@@ -15,6 +15,15 @@ const customCssFilename = 'custom.css';
 const bundledThemesByName = new Map(BUNDLED_THEMES.map(theme => [theme.name, theme] as const));
 const bundledCssCache = new Map<BundledThemeName, string>();
 
+// custom.css is read on every tray rebuild, through both hasCustomCss() and
+// resolveTheme(), so its contents are cached and the fs.watch callback below
+// clears the cache. Nothing else would clear it, so a watcher that never starts
+// or dies switches caching off rather than leaving a cache that goes stale for
+// the life of the process.
+let customCssCache: string | null = null;
+let customCssCached = false;
+let customCssCacheEnabled = true;
+
 // Track injected theme CSS for live toggle
 let themeCssKey: string | null = null;
 
@@ -54,19 +63,40 @@ export function resolveTheme(): ThemeName {
   return theme;
 }
 
+function readCustomCss(): string | null {
+  try {
+    const css = fs.readFileSync(customCssPath(), 'utf-8');
+    return css.trim().length > 0 ? css : null;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== 'ENOENT') {
+      themeLog.warn('Failed to read custom.css from userData directory', error);
+    }
+    return null;
+  }
+}
+
+// Exported for the watcher below and for tests; nothing else needs it.
+export function invalidateCustomCssCache(): void {
+  customCssCache = null;
+  customCssCached = false;
+}
+
+function disableCustomCssCache(): void {
+  customCssCacheEnabled = false;
+  invalidateCustomCssCache();
+}
+
 export function getThemeCss(name: ThemeName): string | null {
   if (name === 'apple-music') return null;
   if (name === 'custom') {
-    try {
-      const css = fs.readFileSync(customCssPath(), 'utf-8');
-      return css.trim().length > 0 ? css : null;
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code !== 'ENOENT') {
-        themeLog.warn('Failed to read custom.css from userData directory', error);
-      }
-      return null;
+    if (customCssCached) return customCssCache;
+    const css = readCustomCss();
+    if (customCssCacheEnabled) {
+      customCssCache = css;
+      customCssCached = true;
     }
+    return css;
   }
 
   const cached = bundledCssCache.get(name);
@@ -120,6 +150,9 @@ export function initThemeCSS(win: BrowserWindow): void {
       // macOS may emit a null filename for directory-level change events.
       if (filename !== null && filename.toString() !== customCssFilename) return;
       themeLog.debug(`custom.css watcher event: ${eventType}`);
+      // Before the debounce, not inside it: a tray rebuild during the debounce
+      // window must not read the previous contents back out of the cache.
+      invalidateCustomCssCache();
       if (customCssTimer) clearTimeout(customCssTimer);
       customCssTimer = setTimeout(() => {
         customCssTimer = null;
@@ -137,9 +170,12 @@ export function initThemeCSS(win: BrowserWindow): void {
     });
     watcher.on('error', (error) => {
       themeLog.warn('custom.css watcher error', error);
+      // Node closes the watcher on error, so nothing is left to clear the cache.
+      disableCustomCssCache();
     });
   } catch (error) {
     themeLog.warn('Failed to initialise custom.css watcher', error);
+    disableCustomCssCache();
   }
 
   app.on('will-quit', () => {
