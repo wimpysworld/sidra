@@ -25,38 +25,46 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 ## Features
 
-- Lossless audio on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
-- Localised storefront and interface in 32 languages
-- Desktop notifications and Discord Rich Presence
-- Last.fm scrobbling, opt-in: connect from the tray and approve Sidra on the page that opens in your browser
-- Injected Back, Forward, and Reload navigation controls on both Apple Music and Apple Music Classical
-- Apple Music Classical support (switchable at runtime from the tray Player submenu):
+- 🎧 **Untouched audio** - no `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
+- 🎨 **Six bundled themes** - Catppuccin, Dracula, Gruvbox, Nord, Rosé Pine, and Solarized - plus a live-reloading `custom.css` escape hatch
+- 📊 **Last.fm scrobbling** - opt-in; connect from the tray and approve Sidra in your browser
+- 🎮 **Discord Rich Presence** - show what you are listening to
+- 🔔 **Desktop notifications** - track changes, native to each platform
+- 🌍 **32 languages** - localised storefront and interface
+- 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
+- 🎼 **Apple Music Classical** - switch at runtime from the tray **Player** submenu:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
-  - Theming is unavailable: the tray **Style** submenu is disabled and Sidra injects no override CSS
-- **Linux**:
+- 🐧 **Linux**:
   - Widevine DRM via CastLabs Electron
   - Wayland and X11 support
   - Bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) over D-Bus
-- **macOS**:
+- 🍏 **macOS**:
   - Full Widevine DRM with EVS production VMP signing
   - Now Playing widget, Dock menu with playback controls, and Dock progress bar
   - App menu (Cmd+Q, About) and native share sheet for the current track
-- **Windows**:
+- 🪟 **Windows**:
   - Full Widevine DRM with EVS production VMP signing
   - GSMTC media flyout, taskbar thumbnail toolbar (play/pause, next, previous)
   - Taskbar overlay icon and progress bar showing playback state and position
-- **Application Indicator**:
+- 🎚️ **Application Indicator**:
   - Now Playing: track, artist, album, artwork
   - Playback controls, volume, and mute
   - Start page and last session restore, style switcher, zoom control
+  - Close to tray, opt-in: closing the window keeps Sidra running, with Hide and Show entries
   - Share current track (macOS), auto-update status
-- Auto-update via GitHub Releases:
+- 🔄 **Auto-update** via GitHub Releases:
   - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
   - deb, rpm, Nix, macOS DMG: update notification linking to the release page
 
 <p align="center">
   <img src="assets/source/sidra-screenshot.png" alt="Sidra screenshot" width="100%">
 </p>
+
+### Mini Player
+
+Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLauinger77](https://github.com/ChrisLauinger77)) asked for one in [#125](https://github.com/wimpysworld/sidra/issues/125), then built [**MPRIS MiniPlayer**](https://github.com/ChrisLauinger77/mpris-miniplayer): a small GTK4/libadwaita window that controls any MPRIS player on Linux.
+
+It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
 
 ---
 
@@ -277,4 +285,6 @@ Environment variables win at runtime; the JSON file is the fallback that package
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
 
-Security audits run after significant feature work. The current report, including full remediation history, is at [`docs/SECURITY-REPORT.md`](docs/SECURITY-REPORT.md).
+Dependency security is tracked in the open. [Dependabot alerts](https://github.com/wimpysworld/sidra/security/dependabot) carries the live state of every advisory affecting Sidra, and fixes are merged as they land. A live page beats a report checked into the repository, which is stale the day after it is written. GitHub restricts that page to repository maintainers.
+
+Private vulnerability reporting is enabled. To report a security issue, follow [`SECURITY.md`](SECURITY.md) - your report stays between you and the maintainers until a fix ships.
