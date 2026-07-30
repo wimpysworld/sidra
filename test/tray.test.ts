@@ -953,6 +953,38 @@ describe('createTray - menu template inspection', () => {
       expect(mockWin.focus).toHaveBeenCalled();
     });
 
+    it('tray click rebuilds the menu after showing a hidden window', () => {
+      mockWin.isVisible.mockReturnValue(false);
+      // Showing the window flips visibility, so the rebuilt menu is built against the new state.
+      mockWin.show.mockImplementation(() => { mockWin.isVisible.mockReturnValue(true); });
+      const tray = createTray();
+      const setContextMenu = tray.setContextMenu as ReturnType<typeof vi.fn>;
+      // Delta, never an absolute count: createTray() sets the menu once on its own.
+      const before = setContextMenu.mock.calls.length;
+      const onFn = tray.on as ReturnType<typeof vi.fn>;
+      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      expect(clickCall).toBeDefined();
+      (clickCall![1] as () => void)();
+      expect(setContextMenu.mock.calls.length).toBe(before + 1);
+      // Without the rebuild the menu still offers Show Sidra for a window that is now visible.
+      const template = getLastTemplate();
+      expect(findItem(template, 'Hide Sidra')).toBeDefined();
+      expect(findItem(template, 'Show Sidra')).toBeUndefined();
+    });
+
+    it('tray click focuses a visible window without rebuilding the menu', () => {
+      const tray = createTray();
+      const setContextMenu = tray.setContextMenu as ReturnType<typeof vi.fn>;
+      const before = setContextMenu.mock.calls.length;
+      const onFn = tray.on as ReturnType<typeof vi.fn>;
+      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      expect(clickCall).toBeDefined();
+      (clickCall![1] as () => void)();
+      expect(mockWin.focus).toHaveBeenCalled();
+      expect(mockWin.show).not.toHaveBeenCalled();
+      expect(setContextMenu.mock.calls.length).toBe(before);
+    });
+
     it('tray click is a no-op when close-to-tray is disabled', () => {
       mockWin.isVisible.mockReturnValue(false);
       vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);

@@ -183,8 +183,12 @@ describe('musicKitHook', () => {
     },
   );
 
-  it('does nothing when navigator.mediaSession is unavailable', () => {
-    const { musicKitListeners } = createHarness({
+  it('still forwards playback events over IPC when navigator.mediaSession is unavailable', () => {
+    // Position state is a bonus for OS media controls; the IPC forwarding is
+    // the hook's actual job. A guard that swallowed the whole listener would
+    // leave MPRIS and every integration blind, so assert the sends, not that
+    // the listener merely survived.
+    const { musicKitListeners, window } = createHarness({
       navigatorOverrides: {},
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -192,8 +196,43 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
-    expect(() => musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null })).not.toThrow();
+    musicKitListeners.get('playbackTimeDidChange')?.();
+    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
+
+    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+      'playbackTimeDidChange',
+      42 * 1_000_000,
+    );
+    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+      'nowPlayingItemDidChange',
+      null,
+    );
+  });
+
+  it('still forwards playback events over IPC when setPositionState is missing', () => {
+    // Safari exposes navigator.mediaSession without setPositionState, which is
+    // the arm the object-presence check alone would let through. Both calls sit
+    // in a try/catch, so an unguarded call would not surface as a throw - the
+    // IPC sends are the only observable proof the listeners ran to completion.
+    const { musicKitListeners, window } = createHarness({
+      navigatorOverrides: { mediaSession: {} },
+      musicKitOverrides: {
+        currentPlaybackDuration: 180,
+        currentPlaybackTime: 42,
+      },
+    });
+
+    musicKitListeners.get('playbackTimeDidChange')?.();
+    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
+
+    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+      'playbackTimeDidChange',
+      42 * 1_000_000,
+    );
+    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+      'nowPlayingItemDidChange',
+      null,
+    );
   });
 
   it('reports the item duration in seconds when the playback duration is unavailable', () => {

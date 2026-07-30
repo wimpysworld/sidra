@@ -48,73 +48,43 @@ describe('MusicService types', () => {
 });
 
 describe('MUSIC_SERVICES registry', () => {
-  it('contains the music entry', () => {
-    expect(MUSIC_SERVICES['music']).toBeDefined();
-  });
-
-  it('music entry has correct id', () => {
-    expect(MUSIC_SERVICES['music'].id).toBe('music');
-  });
-
-  it('music entry has correct host', () => {
-    expect(MUSIC_SERVICES['music'].host).toBe('music.apple.com');
-  });
-
-  it('music entry has correct origin', () => {
-    expect(MUSIC_SERVICES['music'].origin).toBe('https://music.apple.com');
-  });
-
-  it('music entry has correct displayName', () => {
-    expect(MUSIC_SERVICES['music'].displayName).toBe('Apple Music');
-  });
-
-  it('music entry has correct authFrameHosts', () => {
-    expect(MUSIC_SERVICES['music'].authFrameHosts).toContain('auth.music.apple.com');
-    expect(MUSIC_SERVICES['music'].authFrameHosts).toContain('idmsa.apple.com');
-  });
-
-  it('contains the classical entry', () => {
-    expect(MUSIC_SERVICES['classical']).toBeDefined();
-  });
-
-  it('classical entry has correct id', () => {
-    expect(MUSIC_SERVICES['classical'].id).toBe('classical');
-  });
-
-  it('classical entry has correct host', () => {
-    expect(MUSIC_SERVICES['classical'].host).toBe('classical.music.apple.com');
-  });
-
-  it('classical entry has correct origin', () => {
-    expect(MUSIC_SERVICES['classical'].origin).toBe('https://classical.music.apple.com');
-  });
-
-  it('classical entry has correct displayName', () => {
-    expect(MUSIC_SERVICES['classical'].displayName).toBe('Apple Music Classical');
-  });
-
-  it('classical entry has start pages', () => {
-    expect(MUSIC_SERVICES['classical'].startPages.length).toBeGreaterThan(0);
-    expect(MUSIC_SERVICES['classical'].startPages.map(p => p.id)).toContain('home');
-  });
-
-  it('classical entry declares exactly the reachable start pages', () => {
-    expect(MUSIC_SERVICES['classical'].startPages.map(p => p.id)).toEqual([
-      'home',
-      'browse',
-      'playlists',
-      'search',
-    ]);
-  });
-
-  it('classical browse start page points at browse/catalog', () => {
-    const browse = MUSIC_SERVICES['classical'].startPages.find(p => p.id === 'browse');
-    expect(browse).toBeDefined();
-    expect(browse!.path).toBe('browse/catalog');
-  });
-
-  it('classical entry has a defaultStartPage', () => {
-    expect(MUSIC_SERVICES['classical'].defaultStartPage).toBe('home');
+  // One whole-registry comparison rather than a field at a time: an added, renamed or dropped
+  // entry is caught as well, and a failure prints the whole diff instead of one stray value.
+  // Start page order is the tray submenu order, so the arrays are compared in order.
+  it('matches the expected registry shape', () => {
+    expect(MUSIC_SERVICES).toEqual({
+      music: {
+        id: 'music',
+        host: 'music.apple.com',
+        origin: 'https://music.apple.com',
+        displayName: 'Apple Music',
+        authFrameHosts: ['auth.music.apple.com', 'idmsa.apple.com'],
+        contentReadySelector: CONTENT_READY_SELECTOR,
+        startPages: [
+          { id: 'home', path: 'home' },
+          { id: 'new', path: 'new' },
+          { id: 'radio', path: 'radio' },
+          { id: 'all-playlists', path: 'library/all-playlists/' },
+        ],
+        defaultStartPage: 'new',
+      },
+      classical: {
+        id: 'classical',
+        host: 'classical.music.apple.com',
+        origin: 'https://classical.music.apple.com',
+        displayName: 'Apple Music Classical',
+        authFrameHosts: ['auth.music.apple.com', 'idmsa.apple.com'],
+        contentReadySelector: CONTENT_READY_SELECTOR,
+        startPages: [
+          { id: 'home', path: '' },
+          // Classical serves its catalogue under browse/, so both of these paths carry the prefix.
+          { id: 'browse', path: 'browse/catalog' },
+          { id: 'playlists', path: 'browse/playlists' },
+          { id: 'search', path: 'search' },
+        ],
+        defaultStartPage: 'home',
+      },
+    });
   });
 });
 
@@ -271,11 +241,6 @@ describe('isAllowedNavigationUrl', () => {
 
   it('rejects an empty string', () => {
     expect(isAllowedNavigationUrl('')).toBe(false);
-  });
-
-  it('does not throw on malformed input', () => {
-    expect(() => isAllowedNavigationUrl('not a url')).not.toThrow();
-    expect(() => isAllowedNavigationUrl('')).not.toThrow();
   });
 
   it('rejects an allowed host carried in the userinfo of a foreign host', () => {

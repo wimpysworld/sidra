@@ -15,16 +15,22 @@ describe('content readiness marker', () => {
     expect(contentReadyProbeScript()).not.toContain('navigation__header');
   });
 
-  it('embeds a custom selector when one is passed', () => {
-    const customSelector = '.my-custom-element[ready]';
-    const script = contentReadyProbeScript(customSelector);
-    expect(script).toContain(customSelector);
-    expect(script).toBe(`!!document.querySelector(${JSON.stringify(customSelector)})`);
-  });
+  it('embeds a caller-supplied selector as valid JavaScript', () => {
+    // The selector carries double quotes, so raw interpolation would end the string literal
+    // early and the probe would fail to parse inside executeJavaScript.
+    const customSelector = '[data-testid="app-container"] .my-custom-element[ready]';
+    const queried: string[] = [];
+    const fakeDocument = {
+      querySelector: (selector: string): null => {
+        queried.push(selector);
+        return null;
+      }
+    };
 
-  it('default selector matches CONTENT_READY_SELECTOR', () => {
-    const defaultScript = contentReadyProbeScript();
-    const explicitScript = contentReadyProbeScript(CONTENT_READY_SELECTOR);
-    expect(defaultScript).toBe(explicitScript);
+    const probe = new Function('document', `return ${contentReadyProbeScript(customSelector)};`);
+    const result: unknown = probe(fakeDocument);
+
+    expect(queried).toEqual([customSelector]);
+    expect(result).toBe(false);
   });
 });

@@ -20,7 +20,7 @@ const fsMock = vi.hoisted(() => ({
 
 vi.mock('fs', () => ({ default: fsMock, ...fsMock }));
 
-import { getTheme } from '../src/config';
+import { getMusicService, getTheme } from '../src/config';
 import {
   customCssPath,
   getThemeCss,
@@ -35,6 +35,8 @@ import {
 describe('theme helpers', () => {
   beforeEach(() => {
     vi.mocked(getTheme).mockReturnValue('apple-music');
+    // Reset per test, so a switch to classical cannot leak into the next one.
+    vi.mocked(getMusicService).mockReturnValue('music');
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fs.readFileSync).mockReturnValue('');
     vi.mocked(fs.readFileSync).mockClear();
@@ -151,6 +153,43 @@ describe('theme helpers', () => {
     vi.mocked(getTheme).mockReturnValue('custom');
     vi.mocked(fs.readFileSync).mockReturnValue('\n  \n');
     expect(resolveTheme()).toBe('apple-music');
+  });
+
+  it('forces apple-music on classical for a bundled theme', () => {
+    // Bundled theme CSS targets the music.apple.com DOM, so classical gets none.
+    vi.mocked(getTheme).mockReturnValue('catppuccin');
+    vi.mocked(getMusicService).mockReturnValue('classical');
+    expect(resolveTheme()).toBe('apple-music');
+  });
+
+  it('forces apple-music on classical even with populated custom.css', () => {
+    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    vi.mocked(getMusicService).mockReturnValue('classical');
+    expect(resolveTheme()).toBe('apple-music');
+  });
+
+  it('restores the stored theme when the service switches back from classical', () => {
+    // The gate suppresses the theme; it never rewrites the stored value.
+    vi.mocked(getTheme).mockReturnValue('catppuccin');
+    expect(resolveTheme()).toBe('catppuccin');
+
+    vi.mocked(getMusicService).mockReturnValue('classical');
+    expect(resolveTheme()).toBe('apple-music');
+    expect(getTheme()).toBe('catppuccin');
+
+    vi.mocked(getMusicService).mockReturnValue('music');
+    expect(resolveTheme()).toBe('catppuccin');
+  });
+
+  it('returns null for apple-music even with populated custom.css', () => {
+    // apple-music means "inject no override CSS", so it must never pick up the
+    // custom.css a fall-through past the guard would reach.
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
+    expect(getThemeCss('apple-music')).toBeNull();
+    expect(fs.readFileSync).not.toHaveBeenCalled();
   });
 
   it('returns null for missing custom.css', () => {
