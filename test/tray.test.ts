@@ -412,6 +412,10 @@ describe('createTray - menu template inspection', () => {
   });
 
   describe('menu structure', () => {
+    afterEach(() => {
+      vi.mocked(isLastfmConfigured).mockReturnValue(false);
+    });
+
     it('includes separator before Quit', () => {
       setPlatform('linux');
       createTray();
@@ -442,6 +446,29 @@ describe('createTray - menu template inspection', () => {
       expect(findItem(template, 'Style')).toBeDefined();
       expect(findItem(template, 'Zoom')).toBeDefined();
       expect(findItem(template, 'Quit')).toBeDefined();
+    });
+
+    // With now-playing state cleared, Volume is gone and every remaining item
+    // with a submenu is a top-level settings parent. Comparing the text before
+    // the first ':' keeps the assertion independent of the toggle states.
+    it('asserts the full top-level submenu order', () => {
+      setPlatform('linux');
+      updateNowPlayingState(null, null, false, 0);
+      vi.mocked(isLastfmConfigured).mockReturnValue(true);
+      createTray();
+      const parents = getLastTemplate()
+        .filter((item) => item.submenu !== undefined)
+        .map((item) => String(item.label).split(':')[0]);
+      expect(parents).toEqual([
+        'Player',
+        'Start Page',
+        'Close to tray',
+        'Notifications',
+        'Discord',
+        'Last.fm',
+        'Style',
+        'Zoom',
+      ]);
     });
   });
 
