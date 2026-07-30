@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import log from 'electron-log/main';
-import { Client } from '@xhayper/discord-rpc';
+import { Client, SetActivity, StatusDisplayType } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { getDiscordEnabled, getMusicService } from '../../config';
@@ -121,8 +121,9 @@ function sendActivity(): void {
     buttons.push({ label: `Play on ${displayName}`, url: trackUrl });
   }
 
-  const activity: Record<string, unknown> = {
+  const activity: SetActivity = {
     type: ActivityType.Listening,
+    statusDisplayType: StatusDisplayType.DETAILS,
     details,
     state,
     largeImageKey,
@@ -140,7 +141,7 @@ function sendActivity(): void {
     activity.endTimestamp = new Date(now - currentPositionMs + durationMs);
   }
 
-  client.user?.setActivity(activity as Parameters<typeof client.user.setActivity>[0]).then(() => {
+  client.user?.setActivity(activity).then(() => {
     discordLog.debug('activity updated:', trackName);
   }).catch((err: Error) => {
     discordLog.warn('failed to set activity:', err.message);

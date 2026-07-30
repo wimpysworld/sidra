@@ -216,7 +216,7 @@ Events flow from the renderer (MusicKit hook script) to the main process (player
 |---|---|---|
 | `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
 | `nowPlayingItemDidChange` | `NowPlayingPayload` (see `src/player.ts`) or `null` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
-| `playbackTimeDidChange` | Position in microseconds | MPRIS, Discord (position only), Dock, Taskbar |
+| `playbackTimeDidChange` | Position in microseconds | MPRIS, Dock, Taskbar |
 | `repeatModeDidChange` | Mode integer (0/1/2) | MPRIS |
 | `shuffleModeDidChange` | Mode integer | MPRIS |
 | `volumeDidChange` | Volume float (0.0-1.0) | MPRIS |
@@ -672,20 +672,21 @@ Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmde
 
 ### Behaviour
 
-- **Activity type**: `ActivityType.Listening` ("Listening to" status text)
+- **Activity type**: `ActivityType.Listening`, which supplies the "Listening to" verb and nothing else
+- **Status display type**: `StatusDisplayType.DETAILS` (2), which picks `details` as the field Discord renders after that verb in the member-list line. Discord defaults the field to 0 (Name), which renders the registered application name instead of the track title.
 - **Details**: Track name (truncated to 128 chars, padded to 2 chars minimum - Discord rejects shorter strings)
 - **State**: `by ArtistName` (truncated to 128 chars, padded to 2 chars minimum)
 - **Artwork**: Apple Music CDN URLs work directly as `largeImageKey` if under 256 chars (typical range: 80-130 chars). Fall back to a Discord-hosted `sidra_logo` asset if over the limit.
 - **Timestamps**: When playing, calculate `startTimestamp` and `endTimestamp` from current position at send time. Omit when paused.
 - **Buttons**: Two buttons - "Sidra" (links to GitHub repo) and "Play on Apple Music" (links to track URL when available).
-- **Debounce**: 1s debounce on updates to coalesce rapid events (track change + playback state landing together). `scheduleUpdate()` resets the debounce timer; `sendActivity()` calculates timestamps fresh from the cached position.
+- **Debounce**: 1s debounce on updates to coalesce rapid events (track change + playback state landing together). `scheduleUpdate()` resets the debounce timer; `sendActivity()` reads the position fresh from the player when it fires.
 - **Pause timeout**: Clear activity after 30s paused (ytmdesktop pattern) - courtesy to users who do not want to broadcast a paused state.
 - **Retry**: Reconnect with exponential backoff (2s base, 60s cap) on Discord IPC disconnection.
 - **Toggle**: `discord.enabled` in `electron-conf` (default: false). Tray menu toggle; when disabled, clears activity immediately.
 
 ### `playbackTimeDidChange` pitfall
 
-`playbackTimeDidChange` fires every ~250ms (MusicKit polling). Integrations must NOT call `scheduleUpdate()` (or any debounced function) from this event - doing so resets the debounce timer on every tick, preventing the debounced callback from ever executing. The Discord integration stores the updated position only; timestamps are calculated from the cached position when `sendActivity()` fires.
+`playbackTimeDidChange` fires every ~250ms (MusicKit polling). Integrations must NOT call `scheduleUpdate()` (or any debounced function) from this event - doing so resets the debounce timer on every tick, preventing the debounced callback from ever executing. The Discord integration therefore subscribes to no `playbackTimeDidChange` event at all: `sendActivity()` calls `playerRef.playbackSnapshot()` and reads the playing flag and the position from that snapshot.
 
 ### Event subscriptions
 
@@ -693,7 +694,6 @@ Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmde
 |---|---|
 | `nowPlayingItemDidChange` | Cache metadata, cancel pause timer, `scheduleUpdate()` |
 | `playbackStateDidChange` | Update `isPlaying`, manage pause timer, `scheduleUpdate()` |
-| `playbackTimeDidChange` | Store position only (no `scheduleUpdate()`) |
 
 ---
 
