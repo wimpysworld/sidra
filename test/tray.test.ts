@@ -108,7 +108,7 @@ vi.mock('../src/paths', () => ({
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
 import { truncateMenuLabel, sanitiseLinuxLabel, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback } from '../src/tray';
-import { getCloseToTrayEnabled, setTheme, getMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
+import { getCloseToTrayEnabled, getTheme, setTheme, getMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload, PlayerEvents } from '../src/player';
@@ -547,6 +547,68 @@ describe('createTray - menu template inspection', () => {
       const template = getLastTemplate();
       const styleItem = findItem(template, 'Style');
       expect(styleItem!.enabled).toBe(true);
+    });
+  });
+
+  describe('Style submenu theme on Classical', () => {
+    // Classical injects no override CSS, so resolveTheme() reduces the stored
+    // choice to 'apple-music'. The menu must still report what is stored.
+    beforeEach(() => {
+      setPlatform('linux');
+      vi.mocked(getMusicService).mockReturnValue('classical');
+      vi.mocked(getTheme).mockReturnValue('dracula');
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+    });
+
+    // Mocks are not reset between tests, so hand back the state the rest of the
+    // file builds the menu in.
+    afterEach(() => {
+      vi.mocked(getMusicService).mockReturnValue('music');
+      vi.mocked(getTheme).mockReturnValue('apple-music');
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+    });
+
+    it('names the stored theme in the parent label', () => {
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.label).toBe('Style: Dracula');
+    });
+
+    it('ticks the stored theme and nothing else', () => {
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
+      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
+      expect(ticked).toEqual(['Dracula']);
+    });
+
+    it('stays disabled with a stored theme other than Apple Music', () => {
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.enabled).toBe(false);
+    });
+
+    it('falls back to Apple Music when the stored custom.css is gone', () => {
+      vi.mocked(getTheme).mockReturnValue('custom');
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.label).toBe('Style: Apple Music');
+      const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
+      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
+      expect(ticked).toEqual(['Apple Music']);
+    });
+
+    it('follows resolveTheme rather than the stored theme on the music service', () => {
+      vi.mocked(getMusicService).mockReturnValue('music');
+      vi.mocked(resolveTheme).mockReturnValue('rose-pine');
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.label).toBe('Style: Rosé Pine');
+      const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
+      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
+      expect(ticked).toEqual(['Rosé Pine']);
     });
   });
 

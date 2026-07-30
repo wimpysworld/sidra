@@ -4,12 +4,12 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, setMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
+import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, getTheme, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, setMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
 import { BUNDLED_THEMES, themeLabel } from './palettes';
-import { applyTheme, hasCustomCss, resolveTheme } from './theme';
+import { applyTheme, hasCustomCss, resolveTheme, type ThemeName } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
@@ -411,10 +411,19 @@ function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
   };
 }
 
+// Classical injects no theme CSS but the stored choice is preserved, so the menu
+// reports what is stored rather than what resolveTheme() reduces it to
+function styleMenuTheme(isClassical: boolean): ThemeName {
+  if (!isClassical) return resolveTheme();
+  const stored = getTheme();
+  if (stored === 'custom' && !hasCustomCss()) return 'apple-music';
+  return stored;
+}
+
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
   const isClassical = getMusicService() === 'classical';
-  const currentTheme = resolveTheme();
+  const currentTheme = styleMenuTheme(isClassical);
   const parentLabel = `${strings.style}: ${currentTheme === 'apple-music' ? strings.styleAppleMusic : themeLabel(currentTheme)}`;
   const icon = getMenuIcon('style');
   const items: Electron.MenuItemConstructorOptions[] = [
