@@ -90,3 +90,19 @@ export function getServiceByHost(host: string): MusicService | undefined {
 export function allServices(): readonly MusicService[] {
   return Object.values(MUSIC_SERVICES);
 }
+
+// Derived from the registry so a new service or auth host widens the allowlist automatically.
+export const ALLOWED_NAVIGATION_HOSTS: ReadonlySet<string> = new Set(
+  allServices().flatMap(svc => [svc.host, ...svc.authFrameHosts]),
+);
+
+// Takes a URL string rather than a hostname so malformed input is rejected in one place.
+// URL.hostname is lowercased, punycoded and port-free, and the match is exact: a subdomain,
+// a suffix or a userinfo prefix of an allowed host is not an allowed host.
+export function isAllowedNavigationUrl(url: string): boolean {
+  try {
+    return ALLOWED_NAVIGATION_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}

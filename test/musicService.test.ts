@@ -8,6 +8,8 @@ import {
   getServiceByHost,
   allServices,
   isMusicServiceId,
+  ALLOWED_NAVIGATION_HOSTS,
+  isAllowedNavigationUrl,
 } from '../src/musicService';
 import type { MusicServiceId, MusicService } from '../src/musicService';
 
@@ -181,6 +183,72 @@ describe('allServices', () => {
     expect(svcs.length).toBe(2);
     expect(svcs.map(s => s.id)).toContain('music');
     expect(svcs.map(s => s.id)).toContain('classical');
+  });
+});
+
+describe('ALLOWED_NAVIGATION_HOSTS', () => {
+  it('holds exactly the hosts derived from the registry', () => {
+    const derived = allServices().flatMap(svc => [svc.host, ...svc.authFrameHosts]);
+    expect([...ALLOWED_NAVIGATION_HOSTS].sort()).toEqual([...new Set(derived)].sort());
+  });
+});
+
+describe('isAllowedNavigationUrl', () => {
+  for (const service of allServices()) {
+    it(`accepts an https URL on the ${service.id} host`, () => {
+      expect(isAllowedNavigationUrl(`https://${service.host}/`)).toBe(true);
+    });
+
+    for (const host of service.authFrameHosts) {
+      it(`accepts an https URL on the ${service.id} auth frame host ${host}`, () => {
+        expect(isAllowedNavigationUrl(`https://${host}/`)).toBe(true);
+      });
+    }
+  }
+
+  it('rejects a foreign host', () => {
+    expect(isAllowedNavigationUrl('https://evil.test/')).toBe(false);
+  });
+
+  // An endsWith comparison would accept this subdomain.
+  it('rejects a subdomain of an allowed host', () => {
+    expect(isAllowedNavigationUrl('https://evil.music.apple.com/')).toBe(false);
+  });
+
+  it('rejects a host ending with an allowed host as a suffix', () => {
+    expect(isAllowedNavigationUrl('https://evil.music.apple.com.attacker.test/')).toBe(false);
+  });
+
+  // An includes comparison would accept this hostname.
+  it('rejects a host that merely contains an allowed host', () => {
+    expect(isAllowedNavigationUrl('https://music.apple.com.attacker.test/')).toBe(false);
+  });
+
+  // An includes comparison against the whole URL would accept this query string.
+  it('rejects a foreign host carrying an allowed host in the query string', () => {
+    expect(isAllowedNavigationUrl('https://attacker.test/?x=music.apple.com')).toBe(false);
+  });
+
+  it('rejects a malformed URL', () => {
+    expect(isAllowedNavigationUrl('not a url')).toBe(false);
+  });
+
+  it('rejects an empty string', () => {
+    expect(isAllowedNavigationUrl('')).toBe(false);
+  });
+
+  it('does not throw on malformed input', () => {
+    expect(() => isAllowedNavigationUrl('not a url')).not.toThrow();
+    expect(() => isAllowedNavigationUrl('')).not.toThrow();
+  });
+
+  it('rejects an allowed host carried in the userinfo of a foreign host', () => {
+    expect(isAllowedNavigationUrl('https://music.apple.com@evil.test/')).toBe(false);
+  });
+
+  // Pins the URL parser behaviour the predicate depends on.
+  it('reads the hostname after the userinfo, not the userinfo itself', () => {
+    expect(new URL('https://music.apple.com@evil.test/').hostname).toBe('evil.test');
   });
 });
 

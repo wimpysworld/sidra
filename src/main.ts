@@ -13,7 +13,7 @@ import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setAppl
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
-import { getService, allServices } from './musicService';
+import { getService, allServices, isAllowedNavigationUrl } from './musicService';
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 import { init as initLastfm } from './integrations/lastfm';
@@ -346,6 +346,15 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
 }
 
 function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookScript: string): void {
+  // Keeps the main frame on Apple's hosts, so the preload command bridge and the
+  // injected hook can only ever reach Apple Music. Main-process loadURL() calls do
+  // not raise this event, so launch, service switching and itms:// routing are unaffected.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigationUrl(url)) {
+      event.preventDefault();
+      mainLog.warn('blocked navigation to disallowed host:', url);
+    }
+  });
   win.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
     if (isMainFrame) {
       mainLog.debug('did-start-navigation:', url);
@@ -358,10 +367,15 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
   win.webContents.on('did-navigate-in-page', async (_event, url) => {
     handleStorefrontNavigation(url);
     handleLastPageNavigation(url);
-    try {
-      await win.webContents.executeJavaScript(hookScript);
-    } catch (e: unknown) {
-      mainLog.warn('failed to inject hookScript on SPA navigation:', e);
+    const currentUrl = win.webContents.getURL();
+    if (!isAllowedNavigationUrl(currentUrl)) {
+      mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
+    } else {
+      try {
+        await win.webContents.executeJavaScript(hookScript);
+      } catch (e: unknown) {
+        mainLog.warn('failed to inject hookScript on SPA navigation:', e);
+      }
     }
     try {
       await win.webContents.executeJavaScript(navBarScript);
@@ -590,8 +604,13 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     } else {
       setThemeCssKey(null);
     }
-    await win.webContents.executeJavaScript(assets.hookScript);
-    mainLog.debug('MusicKit hook injected');
+    const currentUrl = win.webContents.getURL();
+    if (isAllowedNavigationUrl(currentUrl)) {
+      await win.webContents.executeJavaScript(assets.hookScript);
+      mainLog.debug('MusicKit hook injected');
+    } else {
+      mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
+    }
     await win.webContents.executeJavaScript(assets.navBarScript);
     mainLog.debug('Navigation bar injected');
   }
