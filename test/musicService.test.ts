@@ -247,6 +247,20 @@ describe('isAllowedNavigationUrl', () => {
     expect(isAllowedNavigationUrl('https://music.apple.com@evil.test/')).toBe(false);
   });
 
+  it('rejects http on an allowed host', () => {
+    expect(isAllowedNavigationUrl('http://music.apple.com/gb')).toBe(false);
+  });
+
+  // The parser reads an authority from any URL carrying '//', so a hostname-only
+  // check accepts these two despite neither being a web origin.
+  it('rejects a javascript URL carrying an allowed host as its authority', () => {
+    expect(isAllowedNavigationUrl('javascript://music.apple.com/%0aalert(1)')).toBe(false);
+  });
+
+  it('rejects a file URL carrying an allowed host as its authority', () => {
+    expect(isAllowedNavigationUrl('file://music.apple.com/etc/passwd')).toBe(false);
+  });
+
   // Pins the URL parser behaviour the predicate depends on.
   it('reads the hostname after the userinfo, not the userinfo itself', () => {
     expect(new URL('https://music.apple.com@evil.test/').hostname).toBe('evil.test');

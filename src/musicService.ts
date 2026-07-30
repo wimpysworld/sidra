@@ -106,9 +106,14 @@ export const ALLOWED_NAVIGATION_HOSTS: ReadonlySet<string> = new Set(
 // Takes a URL string rather than a hostname so malformed input is rejected in one place.
 // URL.hostname is lowercased, punycoded and port-free, and the match is exact: a subdomain,
 // a suffix or a userinfo prefix of an allowed host is not an allowed host.
+// The scheme is checked too, because hostname alone does not imply a web origin: the parser
+// reads an authority out of any URL carrying '//', so 'javascript://music.apple.com/%0aalert(1)'
+// and 'file://music.apple.com/etc/passwd' both yield an allowed hostname. Apple serves both
+// services and the authentication flow over https, so nothing legitimate needs another scheme.
 export function isAllowedNavigationUrl(url: string): boolean {
   try {
-    return ALLOWED_NAVIGATION_HOSTS.has(new URL(url).hostname);
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && ALLOWED_NAVIGATION_HOSTS.has(parsed.hostname);
   } catch {
     return false;
   }
