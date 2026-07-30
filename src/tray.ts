@@ -42,7 +42,8 @@ const menuIconFileMap: Record<string, string> = {
   'next': 'forward-step',
   'volume': 'volume',
   'close-to-tray': 'toggle-on',
-  'show-window': 'apple',
+  'show-window': 'eye',
+  'hide-window': 'eye-slash',
 };
 
 // Maps tray action keys to SF Symbol names for macOS Tahoe+
@@ -67,7 +68,8 @@ const menuIconSFSymbolMap: Record<string, string> = {
   'next': 'forward.end',
   'volume': 'speaker.wave.2',
   'close-to-tray': 'menubar.dock.rectangle',
-  'show-window': 'macwindow',
+  'show-window': 'eye',
+  'hide-window': 'eye.slash',
 };
 
 function isMacOSTahoeOrLater(): boolean {
@@ -625,17 +627,18 @@ function buildContextMenu(tray: Tray): Menu {
   const showWindowItems: Electron.MenuItemConstructorOptions[] = [];
   if (getCloseToTrayEnabled()) {
     const windowVisible = getMainWindowCallback?.()?.isVisible() ?? true;
-    const windowIcon = getMenuIcon('show-window');
     if (windowVisible) {
+      const hideIcon = getMenuIcon('hide-window');
       showWindowItems.push({
         label: strings.hideWindow,
-        ...(windowIcon ? { icon: windowIcon } : {}),
+        ...(hideIcon ? { icon: hideIcon } : {}),
         click: () => { getMainWindowCallback?.()?.hide(); refresh(); },
       });
     } else {
+      const showIcon = getMenuIcon('show-window');
       showWindowItems.push({
         label: strings.showWindow,
-        ...(windowIcon ? { icon: windowIcon } : {}),
+        ...(showIcon ? { icon: showIcon } : {}),
         click: () => { const w = getMainWindowCallback?.(); w?.show(); w?.focus(); refresh(); },
       });
     }

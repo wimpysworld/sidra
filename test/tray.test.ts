@@ -948,6 +948,25 @@ describe('createTray - menu template inspection', () => {
       expect(findItem(template, 'Hide Sidra')).toBeUndefined();
     });
 
+    it('resolves a different icon for the Hide state and the Show state', () => {
+      // Both entries once shared a single icon key, so each state is checked for
+      // the icon it needs and against the icon the other state needs.
+      const iconPaths = (visible: boolean): string[] => {
+        mockWin.isVisible.mockReturnValue(visible);
+        vi.mocked(nativeImage.createFromPath).mockClear();
+        createTray();
+        return vi.mocked(nativeImage.createFromPath).mock.calls.map((call) => String(call[0]));
+      };
+
+      const whenVisible = iconPaths(true);
+      expect(whenVisible.some((p) => p.endsWith('/dark/eye-slash.png'))).toBe(true);
+      expect(whenVisible.some((p) => p.endsWith('/dark/eye.png'))).toBe(false);
+
+      const whenHidden = iconPaths(false);
+      expect(whenHidden.some((p) => p.endsWith('/dark/eye.png'))).toBe(true);
+      expect(whenHidden.some((p) => p.endsWith('/dark/eye-slash.png'))).toBe(false);
+    });
+
     it('shows neither item when close-to-tray is disabled', () => {
       vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
       createTray();
@@ -1481,6 +1500,18 @@ describe('getMenuIcon', () => {
       );
     });
 
+    it('maps the window actions to the open and closed eye PNGs', () => {
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: false, configurable: true });
+      getMenuIcon('show-window');
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+        expect.stringContaining('tray/menu/light/eye.png')
+      );
+      getMenuIcon('hide-window');
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+        expect.stringContaining('tray/menu/light/eye-slash.png')
+      );
+    });
+
     it('returns undefined for an unknown action', () => {
       expect(getMenuIcon('nonexistent')).toBeUndefined();
     });
@@ -1532,7 +1563,7 @@ describe('getMenuIcon', () => {
       expect(getMenuIcon('about')).toBeUndefined();
     });
 
-    it('resolves correct SF Symbol for each Now Playing action', () => {
+    it('resolves correct SF Symbol for each Now Playing and window action', () => {
       const cases: [string, string][] = [
         ['artist', 'star'],
         ['album', 'opticaldisc'],
@@ -1541,6 +1572,8 @@ describe('getMenuIcon', () => {
         ['pause', 'pause'],
         ['next', 'forward.end'],
         ['volume', 'speaker.wave.2'],
+        ['show-window', 'eye'],
+        ['hide-window', 'eye.slash'],
       ];
       for (const [action, symbol] of cases) {
         vi.mocked(nativeImage.createFromNamedImage).mockClear();
