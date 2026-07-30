@@ -80,7 +80,7 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 
 The **Custom** menu entry only appears when that file exists.
 
-Themes apply to Apple Music only. Sidra keeps your choice while Apple Music Classical is active and restores it when you switch back.
+Your chosen theme applies to both Apple Music and Apple Music Classical.
 
 ---
 

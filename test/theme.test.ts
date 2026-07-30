@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
+import { app, type WebContents } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/config', () => ({
@@ -26,6 +26,7 @@ import {
   getThemeCss,
   hasCustomCss,
   initThemeCSS,
+  injectThemeCss,
   invalidateCustomCssCache,
   resolveTheme,
   setRebuildTrayCallback,
@@ -164,32 +165,66 @@ describe('theme helpers', () => {
     expect(resolveTheme()).toBe('apple-music');
   });
 
-  it('forces apple-music on classical for a bundled theme', () => {
-    // Bundled theme CSS targets the music.apple.com DOM, so classical gets none.
+  it('keeps a bundled theme on classical', () => {
     vi.mocked(getTheme).mockReturnValue('catppuccin');
     vi.mocked(getMusicService).mockReturnValue('classical');
-    expect(resolveTheme()).toBe('apple-music');
+    expect(resolveTheme()).toBe('catppuccin');
   });
 
-  it('forces apple-music on classical even with populated custom.css', () => {
+  it('keeps custom on classical with populated custom.css', () => {
     vi.mocked(getTheme).mockReturnValue('custom');
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     vi.mocked(getMusicService).mockReturnValue('classical');
-    expect(resolveTheme()).toBe('apple-music');
+    expect(resolveTheme()).toBe('custom');
   });
 
-  it('restores the stored theme when the service switches back from classical', () => {
-    // The gate suppresses the theme; it never rewrites the stored value.
+  it('resolves the same theme across a music to classical to music switch', () => {
+    // The active service is not an input to resolveTheme().
     vi.mocked(getTheme).mockReturnValue('catppuccin');
     expect(resolveTheme()).toBe('catppuccin');
 
     vi.mocked(getMusicService).mockReturnValue('classical');
-    expect(resolveTheme()).toBe('apple-music');
-    expect(getTheme()).toBe('catppuccin');
+    expect(resolveTheme()).toBe('catppuccin');
 
     vi.mocked(getMusicService).mockReturnValue('music');
     expect(resolveTheme()).toBe('catppuccin');
+  });
+
+  // main.ts calls injectThemeCss() from injectContent() on every page load, and
+  // src/main.ts cannot be imported under Vitest, so this is where that path is
+  // covered.
+  describe('injectThemeCss', () => {
+    beforeEach(() => {
+      // The key outlives the module, so each test starts with none injected.
+      setThemeCssKey(null);
+    });
+
+    function fakeContents() {
+      const insertCSS = vi.fn().mockResolvedValue('key');
+      return { insertCSS, contents: { insertCSS } as unknown as WebContents };
+    }
+
+    it('injects bundled theme CSS while classical is active', async () => {
+      vi.mocked(getTheme).mockReturnValue('catppuccin');
+      vi.mocked(getMusicService).mockReturnValue('classical');
+      const { insertCSS, contents } = fakeContents();
+
+      await injectThemeCss(contents);
+
+      expect(insertCSS).toHaveBeenCalledTimes(1);
+      const [css] = insertCSS.mock.calls[0] as [string];
+      expect(css).toContain('--pageBG');
+    });
+
+    it('injects nothing for the apple-music theme', async () => {
+      vi.mocked(getTheme).mockReturnValue('apple-music');
+      const { insertCSS, contents } = fakeContents();
+
+      await injectThemeCss(contents);
+
+      expect(insertCSS).not.toHaveBeenCalled();
+    });
   });
 
   it('returns null for apple-music even with populated custom.css', () => {

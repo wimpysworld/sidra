@@ -112,7 +112,7 @@ sidra/
 │   ├── types/
 │   │   ├── electron.d.ts          - module augmentations for CastLabs type gaps
 │   │   └── hook.d.ts              - hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
-│   ├── theme.ts                   - theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), initThemeCSS()
+│   ├── theme.ts                   - theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), injectThemeCss(), initThemeCSS()
 │   ├── palettes.ts                - bundled theme registry (BUNDLED_THEMES), BundledThemeName, themeLabel()
 │   ├── themeTemplate.ts           - pure palette→CSS renderer (buildThemeCss())
 │   ├── artwork.ts                 - downloadArtwork(), cleanArtworkCache(); UUID-based multi-file cache
@@ -574,9 +574,9 @@ Each service keeps its own start page and last page. `classical.startPage` and `
 
 `buildItmsRouteURL()` is pinned to `getService('music').origin`. `itms://` links always target Apple Music, and `transformItmsUrl()` in `src/itms.ts` pins the host on the parsing side.
 
-### Theme gate
+### Themes across services
 
-`resolveTheme()` returns `'apple-music'` for Classical before it reads the stored value, so no override CSS is injected. Bundled themes target the `music.apple.com` DOM and do not apply. The tray Style submenu renders with `enabled: false` under Classical, and `styleMenuTheme()` labels it from `getTheme()` rather than `resolveTheme()` so the user's stored choice stays visible.
+Themes are service-agnostic. `resolveTheme()` does not branch on the active service, `injectThemeCss()` runs on every page load, and the tray Style submenu is enabled under both services. Both sites are separate builds of one Svelte design system and share an identical `:root` custom property block, so every token `src/themeTemplate.ts` overrides carries the same value on Classical.
 
 ### Switching
 
@@ -634,7 +634,7 @@ The default colour scheme is Apple Music's own (`'apple-music'`). Bundled themes
 
 Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-music'` | `BundledThemeName` | `'custom'`). `resolveTheme()` guards startup/runtime behaviour:
 
-- Apple Music Classical returns `'apple-music'` before the stored value is read, so no override CSS is injected. The stored theme is left untouched and returns on the switch back
+- The active music service is not consulted; the same theme resolves on Apple Music and Apple Music Classical
 - Unknown stored values fall back to `'apple-music'`
 - `'custom'` falls back to `'apple-music'` when `custom.css` holds no usable CSS
 - Bundled values pass through directly

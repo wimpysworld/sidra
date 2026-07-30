@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { app, BrowserWindow, nativeTheme } from 'electron';
+import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import log from 'electron-log/main';
 import { BUNDLED_THEMES, type BundledThemeName } from './palettes';
 import { buildThemeCss } from './themeTemplate';
-import { getTheme, getMusicService } from './config';
+import { getTheme } from './config';
 
 export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
 
@@ -55,8 +55,6 @@ function isThemeName(value: string): value is ThemeName {
 }
 
 export function resolveTheme(): ThemeName {
-  // Classical does not support bundled theme CSS (targets music.apple.com DOM)
-  if (getMusicService() === 'classical') return 'apple-music';
   const theme = getTheme();
   if (!isThemeName(theme)) return 'apple-music';
   if (theme === 'custom' && getThemeCss('custom') === null) return 'apple-music';
@@ -106,6 +104,19 @@ export function getThemeCss(name: ThemeName): string | null {
   const css = buildThemeCss(theme);
   bundledCssCache.set(name, css);
   return css;
+}
+
+// Inject the resolved theme CSS after a page load. main.ts calls this on every load.
+export async function injectThemeCss(contents: WebContents): Promise<void> {
+  const theme = resolveTheme();
+  if (theme === 'apple-music') return;
+  const css = getThemeCss(theme);
+  if (css === null) {
+    themeLog.warn(`Theme CSS unavailable: ${theme}`);
+    return;
+  }
+  setThemeCssKey(await contents.insertCSS(css));
+  themeLog.debug(`Theme CSS injected: ${theme}`);
 }
 
 export function initThemeCSS(win: BrowserWindow): void {

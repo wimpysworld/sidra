@@ -9,7 +9,7 @@ import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
-import { getThemeCss, initThemeCSS, resolveTheme, setRebuildTrayCallback, setThemeCssKey } from './theme';
+import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
@@ -578,21 +578,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     win.webContents.setZoomFactor(getZoomFactor());
     await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
-    const activeService = getMusicService();
-    if (activeService === 'music') {
-      const theme = resolveTheme();
-      if (theme !== 'apple-music') {
-        const css = getThemeCss(theme);
-        if (css !== null) {
-          setThemeCssKey(await win.webContents.insertCSS(css));
-          mainLog.debug(`Theme CSS injected: ${theme}`);
-        } else {
-          mainLog.warn(`Theme CSS unavailable: ${theme}`);
-        }
-      }
-    } else {
-      setThemeCssKey(null);
-    }
+    await injectThemeCss(win.webContents);
     const currentUrl = win.webContents.getURL();
     if (isAllowedNavigationUrl(currentUrl)) {
       await win.webContents.executeJavaScript(assets.hookScript);

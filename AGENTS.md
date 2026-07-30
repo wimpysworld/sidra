@@ -142,9 +142,11 @@ When adding a language, add an entry to every record in every JSON file:
 
 `routeToMusicService(url)` in the same module handles `itms://` links, which always target the music service. It calls `switchService('music', url)` when Classical is active and navigates directly otherwise, so the switch costs one navigation.
 
-### Theme gating
+### Themes on both services
 
-`resolveTheme()` in `src/theme.ts` forces `'apple-music'` when the classical service is active, so no override CSS is injected. The stored `theme` value is left unchanged, so switching back to the music service restores the user's preferred theme. The Style submenu in the tray is disabled (`enabled: false`) when Classical is active.
+Bundled themes and `custom.css` apply to both services. `resolveTheme()` in `src/theme.ts` never branches on the active service, `injectContent()` in `src/main.ts` calls `injectThemeCss()` from `src/theme.ts` on every load, and the tray Style submenu is enabled on both.
+
+Do not reintroduce a service gate. `music.apple.com` and `classical.music.apple.com` are separate builds of one Svelte design system and share an identical `:root` custom property block, so every colour token `src/themeTemplate.ts` overrides exists on Classical with the same value. A visual gap in Classical's own player chrome is a missing selector, not a reason to stop injecting.
 
 ### postMessage target origin
 

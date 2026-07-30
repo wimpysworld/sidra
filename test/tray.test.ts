@@ -13,7 +13,6 @@ vi.mock('../src/config', () => ({
   getLastfmUsername: vi.fn(() => null),
   setLastfmSession: vi.fn(),
   clearLastfmSession: vi.fn(),
-  getTheme: vi.fn(() => 'apple-music'),
   setTheme: vi.fn(),
   getStartPage: () => 'new',
   setStartPage: vi.fn(),
@@ -120,7 +119,7 @@ vi.mock('../src/paths', () => ({
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
 import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback } from '../src/tray';
-import { getCloseToTrayEnabled, getTheme, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
+import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload, PlayerEvents } from '../src/player';
@@ -600,7 +599,6 @@ describe('createTray - menu template inspection', () => {
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue(UNREGISTERED_SERVICE_ID);
-      vi.mocked(getTheme).mockReturnValue('apple-music');
       vi.mocked(resolveTheme).mockReturnValue('apple-music');
       vi.mocked(hasCustomCss).mockReturnValue(false);
     });
@@ -609,7 +607,6 @@ describe('createTray - menu template inspection', () => {
     // file builds the menu in.
     afterEach(() => {
       vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(getTheme).mockReturnValue('apple-music');
       vi.mocked(resolveTheme).mockReturnValue('apple-music');
       vi.mocked(hasCustomCss).mockReturnValue(false);
     });
@@ -710,39 +707,64 @@ describe('createTray - menu template inspection', () => {
     });
   });
 
-  describe('Style submenu disabled on Classical', () => {
+  describe('Style submenu usable on both services', () => {
+    // The item carries no `enabled` key, so `not.toBe(false)` is the assertion:
+    // a restored gate sets it to false and fails here whatever the default is.
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue('classical');
       vi.mocked(resolveTheme).mockReturnValue('apple-music');
       vi.mocked(hasCustomCss).mockReturnValue(false);
+      vi.mocked(setTheme).mockClear();
+      vi.mocked(applyTheme).mockClear();
     });
 
-    it('Style submenu is disabled when classical is active', () => {
-      createTray();
-      const template = getLastTemplate();
-      const styleItem = findItem(template, 'Style');
-      expect(styleItem).toBeDefined();
-      expect(styleItem!.enabled).toBe(false);
-    });
-
-    it('Style submenu is enabled when music service is active', () => {
+    // Mocks are not reset between tests, so hand back the state the rest of the
+    // file builds the menu in.
+    afterEach(() => {
       vi.mocked(getMusicService).mockReturnValue('music');
+    });
+
+    function styleItemFor(service: MusicServiceId): Electron.MenuItemConstructorOptions {
+      vi.mocked(getMusicService).mockReturnValue(service);
       createTray();
-      const template = getLastTemplate();
-      const styleItem = findItem(template, 'Style');
-      expect(styleItem!.enabled).toBe(true);
+      const item = findItem(getLastTemplate(), 'Style');
+      expect(item).toBeDefined();
+      return item!;
+    }
+
+    it('leaves the Style item selectable when classical is active', () => {
+      expect(styleItemFor('classical').enabled).not.toBe(false);
+    });
+
+    it('leaves the Style item selectable when the music service is active', () => {
+      expect(styleItemFor('music').enabled).not.toBe(false);
+    });
+
+    it('offers every theme entry on Classical', () => {
+      const submenu = styleItemFor('classical').submenu as Electron.MenuItemConstructorOptions[];
+      expect(submenu.map(item => item.label)).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized']);
+      expect(submenu.every(item => item.enabled !== false)).toBe(true);
+    });
+
+    it('stores and applies a theme clicked on Classical', () => {
+      const submenu = styleItemFor('classical').submenu as Electron.MenuItemConstructorOptions[];
+      const nordItem = submenu.find(item => item.label === 'Nord');
+      expect(nordItem).toBeDefined();
+      (nordItem!.click as Function)();
+      expect(vi.mocked(setTheme)).toHaveBeenCalledWith('nord');
+      expect(vi.mocked(applyTheme)).toHaveBeenCalledWith('nord');
     });
   });
 
-  describe('Style submenu theme on Classical', () => {
-    // Classical injects no override CSS, so resolveTheme() reduces the stored
-    // choice to 'apple-music'. The menu must still report what is stored.
+  describe('Style submenu reflects the resolved theme', () => {
+    // The menu reads resolveTheme() on both services, so the label and the tick
+    // name the theme that will be injected. Exactly one entry is ever ticked:
+    // two ticks mean a radio group that no longer maps to a single choice.
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue('classical');
-      vi.mocked(getTheme).mockReturnValue('dracula');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(resolveTheme).mockReturnValue('dracula');
       vi.mocked(hasCustomCss).mockReturnValue(false);
     });
 
@@ -750,50 +772,56 @@ describe('createTray - menu template inspection', () => {
     // file builds the menu in.
     afterEach(() => {
       vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(getTheme).mockReturnValue('apple-music');
       vi.mocked(resolveTheme).mockReturnValue('apple-music');
       vi.mocked(hasCustomCss).mockReturnValue(false);
     });
 
-    it('names the stored theme in the parent label', () => {
+    function tickedLabels(): (string | undefined)[] {
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
+      return submenu.filter(item => item.checked === true).map(item => item.label);
+    }
+
+    it('names the resolved theme in the parent label on Classical', () => {
       createTray();
       const styleItem = findItem(getLastTemplate(), 'Style');
       expect(styleItem!.label).toBe('Style: Dracula');
     });
 
-    it('ticks the stored theme and nothing else', () => {
+    it('ticks the resolved theme and nothing else on Classical', () => {
       createTray();
-      const styleItem = findItem(getLastTemplate(), 'Style');
-      const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
-      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
-      expect(ticked).toEqual(['Dracula']);
+      expect(tickedLabels()).toEqual(['Dracula']);
     });
 
-    it('stays disabled with a stored theme other than Apple Music', () => {
-      createTray();
-      const styleItem = findItem(getLastTemplate(), 'Style');
-      expect(styleItem!.enabled).toBe(false);
-    });
-
-    it('falls back to Apple Music when the stored custom.css is gone', () => {
-      vi.mocked(getTheme).mockReturnValue('custom');
-      createTray();
-      const styleItem = findItem(getLastTemplate(), 'Style');
-      expect(styleItem!.label).toBe('Style: Apple Music');
-      const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
-      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
-      expect(ticked).toEqual(['Apple Music']);
-    });
-
-    it('follows resolveTheme rather than the stored theme on the music service', () => {
+    it('names and ticks the resolved theme on the music service', () => {
       vi.mocked(getMusicService).mockReturnValue('music');
       vi.mocked(resolveTheme).mockReturnValue('rose-pine');
       createTray();
       const styleItem = findItem(getLastTemplate(), 'Style');
       expect(styleItem!.label).toBe('Style: Rosé Pine');
+      expect(tickedLabels()).toEqual(['Rosé Pine']);
+    });
+
+    it('ticks Custom when custom.css is present and resolves to it', () => {
+      vi.mocked(resolveTheme).mockReturnValue('custom');
+      vi.mocked(hasCustomCss).mockReturnValue(true);
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.label).toBe('Style: Custom');
+      expect(tickedLabels()).toEqual(['Custom']);
+    });
+
+    it('offers no Custom entry and ticks Apple Music when custom.css is gone', () => {
+      // resolveTheme() reduces a stored 'custom' to 'apple-music' once the file
+      // is unreadable, so a Custom entry here would tick nothing at all.
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+      createTray();
+      const styleItem = findItem(getLastTemplate(), 'Style');
+      expect(styleItem!.label).toBe('Style: Apple Music');
       const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
-      const ticked = submenu.filter(item => item.checked === true).map(item => item.label);
-      expect(ticked).toEqual(['Rosé Pine']);
+      expect(submenu.some(item => item.label === 'Custom')).toBe(false);
+      expect(tickedLabels()).toEqual(['Apple Music']);
     });
   });
 
