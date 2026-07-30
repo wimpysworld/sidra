@@ -24,6 +24,7 @@ const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
 // Maps tray action keys to PNG basenames (without extension) in assets/icons/tray/menu/{light,dark}/
 const menuIconFileMap: Record<string, string> = {
   'about': 'circle-info',
+  'player': 'headphones',
   'start-page': 'music',
   'notifications': 'bell',
   'discord': 'discord',
@@ -49,6 +50,7 @@ const menuIconFileMap: Record<string, string> = {
 // Maps tray action keys to SF Symbol names for macOS Tahoe+
 const menuIconSFSymbolMap: Record<string, string> = {
   'about': 'info.circle',
+  'player': 'headphones',
   'start-page': 'music.note',
   'notifications': 'bell',
   'discord': 'bubble.left.and.bubble.right',
@@ -170,8 +172,10 @@ function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
   const activeServiceId = getMusicService();
   const activeService = getService(activeServiceId);
   const parentLabel = `${strings.player}: ${activeService.displayName}`;
+  const icon = getMenuIcon('player');
   return {
     label: parentLabel,
+    ...(icon ? { icon } : {}),
     submenu: allServices().map(svc => ({
       label: svc.displayName,
       type: 'radio' as const,

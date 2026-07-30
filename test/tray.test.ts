@@ -257,7 +257,7 @@ describe('createTray - menu template inspection', () => {
     it('attaches icons to all top-level submenu parents on Linux', () => {
       createTray();
       const template = getLastTemplate();
-      for (const labelSubstring of ['Start Page', 'Notifications', 'Discord', 'Style', 'Zoom']) {
+      for (const labelSubstring of ['Player', 'Start Page', 'Notifications', 'Discord', 'Style', 'Zoom']) {
         const item = findItem(template, labelSubstring);
         expect(item, `${labelSubstring} should exist`).toBeDefined();
         expect(item!.icon, `${labelSubstring} should have icon`).toBeDefined();
@@ -398,7 +398,7 @@ describe('createTray - menu template inspection', () => {
     it('does not attach icons to submenu parents on pre-Tahoe macOS', () => {
       createTray();
       const template = getLastTemplate();
-      for (const labelSubstring of ['Start Page', 'Notifications', 'Discord', 'Style', 'Zoom']) {
+      for (const labelSubstring of ['Player', 'Start Page', 'Notifications', 'Discord', 'Style', 'Zoom']) {
         const item = findItem(template, labelSubstring);
         expect(item!.icon, `${labelSubstring} should not have icon`).toBeUndefined();
       }
@@ -492,6 +492,16 @@ describe('createTray - menu template inspection', () => {
       const template = getLastTemplate();
       const playerItem = findItem(template, 'Player');
       expect(playerItem!.label).toBe('Player: Apple Music');
+    });
+
+    it('Player submenu parent carries the headphones icon', () => {
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      vi.mocked(nativeImage.createFromPath).mockClear();
+      createTray();
+      const playerItem = findItem(getLastTemplate(), 'Player');
+      expect(playerItem!.icon).toBeDefined();
+      const paths = vi.mocked(nativeImage.createFromPath).mock.calls.map((call) => String(call[0]));
+      expect(paths.some((p) => p.endsWith('/dark/headphones.png'))).toBe(true);
     });
 
     it('Apple Music radio item is checked when music service is active', () => {
@@ -1563,8 +1573,9 @@ describe('getMenuIcon', () => {
       expect(getMenuIcon('about')).toBeUndefined();
     });
 
-    it('resolves correct SF Symbol for each Now Playing and window action', () => {
+    it('resolves correct SF Symbol for each Now Playing, window and player action', () => {
       const cases: [string, string][] = [
+        ['player', 'headphones'],
         ['artist', 'star'],
         ['album', 'opticaldisc'],
         ['previous', 'backward.end'],
