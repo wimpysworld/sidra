@@ -14,7 +14,7 @@ import { enable as enableDiscord, disable as disableDiscord } from './integratio
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { createPauseTimer } from './pauseTimer';
-import { allServices } from './musicService';
+import { allServices, getService } from './musicService';
 
 const trayLog = log.scope('tray');
 
@@ -166,7 +166,7 @@ interface SubmenuContext {
 function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
   const activeServiceId = getMusicService();
-  const activeService = allServices().find(s => s.id === activeServiceId)!;
+  const activeService = getService(activeServiceId);
   const parentLabel = `${strings.player}: ${activeService.displayName}`;
   return {
     label: parentLabel,

@@ -7,6 +7,7 @@ import {
   getService,
   getServiceByHost,
   allServices,
+  isMusicServiceId,
 } from '../src/musicService';
 import type { MusicServiceId, MusicService } from '../src/musicService';
 
@@ -131,6 +132,47 @@ describe('getServiceByHost', () => {
   it('returns undefined for an empty string', () => {
     expect(getServiceByHost('')).toBeUndefined();
   });
+});
+
+describe('isMusicServiceId', () => {
+  it('accepts every registered id', () => {
+    expect(isMusicServiceId('music')).toBe(true);
+    expect(isMusicServiceId('classical')).toBe(true);
+  });
+
+  it('rejects an unregistered id', () => {
+    expect(isMusicServiceId('jazz')).toBe(false);
+  });
+
+  it('rejects an empty string', () => {
+    expect(isMusicServiceId('')).toBe(false);
+  });
+
+  // A prototype-walking check would accept these and hand main.ts an undefined service.
+  it('rejects inherited Object.prototype keys', () => {
+    expect(isMusicServiceId('toString')).toBe(false);
+    expect(isMusicServiceId('constructor')).toBe(false);
+  });
+
+  it('narrows a string to MusicServiceId', () => {
+    const persisted: string = 'classical';
+    if (isMusicServiceId(persisted)) {
+      expectTypeOf(persisted).toEqualTypeOf<MusicServiceId>();
+      expect(getService(persisted).id).toBe('classical');
+    }
+  });
+});
+
+describe('start page registry integrity', () => {
+  for (const service of allServices()) {
+    it(`${service.id} declares at least one start page`, () => {
+      expect(service.startPages.length).toBeGreaterThan(0);
+    });
+
+    it(`${service.id} defaultStartPage names one of its own start pages`, () => {
+      expect(service.startPages.map(p => p.id)).toContain(service.defaultStartPage);
+    });
+  }
 });
 
 describe('allServices', () => {

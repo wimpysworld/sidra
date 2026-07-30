@@ -115,6 +115,7 @@ import type { NowPlayingPayload, PlayerEvents } from '../src/player';
 import { applyTheme, hasCustomCss, resolveTheme } from '../src/theme';
 import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from '../src/integrations/lastfm';
 import { FakePlayer } from './mocks/player';
+import type { ClassicalStartPageId, MusicServiceId } from '../src/musicService';
 
 // Helper: extract the template array from the last Menu.buildFromTemplate call
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -493,6 +494,48 @@ describe('createTray - menu template inspection', () => {
     });
   });
 
+  describe('Player submenu with an unregistered service id', () => {
+    // Stands in for a hand-edited config file, or for a downgrade past a future
+    // release that adds a third service id.
+    const UNREGISTERED_SERVICE_ID = 'jazz' as string as MusicServiceId;
+
+    beforeEach(() => {
+      setPlatform('linux');
+      vi.mocked(getMusicService).mockReturnValue(UNREGISTERED_SERVICE_ID);
+      vi.mocked(getTheme).mockReturnValue('apple-music');
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+    });
+
+    // Mocks are not reset between tests, so hand back the state the rest of the
+    // file builds the menu in.
+    afterEach(() => {
+      vi.mocked(getMusicService).mockReturnValue('music');
+      vi.mocked(getTheme).mockReturnValue('apple-music');
+      vi.mocked(resolveTheme).mockReturnValue('apple-music');
+      vi.mocked(hasCustomCss).mockReturnValue(false);
+    });
+
+    it('builds a menu rather than leaving the tray without one', () => {
+      expect(() => createTray()).not.toThrow();
+      expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
+      expect(getLastTemplate().length).toBeGreaterThan(0);
+    });
+
+    it('names the default service in the Player parent label', () => {
+      createTray();
+      const playerItem = findItem(getLastTemplate(), 'Player');
+      expect(playerItem!.label).toBe('Player: Apple Music');
+    });
+
+    it('still lists every registered service', () => {
+      createTray();
+      const playerItem = findItem(getLastTemplate(), 'Player');
+      const submenu = playerItem!.submenu as Electron.MenuItemConstructorOptions[];
+      expect(submenu.map(item => item.label)).toEqual(['Apple Music', 'Apple Music Classical']);
+    });
+  });
+
   describe('Start Page submenu with classical service', () => {
     beforeEach(() => {
       setPlatform('linux');
@@ -514,7 +557,9 @@ describe('createTray - menu template inspection', () => {
     });
 
     it('falls back to Home when a stored library page is no longer offered', () => {
-      vi.mocked(getClassicalStartPage).mockReturnValue('library');
+      // 'library' was persisted before WW-92 dropped the page; the store can still
+      // hold it, the type no longer admits it.
+      vi.mocked(getClassicalStartPage).mockReturnValue('library' as string as ClassicalStartPageId);
       createTray();
       const template = getLastTemplate();
       const startPageItem = findItem(template, 'Start Page');

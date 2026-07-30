@@ -2,9 +2,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import './mocks/storefront-deps';
 
-import { handleStorefrontNavigation, buildAppleMusicURL, extractStorefrontFromURL, handleLastPageNavigation } from '../src/storefront';
+import { handleStorefrontNavigation, buildAppleMusicURL, buildItmsRouteURL, extractStorefrontFromURL, handleLastPageNavigation, type ItmsRouteToken } from '../src/storefront';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getMusicService, getStartPage, getLastPageUrl, getClassicalStartPage, getClassicalLastPageUrl, setLastPageUrl, setClassicalLastPageUrl } from '../src/config';
-import { MUSIC_SERVICES } from '../src/musicService';
+import { MUSIC_SERVICES, type ClassicalStartPageId } from '../src/musicService';
 
 const mockedGetStorefront = vi.mocked(getStorefront);
 const mockedSetStorefront = vi.mocked(setStorefront);
@@ -178,7 +178,9 @@ describe('buildAppleMusicURL - classical service', () => {
   });
 
   it('falls back to home when a removed library start page is still persisted', () => {
-    mockedGetClassicalStartPage.mockReturnValue('library');
+    // 'library' was persisted before WW-92 dropped the page: the type no longer admits it,
+    // the store still holds it.
+    mockedGetClassicalStartPage.mockReturnValue('library' as ClassicalStartPageId);
     const url = buildAppleMusicURL();
     expect(url).toBe('https://classical.music.apple.com/gb');
   });
@@ -227,6 +229,42 @@ describe('buildAppleMusicURL - classical service', () => {
     // falls through to default (home), which has empty path
     expect(url).toBe('https://classical.music.apple.com/gb');
   });
+});
+
+describe('buildItmsRouteURL', () => {
+  // The Record type fails to compile if an ItmsRouteToken is missed.
+  const routePaths: Record<ItmsRouteToken, string> = {
+    library: 'library',
+    browse: 'browse',
+    radio: 'radio',
+    listenNow: 'listen-now',
+    subscribe: 'subscribe',
+  };
+  const tokens = Object.keys(routePaths) as ItmsRouteToken[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetStorefront.mockReturnValue('gb');
+    mockedGetLanguage.mockReturnValue(null);
+  });
+
+  // itms:// is pinned to the music host and ITMS_ROUTE_PATHS holds music-only paths,
+  // so the active service must not reach the origin.
+  for (const service of ['classical', 'music'] as const) {
+    describe(`with the ${service} service active`, () => {
+      beforeEach(() => {
+        mockedGetMusicService.mockReturnValue(service);
+      });
+
+      for (const token of tokens) {
+        it(`builds ${token} against the music host`, () => {
+          const url = buildItmsRouteURL(token);
+          expect(url).toBe(`${MUSIC_SERVICES.music.origin}/gb/${routePaths[token]}`);
+          expect(new URL(url).origin).toBe(MUSIC_SERVICES.music.origin);
+        });
+      }
+    });
+  }
 });
 
 describe('handleLastPageNavigation', () => {

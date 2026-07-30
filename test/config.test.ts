@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, beforeAll, beforeEach } from 'vitest';
 import type { ThemeName } from '../src/theme';
 
 // Mock electron-conf at the config module level. config.ts imports
@@ -71,11 +71,11 @@ vi.mock('../src/config', async () => {
     },
     setMusicService: (id: MusicServiceId): void => { data.set('musicService', id); },
 
-    getClassicalStartPage: (): string => {
+    getClassicalStartPage: (): ClassicalStartPageId | 'last' => {
       if (!data.has('classical.startPage')) return 'home';
-      return data.get('classical.startPage') as string;
+      return data.get('classical.startPage') as ClassicalStartPageId | 'last';
     },
-    setClassicalStartPage: (page: string): void => { data.set('classical.startPage', page); },
+    setClassicalStartPage: (page: ClassicalStartPageId | 'last'): void => { data.set('classical.startPage', page); },
 
     getClassicalLastPageUrl: (): string | undefined => {
       if (!data.has('classical.lastPageUrl')) return undefined;
@@ -99,7 +99,9 @@ import {
   getClassicalStartPage, setClassicalStartPage,
   getClassicalLastPageUrl, setClassicalLastPageUrl,
 } from '../src/config';
-import type { MusicServiceId } from '../src/musicService';
+import { Conf } from 'electron-conf/main';
+import { DEFAULT_SERVICE_ID } from '../src/musicService';
+import type { ClassicalStartPageId, MusicServiceId } from '../src/musicService';
 
 // Type assertions verify that each getter return type matches its StoreSchema key type.
 // These are compile-time checks via expectTypeOf.
@@ -185,12 +187,12 @@ describe('Config store type assertions', () => {
     expectTypeOf(setMusicService).parameter(0).toEqualTypeOf<MusicServiceId>();
   });
 
-  it('getClassicalStartPage returns string', () => {
-    expectTypeOf(getClassicalStartPage).returns.toEqualTypeOf<string>();
+  it('getClassicalStartPage returns the Classical start page union', () => {
+    expectTypeOf(getClassicalStartPage).returns.toEqualTypeOf<ClassicalStartPageId | 'last'>();
   });
 
-  it('setClassicalStartPage accepts string', () => {
-    expectTypeOf(setClassicalStartPage).parameter(0).toEqualTypeOf<string>();
+  it('setClassicalStartPage accepts the Classical start page union', () => {
+    expectTypeOf(setClassicalStartPage).parameter(0).toEqualTypeOf<ClassicalStartPageId | 'last'>();
   });
 
   it('getClassicalLastPageUrl returns string | undefined', () => {
@@ -265,5 +267,49 @@ describe('Config store runtime behaviour', () => {
   it('setClassicalLastPageUrl persists value', () => {
     setClassicalLastPageUrl('browse/albums');
     expect(getClassicalLastPageUrl()).toBe('browse/albums');
+  });
+});
+
+// The blocks above run against the hand-written stand-in declared at the top of
+// this file. These run against the real src/config.ts, reached past that mock
+// with vi.importActual and backed by the electron-conf mock in test/setup.ts.
+describe('Config store real module', () => {
+  // The electron-conf mock backs every Conf instance with one module-level map
+  // and exposes it as a static for seeding. Shared process-wide within this file.
+  const store = (Conf as unknown as { _data: Map<string, unknown> })._data;
+  let config: typeof import('../src/config');
+
+  beforeAll(async () => {
+    config = await vi.importActual<typeof import('../src/config')>('../src/config');
+  });
+
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it('getMusicService falls back when the persisted id is unregistered', () => {
+    store.set('musicService', 'jazz');
+    expect(config.getMusicService()).toBe(DEFAULT_SERVICE_ID);
+  });
+
+  it('getMusicService returns music when persisted', () => {
+    store.set('musicService', 'music');
+    expect(config.getMusicService()).toBe('music');
+  });
+
+  it('getMusicService returns classical when persisted', () => {
+    store.set('musicService', 'classical');
+    expect(config.getMusicService()).toBe('classical');
+  });
+
+  it('getMusicService falls back when nothing is persisted', () => {
+    expect(config.getMusicService()).toBe(DEFAULT_SERVICE_ID);
+  });
+
+  it('setClassicalStartPage rejects a music start page at compile time', () => {
+    // @ts-expect-error 'radio' is a music start page, not a Classical one
+    config.setClassicalStartPage('radio');
+    // The union is the only guard; the write itself is unchecked at runtime.
+    expect(store.get('classical.startPage')).toBe('radio');
   });
 });

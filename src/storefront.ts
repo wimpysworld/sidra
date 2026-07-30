@@ -50,7 +50,8 @@ export function buildAppleMusicURL(): string {
       // fall through: no stored path yet, use default
     }
     const pageEntry = service.startPages.find(p => p.id === classicalStartPage)
-      ?? service.startPages.find(p => p.id === service.defaultStartPage)!;
+      ?? service.startPages.find(p => p.id === service.defaultStartPage)
+      ?? service.startPages[0];
     const pagePath = pageEntry.path;
     if (pagePath === '') {
       return appendLanguage(`${service.origin}/${storefront}`, language);
@@ -86,7 +87,8 @@ export function buildItmsRouteURL(token: ItmsRouteToken): string {
   }
   const language = getLanguage();
   const path = ITMS_ROUTE_PATHS[token];
-  return appendLanguage(`${getService(getMusicService()).origin}/${storefront}/${path}`, language);
+  // itms:// is permanently pinned to the music service; transformItmsUrl in src/itms.ts pins the host
+  return appendLanguage(`${getService('music').origin}/${storefront}/${path}`, language);
 }
 
 export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {

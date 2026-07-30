@@ -1,6 +1,6 @@
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
-import type { MusicServiceId } from './musicService';
+import { DEFAULT_SERVICE_ID, isMusicServiceId, type ClassicalStartPageId, type MusicServiceId } from './musicService';
 
 const configLog = log.scope('config');
 
@@ -17,7 +17,7 @@ interface StoreSchema {
   'autoUpdate.enabled': boolean;
   startPage: 'home' | 'new' | 'radio' | 'all-playlists' | 'last';
   lastPageUrl: string;
-  'classical.startPage': string;
+  'classical.startPage': ClassicalStartPageId | 'last';
   'classical.lastPageUrl': string;
   zoomFactor: number;
   musicService: MusicServiceId;
@@ -157,7 +157,12 @@ export function setZoomFactor(factor: number): void {
 }
 
 export function getMusicService(): MusicServiceId {
-  return getConfigValue('musicService', 'music');
+  const id = getConfigValue('musicService', DEFAULT_SERVICE_ID);
+  if (!isMusicServiceId(id)) {
+    configLog.warn('musicService not registered:', id, '- falling back to:', DEFAULT_SERVICE_ID);
+    return DEFAULT_SERVICE_ID;
+  }
+  return id;
 }
 
 export function setMusicService(id: MusicServiceId): void {
@@ -165,11 +170,11 @@ export function setMusicService(id: MusicServiceId): void {
   configLog.info('musicService set:', id);
 }
 
-export function getClassicalStartPage(): string {
+export function getClassicalStartPage(): ClassicalStartPageId | 'last' {
   return getConfigValue('classical.startPage', 'home');
 }
 
-export function setClassicalStartPage(page: string): void {
+export function setClassicalStartPage(page: ClassicalStartPageId | 'last'): void {
   store.set('classical.startPage', page);
   configLog.info('classical.startPage set:', page);
 }
