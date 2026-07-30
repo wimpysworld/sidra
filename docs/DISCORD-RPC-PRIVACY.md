@@ -14,10 +14,13 @@ When the feature is active, Sidra passes the following to your local Discord cli
 - Artist name
 - Album name
 - Album artwork URL
+- A link to the track on Apple Music, shown as a button
+- Which service you are playing, Apple Music or Apple Music Classical, in that button's label
+- Start and end times for the current track while it plays, which Discord shows as a progress bar
 
 ## What Sidra does not collect or store
 
-This feature collects and stores nothing, and needs no account. Track metadata reaches Discord over a local socket, so nothing leaves your machine through it. Sidra has no server, no analytics, and no telemetry.
+This feature collects and stores nothing, and needs no account. Sidra sends the data above to the Discord client on your computer over a local socket, and nowhere else. Discord then shows your activity to other Discord users, so the data does leave your machine through Discord itself. Sidra has no server, no analytics, and no telemetry.
 
 Other Sidra features can send data off your machine once you switch them on. Last.fm scrobbling is opt-in and sends your listening to Last.fm; see [`LASTFM-PRIVACY.md`](LASTFM-PRIVACY.md).
 
