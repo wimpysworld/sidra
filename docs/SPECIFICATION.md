@@ -121,6 +121,8 @@ sidra/
 │   ├── wedgeDetector.ts           - detects playback stalls and auto-skips forward
 │   ├── pauseTimer.ts              - createPauseTimer() factory; shared by tray, dock, Discord integrations
 │   ├── utils.ts                   - errorMessage() utility
+│   ├── notify.ts                  - notification gate: createNotification(), notificationsAvailable(), initNotificationProbe()
+│   ├── notificationDaemon.ts      - D-Bus probe for org.freedesktop.Notifications (Linux only)
 │   ├── utils/
 │   │   └── progressBar.ts         - updateProgressBar() / clearProgressBar(); platform-agnostic win.setProgressBar()
 │   ├── aboutWindow.ts             - showAboutWindow() and related constants (extracted from tray.ts)
@@ -754,8 +756,21 @@ Electron's built-in `Notification` API, works on all three platforms. Notificati
 
 On Windows, `app.setAppUserModelId()` must be called before `app.whenReady()` or notifications will not appear (see [Windows: Chromium's GSMTC Bridge](#windows-chromiums-gsmtc-bridge)).
 
+### The notification daemon gate
+
+On Linux, `Notification.show()` blocks the browser UI thread when nothing owns `org.freedesktop.Notifications`. Electron calls `notify_notification_show()` inline, and libnotify builds its `GDBusProxy` without `DO_NOT_AUTO_START`, so GLib runs `StartServiceByName` in a nested main loop and each attempt waits the 25 second D-Bus activation timeout. Electron queries server capabilities three times before the show, so a single notification freezes the window for about 100 seconds.
+
+`createNotification()` in `src/notify.ts` is the only place a `Notification` is constructed. It returns `null` when the gate is closed, and all four call sites (`src/integrations/notifications/index.ts`, `src/integrations/lastfm/index.ts`, `src/update.ts`, `src/autoUpdate.ts`) skip the notification on `null`. The Last.fm `force` flag bypasses the user's notifications preference but not this gate.
+
+`src/notificationDaemon.ts` drives the gate on Linux. It holds its own session bus, subscribes to `NameOwnerChanged` for the notification name, then asks `NameHasOwner`: one round trip that never triggers activation. A daemon started mid-session re-enables notifications with no restart. The gate starts closed on Linux and opens on the first probe reply; off Linux it is open from the start and no bus is opened. `main.ts` calls `initNotificationProbe()` in `app.whenReady()`, before the window exists.
+
+The `failed` listener latches the gate closed on Linux only, as a second line behind the probe. macOS and Windows have no `NameOwnerChanged` recovery path, so a latch there would kill notifications for the rest of the session.
+
+One case remains unfixable from JavaScript: a daemon that owns the name and then hangs mid-`Notify`. `NameHasOwner` returns true and Electron waits on `g_dbus_proxy_call_sync` with an infinite timeout.
+
 The implementation lives in `src/integrations/notifications/index.ts`:
 
+- **Gate check**: `notificationsAvailable()` is checked before the artwork download, so a daemon-less session does no repeated network and disk work per track
 - **Artwork**: Uses `downloadArtwork()` from `src/artwork.ts`, which fetches via `net.fetch`, writes to a UUID-based cache with atomic writes, and expires files after 7 days
 - **Debounce**: 1500ms debounce on `nowPlayingItemDidChange` to coalesce rapid events
 - **Artwork race timeout**: 500ms - if artwork download takes longer, the notification fires without an icon

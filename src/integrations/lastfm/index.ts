@@ -1,4 +1,4 @@
-import { app, net, shell, BrowserWindow, Notification } from 'electron';
+import { app, net, shell, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
@@ -14,6 +14,7 @@ import {
 } from '../../config';
 import { getLastfmConnectedText, getLastfmConnectFailedText } from '../../i18n';
 import { errorMessage } from '../../utils';
+import { createNotification } from '../../notify';
 
 const lastfmLog = log.scope('lastfm');
 
@@ -173,12 +174,15 @@ let getWindow: () => BrowserWindow | null = () => null;
  * Shows a Last.fm notification. `force` sends it even when the user has turned
  * notifications off: a connect failure answers an action the user just took in
  * the tray, and without it the menu silently returns to "Connect" with no
- * explanation. Routine confirmations stay gated on the preference.
+ * explanation. Routine confirmations stay gated on the preference. `force` does
+ * not bypass the notification daemon gate in `createNotification()`: on a
+ * daemon-less Linux session that construction freezes the window.
  */
 function notify(body: string, force = false): void {
   if (!force && !getNotificationsEnabled()) return;
   try {
-    const notification = new Notification({ title: 'Last.fm', body, silent: true });
+    const notification = createNotification({ title: 'Last.fm', body, silent: true });
+    if (!notification) return;
     notification.on('click', () => {
       const win = getWindow();
       if (win) {

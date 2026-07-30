@@ -23,6 +23,7 @@ import { init as initWindowsTaskbar, setTaskbarSendCommandCallback } from './int
 import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 import { contentReadyProbeScript } from './contentReady';
+import { initNotificationProbe } from './notify';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
 const CONTENT_READY_POLL_MS = 100;
@@ -653,6 +654,7 @@ if (gotLock) {
     const { splash, minDisplay, cssReady, markCssReady } = createSplash();
     setupApplicationMenu();
     const player = initPlayerIPC();
+    initNotificationProbe();
     appTray = createTray();
     const ses = await initSession();
     cleanArtworkCache();

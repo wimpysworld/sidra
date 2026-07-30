@@ -1,8 +1,9 @@
-import { app, BrowserWindow, Notification } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { Player, NowPlayingPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
+import { createNotification, notificationsAvailable } from '../../notify';
 import { errorMessage } from '../../utils';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
@@ -16,6 +17,13 @@ async function showNotification(
 ): Promise<void> {
   if (!payload?.name) {
     notifLog.debug('skipping notification: no track name');
+    return;
+  }
+
+  // Checked before the artwork download so a daemon-less session does no
+  // repeated network and disk work per track
+  if (!notificationsAvailable()) {
+    notifLog.debug('skipping notification: no notification daemon');
     return;
   }
 
@@ -39,7 +47,11 @@ async function showNotification(
     options.icon = artworkPath;
   }
 
-  const notification = new Notification(options);
+  const notification = createNotification(options);
+
+  if (!notification) {
+    return;
+  }
 
   notification.on('show', () => {
     notifLog.debug('notification displayed:', payload.name);

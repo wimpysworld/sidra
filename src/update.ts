@@ -1,7 +1,8 @@
-import { app, net, Notification, shell, Tray } from 'electron';
+import { app, net, shell, Tray } from 'electron';
 import log from 'electron-log/main';
 import { getNotificationsEnabled } from './config';
 import { getUpdateStrings } from './i18n';
+import { createNotification } from './notify';
 import { errorMessage } from './utils';
 
 const SEMVER_PARTS = 3;
@@ -77,21 +78,23 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
 
       if (getNotificationsEnabled()) {
         const strings = getUpdateStrings();
-        const notification = new Notification({
+        const notification = createNotification({
           title: strings.updateAvailable.replace('{version}', cleanVersion),
           body: `Sidra ${cleanVersion}`,
           silent: true,
         });
-        notification.on('click', () => {
-          try {
-            const parsed = new URL(releaseUrl);
-            if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-              shell.openExternal(releaseUrl);
-            }
-          } catch { /* ignore malformed URL */ }
-        });
-        notification.show();
-        updateLog.debug('update notification shown');
+        if (notification) {
+          notification.on('click', () => {
+            try {
+              const parsed = new URL(releaseUrl);
+              if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+                shell.openExternal(releaseUrl);
+              }
+            } catch { /* ignore malformed URL */ }
+          });
+          notification.show();
+          updateLog.debug('update notification shown');
+        }
       }
     } else {
       updateLog.debug('up to date:', localVersion);

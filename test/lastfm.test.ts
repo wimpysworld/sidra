@@ -26,6 +26,20 @@ vi.mock('../src/i18n', () => ({
   getLastfmConnectFailedText: vi.fn(() => 'Could not connect'),
 }));
 
+// createNotification() gates every construction on a D-Bus daemon probe that
+// never runs under test, and the gate starts closed on Linux. The stand-in
+// mirrors that gate so a test can open or close it, and constructs the same
+// electron Notification the real helper does.
+const daemon = vi.hoisted(() => ({ available: true }));
+
+vi.mock('../src/notify', async () => {
+  const { Notification } = await import('electron');
+  return {
+    createNotification: vi.fn((options: Electron.NotificationConstructorOptions) =>
+      daemon.available ? new Notification(options) : null),
+  };
+});
+
 describe('signParams', () => {
   it('sorts params by name, concatenates name+value, appends secret, then MD5', () => {
     const expected = createHash('md5').update('a1b2secret', 'utf8').digest('hex');
@@ -120,6 +134,7 @@ function play(player: FakePlayer, ms: number): void {
 /** A connected account, an accepting API and a clock under test control. */
 function startFromConnected(): void {
   vi.clearAllMocks();
+  daemon.available = true;
   session.key = 'session-key';
   session.enabled = true;
   vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
@@ -350,6 +365,22 @@ describe('revoked session', () => {
     expect(session.key).toBeNull();
     expect(session.enabled).toBe(false);
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+  });
+
+  it('constructs no notification for the forced failure when no daemon is available', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    daemon.available = false;
+    refuseScrobbles(9);
+
+    playPastThreshold(player);
+    await flush();
+
+    // The forced notification bypasses the user preference, not the daemon
+    // gate: constructing one with no daemon freezes the window on Linux.
+    expect(session.key).toBeNull();
+    expect(vi.mocked(Notification)).not.toHaveBeenCalled();
   });
 
   it('notifies once when requests already in flight are refused too', async () => {
