@@ -1,6 +1,6 @@
 # Sidra
 
-Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls.
+Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` and `classical.music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls. `src/musicService.ts` holds the registry of both services.
 
 ## Technology stack
 
@@ -8,7 +8,7 @@ Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` di
 |---|---|---|
 | Shell | CastLabs Electron (`castlabs/electron-releases`, wvcus) | Widevine CDM for DRM playback |
 | Language | TypeScript | Application code |
-| Renderer | `music.apple.com` | Apple maintains the UI |
+| Renderer | `music.apple.com` and `classical.music.apple.com` | Apple maintains the UI |
 | Package manager | npm | Dependency management |
 | Build | electron-builder | Platform installers (AppImage, deb, rpm, DMG, NSIS) |
 | Dev environment | Nix flake + direnv | Reproducible tooling |
@@ -59,6 +59,8 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 **Tests**
 - Tests cover pure logic and event forwarding; shared mock fixtures live in `test/mocks/` to avoid duplication
 - Type-level assertions (`expectTypeOf`) used to verify event map contracts at compile time
+- `src/config.ts` is exercised directly, never through a hand-written stand-in; `electron-conf/main` is mocked in `test/setup.ts` so the real module loads, and a self-mock makes every assertion read its own defaults back
+- `tsconfig.json` sets `"include": ["src/**/*.ts"]`, so `just lint` type-checks `src/` only and Vitest transpiles without type-checking; a type error in `test/` is invisible to both gates
 
 **Dependencies**
 - Minimise runtime dependencies; each must be purpose-driven
@@ -109,6 +111,8 @@ When adding a language, add an entry to every record in every JSON file:
 | `storefront` | `string` | Apple Music storefront code (e.g. `gb`, `us`) |
 | `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
 | `theme` | `ThemeName` (`'apple-music' \| BundledThemeName \| 'custom'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
+| `zoomFactor` | `number` | Renderer zoom factor (default: `1.0`) |
+| `closeToTray.enabled` | `boolean` | Keep Sidra running in the tray when the window closes (default: false); gates the Hide/Show Window tray items and the tray left-click handler, so with it off, clicking the tray icon does nothing |
 | `notifications.enabled` | `boolean` | Toggle desktop notifications (default: true) |
 | `discord.enabled` | `boolean` | Toggle Discord Rich Presence (default: false) |
 | `lastfm.enabled` | `boolean` | Toggle Last.fm scrobbling (default: false) |
@@ -126,17 +130,21 @@ When adding a language, add an entry to every record in every JSON file:
 
 ### Service switching
 
-Switching services (tray Player submenu or itms:// deep-link routing) follows a strict sequence to avoid stale state:
-1. `resetWedgeDetector()` — clears the `isPlaying` flag so no spurious skip-forward attempts occur after page re-init
-2. `setMusicService(id)` — persists the new service id
-3. `rebuildTrayMenu(appTray)` — updates tray to reflect the new service
-4. `win.loadURL(buildAppleMusicURL())` — navigates to the new service's start page
+`switchService(id, targetUrl?)` in `src/serviceSwitch.ts` is the only switch sequence that ships. The tray Player submenu and `itms://` routing both call it; the tray click passes the id and nothing else, so the click itself neither persists the service nor rebuilds the menu. The steps, in order:
 
-`itms://` deep links always target the music service; if Classical is active when an itms:// link arrives, the sequence above runs with id `'music'` before navigating.
+1. `resetWedgeDetector()` - `reset()` sets `skipAttempts` to 0 and stops the timer; stopping the timer suppresses the spurious skip-forward after the page re-initialises
+2. `setMusicService(id)` - persists the new service id
+3. `rebuildTrayMenu(tray)` - runs when a tray exists, so the menu reflects the new service
+4. `setThemeCssKey(null)` - the navigation replaces the document, so the next injection must not call `removeInsertedCSS()` with a key from the old one
+5. `loadURL(targetUrl ?? buildAppleMusicURL())` - `buildAppleMusicURL()` resolves after `setMusicService`, so the default reads the service just persisted
+
+`main.ts` supplies the window and the tray through `initServiceSwitch({ getTray, loadURL })`, because `serviceSwitch.ts` cannot import `main.ts`: it runs `app.whenReady()` at import.
+
+`routeToMusicService(url)` in the same module handles `itms://` links, which always target the music service. It calls `switchService('music', url)` when Classical is active and navigates directly otherwise, so the switch costs one navigation.
 
 ### Theme gating
 
-`resolveTheme()` in `src/theme.ts` forces `'apple-music'` when the classical service is active, so no override CSS is injected. The stored `theme` value is left unchanged — switching back to the music service restores the user's preferred theme. The Style submenu in the tray is disabled (`enabled: false`) when Classical is active.
+`resolveTheme()` in `src/theme.ts` forces `'apple-music'` when the classical service is active, so no override CSS is injected. The stored `theme` value is left unchanged, so switching back to the music service restores the user's preferred theme. The Style submenu in the tray is disabled (`enabled: false`) when Classical is active.
 
 ### postMessage target origin
 
@@ -157,7 +165,6 @@ Most Apple Music styling responds to `:root` custom property overrides. These el
 | Player bar background | `.wrapper amp-chrome-player::before` | `::before` pseudo paints the bar |
 | Side panels (Lyrics/Up Next) | `.side-panel`, `.side-panel-header-wrapper` | Direct `background-color` |
 | Page footer | `.scrollable-page > footer` | Direct `background-color` |
-| LCD now-playing widget | `amp-lcd { --lcd-bg-color }` | Shadow DOM scoped variable |
 | Accent-coloured buttons | `.button.primary button.click-action` | Direct `background-color: rgb(214, 0, 23)` ignores `--keyColor` |
 | Accent CSS variables (`--keyColor` and variants) | `*` | Shadow DOM of `amp-*` elements does not inherit from `:root` |
 
@@ -181,7 +188,9 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - A failed `track.scrobble` is not retried: `scrobbled` stays set, so each track is submitted once. Rolling the flag back re-opened the submission without re-arming anything, and any timer that fires on a failure is a retry loop, which this project does not want
 - Last.fm connect-failure notifications are sent with `notify(..., true)`, which bypasses `notifications.enabled`: the failure answers an action the user just took in the tray, and silence there leaves the menu back at "Connect" with no explanation. Success and routine notifications stay gated on the preference
 - Event flow: MusicKit.js events in the renderer are captured by `assets/musicKitHook.js` (injected post-load), forwarded via IPC to `src/player.ts` (EventEmitter), then distributed to integrations; controls flow in reverse via `webContents.send()` to the preload, which uses `window.postMessage()` to bridge the context isolation boundary, and `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
-- Three artefacts define the hook-preload contract and must stay in sync: `src/types/hook.d.ts` (type declarations), `assets/musicKitHook.js` (JSDoc-annotated runtime), and `src/preload.ts` (typed channel sets); contract tests in `test/player.test.ts` verify alignment at compile time via `expectTypeOf`
+- Three artefacts define the hook-preload contract and must stay in sync: `src/types/hook.d.ts` (type declarations), `assets/musicKitHook.js` (JSDoc-annotated runtime), and `src/preload.ts` (typed channel sets); contract tests in `test/player.test.ts` verify alignment at compile time via `expectTypeOf`. The hook sets `window.__sidraHookInjected` synchronously at the top of its IIFE and never clears it; re-running the IIFE installs duplicate message listeners (#154 and issue #153). `window.__sidraHookedMk`, assigned at the end of `attachToInstance`, is a different marker: the 5-second monitor compares the current `MusicKit.getInstance()` against it to detect a replaced singleton. The top-of-IIFE guard that read `__sidraHookedMk` was removed; do not reintroduce one
+- `reportPositionState()` in `assets/musicKitHook.js` reports explicit media session position state. Duration comes from `mk.currentPlaybackDuration` when finite and positive, else from `nowPlayingItem.attributes.durationInMillis / 1000`; the reported position is clamped with `Math.min(position, duration)`. Every bail-out calls `clearPositionState()`, so no return path leaves a previous item's state installed; it clears rather than reporting `duration: Infinity` because the hook cannot tell genuinely unbounded media (a radio station) from a duration not yet resolved. The `playbackTimeDidChange` listener calls it on every tick, and that frequency is deliberate: `music.apple.com` writes to the same MediaSession from the same world, and the repeated call keeps Sidra's value in place. Do not debounce it. That does not breach the `playbackTimeDidChange` rule below, which is about debounce-timer starvation: this call starts no debounce
+- `isAllowedNavigationUrl()` in `src/musicService.ts` gates the `will-navigate` handler in `src/main.ts`, which calls `event.preventDefault()` when the predicate is false. `ALLOWED_NAVIGATION_HOSTS` is derived from every service host plus its `authFrameHosts`, so a new service widens the allowlist automatically. The match is on `URL.hostname` and exact: a subdomain, a suffix or a userinfo prefix of an allowed host is rejected. Main-process `loadURL()` calls raise no `will-navigate` event, so launch, service switching and `itms://` routing are unaffected. The same predicate gates hook injection at both sites: `injectContent()` and the `did-navigate-in-page` handler each skip `hookScript` on a disallowed host
 - `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime; it must be listed in `asarUnpack` in the electron-builder config or AppImage builds will crash on startup
 - Chromium's built-in `MediaSessionService` must be disabled on Linux to avoid conflicting MPRIS registrations; Sidra registers its own `org.mpris.MediaPlayer2.sidra` service via dbus-next
 - macOS and Windows use Chromium's native mediaSession bridges (no extra libraries)
@@ -199,8 +208,8 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - MPRIS `Stop()` must map to `window.__sidra.pause()`, not `MusicKit.stop()`; `stop()` clears the queue, which violates the MPRIS spec requirement that calling `Play()` after `Stop()` resumes from the beginning of the track
 - MPRIS `PlaybackStatus` maps all MusicKit states - including transient ones (1=loading, 6=seeking, 7=waiting, 8=stalled) - directly to MPRIS values; transient states fall through to `'Stopped'` intentionally so MPRIS always reflects the actual MusicKit state; do not add early-return guards for transient states
 - MPRIS `Volume` controls MusicKit's software volume (`HTMLMediaElement.volume`) only - the PulseAudio/PipeWire sink input volume is independent; this matches the behaviour of Rhythmbox, Spotify, VLC, and every other major Linux music player; do not attempt to sync them
-- Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio streams; `PULSE_PROP_*` environment variables are ineffective (Chromium's explicit API calls override them); the fix is `disable-features=AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) combined with `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`); see [electron/electron#27581](https://github.com/electron/electron/issues/27581) and `docs/PULSE.md`
-- `music.apple.com` registers a `beforeunload` event handler while audio is playing; this silently blocks `BrowserWindow.close()` and `app.quit()` with no dialog or error (standard Chromium/Electron behaviour - unlike Chrome, Electron does not show a confirmation dialog); fix with `win.webContents.on('will-prevent-unload', (event) => event.preventDefault())`; see [electron/electron#8468](https://github.com/electron/electron/issues/8468) and `docs/QUIT.md`
+- Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio streams; `PULSE_PROP_*` environment variables are ineffective (Chromium's explicit API calls override them); the fix is `disable-features=AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) combined with `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`); see [electron/electron#27581](https://github.com/electron/electron/issues/27581)
+- `music.apple.com` registers a `beforeunload` event handler while audio is playing; this silently blocks `BrowserWindow.close()` and `app.quit()` with no dialog or error (standard Chromium/Electron behaviour - unlike Chrome, Electron does not show a confirmation dialog); fix with `win.webContents.on('will-prevent-unload', (event) => event.preventDefault())`; see [electron/electron#8468](https://github.com/electron/electron/issues/8468)
 - `electron-updater` must be lazy-required inside `initAutoUpdate()` only - never at module top level; on unsupported platforms the module must never load; verify via log output: `autoUpdate` scope logs must not appear on deb/rpm/Nix builds
 - `electron-updater` implements its own download/install pipeline and does not use Electron's built-in `autoUpdater`; all APIs it uses are unmodified in CastLabs ECS; the known `app.relaunch()` bug (CastLabs issue #164) does NOT affect `AppImageUpdater` - it spawns the new binary via `child_process.spawn()` directly
 - Platform detection for auto-update: `process.env.APPIMAGE` is set only when running as an AppImage (present = enable updater, absent = notification-only); on Windows, `app.isPackaged` on `win32` indicates an NSIS installation
@@ -210,11 +219,12 @@ CSS files read via `fs.readFileSync` at runtime must be listed individually in `
 - `SIDRA_DISABLE_AUTO_UPDATE=1` env var disables auto-update for AppImage/NSIS builds; future package managers (Scoop, Chocolatey) must set this in their install manifests
 - AppImage `artifactName` must omit the version component (use `${productName}-${os}-${arch}.${ext}`) to prevent filename changes breaking desktop shortcuts after update
 - On NixOS, `libxcrypt-legacy` must be in `LD_LIBRARY_PATH` (already added to `flake.nix`) for fpm's bundled Ruby to find `libcrypt.so.1` during deb/rpm builds; without it, deb/rpm targets fail at the fpm stage
-- `webContents.reload()` must be preceded by `wedgeDetector.reset()` when called from an IPC handler; without this, the wedge detector's `isPlaying` flag remains `true` through the reload, causing spurious skip-forward attempts after the page re-initialises
+- `webContents.reload()` must be preceded by `wedgeDetector.reset()` when called from an IPC handler; without it the detector's timer survives the reload and attempts a spurious skip-forward after the page re-initialises
 - CastLabs Electron type definitions omit `App.setDesktopName()` and `'cache'` from `app.getPath()` - both methods work at runtime; use module augmentations in `src/types/electron.d.ts` rather than type casts at call sites
 - `dbus-next` has no public API to fully close its socket; `bus.disconnect()` calls `stream.end()` only (half-close); `(bus as DbusMessageBusInternals)._connection?.stream?.destroy()` is the only way to force-close - the `DbusMessageBusInternals` interface in `src/integrations/mpris/index.ts` documents this and is compatible with `@holusion/dbus-next ^0.11.2`
-- `setupContentHandlers()` uses a single `on('did-finish-load')` handler with an `initialized` flag (not `once`/`on` split) - both `once` and `on` fire on the first load, and async `executeJavaScript` injection cannot rely on script-level idempotency guards to prevent double event listener registration
-- Theme system uses `ThemeName = 'apple-music' | BundledThemeName | 'custom'` and `applyTheme(name)` in `src/theme.ts`; `'apple-music'` means no override CSS is injected; adding a bundled theme only requires adding a palette entry in `src/palettes.ts`
+- `setupContentHandlers()` uses a single `on('did-finish-load')` handler with an `initialized` flag (not a `once`/`on` split) - both `once` and `on` fire on the first load, so the flag guards one-time integration initialisation while `injectContent()` runs on every load; the hook's own `__sidraHookInjected` guard stops duplicate listener registration, not this flag
+- Theme system uses `ThemeName = 'apple-music' | BundledThemeName | 'custom'` and `applyTheme(name)` in `src/theme.ts`; `'apple-music'` means no override CSS is injected. A new bundled theme needs a palette entry in `src/palettes.ts` that also passes `test/themes.test.ts`: keep `overlay` distinct from `subtext0` and `crust` distinct from `surface0` in both schemes, and reach 4.5:1 WCAG contrast against `pageBG` on `--systemPrimary` and `--systemSecondary-vibrant` (Catppuccin Latte's secondary is the one documented exception, at 4.37:1)
+- `hasCustomCss()` is `getThemeCss('custom') !== null`, so presence means readable and non-blank, not merely existing. `getThemeCss('custom')` caches the file contents. The `fs.watch` callback calls `invalidateCustomCssCache()` before the 150ms debounce, so a tray rebuild inside the debounce window cannot read the previous contents back. A watcher that never starts or dies calls `disableCustomCssCache()`, which switches caching off rather than leaving a stale cache for the life of the process. The debounced callback re-applies CSS when needed, then calls `rebuildTrayCallback()` unconditionally: creating or deleting `custom.css` adds or removes the tray Style entry whichever theme is stored. `main.ts` supplies that callback through `setRebuildTrayCallback()`, because `tray.ts` imports `theme.ts` and `theme.ts` cannot import it back
 - `test/mocks/storefront-deps.ts` contains shared `vi.mock()` declarations for tests that import storefront code; Vitest hoists `vi.mock()` calls within the fixture file itself, so the fixture uses `../../src/` paths (relative to `test/mocks/`, not `test/`) - do not change these paths
 - `API_KEY` and `API_SECRET` in `src/integrations/lastfm/index.ts` resolve once at module load and are empty under test, so `isConfigured()` is false and every request path short-circuits; behavioural tests must take the module from `loadLastfm()` in `test/lastfm.test.ts` (`vi.resetModules()`, `vi.stubEnv(...)`, then a dynamic `import()`) rather than the static import
 - Electron fixtures in `test/setup.ts` that stand in for a promise-returning API must return a promise: production code attaches `.catch()` to `shell.openExternal()`, and a bare `vi.fn()` makes that throw inside a `try`/`catch` that silently abandons the flow

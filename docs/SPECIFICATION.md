@@ -1,6 +1,6 @@
 # Sidra - Specification
 
-A minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls. Apple maintains the UI; Sidra maintains the bridge.
+A minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` and `classical.music.apple.com` directly, injecting a lightweight hook script to bridge MusicKit.js events to native platform media controls. `src/musicService.ts` holds the registry of both services. Apple maintains the UI; Sidra maintains the bridge.
 
 The codebase is tightly focused and as lean as possible. Five runtime dependencies.
 
@@ -18,6 +18,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 - [MPRIS Specification](#mpris-specification)
 - [Volume Sync](#volume-sync)
 - [Region and Storefront](#region-and-storefront)
+- [Apple Music Classical](#apple-music-classical)
 - [Authentication](#authentication)
 - [Theming](#theming)
 - [Discord Rich Presence](#discord-rich-presence)
@@ -41,7 +42,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 |---|---|---|
 | Shell | `castlabs/electron-releases` (wvcus) | Widevine CDM - no alternative exists |
 | Language | TypeScript | Type safety, ecosystem match |
-| Renderer content | `music.apple.com` | Zero UI code; Apple maintains it |
+| Renderer content | `music.apple.com` and `classical.music.apple.com` | Zero UI code; Apple maintains it |
 | MusicKit hook | Injected JS script post-page-load | Hooks `MusicKit.getInstance()` events |
 | Preload | `contextBridge` IPC bridge | Standard Electron security pattern |
 | MPRIS (Linux) | `dbus-next` directly | Full control, clean service name |
@@ -58,30 +59,30 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ CastLabs Electron (Widevine CDM auto-installed)         │
-│                                                         │
-│  ┌──────────────────────┐      ┌────────────────────┐   │
-│  │  Main Process        │◄─IPC─│  Renderer Process  │   │
-│  │                      │      │                    │   │
-│  │  ┌────────────────┐  │      │  music.apple.com   │   │
-│  │  │ IPC event hub  │  │      │  ┌──────────────┐  │   │
-│  │  │ (player.ts)    │  │      │  │ MusicKit.js  │  │   │
-│  │  └───────┬────────┘  │      │  └──────┬───────┘  │   │
-│  │          │           │      │         │ events   │   │
-│  │  ┌───────▼────────┐  │      │  ┌──────▼───────┐  │   │
-│  │  │ Integrations   │  │      │  │ Hook script  │  │   │
-│  │  │ ├─ MPRIS       │◄─┼──────┼──┤(injected JS) │  │   │
-│  │  │ ├─ Discord RPC │  │      │  └──────────────┘  │   │
-│  │  │ ├─ Notifier    │  │      │                    │   │
-│  │  │ └─ Taskbar/Dock│  │      │  ┌──────────────┐  │   │
-│  │  └───────┬────────┘  │      │  │  preload.ts  │  │   │
-│  │          │           │      │  │ (IPC bridge) │  │   │
-│  │  ┌───────▼────────┐  │      │  └──────────────┘  │   │
-│  │  │ electron-conf  │  │      └────────────────────┘   │
-│  │  └────────────────┘  │                               │
-│  └──────────────────────┘                               │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ CastLabs Electron (Widevine CDM auto-installed)                  │
+│                                                                  │
+│  ┌──────────────────────┐      ┌─────────────────────────────┐   │
+│  │  Main Process        │◄─IPC─│  Renderer Process           │   │
+│  │                      │      │  music.apple.com            │   │
+│  │  ┌────────────────┐  │      │  classical.music.apple.com  │   │
+│  │  │ IPC event hub  │  │      │  ┌──────────────┐           │   │
+│  │  │ (player.ts)    │  │      │  │ MusicKit.js  │           │   │
+│  │  └───────┬────────┘  │      │  └──────┬───────┘           │   │
+│  │          │           │      │         │ events            │   │
+│  │  ┌───────▼────────┐  │      │  ┌──────▼───────┐           │   │
+│  │  │ Integrations   │  │      │  │ Hook script  │           │   │
+│  │  │ ├─ MPRIS       │◄─┼──────┼──┤(injected JS) │           │   │
+│  │  │ ├─ Discord RPC │  │      │  └──────────────┘           │   │
+│  │  │ ├─ Notifier    │  │      │                             │   │
+│  │  │ └─ Taskbar/Dock│  │      │  ┌──────────────┐           │   │
+│  │  └───────┬────────┘  │      │  │  preload.ts  │           │   │
+│  │          │           │      │  │ (IPC bridge) │           │   │
+│  │  ┌───────▼────────┐  │      │  └──────────────┘           │   │
+│  │  │ electron-conf  │  │      └─────────────────────────────┘   │
+│  │  └────────────────┘  │                                        │
+│  └──────────────────────┘                                        │
+└──────────────────────────────────────────────────────────────────┘
          │ D-Bus (Linux)
     ┌────▼───────┐
     │  playerctl │
@@ -97,67 +98,74 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 ```
 sidra/
 ├── src/
-│   ├── main.ts                    — bootstrap, Widevine wait, window, IPC hub
-│   ├── preload.ts                 — contextBridge IPC exposure (AMWrapper)
-│   ├── config.ts                  — electron-conf wrapper
-│   ├── i18n.ts                    — locale detection, JSON loader, and re-exported translation records
-│   ├── paths.ts                   — getAssetPath() and getProductInfo() utilities
-│   ├── player.ts                  — TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
-│   ├── storefront.ts              — buildAppleMusicURL(), extractStorefrontFromURL(), handleStorefrontNavigation()
+│   ├── main.ts                    - bootstrap, Widevine wait, window, IPC hub
+│   ├── preload.ts                 - contextBridge IPC exposure (AMWrapper)
+│   ├── config.ts                  - electron-conf wrapper
+│   ├── i18n.ts                    - locale detection, JSON loader, and re-exported translation records
+│   ├── paths.ts                   - getAssetPath() and getProductInfo() utilities
+│   ├── player.ts                  - TypedEmitter, PlayerEvents, PlaybackState (0-9), IntegrationContext
+│   ├── storefront.ts              - buildAppleMusicURL(), buildItmsRouteURL(), extractStorefrontFromURL(), handleStorefrontNavigation()
+│   ├── musicService.ts            - music service registry (MUSIC_SERVICES): host, origin, start pages, navigation allowlist
+│   ├── serviceSwitch.ts           - switchService() and routeToMusicService(); the one service-switch sequence
+│   ├── contentReady.ts            - CONTENT_READY_SELECTOR and contentReadyProbeScript()
+│   ├── itms.ts                    - pure itms:// URL parser and argv extraction
 │   ├── types/
-│   │   ├── electron.d.ts          — module augmentations for CastLabs type gaps
-│   │   └── hook.d.ts              — hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
-│   ├── theme.ts                   — theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), initThemeCSS()
-│   ├── palettes.ts                — bundled theme registry (BUNDLED_THEMES), BundledThemeName, themeLabel()
-│   ├── themeTemplate.ts           — pure palette→CSS renderer (buildThemeCss())
-│   ├── artwork.ts                 — downloadArtwork(), cleanArtworkCache(); UUID-based multi-file cache
-│   ├── autoUpdate.ts              — isAutoUpdateSupported(), initAutoUpdate(), quitAndInstall(); electron-updater
-│   ├── update.ts                  — checkForUpdates() via GitHub API; UpdateInfo state
-│   ├── wedgeDetector.ts           — detects playback stalls and auto-skips forward
-│   ├── pauseTimer.ts              — createPauseTimer() factory; shared by tray, dock, Discord integrations
-│   ├── utils.ts                   — errorMessage() utility
+│   │   ├── electron.d.ts          - module augmentations for CastLabs type gaps
+│   │   └── hook.d.ts              - hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
+│   ├── theme.ts                   - theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), initThemeCSS()
+│   ├── palettes.ts                - bundled theme registry (BUNDLED_THEMES), BundledThemeName, themeLabel()
+│   ├── themeTemplate.ts           - pure palette→CSS renderer (buildThemeCss())
+│   ├── artwork.ts                 - downloadArtwork(), cleanArtworkCache(); UUID-based multi-file cache
+│   ├── autoUpdate.ts              - isAutoUpdateSupported(), initAutoUpdate(), quitAndInstall(); electron-updater
+│   ├── update.ts                  - checkForUpdates() via GitHub API; UpdateInfo state
+│   ├── wedgeDetector.ts           - detects playback stalls and auto-skips forward
+│   ├── pauseTimer.ts              - createPauseTimer() factory; shared by tray, dock, Discord integrations
+│   ├── utils.ts                   - errorMessage() utility
 │   ├── utils/
-│   │   └── progressBar.ts         — updateProgressBar() / clearProgressBar(); platform-agnostic win.setProgressBar()
-│   ├── aboutWindow.ts             — showAboutWindow() and related constants (extracted from tray.ts)
-│   ├── tray.ts                    — system tray icon, context menu, tray state manager
+│   │   └── progressBar.ts         - updateProgressBar() / clearProgressBar(); platform-agnostic win.setProgressBar()
+│   ├── aboutWindow.ts             - showAboutWindow() and related constants (extracted from tray.ts)
+│   ├── tray.ts                    - system tray icon, context menu, tray state manager
 │   └── integrations/
 │       ├── mpris/
-│       │   └── index.ts           — D-Bus MPRIS service (Linux only)
+│       │   └── index.ts           - D-Bus MPRIS service (Linux only)
 │       ├── discord-presence/
-│       │   └── index.ts           — Discord RPC with retry/debounce
+│       │   └── index.ts           - Discord RPC with retry/debounce
+│       ├── lastfm/
+│       │   └── index.ts           - Last.fm auth, now-playing and scrobble submission
 │       ├── notifications/
-│       │   └── index.ts           — Track change desktop notifications
+│       │   └── index.ts           - Track change desktop notifications
 │       ├── macos-dock/
-│       │   └── index.ts           — Dock right-click menu + progress bar (macOS only)
+│       │   └── index.ts           - Dock right-click menu + progress bar (macOS only)
 │       └── windows-taskbar/
-│           └── index.ts           — Thumbnail toolbar + overlay icon + progress bar (Windows only)
+│           └── index.ts           - Thumbnail toolbar + overlay icon + progress bar (Windows only)
 ├── assets/
-│   ├── musicKitHook.js            — Injected into music.apple.com post-load
-│   │                                 Must be listed in electron-builder's `asarUnpack` —
-│   │                                 it is read with readFileSync at runtime and will crash
-│   │                                 AppImage builds if packed inside the asar archive
-│   ├── navigationBar.js           — Injected post-load; adds back/forward/reload buttons to sidebar
-│   ├── about.html                 — About window content, receives product info via query params
-│   ├── splash.html                — Splash screen shown during startup
-│   ├── sidra-logo.png             — Product logo used in About window
+│   ├── musicKitHook.js            - Injected post-load into music.apple.com and
+│   │                                 classical.music.apple.com. Must be listed in
+│   │                                 electron-builder's `asarUnpack`: it is read with
+│   │                                 readFileSync at runtime and will crash AppImage
+│   │                                 builds if packed inside the asar archive
+│   ├── navigationBar.js           - Injected post-load; adds back/forward/reload buttons to sidebar
+│   ├── about.html                 - About window content, receives product info via query params
+│   ├── splash.html                - Splash screen shown during startup
+│   ├── sidra-logo.png             - Product logo used in About window
 │   ├── locales/
-│   │   ├── loading.json           — 1 translation record: LOADING_TEXT
-│   │   ├── tray.json              — 21 translation records: tray menu labels
-│   │   ├── about.json             — 4 translation records: about window labels
-│   │   └── update.json            — 5 translation records: auto-update labels
-│   ├── styleFix.css               — CSS overrides injected via webContents.insertCSS()
+│   │   ├── loading.json           - 1 translation record: LOADING_TEXT
+│   │   ├── tray.json              - 33 translation records: tray menu labels
+│   │   ├── about.json             - 4 translation records: about window labels
+│   │   └── update.json            - 5 translation records: auto-update labels
+│   ├── styleFix.css               - CSS overrides injected via webContents.insertCSS()
 │   │                                 Hides "Get the app" and "Open in Music" banners
 │   │                                 that Apple shows to push users toward native apps
-│   ├── authStyleFix.css           — CSS injected into Apple auth iframes to hide
+│   ├── authStyleFix.css           - CSS injected into Apple auth iframes to hide
 │   │                                 unsupported passkey and "Sign in with iPhone" options
 │   └── icons/
-│       ├── sidraTemplate.png      — macOS tray (template image)
-│       ├── sidra-tray.png         — Windows tray
-│       ├── sidra-tray-dark.png    — Linux tray (dark theme)
-│       ├── sidra-tray-light.png   — Linux tray (light theme)
+│       ├── sidraTemplate.png      - macOS tray (template image)
+│       ├── sidra-tray.png         - Windows tray
+│       ├── sidra-tray-dark.png    - Linux tray (dark theme)
+│       ├── sidra-tray-light.png   - Linux tray (light theme)
 │       └── tray/menu/
-│           ├── dark/              — 18px dark-theme menu item PNGs
-│           └── light/             — 18px light-theme menu item PNGs
+│           ├── dark/              - 18px dark-theme menu item PNGs
+│           └── light/             - 18px light-theme menu item PNGs
 ├── build/
 │   ├── icon.png, icon.icns, icon.ico
 │   └── afterPack.cjs
@@ -275,23 +283,28 @@ The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and
 
 ## MusicKit Hook Script
 
-Injected into `music.apple.com` after page load via `webContents.executeJavaScript()`. Polls for `MusicKit` availability, hooks events, and exposes the `window.__sidra` control object.
+Injected into `music.apple.com` and `classical.music.apple.com` after page load via `webContents.executeJavaScript()`. Polls for `MusicKit` availability, hooks events, and exposes the `window.__sidra` control object. `isAllowedNavigationUrl()` gates both injection sites, so the hook never reaches a third host.
 
 `assets/musicKitHook.js` is read with `fs.readFileSync` at runtime in the main process. It must be listed in the `asarUnpack` array in `electron-builder` configuration; without it, AppImage builds will crash on startup because the file is inaccessible inside the packed asar archive.
 
 ```javascript
-// Structure of assets/musicKitHook.js (~153 lines)
+// Structure of assets/musicKitHook.js
 // Not inlined in full; see the source file for the complete implementation.
 
 (function () {
-  function attachToInstance(mk) {
-    // Idempotency guard
-    if (window.MusicKit && window.__sidraHookedMk === MusicKit.getInstance()) return;
-    window.__sidraHookedMk = mk;
+  // Injection guard: set synchronously at IIFE top level and never cleared.
+  // Re-running the IIFE would install duplicate message listeners (#154, #153).
+  if (window.__sidraHookInjected) return;
+  window.__sidraHookInjected = true;
 
+  function attachToInstance(mk) {
     // Event listeners: playbackStateDidChange, nowPlayingItemDidChange,
-    // playbackTimeDidChange, repeatModeDidChange, shuffleModeDidChange,
+    // playbackTimeDidChange (forwards the position, then calls
+    // reportPositionState()), repeatModeDidChange, shuffleModeDidChange,
     // volumeDidChange
+
+    // reportPositionState() writes navigator.mediaSession.setPositionState().
+    // clearPositionState() runs when nowPlayingItemDidChange delivers null.
 
     // nowPlayingItemDidChange sends ALL fields including:
     // audioTraits, trackNumber, targetBitrate, discNumber, composerName,
@@ -309,16 +322,29 @@ Injected into `music.apple.com` after page load via `webContents.executeJavaScri
     //   window.addEventListener('message', ...) dispatches
     //   incoming { type: 'sidra:command', channel, args } messages
     //   to the matching window.__sidra method via a COMMANDS allowlist
+
+    // Per-instance marker, read by the 5-second monitor below.
+    // This is not an injection guard: __sidraHookInjected is.
+    window.__sidraHookedMk = mk;
   }
 
-  // 5-second interval monitors for MusicKit instance replacement
-  // and re-calls attachToInstance() when a new instance is detected
   const waitForMK = setInterval(() => {
     if (!window.MusicKit) return;
+    clearInterval(waitForMK);
     attachToInstance(MusicKit.getInstance());
-  }, 5000);
+
+    // 5-second monitor: compares MusicKit.getInstance() against
+    // window.__sidraHookedMk and re-attaches when the singleton is replaced.
+    setInterval(() => { /* ... */ }, 5000);
+  }, 500);
 })();
 ```
+
+### Media session position state
+
+`reportPositionState()` gives the OS media controls an explicit position rather than letting Chromium infer one. It runs on every `playbackTimeDidChange` tick. Duration comes from `mk.currentPlaybackDuration` when that value is finite and positive, otherwise from `nowPlayingItem.attributes.durationInMillis / 1000`. Position is clamped with `Math.min(position, duration)`.
+
+Every bail-out calls `clearPositionState()`, so no return path leaves the previous item's state installed. An unresolvable duration or position clears the state instead of reporting `duration: Infinity`, because the hook cannot tell genuinely unbounded media (a radio station) from a duration that has not resolved yet.
 
 ### Audio Quality Metadata Caveats
 
@@ -348,7 +374,7 @@ if (process.platform === 'linux') {
 }
 ```
 
-**PulseAudio stream identity**: Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio/PipeWire streams via explicit API calls; `PULSE_PROP_*` environment variables are ineffective. Sidra fixes this by disabling `AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) and calling `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`). See [electron/electron#27581](https://github.com/electron/electron/issues/27581) and `docs/PULSE.md` for full details.
+**PulseAudio stream identity**: Chromium hard-codes `application.name = "Chromium"` and `application.icon_name = "chromium-browser"` on PulseAudio/PipeWire streams via explicit API calls; `PULSE_PROP_*` environment variables are ineffective. Sidra fixes this by disabling `AudioServiceOutOfProcess` (moves audio in-process so `SetGlobalAppName` reaches PulseAudio) and calling `app.setDesktopName('sidra.desktop')` (sets `CHROME_DESKTOP` for `GetXdgAppId()`). See [electron/electron#27581](https://github.com/electron/electron/issues/27581).
 
 ### macOS: Chromium's Built-in mediaSession Bridge
 
@@ -496,6 +522,76 @@ Apple Music storefront codes are ISO 3166-1 alpha-2 codes lowercased (e.g. `gb`,
 
 ---
 
+## Apple Music Classical
+
+Sidra loads two Apple web apps from one shell. `src/musicService.ts` holds the registry that describes them. It imports nothing from `electron`, `electron-log`, or `config`, so `src/itms.ts` and the tests can import it without loading Electron.
+
+### Service registry
+
+`MUSIC_SERVICES` maps each `MusicServiceId` to a record with these fields:
+
+| Field | Purpose |
+|---|---|
+| `id` | `'music'` or `'classical'` |
+| `host` | Hostname, matched exactly by the navigation allowlist |
+| `origin` | URL prefix used by `buildAppleMusicURL()` |
+| `displayName` | Label shown in the tray Player submenu |
+| `authFrameHosts` | Authentication iframe hostnames `setupAuthFrameInjection()` accepts |
+| `contentReadySelector` | Selector probed to detect an interactive web app |
+| `startPages` | Ordered start page entries rendered in the tray Start Page submenu |
+| `defaultStartPage` | Start page id used when nothing is persisted |
+
+`defineService()` infers the page id union from `startPages` alone and wraps `defaultStartPage` in `NoInfer`, so a typo there fails to compile instead of widening the union.
+
+Accessors: `isMusicServiceId()`, `getService()`, `getServiceByHost()` and `allServices()`. `getService()` is total at runtime as well as in the type: `?? MUSIC_SERVICES[DEFAULT_SERVICE_ID]` catches an unknown id. Every call runs while the tray menu is built, and the tray is the app's only settings surface.
+
+### The two services
+
+| | Apple Music | Apple Music Classical |
+|---|---|---|
+| `id` | `music` | `classical` |
+| `host` | `music.apple.com` | `classical.music.apple.com` |
+| Start pages | Home (`home`), New (`new`), Radio (`radio`), All Playlists (`library/all-playlists/`) | Home (empty path), Browse (`browse/catalog`), Playlists (`browse/playlists`), Search (`search`) |
+| Default | `new` | `home` |
+
+Classical has no library route. Both services accept `last`, which restores the page the user left.
+
+### Navigation allowlist
+
+`ALLOWED_NAVIGATION_HOSTS` is built from every service `host` plus its `authFrameHosts`, so adding a service widens the allowlist without a second edit. `isAllowedNavigationUrl()` takes a URL string, parses it, and compares `URL.hostname` exactly: a subdomain, a suffix, or a userinfo prefix of an allowed host is not an allowed host.
+
+The `will-navigate` handler in `src/main.ts` calls `event.preventDefault()` when the predicate returns false. Main-process `loadURL()` calls do not raise `will-navigate`, so launch, service switching and `itms://` routing are unaffected. The same predicate gates hook injection at both injection sites.
+
+### Persistence and URL building
+
+Each service keeps its own start page and last page. `classical.startPage` and `classical.lastPageUrl` sit alongside `startPage` and `lastPageUrl` in `electron-conf`.
+
+`buildAppleMusicURL()` in `src/storefront.ts` branches on `getMusicService() === 'classical'` to pick the pair to read. The stored path is read only in the `'last'` branch. The Classical home entry has an empty path and must not gain a trailing slash, so the path segment is built as `pageEntry.path === '' ? '' : '/' + pageEntry.path`.
+
+`handleLastPageNavigation()` resolves the host of each navigation through `getServiceByHost()` and writes to `setClassicalLastPageUrl()` or `setLastPageUrl()` accordingly.
+
+`buildItmsRouteURL()` is pinned to `getService('music').origin`. `itms://` links always target Apple Music, and `transformItmsUrl()` in `src/itms.ts` pins the host on the parsing side.
+
+### Theme gate
+
+`resolveTheme()` returns `'apple-music'` for Classical before it reads the stored value, so no override CSS is injected. Bundled themes target the `music.apple.com` DOM and do not apply. The tray Style submenu renders with `enabled: false` under Classical, and `styleMenuTheme()` labels it from `getTheme()` rather than `resolveTheme()` so the user's stored choice stays visible.
+
+### Switching
+
+`switchService(id, targetUrl?)` in `src/serviceSwitch.ts` is the only switch sequence that ships. Both the tray Player submenu and `itms://` routing call it. In order:
+
+1. `resetWedgeDetector()` clears `skipAttempts` and stops the timer. Stopping the timer suppresses a spurious skip-forward after the page re-initialises
+2. `setMusicService(id)` persists the new service
+3. `rebuildTrayMenu(tray)` runs when a tray exists
+4. `setThemeCssKey(null)` drops the tracked inserted-CSS key. The navigation below replaces the document, so the next injection must not call `removeInsertedCSS()` with a key from the old one
+5. `loadURL(targetUrl ?? buildAppleMusicURL())`. The default resolves after step 2, so it reads the service just persisted
+
+`routeToMusicService(url)` handles `itms://` links. When the active service is not `music` it calls `switchService('music', url)`, otherwise it navigates directly. Passing the link into `switchService()` rather than navigating after it keeps the switch to one navigation.
+
+`main.ts` owns the window and the tray but cannot be imported, because it runs `app.whenReady()` at import. It supplies both through `initServiceSwitch({ getTray, loadURL })`.
+
+---
+
 ## Authentication
 
 Non-issue by design. Cider's auth breaks because it uses MusicKit.js with a developer token it controls and the OAuth user-token flow. Sidra loads `music.apple.com` - Apple handles authentication entirely. Identical to opening Chrome and navigating to `music.apple.com`.
@@ -524,7 +620,7 @@ Implementation:
 win.webContents.on('will-prevent-unload', (event) => event.preventDefault());
 ```
 
-This is standard Chromium/Electron behaviour, not CastLabs-specific. The same issue was documented for Google Music in [electron/electron#8468](https://github.com/electron/electron/issues/8468). See `docs/QUIT.md` for full research.
+This is standard Chromium/Electron behaviour, not CastLabs-specific. The same issue was documented for Google Music in [electron/electron#8468](https://github.com/electron/electron/issues/8468).
 
 ---
 
@@ -536,9 +632,12 @@ The default colour scheme is Apple Music's own (`'apple-music'`). Bundled themes
 
 Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-music'` | `BundledThemeName` | `'custom'`). `resolveTheme()` guards startup/runtime behaviour:
 
+- Apple Music Classical returns `'apple-music'` before the stored value is read, so no override CSS is injected. The stored theme is left untouched and returns on the switch back
 - Unknown stored values fall back to `'apple-music'`
-- `'custom'` falls back to `'apple-music'` when `custom.css` does not exist
+- `'custom'` falls back to `'apple-music'` when `custom.css` holds no usable CSS
 - Bundled values pass through directly
+
+`hasCustomCss()` is `getThemeCss('custom') !== null`, so a present `custom.css` means a readable, non-blank file rather than one that merely exists.
 
 ### Implementation
 
@@ -546,14 +645,18 @@ Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-m
 
 - `'apple-music'` → `null` (remove any injected override)
 - bundled themes → lazily rendered via `buildThemeCss(...)` and cached in memory
-- `'custom'` → `userData/custom.css`, read fresh on each apply; missing/empty/whitespace-only files are treated as absent
+- `'custom'` → `userData/custom.css`, cached in memory; missing, unreadable, or whitespace-only files are treated as absent
 
 `custom.css` lifecycle:
 
 - Path: `path.join(app.getPath('userData'), 'custom.css')`
 - `initThemeCSS()` ensures the user data directory exists, then installs `fs.watch(..., { persistent: false })`
 - Watcher reacts to `filename === 'custom.css'` and `filename === null` (macOS behaviour), debounced by 150ms
-- Re-apply occurs only when `resolveTheme() === 'custom'` and the window is still alive
+- The file contents are cached, because `hasCustomCss()` and `resolveTheme()` both read them on every tray rebuild
+- The watcher calls `invalidateCustomCssCache()` before the debounce, not inside it, so a tray rebuild during the debounce window cannot read stale contents from the cache
+- A watcher that fails to start, or that errors and closes, calls `disableCustomCssCache()`. Caching switches off, rather than leaving a cache that goes stale for the life of the process
+- The debounced callback re-applies `'custom'` when `resolveTheme()` returns it, and falls back to `'apple-music'` when the stored theme is `'custom'` but the file no longer holds usable CSS. Both paths need the window to be alive
+- It then calls the tray rebuild callback unconditionally, because creating or deleting `custom.css` adds or removes the tray Style entry whichever theme is stored. `main.ts` supplies that callback through `setRebuildTrayCallback()`, since `tray.ts` imports `theme.ts` and the import cannot run back the other way
 - Watcher setup and runtime errors are logged as warnings; they never crash the app
 - Timer cleanup and watcher close run on `app.on('will-quit')`
 
@@ -898,7 +1001,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Windows overlay icon | `win.setOverlayIcon()` | Play/pause badge; skipped during transient states |
 | Windows taskbar progress bar | `win.setProgressBar()` via `progressBar.ts` | Same utility as macOS dock |
 | Splash screen | `assets/splash.html` | Localised loading text via `loading.json` |
-| Content readiness polling | `amp-lcd[hydrated]` selector | Waits for Apple Music UI to hydrate before removing splash |
+| Content readiness polling | `CONTENT_READY_SELECTOR` in `src/contentReady.ts`: `[data-testid="app-container"] amp-playback-controls-play[hydrated]` | Waits for the UI to hydrate before removing splash; both services share the selector |
 | About window | Frameless `BrowserWindow` + `assets/about.html` | Localised labels via `about.json` |
 | Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar |
 | Auth iframe filtering | `authStyleFix.css` + `webFrameMain.executeJavaScript()` | Hides unsupported passkey and "Sign in with iPhone" desktop flows |

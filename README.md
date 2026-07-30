@@ -30,7 +30,9 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - Desktop notifications and Discord Rich Presence
 - Last.fm scrobbling, opt-in: connect from the tray and approve Sidra on the page that opens in your browser
 - Injected Back, Forward, and Reload navigation controls on both Apple Music and Apple Music Classical
-- Apple Music Classical support (switchable at runtime from the tray Player submenu)
+- Apple Music Classical support (switchable at runtime from the tray Player submenu):
+  - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
+  - Theming is unavailable: the tray **Style** submenu is disabled and Sidra injects no override CSS
 - **Linux**:
   - Widevine DRM via CastLabs Electron
   - Wayland and X11 support
@@ -69,6 +71,8 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 - Windows: `%APPDATA%\Sidra\custom.css`
 
 The **Custom** menu entry only appears when that file exists.
+
+Themes apply to Apple Music only. Sidra keeps your choice while Apple Music Classical is active and restores it when you switch back.
 
 ---
 
