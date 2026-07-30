@@ -29,7 +29,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - Localised storefront and interface in 32 languages
 - Desktop notifications and Discord Rich Presence
 - Last.fm scrobbling, opt-in: connect from the tray and approve Sidra on the page that opens in your browser
-- Injected Back, Forward, and Reload navigation controls
+- Injected Back, Forward, and Reload navigation controls on both Apple Music and Apple Music Classical
 - Apple Music Classical support (switchable at runtime from the tray Player submenu)
 - **Linux**:
   - Widevine DRM via CastLabs Electron

@@ -363,12 +363,10 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
     } catch (e: unknown) {
       mainLog.warn('failed to inject hookScript on SPA navigation:', e);
     }
-    if (getMusicService() === 'music') {
-      try {
-        await win.webContents.executeJavaScript(navBarScript);
-      } catch (e: unknown) {
-        mainLog.warn('failed to inject navBarScript on SPA navigation:', e);
-      }
+    try {
+      await win.webContents.executeJavaScript(navBarScript);
+    } catch (e: unknown) {
+      mainLog.warn('failed to inject navBarScript on SPA navigation:', e);
     }
   });
 }
@@ -594,10 +592,8 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     }
     await win.webContents.executeJavaScript(assets.hookScript);
     mainLog.debug('MusicKit hook injected');
-    if (activeService === 'music') {
-      await win.webContents.executeJavaScript(assets.navBarScript);
-      mainLog.debug('Navigation bar injected');
-    }
+    await win.webContents.executeJavaScript(assets.navBarScript);
+    mainLog.debug('Navigation bar injected');
   }
 
   let initialized = false;
