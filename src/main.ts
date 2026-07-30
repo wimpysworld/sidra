@@ -8,7 +8,7 @@ import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
-import { getThemeCss, initThemeCSS, resolveTheme, setThemeCssKey } from './theme';
+import { getThemeCss, initThemeCSS, resolveTheme, setRebuildTrayCallback, setThemeCssKey } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
@@ -672,6 +672,9 @@ if (gotLock) {
       resetWedgeDetector();
       setThemeCssKey(null);
       win!.loadURL(buildAppleMusicURL(), { userAgent: UA });
+    });
+    setRebuildTrayCallback(() => {
+      if (appTray) rebuildTrayMenu(appTray);
     });
     setupWindowZoomAndNav(win);
     initThemeCSS(win);

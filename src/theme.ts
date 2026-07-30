@@ -23,6 +23,10 @@ let themeCssKey: string | null = null;
 // No-op until initThemeCSS() assigns the real implementation.
 let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = () => Promise.resolve();
 
+// Rebuild the tray menu after a custom.css change.
+// tray.ts imports theme.ts, so theme.ts cannot import rebuildTrayMenu back; main.ts supplies it.
+let rebuildTrayCallback: (() => void) | null = null;
+
 export function applyTheme(name: ThemeName): void {
   void applyThemeCSSInternal(name);
 }
@@ -32,7 +36,7 @@ export function customCssPath(): string {
 }
 
 export function hasCustomCss(): boolean {
-  return fs.existsSync(customCssPath());
+  return getThemeCss('custom') !== null;
 }
 
 function isThemeName(value: string): value is ThemeName {
@@ -126,6 +130,9 @@ export function initThemeCSS(win: BrowserWindow): void {
         } else if (getTheme() === 'custom') {
           void applyThemeCSSInternal('apple-music');
         }
+        // Unconditional: creating custom.css adds the tray Style entry and deleting it removes
+        // the entry, whichever theme is stored.
+        rebuildTrayCallback?.();
       }, THEME_RELOAD_DEBOUNCE_MS);
     });
     watcher.on('error', (error) => {
@@ -149,4 +156,8 @@ export function initThemeCSS(win: BrowserWindow): void {
 
 export function setThemeCssKey(key: string | null): void {
   themeCssKey = key;
+}
+
+export function setRebuildTrayCallback(callback: () => void): void {
+  rebuildTrayCallback = callback;
 }
