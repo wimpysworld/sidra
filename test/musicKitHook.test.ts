@@ -33,30 +33,13 @@ const CLASSICAL_VOLUME_PATH = composedPath(
 );
 const NON_VOLUME_PATH = composedPath('chrome-player__button', 'chrome-player');
 
-function createHarness({
-  musicKitOverrides = {},
-  musicKitThrowsAtInjection = false,
-  navigatorOverrides,
-  repeatInjection = false,
-}: {
-  musicKitOverrides?: Record<string, unknown>;
-  musicKitThrowsAtInjection?: boolean;
-  navigatorOverrides?: Record<string, unknown>;
-  repeatInjection?: boolean;
-} = {}) {
-  const intervalCallbacks: Array<() => void> = [];
-  const messageListeners: Array<(event: unknown) => void> = [];
-  const wheelListeners: Array<{
-    listener: (event: unknown) => void;
-    options: unknown;
-  }> = [];
-  const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
-  const mediaSession = { setPositionState: vi.fn() };
-  const navigator = navigatorOverrides ?? { mediaSession };
-  const musicKit = {
-    addEventListener: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
-      musicKitListeners.set(event, listener);
-    }),
+/** A MusicKit stand-in, optionally with a volume getter that throws. */
+function createMusicKit(
+  overrides: Record<string, unknown> = {},
+  volumeThrows = false,
+) {
+  const instance = {
+    addEventListener: vi.fn((_event: string, _listener: (...args: unknown[]) => void) => {}),
     currentPlaybackDuration: undefined,
     currentPlaybackTime: 0,
     isPlaying: true,
@@ -71,10 +54,60 @@ function createHarness({
     skipToNextItem: vi.fn(),
     skipToPreviousItem: vi.fn(),
     volume: 1,
-    ...musicKitOverrides,
+    ...overrides,
   };
-  const window = {
-    AMWrapper: { ipcRenderer: { send: vi.fn() } },
+  if (volumeThrows) {
+    // Models a getter throwing while MusicKit re-initialises. This is the read
+    // that sits above the marker assignment in the original code.
+    Object.defineProperty(instance, 'volume', {
+      get() { throw new Error('volume unavailable during re-initialisation'); },
+      configurable: true,
+    });
+  }
+  return instance;
+}
+
+function createHarness({
+  bridgeMissing = false,
+  musicKitOverrides = {},
+  musicKitThrowsAtInjection = false,
+  navigatorOverrides,
+  repeatInjection = false,
+  volumeThrows = false,
+}: {
+  bridgeMissing?: boolean;
+  musicKitOverrides?: Record<string, unknown>;
+  musicKitThrowsAtInjection?: boolean;
+  navigatorOverrides?: Record<string, unknown>;
+  repeatInjection?: boolean;
+  volumeThrows?: boolean;
+} = {}) {
+  const intervals: Array<{ callback: () => void; delay: number }> = [];
+  const intervalCallbacks: Array<() => void> = [];
+  const messageListeners: Array<(event: unknown) => void> = [];
+  const wheelListeners: Array<{
+    listener: (event: unknown) => void;
+    options: unknown;
+  }> = [];
+  const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
+  const mediaSession = { setPositionState: vi.fn() };
+  const navigator = navigatorOverrides ?? { mediaSession };
+  const musicKit = createMusicKit(musicKitOverrides, volumeThrows);
+  musicKit.addEventListener.mockImplementation(
+    (event: string, listener: (...args: unknown[]) => void) => {
+      musicKitListeners.set(event, listener);
+    },
+  );
+  // AMWrapper is optional because bridgeMissing models the preload bridge not
+  // being installed, which is one of the ways the attach used to throw.
+  interface HarnessWindow {
+    AMWrapper?: { ipcRenderer: { send: ReturnType<typeof vi.fn> } };
+    addEventListener: ReturnType<typeof vi.fn>;
+    navigator: unknown;
+    __sidraHookedMk?: unknown;
+    __sidra?: Record<string, (...args: unknown[]) => unknown>;
+  }
+  const window: HarnessWindow = {
     addEventListener: vi.fn((
       event: string,
       listener: (event: unknown) => void,
@@ -85,11 +118,15 @@ function createHarness({
     }),
     navigator,
   };
+  if (!bridgeMissing) {
+    window.AMWrapper = { ipcRenderer: { send: vi.fn() } };
+  }
   const context = vm.createContext({
     clearInterval: vi.fn(),
     console,
     navigator,
-    setInterval: vi.fn((callback: () => void) => {
+    setInterval: vi.fn((callback: () => void, delay: number) => {
+      intervals.push({ callback, delay });
       intervalCallbacks.push(callback);
       return intervalCallbacks.length;
     }),
@@ -100,10 +137,13 @@ function createHarness({
   // so getInstance() throws until it settles. Clearing the flag after the
   // injection run models it settling before the 500ms poll first fires.
   let getInstanceThrows = musicKitThrowsAtInjection;
+  // Held in a variable so replaceInstance() can swap what getInstance() hands
+  // back, which is what the 5-second monitor watches for.
+  let liveInstance = musicKit;
   const musicKitApi = {
     getInstance: () => {
       if (getInstanceThrows) throw new Error('MusicKit is re-initialising');
-      return musicKit;
+      return liveInstance;
     },
     PlaybackStates: { playing: 2 },
   };
@@ -121,6 +161,13 @@ function createHarness({
   for (const callback of intervalCallbacks.slice()) callback();
 
   return {
+    // Non-optional handle on the bridge send mock. window.AMWrapper is optional
+    // so bridgeMissing can drop it, and every assertion on IPC traffic comes
+    // from a harness that has one.
+    get bridgeSend() {
+      if (!window.AMWrapper) throw new Error('this harness was built without an AMWrapper bridge');
+      return window.AMWrapper.ipcRenderer.send;
+    },
     // Sends one wheel event to every registered listener and hands the event
     // back, so a test can read the preventDefault mock off it.
     dispatchWheel: (
@@ -141,6 +188,21 @@ function createHarness({
     musicKit,
     musicKitListeners,
     navigator,
+    // Swaps the singleton MusicKit.getInstance() returns, as Apple Music does
+    // when it rebuilds the player, and hands back the replacement.
+    replaceInstance: () => {
+      const replacement = createMusicKit(musicKitOverrides, volumeThrows);
+      liveInstance = replacement;
+      return replacement;
+    },
+    // Fires only the 5-second instance monitor. The 250ms volume poll and the
+    // 500ms waitForMK share the same mock, so they are filtered out by delay.
+    runMonitorCycles: (count: number) => {
+      const monitors = intervals.filter(({ delay }) => delay === 5000);
+      for (let cycle = 0; cycle < count; cycle++) {
+        for (const { callback } of monitors) callback();
+      }
+    },
     // Runs the script again against the same window, then drains only the
     // timers that second run added. The message listener is installed inside
     // the waitForMK callback rather than the script body, so a re-run that
@@ -192,6 +254,48 @@ describe('musicKitHook', () => {
     expect(messageListeners).toHaveLength(1);
   });
 
+  // The 5-second monitor re-attaches whenever __sidraHookedMk does not match
+  // the live instance. The marker used to be assigned last, so anything that
+  // threw inside attachToInstance left it stale and every cycle added another
+  // full set of listeners: the #153 / #154 failure, reached by a different
+  // route. These three pin the marker being claimed first.
+  it('attaches each MusicKit listener once when the IPC bridge is missing', () => {
+    const { musicKit, runMonitorCycles } = createHarness({ bridgeMissing: true });
+
+    const afterInjection = musicKit.addEventListener.mock.calls.length;
+    runMonitorCycles(3);
+
+    expect(musicKit.addEventListener.mock.calls.length).toBe(afterInjection);
+  });
+
+  it('attaches each MusicKit listener once when a volume read throws', () => {
+    const { musicKit, runMonitorCycles } = createHarness({ volumeThrows: true });
+
+    const afterInjection = musicKit.addEventListener.mock.calls.length;
+    runMonitorCycles(3);
+
+    expect(musicKit.addEventListener.mock.calls.length).toBe(afterInjection);
+  });
+
+  it('marks the instance as hooked even when the attach throws part way', () => {
+    const { musicKit, window } = createHarness({ volumeThrows: true });
+
+    expect(window.__sidraHookedMk).toBe(musicKit);
+  });
+
+  it('re-attaches once when MusicKit replaces its instance', () => {
+    const { musicKit, replaceInstance, runMonitorCycles } = createHarness();
+
+    const before = musicKit.addEventListener.mock.calls.length;
+    const replacement = replaceInstance();
+    runMonitorCycles(3);
+
+    // The replacement takes one full set of listeners, and the old instance
+    // gains none. Three further cycles add nothing, because the marker matches.
+    expect(replacement.addEventListener.mock.calls.length).toBe(before);
+    expect(musicKit.addEventListener.mock.calls.length).toBe(before);
+  });
+
   it('reports explicit media session position state on playback time changes', () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
@@ -238,7 +342,7 @@ describe('musicKitHook', () => {
     // the hook's actual job. A guard that swallowed the whole listener would
     // leave MPRIS and every integration blind, so assert the sends, not that
     // the listener merely survived.
-    const { musicKitListeners, window } = createHarness({
+    const { bridgeSend, musicKitListeners } = createHarness({
       navigatorOverrides: {},
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -249,11 +353,11 @@ describe('musicKitHook', () => {
     musicKitListeners.get('playbackTimeDidChange')?.();
     musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
 
-    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+    expect(bridgeSend).toHaveBeenCalledWith(
       'playbackTimeDidChange',
       42 * 1_000_000,
     );
-    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+    expect(bridgeSend).toHaveBeenCalledWith(
       'nowPlayingItemDidChange',
       null,
     );
@@ -264,7 +368,7 @@ describe('musicKitHook', () => {
     // the arm the object-presence check alone would let through. Both calls sit
     // in a try/catch, so an unguarded call would not surface as a throw - the
     // IPC sends are the only observable proof the listeners ran to completion.
-    const { musicKitListeners, window } = createHarness({
+    const { bridgeSend, musicKitListeners } = createHarness({
       navigatorOverrides: { mediaSession: {} },
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -275,11 +379,11 @@ describe('musicKitHook', () => {
     musicKitListeners.get('playbackTimeDidChange')?.();
     musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
 
-    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+    expect(bridgeSend).toHaveBeenCalledWith(
       'playbackTimeDidChange',
       42 * 1_000_000,
     );
-    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith(
+    expect(bridgeSend).toHaveBeenCalledWith(
       'nowPlayingItemDidChange',
       null,
     );
@@ -359,12 +463,12 @@ describe('musicKitHook', () => {
     // a listener bound to an event MusicKit never fires would still leave a
     // ('volumeDidChange', 1) call behind. Moving the volume first is what makes
     // the assertion prove the listener ran.
-    const { musicKit, musicKitListeners, window } = createHarness();
+    const { bridgeSend, musicKit, musicKitListeners } = createHarness();
 
     musicKit.volume = 0.42;
     musicKitListeners.get('playbackVolumeDidChange')?.();
 
-    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith('volumeDidChange', 0.42);
+    expect(bridgeSend).toHaveBeenCalledWith('volumeDidChange', 0.42);
   });
 
   it.each([

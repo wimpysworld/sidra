@@ -14,6 +14,25 @@
     let volumePollTimer = null;
 
     /**
+     * Send to the main process, tolerating an absent bridge.
+     *
+     * window.AMWrapper is installed by the preload script. It is normally there
+     * before this runs, but the hook is injected into a page it does not
+     * control and cannot assume it. A throw from the eager send in
+     * attachToInstance() used to escape before the instance marker was
+     * assigned, which put the 5-second monitor into an endless re-attach loop.
+     *
+     * @param {string} channel - IPC channel name
+     * @param {unknown} [payload] - Channel payload
+     * @returns {void}
+     */
+    function sendToMain(channel, payload) {
+      const bridge = window.AMWrapper;
+      if (!bridge || !bridge.ipcRenderer) return;
+      bridge.ipcRenderer.send(channel, payload);
+    }
+
+    /**
      * Attach event listeners to a MusicKit instance and expose control
      * methods on window.__sidra.
      *
@@ -23,6 +42,14 @@
      * @returns {void}
      */
     function attachToInstance(mk) {
+      // Claimed before anything below can throw, not after. The 5-second
+      // monitor re-attaches whenever this marker does not match the live
+      // instance, so assigning it last meant any throw in between put the hook
+      // into an endless loop, adding a duplicate set of listeners every cycle -
+      // the failure #153 and #154 fixed. A part-attached instance is the lesser
+      // fault, and the catch below records it.
+      window.__sidraHookedMk = mk;
+
       // Clear previous volume polling timer on re-hook
       if (volumePollTimer !== null) {
         clearInterval(volumePollTimer);
@@ -96,7 +123,7 @@
        * @param {{ state: number }} event - MusicKit playbackStateDidChange event
        */
       mk.addEventListener('playbackStateDidChange', ({ state }) => {
-        window.AMWrapper.ipcRenderer.send('playbackStateDidChange', {
+        sendToMain('playbackStateDidChange', {
           status: state === MusicKit.PlaybackStates.playing,
           state,
         });
@@ -109,12 +136,12 @@
        */
       mk.addEventListener('nowPlayingItemDidChange', ({ item }) => {
         if (!item) {
-          window.AMWrapper.ipcRenderer.send('nowPlayingItemDidChange', null);
+          sendToMain('nowPlayingItemDidChange', null);
           clearPositionState();
           return;
         }
         const pp = item.attributes?.playParams;
-        window.AMWrapper.ipcRenderer.send('nowPlayingItemDidChange', {
+        sendToMain('nowPlayingItemDidChange', {
           name: item.attributes?.name,
           albumName: item.attributes?.albumName,
           artistName: item.attributes?.artistName,
@@ -149,7 +176,7 @@
 
       /** Forward playback position (in microseconds) to the main process. */
       mk.addEventListener('playbackTimeDidChange', () => {
-        window.AMWrapper.ipcRenderer.send('playbackTimeDidChange',
+        sendToMain('playbackTimeDidChange',
           mk.currentPlaybackTime * 1_000_000
         );
         reportPositionState();
@@ -157,12 +184,12 @@
 
       /** Forward repeat mode changes to the main process. */
       mk.addEventListener('repeatModeDidChange', () => {
-        window.AMWrapper.ipcRenderer.send('repeatModeDidChange', mk.repeatMode);
+        sendToMain('repeatModeDidChange', mk.repeatMode);
       });
 
       /** Forward shuffle mode changes to the main process. */
       mk.addEventListener('shuffleModeDidChange', () => {
-        window.AMWrapper.ipcRenderer.send('shuffleModeDidChange', mk.shuffleMode);
+        sendToMain('shuffleModeDidChange', mk.shuffleMode);
       });
 
       /**
@@ -173,10 +200,10 @@
       let lastVolume = mk.volume;
       // Send the initial volume so MPRIS (and any other listener) receives the
       // real value immediately, not just on subsequent changes.
-      window.AMWrapper.ipcRenderer.send('volumeDidChange', lastVolume);
+      sendToMain('volumeDidChange', lastVolume);
       mk.addEventListener('playbackVolumeDidChange', () => {
         lastVolume = mk.volume;
-        window.AMWrapper.ipcRenderer.send('volumeDidChange', mk.volume);
+        sendToMain('volumeDidChange', mk.volume);
       });
       // Poll mk.volume every 250ms as a fallback for a volume write the hook
       // cannot observe through playbackVolumeDidChange - what the player bar
@@ -185,7 +212,7 @@
         const v = mk.volume;
         if (v !== lastVolume) {
           lastVolume = v;
-          window.AMWrapper.ipcRenderer.send('volumeDidChange', v);
+          sendToMain('volumeDidChange', v);
         }
       }, 250);
 
@@ -205,12 +232,30 @@
         setRepeat:  (m) => { mk.repeatMode = m; },
         setShuffle: (m) => { mk.shuffleMode = m; },
       };
+    }
 
-      window.__sidraHookedMk = mk;
+    /**
+     * Attach to an instance, containing any failure.
+     *
+     * The marker is claimed inside attachToInstance() before it can throw, so
+     * the monitor will not retry a part-attached instance. Reporting the error
+     * is all that is left to do, and it must not propagate: the monitor's own
+     * catch would swallow it, and on the first call it would abort the rest of
+     * the hook, including the message and wheel listeners below.
+     *
+     * @param {object} mk - The MusicKit.getInstance() singleton
+     * @returns {void}
+     */
+    function attachSafely(mk) {
+      try {
+        attachToInstance(mk);
+      } catch (err) {
+        console.error('[Sidra] failed to attach to the MusicKit instance', err);
+      }
     }
 
     const mk = MusicKit.getInstance();
-    attachToInstance(mk);
+    attachSafely(mk);
 
     /**
      * Allowed commands that may be dispatched via window.postMessage from the
@@ -305,7 +350,7 @@
         const currentMk = MusicKit.getInstance();
         if (currentMk !== window.__sidraHookedMk &&
             typeof currentMk.addEventListener === 'function') {
-          attachToInstance(currentMk);
+          attachSafely(currentMk);
           console.log('[Sidra] MusicKit re-hooked (instance replaced)');
         }
       } catch (_) {
