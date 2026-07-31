@@ -1,41 +1,68 @@
 // test/i18n-consistency.test.ts
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 import * as i18n from '../src/i18n';
 
-const TRANSLATION_RECORDS = [
-  'LOADING_TEXT', 'ABOUT_TEXT', 'QUIT_TEXT', 'NOTIFICATIONS_TEXT',
-  'DISCORD_TEXT', 'LASTFM_CONNECT_TEXT', 'LASTFM_CONNECTED_TEXT', 'LASTFM_CONNECT_FAILED_TEXT',
-  'LASTFM_DISCONNECT_TEXT', 'ON_TEXT', 'OFF_TEXT', 'START_PAGE_TEXT',
-  'START_PAGE_HOME_TEXT', 'START_PAGE_NEW_TEXT', 'START_PAGE_RADIO_TEXT',
-  'START_PAGE_ALL_PLAYLISTS_TEXT', 'START_PAGE_LAST_TEXT',
-  'START_PAGE_BROWSE_TEXT', 'START_PAGE_LIBRARY_TEXT',
-  'START_PAGE_PLAYLISTS_TEXT', 'START_PAGE_SEARCH_TEXT',
-  'PLAYER_TEXT',
-  'STYLE_TEXT',
-  'ZOOM_TEXT', 'UPDATE_AVAILABLE_TEXT', 'UP_TO_DATE_TEXT',
-  'UPDATE_READY_TEXT', 'RESTART_NOW_TEXT', 'LATER_TEXT',
-  'CLOSE_TEXT', 'VERSION_PREFIX', 'COPYRIGHT_SUFFIX', 'LICENSE_PREFIX',
-  'HIDE_WINDOW_TEXT', 'SHOW_WINDOW_TEXT', 'CLOSE_TO_TRAY_TEXT',
-] as const;
+/** A named translation record taken from the i18n module exports. */
+type RecordEntry = [name: string, record: Record<string, string>];
+
+/**
+ * The module exports translation records alongside functions, so an object
+ * export is a record and a function export is not. Deriving the list this way
+ * puts a new record under the guard with no edit to this file, which a
+ * hand-written list did not: it had drifted to 36 of the 43 records, leaving
+ * the whole tray media-control group unchecked.
+ */
+function isRecordEntry(entry: [string, unknown]): entry is RecordEntry {
+  return typeof entry[1] === 'object' && entry[1] !== null;
+}
+
+const TRANSLATION_RECORDS: RecordEntry[] = Object.entries(i18n).filter(isRecordEntry);
+
+// LOADING_TEXT is the reference every other record is compared against, named
+// rather than taken by position so export order cannot change what is checked.
+const REFERENCE_NAME = 'LOADING_TEXT';
+const referenceKeys = Object.keys(i18n.LOADING_TEXT).sort();
 
 describe('i18n translation records', () => {
-  // The module exports translation records alongside functions, so the index
-  // signature only holds for the names listed above. The cast goes through
-  // unknown because the two types do not otherwise overlap.
-  const records = i18n as unknown as Record<string, Record<string, string>>;
-  const referenceKeys = Object.keys(records[TRANSLATION_RECORDS[0]]).sort();
+  it('finds the translation records exported from src/i18n', () => {
+    expect(TRANSLATION_RECORDS.length).toBeGreaterThan(0);
+  });
 
-  for (const name of TRANSLATION_RECORDS) {
-    const record = records[name];
+  it('exports every record defined in assets/locales', () => {
+    const localeDir = path.join(__dirname, '..', 'assets', 'locales');
+    const exported = new Set(TRANSLATION_RECORDS.map(([name]) => name));
 
-    it(`${name} is exported from i18n`, () => {
-      expect(record, `${name} is listed in TRANSLATION_RECORDS but not exported from src/i18n`).toBeDefined();
-    });
+    for (const file of fs.readdirSync(localeDir)) {
+      if (!file.endsWith('.json')) continue;
+      const data: unknown = JSON.parse(
+        fs.readFileSync(path.join(localeDir, file), 'utf-8'),
+      );
+      for (const name of Object.keys(data as Record<string, unknown>)) {
+        expect(
+          exported.has(name),
+          `${name} is defined in assets/locales/${file} but not exported from src/i18n`,
+        ).toBe(true);
+      }
+    }
+  });
 
-    if (!record) continue;
+  for (const [name, record] of TRANSLATION_RECORDS) {
+    it(`${name} has the same language keys as ${REFERENCE_NAME}`, () => {
+      const keys = Object.keys(record).sort();
+      const missing = referenceKeys.filter((lang) => !keys.includes(lang));
+      const extra = keys.filter((lang) => !referenceKeys.includes(lang));
 
-    it(`${name} has the same language keys as LOADING_TEXT`, () => {
-      expect(Object.keys(record).sort()).toEqual(referenceKeys);
+      expect(
+        missing,
+        `${name} is missing these languages: ${missing.join(', ')}`,
+      ).toEqual([]);
+      expect(
+        extra,
+        `${name} has languages no other record carries: ${extra.join(', ')}`,
+      ).toEqual([]);
     });
 
     it(`${name} has no empty values`, () => {
@@ -45,7 +72,7 @@ describe('i18n translation records', () => {
     });
 
     it(`${name} includes English fallback`, () => {
-      expect(record).toHaveProperty('en');
+      expect(record, `${name} has no 'en' entry to fall back to`).toHaveProperty('en');
     });
   }
 });

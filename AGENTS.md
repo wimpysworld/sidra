@@ -101,6 +101,7 @@ When adding a language, add an entry to every record in every JSON file:
 
 - All locale JSON files must be listed individually in `asarUnpack` in `package.json` - globs are not supported
 - Prefer specific regional tags only when the translation differs from the base language variant (e.g. `zh-CN` vs `zh-TW`); use the base tag (e.g. `fr`) for languages where one translation covers all regions
+- `test/i18n-consistency.test.ts` derives the records it checks from the `src/i18n.ts` exports, treating every object export as a record and every function export as not one, so a new record is guarded as soon as it is re-exported. It also reads `assets/locales/` and fails when a record there has no matching re-export. Do not put the record names back in a hand-written list: the previous one drifted to 36 of 43 and left the whole tray media-control group unchecked
 
 ## Configuration
 
