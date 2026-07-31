@@ -3,14 +3,24 @@ import { BrowserWindow } from 'electron';
 
 import { Player, PlaybackState } from '../src/player';
 import type { IntegrationContext } from '../src/player';
-import * as wedgeDetector from '../src/wedgeDetector';
+
+type WedgeDetector = typeof import('../src/wedgeDetector');
+
+// Every listener and counter in the module is module-scoped, and init() now
+// refuses a second call, so a shared instance cannot be re-initialised between
+// tests. Each test takes its own copy instead.
+async function loadWedgeDetector(): Promise<WedgeDetector> {
+  vi.resetModules();
+  return import('../src/wedgeDetector');
+}
 
 describe('wedgeDetector', () => {
   let player: Player;
   let mockWin: { webContents: { send: ReturnType<typeof vi.fn> } };
   let getMainWindow: () => BrowserWindow | null;
+  let wedgeDetector: WedgeDetector;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     player = new Player();
     mockWin = {
@@ -20,6 +30,7 @@ describe('wedgeDetector', () => {
     };
     getMainWindow = () => mockWin as unknown as BrowserWindow;
 
+    wedgeDetector = await loadWedgeDetector();
     const ctx: IntegrationContext = { player, getMainWindow };
     wedgeDetector.init(ctx);
   });
@@ -151,5 +162,24 @@ describe('wedgeDetector', () => {
   it('requires getMainWindow in context', () => {
     const playerOnly: IntegrationContext = { player: new Player() };
     expect(() => wedgeDetector.init(playerOnly)).toThrow('wedgeDetector requires getMainWindow');
+  });
+
+  it('ignores a second init so each listener is attached once', () => {
+    // Asserted on the emitter rather than through behaviour. The visible
+    // symptoms of a duplicate init are masked: startTimer() returns early when
+    // a timer already exists, and the duplicated writes to lastAdvanceTime and
+    // skipAttempts are idempotent. Counting registrations is what actually
+    // distinguishes one init from two.
+    const events = [
+      'playbackStateDidChange',
+      'nowPlayingItemDidChange',
+      'playbackTimeDidChange',
+    ] as const;
+    const before = events.map(event => player.listenerCount(event));
+
+    wedgeDetector.init({ player, getMainWindow });
+
+    expect(events.map(event => player.listenerCount(event))).toEqual(before);
+    expect(before.every(count => count === 1)).toBe(true);
   });
 });

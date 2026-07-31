@@ -14,6 +14,7 @@ let lastAdvanceTime = 0;
 let durationMs = 0;
 let checkTimer: ReturnType<typeof setInterval> | null = null;
 let skipAttempts = 0;
+let initialised = false;
 
 function startTimer(getWin: () => BrowserWindow | null): void {
   if (checkTimer) return;
@@ -49,6 +50,19 @@ export function reset(): void {
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow: getWin } = ctx;
   if (!getWin) throw new Error('wedgeDetector requires getMainWindow');
+
+  // All state here is module-scoped, so a second init() attaches a second copy
+  // of all three listeners and a second will-quit handler. The skip path
+  // survives that by luck rather than design: startTimer() returns early when a
+  // timer already exists, and the duplicated writes to lastAdvanceTime and
+  // skipAttempts happen to be idempotent. The caller guards its own re-entry;
+  // this guard means the module does not depend on it.
+  if (initialised) {
+    wedgeLog.warn('wedge detector already initialised, ignoring repeat init');
+    return;
+  }
+  initialised = true;
+
   playerRef = player;
 
   player.on('playbackStateDidChange', (payload: PlaybackStatePayload) => {

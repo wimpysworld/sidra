@@ -28,6 +28,7 @@ import { initNotificationProbe } from './notify';
 const SPLASH_MIN_DISPLAY_MS = 500;
 const CONTENT_READY_POLL_MS = 100;
 const CONTENT_READY_TIMEOUT_MS = 3500;
+const CSS_READY_TIMEOUT_MS = 10000;
 const UPDATE_CHECK_DELAY_MS = 5000;
 const SPLASH_WIDTH_PX = 300;
 const SPLASH_HEIGHT_PX = 350;
@@ -178,7 +179,14 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
   const minDisplay = new Promise<void>(resolve => { resolveMinDisplay = resolve; });
   setTimeout(resolveMinDisplay, SPLASH_MIN_DISPLAY_MS);
   let resolveCssReady!: () => void;
-  const cssReady = new Promise<void>(resolve => { resolveCssReady = resolve; });
+  // Raced against a timeout rather than left open-ended. Every other path that
+  // resolves this sits inside an event handler that can fail, and an unsettled
+  // cssReady holds the Promise.all in setupSplashTransition() forever, so the
+  // splash never closes and the main window never shows.
+  const cssReady = Promise.race([
+    new Promise<void>(resolve => { resolveCssReady = resolve; }),
+    new Promise<void>(resolve => setTimeout(resolve, CSS_READY_TIMEOUT_MS)),
+  ]);
   splashLog.info('splash created');
   return { splash, minDisplay, cssReady, markCssReady: () => resolveCssReady() };
 }
@@ -592,26 +600,45 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 
   let initialized = false;
   win.webContents.on('did-finish-load', async () => {
-    await injectContent();
+    // Claimed before the await, not after. injectContent() yields on every call,
+    // so two did-finish-load events inside one round trip would both pass a
+    // check placed below it and register every integration twice.
+    const firstLoad = !initialized;
+    initialized = true;
 
-    if (!initialized) {
-      initialized = true;
+    // Injection failure must not abandon the rest of this handler. Apple owns
+    // the page, so a DOM change can make the hook throw, and a renderer torn
+    // down mid-injection rejects too. Without this the handler stops before
+    // markCssReady() and the splash never closes. The twin injection in
+    // did-navigate-in-page is guarded the same way.
+    try {
+      await injectContent();
+    } catch (e: unknown) {
+      mainLog.warn('failed to inject content on load:', e);
+    }
 
-      initNotifications({ player, getMainWindow: () => win });
-      initDiscordPresence({ player });
-      initLastfm({ player, getMainWindow: () => win });
-      initDock({ player, getMainWindow: () => win });
-      initWindowsTaskbar({ player, getMainWindow: () => win });
+    if (firstLoad) {
+      // Integration failures are contained for the same reason: markCssReady()
+      // below is the only thing that dismisses the splash.
+      try {
+        initNotifications({ player, getMainWindow: () => win });
+        initDiscordPresence({ player });
+        initLastfm({ player, getMainWindow: () => win });
+        initDock({ player, getMainWindow: () => win });
+        initWindowsTaskbar({ player, getMainWindow: () => win });
 
-      if (process.platform === 'linux') {
-        const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
-        mpris.init({ player, getMainWindow: () => win });
-      }
+        if (process.platform === 'linux') {
+          const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
+          mpris.init({ player, getMainWindow: () => win });
+        }
 
-      initWedgeDetector({ player, getMainWindow: () => win });
+        initWedgeDetector({ player, getMainWindow: () => win });
 
-      if (appTray) {
-        initTrayStateManager(player, appTray);
+        if (appTray) {
+          initTrayStateManager(player, appTray);
+        }
+      } catch (e: unknown) {
+        mainLog.error('integration initialisation failed:', e);
       }
 
       markCssReady();

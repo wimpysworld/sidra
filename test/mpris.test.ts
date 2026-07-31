@@ -93,3 +93,61 @@ describe('MPRIS OpenUri', () => {
     expect(win.loadURL).not.toHaveBeenCalled();
   });
 });
+
+describe('MPRIS without a session bus', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setMusicService('music');
+  });
+
+  // dbus-next throws synchronously from sessionBus() when
+  // DBUS_SESSION_BUS_ADDRESS is unset and it cannot read the address from the
+  // filesystem. init() is called bare inside the did-finish-load handler in
+  // main.ts, so an escaping throw takes out every integration after it and the
+  // splash screen never closes.
+  it('does not throw when the bus cannot be opened', () => {
+    vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
+      throw new Error('could not get DISPLAY environment variable');
+    });
+
+    const ctx: IntegrationContext = {
+      player: new FakePlayer(),
+      getMainWindow: () => ({ loadURL: vi.fn(() => Promise.resolve()) }) as unknown as BrowserWindow,
+    };
+
+    expect(() => mpris.init(ctx)).not.toThrow();
+  });
+
+  it('exports no interfaces when the bus cannot be opened', () => {
+    vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
+      throw new Error('could not get DISPLAY environment variable');
+    });
+
+    const ctx: IntegrationContext = {
+      player: new FakePlayer(),
+      getMainWindow: () => ({ loadURL: vi.fn(() => Promise.resolve()) }) as unknown as BrowserWindow,
+    };
+    mpris.init(ctx);
+
+    expect(busStub.export).not.toHaveBeenCalled();
+    expect(busStub.requestName).not.toHaveBeenCalled();
+  });
+
+  it('subscribes to no player events when the bus cannot be opened', () => {
+    vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
+      throw new Error('could not get DISPLAY environment variable');
+    });
+
+    const player = new FakePlayer();
+    mpris.init({
+      player,
+      getMainWindow: () => ({ loadURL: vi.fn(() => Promise.resolve()) }) as unknown as BrowserWindow,
+    });
+
+    // The subscriptions sit after the bus is opened, so a bail-out leaves the
+    // player untouched and nothing holds a reference to the dead integration.
+    expect(player.listenerCount('playbackStateDidChange')).toBe(0);
+    expect(player.listenerCount('nowPlayingItemDidChange')).toBe(0);
+    expect(player.listenerCount('playbackTimeDidChange')).toBe(0);
+  });
+});

@@ -721,7 +721,19 @@ export function init(ctx: IntegrationContext): void {
 
   mprisLog.info('enabling MPRIS service');
 
-  bus = dbus.sessionBus();
+  // A session bus is not guaranteed to exist. dbus-next falls through to
+  // getDbusAddressFromFs(), which throws synchronously when
+  // DBUS_SESSION_BUS_ADDRESS is unset - containers, bare X and su-launched
+  // sessions all hit it. init() runs inside the did-finish-load handler, so an
+  // escaping throw would skip every integration after this one and leave the
+  // splash screen up for the life of the process. Losing MPRIS is the correct
+  // outcome here; losing the app is not. The connection is not retried.
+  try {
+    bus = dbus.sessionBus();
+  } catch (err: unknown) {
+    mprisLog.warn('no D-Bus session bus available, MPRIS disabled:', errorMessage(err));
+    return;
+  }
 
   bus.on('error', (err: Error) => {
     mprisLog.warn('D-Bus connection error:', err.message);
