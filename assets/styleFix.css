@@ -24,8 +24,3 @@
   [class*="upsell-banner"] {
     display: none !important;
   }
-
-  /* Footer (not needed in desktop app) */
-  footer.dt-footer {
-    display: none !important;
-  }
