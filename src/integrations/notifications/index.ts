@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
-import { Player, NowPlayingPayload, IntegrationContext } from '../../player';
+import { NowPlayingPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
 import { createNotification, notificationsAvailable } from '../../notify';

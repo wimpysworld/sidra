@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, ShareMenu } from 'electron';
 import log from 'electron-log/main';
-import { Player, PlaybackState, getShareUrl, type NowPlayingPayload, type IntegrationContext } from '../../player';
+import { PlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getTrayStrings } from '../../i18n';
 import { truncateMenuLabel } from '../../tray';
 import { createPauseTimer } from '../../pauseTimer';
@@ -101,7 +101,8 @@ export function init(ctx: IntegrationContext): void {
 
   const dockPauseTimer = createPauseTimer(DOCK_PAUSE_TIMEOUT_MS, clearNowPlaying);
 
-  player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
+  // Named listener references for removeListener in will-quit
+  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     dockPauseTimer.cancel();
     currentPayload = payload;
     if (!payload) {
@@ -111,9 +112,9 @@ export function init(ctx: IntegrationContext): void {
     }
     const { isPlaying } = player.playbackSnapshot();
     rebuildDock(isPlaying);
-  });
+  };
 
-  player.on('playbackStateDidChange', (statePayload) => {
+  const onPlaybackStateDidChange = (statePayload: PlaybackStatePayload): void => {
     const state = statePayload?.state ?? 0;
     if (state === PlaybackState.None || state === PlaybackState.Stopped ||
         state === PlaybackState.Ended || state === PlaybackState.Completed) {
@@ -134,14 +135,24 @@ export function init(ctx: IntegrationContext): void {
     }
     previousPlaying = isPlaying;
 
-    if (!isPlaying) {
-      // Pause the progress bar (keep current value)
-    }
     rebuildDock(isPlaying);
-  });
+  };
 
-  player.on('playbackTimeDidChange', (positionUs: number) => {
+  const onPlaybackTimeDidChange = (positionUs: number): void => {
     updateDockProgressBar(positionUs, currentPayload?.durationInMillis);
+  };
+
+  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+
+  app.on('will-quit', () => {
+    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+    // The 30 second timer outlives the listeners, and clearNowPlaying() calls
+    // app.dock.setMenu(), so a pending one fires into a torn-down dock.
+    dockPauseTimer.destroy();
   });
 
   // Initialise with empty dock menu

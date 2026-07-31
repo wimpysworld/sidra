@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
+import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 import { getServiceByHost } from '../../musicService';

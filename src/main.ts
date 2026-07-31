@@ -635,7 +635,11 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
         initWedgeDetector({ player, getMainWindow: () => win });
 
         if (appTray) {
-          initTrayStateManager(player, appTray);
+          // The returned closure destroys the pause timer, cancels the pending
+          // rebuild and removes the three player listeners. Dropping it left
+          // all four attached.
+          const teardownTrayState = initTrayStateManager(player, appTray);
+          app.on('will-quit', teardownTrayState);
         }
       } catch (e: unknown) {
         mainLog.error('integration initialisation failed:', e);

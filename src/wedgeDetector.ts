@@ -65,7 +65,10 @@ export function init(ctx: IntegrationContext): void {
 
   playerRef = player;
 
-  player.on('playbackStateDidChange', (payload: PlaybackStatePayload) => {
+  let lastSeenPositionUs = 0;
+
+  // Named listener references for removeListener in will-quit
+  const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     const nowPlaying = payload?.state === PlaybackState.Playing;
     lastAdvanceTime = Date.now();
     skipAttempts = 0;
@@ -75,23 +78,31 @@ export function init(ctx: IntegrationContext): void {
     } else {
       stopTimer();
     }
-  });
+  };
 
-  player.on('nowPlayingItemDidChange', (payload: NowPlayingPayload | null) => {
+  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     durationMs = payload?.durationInMillis ?? 0;
     lastAdvanceTime = Date.now();
     skipAttempts = 0;
-  });
+  };
 
-  let lastSeenPositionUs = 0;
-  player.on('playbackTimeDidChange', (payload: number) => {
+  const onPlaybackTimeDidChange = (payload: number): void => {
     if (payload !== lastSeenPositionUs) {
       lastSeenPositionUs = payload;
       lastAdvanceTime = Date.now();
     }
-  });
+  };
 
-  app.on('will-quit', () => stopTimer());
+  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+
+  app.on('will-quit', () => {
+    stopTimer();
+    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+  });
 
   wedgeLog.info('wedge detector initialised');
 }

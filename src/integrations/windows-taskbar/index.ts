@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeImage, nativeTheme } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
-import { Player, PlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
+import { PlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getAssetPath } from '../../paths';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
 
