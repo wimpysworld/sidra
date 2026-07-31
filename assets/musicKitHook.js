@@ -166,21 +166,21 @@
       });
 
       /**
-       * Last known volume value, used to detect slider-driven changes that
-       * bypass MusicKit's volumeDidChange event.
+       * Last value sent over the volumeDidChange IPC channel, so the poll
+       * below does not re-send a value the listener already reported.
        * @type {number}
        */
       let lastVolume = mk.volume;
       // Send the initial volume so MPRIS (and any other listener) receives the
       // real value immediately, not just on subsequent changes.
       window.AMWrapper.ipcRenderer.send('volumeDidChange', lastVolume);
-      mk.addEventListener('volumeDidChange', () => {
+      mk.addEventListener('playbackVolumeDidChange', () => {
         lastVolume = mk.volume;
         window.AMWrapper.ipcRenderer.send('volumeDidChange', mk.volume);
       });
-      // Poll mk.volume every 250ms as a fallback - the music.apple.com volume
-      // slider writes directly to HTMLMediaElement.volume, bypassing MusicKit's
-      // setter and its volumeDidChange event.
+      // Poll mk.volume every 250ms as a fallback for a volume write the hook
+      // cannot observe through playbackVolumeDidChange - what the player bar
+      // volume control writes has not been confirmed.
       volumePollTimer = setInterval(() => {
         const v = mk.volume;
         if (v !== lastVolume) {

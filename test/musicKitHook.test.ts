@@ -304,6 +304,19 @@ describe('musicKitHook', () => {
     );
   });
 
+  it('forwards a MusicKit volume change over the volumeDidChange IPC channel', () => {
+    // The attach-time send already carries the mock's initial volume of 1, so
+    // a listener bound to an event MusicKit never fires would still leave a
+    // ('volumeDidChange', 1) call behind. Moving the volume first is what makes
+    // the assertion prove the listener ran.
+    const { musicKit, musicKitListeners, window } = createHarness();
+
+    musicKit.volume = 0.42;
+    musicKitListeners.get('playbackVolumeDidChange')?.();
+
+    expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith('volumeDidChange', 0.42);
+  });
+
   it('clears media session position state for a radio stream with no duration', () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {

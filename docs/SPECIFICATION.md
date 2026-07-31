@@ -264,8 +264,10 @@ Integrations send commands to the renderer via a two-stage bridge:
 
 1. Main process calls `webContents.send(channel, ...args)` for each command channel
 2. Preload script receives via `ipcRenderer.on(channel)` for each channel in `RECEIVE_CHANNELS`
-3. Preload forwards to the main world via `window.postMessage({ type: 'sidra:command', channel, args }, '*')`
+3. Preload forwards to the main world via `window.postMessage({ type: 'sidra:command', channel, args }, window.location.origin)`
 4. `musicKitHook.js` listens for `sidra:command` messages and dispatches to `window.__sidra` methods
+
+The `window.location.origin` target keeps the bridge service-agnostic: it passes the sandbox same-origin check on both `music.apple.com` and `classical.music.apple.com` without a hardcoded origin.
 
 The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and the `COMMANDS` allowlist in `assets/musicKitHook.js`, which must stay in sync. `src/types/hook.d.ts` declares `SendChannel` and `ReceiveChannel` union types used by `src/preload.ts` (`Set<SendChannel>`, `Set<ReceiveChannel>`), enforcing channel sync at compile time. Contract tests in `test/player.test.ts` verify alignment via `expectTypeOf`.
 
@@ -303,7 +305,7 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     // Event listeners: playbackStateDidChange, nowPlayingItemDidChange,
     // playbackTimeDidChange (forwards the position, then calls
     // reportPositionState()), repeatModeDidChange, shuffleModeDidChange,
-    // volumeDidChange
+    // playbackVolumeDidChange
 
     // reportPositionState() writes navigator.mediaSession.setPositionState().
     // clearPositionState() runs when nowPlayingItemDidChange delivers null.
@@ -479,20 +481,22 @@ Cider's MPRIS volume sync is one-directional (MPRIS to MusicKit only, no reliabl
 ```
 MPRIS sets volume
   → executeJavaScript sets mk.volume
-    → mk fires volumeDidChange
+    → mk fires playbackVolumeDidChange
       → IPC sends volume back to main
         → suppression flag swallows the echo
 ```
 
-The suppression timeout is 500ms (2× the 250ms `musicKitHook.js` poll interval). The epsilon comparison (0.01) absorbs floating-point rounding without masking genuine user-initiated changes.
-
-Also update `navigator.mediaSession` volume whenever MusicKit volume changes - `music.apple.com` does not always do this itself.
+The matching echo clears the flag. A 2000ms safety timeout (`_volumeSafetyMs` in `src/integrations/mpris/index.ts`) clears it when no echo arrives, so a lost echo cannot suppress volume updates for the rest of the session. The epsilon comparison (0.01) absorbs floating-point rounding without masking genuine user-initiated changes.
 
 **PulseAudio sink input volume is intentionally not synced.** MPRIS `Volume` controls MusicKit's software volume (`HTMLMediaElement.volume`) only. The PulseAudio/PipeWire sink input volume shown in pulsemixer and pavucontrol is independent and left to the user via their system mixer. This matches the behaviour of Rhythmbox, Spotify, VLC, mpv, and Clementine. Syncing both would cause double-volume multiplication (e.g. 0.5 × 0.5 = 0.25, −12 dB instead of the expected −6 dB) and would require a `libpulse` binding or fragile `pactl` subprocess calls.
 
-### Volume Event Workaround
+### Volume Event Reporting
 
-The `music.apple.com` volume slider writes directly to `HTMLMediaElement.volume`, bypassing MusicKit's setter. As a result, `volumeDidChange` never fires on user-initiated slider changes. The workaround is to poll `mk.volume` at 250ms intervals and send IPC only when the value changes. Keep `addEventListener('volumeDidChange', ...)` in place for programmatic volume changes (e.g. from `window.__sidra.setVolume()`).
+`assets/musicKitHook.js` binds `playbackVolumeDidChange`. A CDP session against a running Sidra confirmed that a `mk.volume` write fires that event once and never fires `volumeDidChange`. The hook was bound to `volumeDidChange` until then, so the listener never fired and the 250ms poll was the only reporting path.
+
+The 250ms poll stays as a fallback: nothing has confirmed what the player bar volume control writes. That control is Svelte light DOM with no range input, and `mk._targetElement` is not exposed on the public instance, so its write path could not be observed. The poll sends IPC only when the value differs from the last one sent.
+
+The IPC channel is still named `volumeDidChange`. That is Sidra's own channel name, not the MusicKit event name, and the two differ on purpose.
 
 ---
 
