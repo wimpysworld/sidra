@@ -47,12 +47,48 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 
-let client: Client;
+let client: Client | undefined;
 
 const pauseTimeout = createPauseTimer(PAUSE_TIMEOUT_MS, () => {
   discordLog.debug('pause timeout reached, clearing activity');
-  client.user?.clearActivity().catch(() => {});
+  client?.user?.clearActivity().catch(() => {});
 });
+
+function createClient(): Client {
+  const created = new Client({ clientId: CLIENT_ID });
+
+  created.on('ready', () => {
+    discordLog.info('connected to Discord');
+    retryCount = 0;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    scheduleUpdate();
+  });
+
+  created.on('disconnected', () => {
+    discordLog.info('disconnected from Discord');
+    scheduleReconnect();
+  });
+
+  return created;
+}
+
+// Client.connect() leaks a 'connected' listener on both failure paths, and a
+// transport rejection leaves connectionPromise set to a rejected promise, so a
+// reused instance never retries. Discarding the instance is the only remedy
+// available to a consumer. removeAllListeners() must run before destroy():
+// destroy() closes the transport, whose close handler emits 'disconnected' on
+// the old client, and that stray event would arm a second backoff chain.
+function replaceClient(): Client {
+  if (client) {
+    client.removeAllListeners();
+    client.destroy().catch(() => {});
+  }
+  client = createClient();
+  return client;
+}
 
 function scheduleUpdate(): void {
   if (debounceTimer) {
@@ -76,12 +112,14 @@ function disconnectClient(): void {
   }
   retryCount = 0;
 
-  client.user?.clearActivity().catch(() => {});
-  client.destroy().catch(() => {});
+  client?.user?.clearActivity().catch(() => {});
+  replaceClient();
   discordLog.info('disconnected from Discord (disabled via toggle)');
 }
 
 function sendActivity(): void {
+  if (!client) return;
+
   if (!getDiscordEnabled()) {
     if (client.isConnected || reconnectTimer || debounceTimer) {
       disconnectClient();
@@ -158,8 +196,9 @@ function scheduleReconnect(): void {
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
+    if (client?.isConnected) return;
     discordLog.info('attempting reconnect');
-    client.login().catch((err: Error) => {
+    replaceClient().login().catch((err: Error) => {
       discordLog.warn('reconnect failed:', err.message);
       scheduleReconnect();
     });
@@ -187,22 +226,7 @@ export function init(ctx: IntegrationContext): void {
   playerRef = player;
   discordLog.info('discord presence module initialised');
 
-  client = new Client({ clientId: CLIENT_ID });
-
-  client.on('ready', () => {
-    discordLog.info('connected to Discord');
-    retryCount = 0;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    scheduleUpdate();
-  });
-
-  client.on('disconnected', () => {
-    discordLog.info('disconnected from Discord');
-    scheduleReconnect();
-  });
+  client = createClient();
 
   if (getDiscordEnabled()) {
     client.login().catch((err: Error) => {
@@ -260,7 +284,7 @@ export function init(ctx: IntegrationContext): void {
     if (reconnectTimer) clearTimeout(reconnectTimer);
 
     try {
-      client.destroy();
+      client?.destroy();
     } catch {
       // client.destroy() may throw if Discord is not connected
     }
