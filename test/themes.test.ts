@@ -39,6 +39,15 @@ function cssVar(block: string, name: string): string {
   return match[1];
 }
 
+/** Reads the background-color of the .chrome-player::before rule. */
+function chromePlayerFill(block: string): string {
+  const match = /\.chrome-player::before \{\s*background-color: ([^;]+) !important;/.exec(block);
+  if (match === null) {
+    throw new Error('.chrome-player::before is missing its background-color');
+  }
+  return match[1];
+}
+
 function parseHex(value: string): Rgb {
   const match = CSS_HEX_RE.exec(value);
   if (match === null) {
@@ -193,8 +202,32 @@ describe('buildThemeCss', () => {
         expect(css).toContain('background-color: var(--keyColor) !important;');
       });
 
+      it('themes the player bar and the Classical LCD in both variants', () => {
+        for (const block of [darkCss, lightCss]) {
+          expect(block).toContain('.chrome-player::before');
+          expect(block).toContain('background-image: none !important;');
+          expect(block).toContain('--chromePlayerBGFill:');
+          expect(block).toContain('--lcd-bg-color:');
+          expect(block).toContain('--playerMissingArtworkBg:');
+          expect(block).toContain('--playerMissingArtworkIcon:');
+        }
+      });
+
+      it('paints the player bar with the player background value', () => {
+        for (const block of [darkCss, lightCss]) {
+          expect(chromePlayerFill(block)).toBe(cssVar(block, 'playerBackground'));
+          expect(cssVar(block, 'chromePlayerBGFill')).toBe(cssVar(block, 'playerBackground'));
+          expect(cssVar(block, 'lcd-bg-color')).toBe(cssVar(block, 'playerLCDBGFill'));
+        }
+      });
+
+      it('emits no Svelte scope hash', () => {
+        expect(css).not.toMatch(/svelte-[a-z0-9]/);
+      });
+
       it('keeps old player structural selectors out', () => {
         expect(css).not.toContain('.wrapper amp-chrome-player::before');
+        expect(css).not.toContain('amp-chrome-player');
         expect(css).not.toContain('.player-bar');
         expect(css).not.toContain('.chrome-player.chrome-player__music');
         expect(css).not.toContain('amp-lcd');

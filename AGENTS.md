@@ -169,9 +169,11 @@ Most Apple Music styling responds to `:root` custom property overrides. These el
 | Side panels (Lyrics/Up Next) | `.side-panel`, `.side-panel-header-wrapper` | Direct `background-color` |
 | Page footer | `.scrollable-page footer` | Direct `background-color` |
 | Accent-coloured buttons | `.button.primary button.click-action` | Direct `background-color: rgb(214, 0, 23)` ignores `--keyColor` |
-| Accent CSS variables (`--keyColor` and variants) | `*` | Shadow DOM of `amp-*` elements does not inherit from `:root` |
+| Accent CSS variables (`--keyColor` and variants), `--chromePlayerBGFill`, `--lcd-bg-color` | `*` | Shadow DOM of `amp-*` elements does not inherit from `:root`, and Apple declares `--lcd-bg-color` on `.lcd` itself, where an inherited value loses |
 
-Sidra styles neither the player bar nor the LCD box; both read a property it does not set. Every other row has an override in `src/themeTemplate.ts`.
+Every row has an override in `src/themeTemplate.ts`. The player bar needs two: `--chromePlayerBGFill` in the `*` block, and a direct `.chrome-player::before` rule setting `background-color` and `background-image: none`. The direct rule is what covers music, which re-declares `--glassMaterialBackground` on the pseudo itself under `.is-light-theme` and `.is-dark-theme`, where a `*` block never reaches. Do not override `--glassMaterialBackground` instead: the music bundle also reads it on the navigation bar, the mini-player, and the cloud-buttons platter. The `background-image: none` drops Classical's white gloss gradient, a fixed overlay tuned to Apple's grey that no palette can derive; Apple already drops it in dark mode.
+
+`--playerMissingArtworkBg` and `--playerMissingArtworkIcon` theme the missing-artwork placeholder from `:root`, where Apple declares them. The LCD artwork hover scrim (`--lcd-artworkHoverBGColor`) stays as Apple ships it: it carries a `#fff` icon over arbitrary artwork, so a light theme colour there would make that icon unreadable.
 
 **Pattern:** when a `:root` variable override has no visible effect, the element either (a) uses a shadow-DOM-scoped custom property (set the variable on the host element), or (b) paints its own background via `::before` or a direct property (use a direct selector with `!important`).
 

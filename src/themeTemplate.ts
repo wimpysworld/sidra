@@ -58,6 +58,7 @@ function rgbaSpaced(hex: string, alpha: number): string {
 }
 
 function schemeBlock(c: SchemeColours): string {
+  const playerBG = rgba(c.mantle, 0.88);
   return `  :root {
     /* Background & Structure */
     --pageBG: ${c.base} !important;
@@ -92,9 +93,11 @@ function schemeBlock(c: SchemeColours): string {
     --vibrantDivider: ${rgba(c.surface2, 0.25)} !important;
 
     /* Player */
-    --playerBackground: ${rgba(c.mantle, 0.88)} !important;
+    --playerBackground: ${playerBG} !important;
     --playerBackgroundFallback: ${rgba(c.mantle, 0.97)} !important;
     --playerLCDBGFill: ${c.surface0} !important;
+    --playerMissingArtworkBg: ${c.surface1} !important;
+    --playerMissingArtworkIcon: ${c.surface2} !important;
     --playerScrubberFill: ${c.accent} !important;
     --playerScrubberTrack: ${rgba(c.surface1, 0.2)} !important;
     --playerPlatterButtonBGFill: ${c.accent} !important;
@@ -136,7 +139,8 @@ function schemeBlock(c: SchemeColours): string {
     background-color: ${c.mantle} !important;
   }
 
-  /* Force variables into shadow-DOM-scoped elements */
+  /* Force variables into shadow-DOM-scoped elements, and variables Apple
+     re-declares on the element itself */
   * {
     --keyColor: ${c.accent} !important;
     --keyColor-rgb: ${rgbTriplet(c.accent)} !important;
@@ -147,6 +151,16 @@ function schemeBlock(c: SchemeColours): string {
     --musicKeyColor: ${c.accent} !important;
     --musicBrandBG: ${c.accent} !important;
     --selectionColor: ${c.accent} !important;
+    --chromePlayerBGFill: ${playerBG} !important;
+    --lcd-bg-color: ${c.surface0} !important;
+  }
+
+  /* Player bar: the bar is transparent and its ::before paints it. Classical
+     declares the gradient on that pseudo and music re-declares its fill there,
+     so neither is reachable from the * block. */
+  .chrome-player::before {
+    background-color: ${playerBG} !important;
+    background-image: none !important;
   }
 
   /* Side panels (Lyrics + Up Next): not covered by :root variables */
