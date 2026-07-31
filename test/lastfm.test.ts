@@ -336,8 +336,8 @@ function refuseScrobbles(code: number): void {
 }
 
 /** Settles the request promises the timers have started. */
-function flush(): Promise<void> {
-  return vi.advanceTimersByTimeAsync(0);
+async function flush(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 /** Plays `TRACK` past its scrobble threshold. */

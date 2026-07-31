@@ -105,6 +105,7 @@ watch:
 lint:
     @actionlint
     npx tsc --noEmit
+    npx tsc -p tsconfig.test.json --noEmit
 
 # Run tests
 test:

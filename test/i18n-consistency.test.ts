@@ -19,12 +19,14 @@ const TRANSLATION_RECORDS = [
 ] as const;
 
 describe('i18n translation records', () => {
-  const referenceKeys = Object.keys(
-    (i18n as Record<string, Record<string, string>>)[TRANSLATION_RECORDS[0]]
-  ).sort();
+  // The module exports translation records alongside functions, so the index
+  // signature only holds for the names listed above. The cast goes through
+  // unknown because the two types do not otherwise overlap.
+  const records = i18n as unknown as Record<string, Record<string, string>>;
+  const referenceKeys = Object.keys(records[TRANSLATION_RECORDS[0]]).sort();
 
   for (const name of TRANSLATION_RECORDS) {
-    const record = (i18n as Record<string, Record<string, string>>)[name];
+    const record = records[name];
 
     it(`${name} is exported from i18n`, () => {
       expect(record, `${name} is listed in TRANSLATION_RECORDS but not exported from src/i18n`).toBeDefined();

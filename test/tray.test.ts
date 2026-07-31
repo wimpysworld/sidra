@@ -1030,7 +1030,7 @@ describe('createTray - menu template inspection', () => {
       mockWin.isVisible.mockReturnValue(false);
       const tray = createTray();
       const onFn = tray.on as ReturnType<typeof vi.fn>;
-      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      const clickCall = onFn.mock.calls.find((call) => call[0] === 'click');
       expect(clickCall).toBeDefined();
       (clickCall![1] as () => void)();
       expect(mockWin.show).toHaveBeenCalled();
@@ -1046,7 +1046,7 @@ describe('createTray - menu template inspection', () => {
       // Delta, never an absolute count: createTray() sets the menu once on its own.
       const before = setContextMenu.mock.calls.length;
       const onFn = tray.on as ReturnType<typeof vi.fn>;
-      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      const clickCall = onFn.mock.calls.find((call) => call[0] === 'click');
       expect(clickCall).toBeDefined();
       (clickCall![1] as () => void)();
       expect(setContextMenu.mock.calls.length).toBe(before + 1);
@@ -1061,7 +1061,7 @@ describe('createTray - menu template inspection', () => {
       const setContextMenu = tray.setContextMenu as ReturnType<typeof vi.fn>;
       const before = setContextMenu.mock.calls.length;
       const onFn = tray.on as ReturnType<typeof vi.fn>;
-      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      const clickCall = onFn.mock.calls.find((call) => call[0] === 'click');
       expect(clickCall).toBeDefined();
       (clickCall![1] as () => void)();
       expect(mockWin.focus).toHaveBeenCalled();
@@ -1074,7 +1074,7 @@ describe('createTray - menu template inspection', () => {
       vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
       const tray = createTray();
       const onFn = tray.on as ReturnType<typeof vi.fn>;
-      const clickCall = onFn.mock.calls.find(([event]: [string]) => event === 'click');
+      const clickCall = onFn.mock.calls.find((call) => call[0] === 'click');
       expect(clickCall).toBeDefined();
       (clickCall![1] as () => void)();
       expect(mockWin.show).not.toHaveBeenCalled();

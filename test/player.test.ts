@@ -1,6 +1,15 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { describe, it, expect, expectTypeOf, vi } from 'vitest';
 
 import { PlaybackState, Player, getShareUrl, type PlayerEvents } from '../src/player';
+
+/** The shipped hook, read so the command contract is checked against real source. */
+const HOOK_SOURCE = fs.readFileSync(
+  path.join(__dirname, '..', 'assets', 'musicKitHook.js'),
+  'utf-8',
+);
 
 describe('PlaybackState', () => {
   it('None is 0', () => {
@@ -298,14 +307,27 @@ describe('SidraHook contract', () => {
   });
 
   it('COMMANDS in musicKitHook.js matches keyof SidraHook', () => {
-    // Parallel constant matching the COMMANDS set in assets/musicKitHook.js.
-    // If SidraHook gains or loses a method, this assertion fails at compile time.
-    const hookCommands: ReadonlySet<keyof SidraHook> = new Set([
-      'play', 'pause', 'playPause', 'next', 'previous',
-      'seek', 'setVolume', 'setRepeat', 'setShuffle',
-    ] as const);
+    // Exhaustive over SidraHook: renaming, adding or removing a method in
+    // src/types/hook.d.ts without changing this list is a compile error.
+    const hookMethods = {
+      play: true,
+      pause: true,
+      playPause: true,
+      next: true,
+      previous: true,
+      seek: true,
+      setVolume: true,
+      setRepeat: true,
+      setShuffle: true,
+    } satisfies Record<keyof SidraHook, true>;
 
-    expect(hookCommands.size).toBe(9);
+    // Read the shipped hook rather than a parallel constant, so the two can
+    // never drift apart unnoticed.
+    const block = /const COMMANDS = new Set\(\[([^\]]*)\]\)/.exec(HOOK_SOURCE);
+    expect(block, 'COMMANDS set not found in assets/musicKitHook.js').not.toBeNull();
+
+    const commands = [...block![1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+    expect(commands).toEqual(Object.keys(hookMethods).sort());
   });
 });
 
