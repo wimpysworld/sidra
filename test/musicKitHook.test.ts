@@ -8,6 +8,31 @@ const hookScript = fs.readFileSync(
   'utf-8',
 );
 
+/** An event target in a composed path, carrying the classes given. */
+function element(classes: string) {
+  const tokens = classes.split(' ');
+  return { classList: { contains: (token: string) => tokens.includes(token) } };
+}
+
+/**
+ * A composed path built from the outermost-first class lists, ordered as the
+ * DOM delivers it and terminated by the window, which carries no classList.
+ */
+function composedPath(...classes: string[]) {
+  return [...classes.map(element), {}];
+}
+
+// The two services differ in the element that carries the chrome-volume token:
+// a div on music.apple.com, an amp-chrome-volume element on classical.
+const MUSIC_VOLUME_PATH = composedPath(
+  'chrome-volume__slider', 'chrome-volume', 'chrome-player',
+);
+const CLASSICAL_VOLUME_PATH = composedPath(
+  'chrome-volume__indicator', 'amp-volume-control', 'chrome-volume',
+  'chrome-player__volume',
+);
+const NON_VOLUME_PATH = composedPath('chrome-player__button', 'chrome-player');
+
 function createHarness({
   musicKitOverrides = {},
   musicKitThrowsAtInjection = false,
@@ -21,6 +46,10 @@ function createHarness({
 } = {}) {
   const intervalCallbacks: Array<() => void> = [];
   const messageListeners: Array<(event: unknown) => void> = [];
+  const wheelListeners: Array<{
+    listener: (event: unknown) => void;
+    options: unknown;
+  }> = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
   const navigator = navigatorOverrides ?? { mediaSession };
@@ -46,8 +75,13 @@ function createHarness({
   };
   const window = {
     AMWrapper: { ipcRenderer: { send: vi.fn() } },
-    addEventListener: vi.fn((event: string, listener: (event: unknown) => void) => {
+    addEventListener: vi.fn((
+      event: string,
+      listener: (event: unknown) => void,
+      options?: unknown,
+    ) => {
       if (event === 'message') messageListeners.push(listener);
+      if (event === 'wheel') wheelListeners.push({ listener, options });
     }),
     navigator,
   };
@@ -87,6 +121,21 @@ function createHarness({
   for (const callback of intervalCallbacks.slice()) callback();
 
   return {
+    // Sends one wheel event to every registered listener and hands the event
+    // back, so a test can read the preventDefault mock off it.
+    dispatchWheel: (
+      { ctrlKey = false, deltaY, path }:
+        { ctrlKey?: boolean; deltaY: number; path: unknown[] },
+    ) => {
+      const event = {
+        composedPath: () => path,
+        ctrlKey,
+        deltaY,
+        preventDefault: vi.fn(),
+      };
+      for (const { listener } of wheelListeners) listener(event);
+      return event;
+    },
     mediaSession,
     messageListeners,
     musicKit,
@@ -101,6 +150,7 @@ function createHarness({
       vm.runInContext(hookScript, context);
       for (const callback of intervalCallbacks.slice(alreadyRun)) callback();
     },
+    wheelListeners,
     window,
   };
 }
@@ -315,6 +365,127 @@ describe('musicKitHook', () => {
     musicKitListeners.get('playbackVolumeDidChange')?.();
 
     expect(window.AMWrapper.ipcRenderer.send).toHaveBeenCalledWith('volumeDidChange', 0.42);
+  });
+
+  it.each([
+    ['music', MUSIC_VOLUME_PATH],
+    ['classical', CLASSICAL_VOLUME_PATH],
+  ])('lowers the volume a step when the wheel turns down over the %s volume control', (
+    _service,
+    path,
+  ) => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.5 },
+    });
+
+    const event = dispatchWheel({ deltaY: 100, path });
+
+    expect(musicKit.volume).toBe(0.45);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('raises the volume a step when the wheel turns up over the volume control', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.5 },
+    });
+
+    dispatchWheel({ deltaY: -100, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.55);
+  });
+
+  it('leaves the volume and the page scroll alone away from the volume control', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.5 },
+    });
+
+    const event = dispatchWheel({ deltaY: 100, path: NON_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.5);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('leaves a Ctrl+wheel zoom over the volume control alone', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.5 },
+    });
+
+    const event = dispatchWheel({ ctrlKey: true, deltaY: 100, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.5);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('clamps the volume at 0 when the wheel turns down past silence', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.02 },
+    });
+
+    dispatchWheel({ deltaY: 100, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0);
+  });
+
+  it('clamps the volume at 1 when the wheel turns up past full', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.98 },
+    });
+
+    dispatchWheel({ deltaY: -100, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(1);
+  });
+
+  it('rounds away the binary floating point artefact of a step', () => {
+    // 0.7 - 0.05 is 0.6499999999999999, which a volume readout would show as
+    // 64% and MPRIS would report unrounded.
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.7 },
+    });
+
+    dispatchWheel({ deltaY: 100, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.65);
+  });
+
+  it('accumulates two half-notch wheel events into one volume step', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.5 },
+    });
+
+    dispatchWheel({ deltaY: 50, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.5);
+
+    dispatchWheel({ deltaY: 50, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.45);
+  });
+
+  it('steps immediately when the wheel direction reverses mid-accumulation', () => {
+    const { dispatchWheel, musicKit } = createHarness({
+      musicKitOverrides: { volume: 0.5 },
+    });
+
+    dispatchWheel({ deltaY: -50, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: 100, path: MUSIC_VOLUME_PATH });
+
+    expect(musicKit.volume).toBe(0.45);
+  });
+
+  it('registers the wheel listener as non-passive so preventDefault works', () => {
+    const { wheelListeners } = createHarness();
+
+    expect(wheelListeners).toHaveLength(1);
+    expect(wheelListeners[0].options).toEqual({ passive: false });
+  });
+
+  it('installs no second wheel listener when the script is injected again', () => {
+    const { reinject, wheelListeners } = createHarness();
+
+    reinject();
+
+    expect(wheelListeners).toHaveLength(1);
   });
 
   it('clears media session position state for a radio stream with no duration', () => {

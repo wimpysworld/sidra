@@ -32,6 +32,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🔔 **Desktop notifications** - track changes, native to each platform
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
+- 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
 - 🎼 **Apple Music Classical** - switch at runtime from the tray **Player** submenu:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
 - 🐧 **Linux**:

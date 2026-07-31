@@ -244,6 +244,57 @@
       }
     });
 
+    /** Volume change applied per wheel notch. */
+    const VOLUME_STEP = 0.05;
+    /** Chromium's default deltaY, in pixels, for one mouse wheel notch. */
+    const WHEEL_NOTCH_DELTA = 100;
+    /**
+     * Wheel delta not yet consumed by a step, so a touchpad accumulates
+     * smoothly instead of needing a full notch per event.
+     * @type {number}
+     */
+    let wheelDelta = 0;
+
+    /**
+     * Change the volume when the pointer is over the player bar volume control.
+     *
+     * Both services put the `chrome-volume` class token on the control, on a
+     * `div` for music.apple.com and on an `amp-chrome-volume` element for
+     * classical.music.apple.com, so the gate matches that token anywhere in the
+     * composed path and never the element name. Writing mk.volume reaches the
+     * main process by the existing playbackVolumeDidChange route.
+     *
+     * @param {WheelEvent} event - The wheel event
+     */
+    window.addEventListener('wheel', (event) => {
+      // Ctrl+scroll and pinch are zoom gestures, not volume ones.
+      if (event.ctrlKey) return;
+      const overVolume = event.composedPath()
+        .some((target) => target.classList?.contains('chrome-volume'));
+      if (!overVolume) return;
+      // Stop the page scrolling under the control, even when this event only
+      // accumulates and moves the volume nowhere.
+      event.preventDefault();
+
+      const hookedMk = window.__sidraHookedMk;
+      if (!hookedMk) return;
+
+      // A reversal starts from zero, so a residual from scrolling one way does
+      // not delay the first step the other way.
+      const direction = Math.sign(event.deltaY);
+      if (direction !== 0 && direction !== Math.sign(wheelDelta)) wheelDelta = 0;
+      wheelDelta += event.deltaY;
+
+      const steps = Math.trunc(wheelDelta / WHEEL_NOTCH_DELTA);
+      if (steps === 0) return;
+      wheelDelta -= steps * WHEEL_NOTCH_DELTA;
+
+      // Read the live volume every time: a write MusicKit drops self-corrects
+      // on the next notch. Scrolling down (positive deltaY) lowers the volume.
+      const volume = hookedMk.volume - steps * VOLUME_STEP;
+      hookedMk.volume = Math.min(1, Math.max(0, Math.round(volume * 100) / 100));
+    }, { passive: false });
+
     console.log('[Sidra] MusicKit hooked successfully');
 
     // Monitor for MusicKit instance replacement every 5 seconds.

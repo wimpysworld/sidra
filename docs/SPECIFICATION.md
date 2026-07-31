@@ -327,6 +327,10 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     //   incoming { type: 'sidra:command', channel, args } messages
     //   to the matching window.__sidra method via a COMMANDS allowlist
 
+    // Non-passive wheel listener on window, installed beside the message
+    // listener so the injection guard covers it. Steps mk.volume by 5% when
+    // the composed path carries the chrome-volume class token.
+
     // Per-instance marker, read by the 5-second monitor below.
     // This is not an injection guard: __sidraHookInjected is.
     window.__sidraHookedMk = mk;
@@ -497,6 +501,29 @@ The matching echo clears the flag. A 2000ms safety timeout (`_volumeSafetyMs` in
 The 250ms poll stays as a fallback: nothing has confirmed what the player bar volume control writes. That control is Svelte light DOM with no range input, and `mk._targetElement` is not exposed on the public instance, so its write path could not be observed. The poll sends IPC only when the value differs from the last one sent.
 
 The IPC channel is still named `volumeDidChange`. That is Sidra's own channel name, not the MusicKit event name, and the two differ on purpose.
+
+### Scroll to Change Volume
+
+Pointing at the player bar volume control and scrolling changes the volume in 5% steps, up on wheel-up. One non-passive `wheel` listener on `window` in `assets/musicKitHook.js` does it, installed beside the `message` listener in the `waitForMK` callback so the `__sidraHookInjected` guard covers it and it installs once. Nothing outside the hook changed: the handler writes `mk.volume`, so the value reaches the tray and MPRIS by the existing `volumeDidChange` route, and no `sidra:command` channel was added.
+
+The gate is `event.composedPath()`, matched on the `chrome-volume` class token. The two services differ in the element that carries it:
+
+| Service | Volume control | Carries `chrome-volume` |
+|---|---|---|
+| `music.apple.com` | `div.chrome-volume` wrapping `div.chrome-volume__slider` and `button.chrome-volume__button` | A `div` |
+| `classical.music.apple.com` | `div.chrome-player__volume` wrapping `amp-chrome-volume.chrome-volume`, which contains `button.chrome-volume__indicator` and `amp-volume-control` | An `amp-chrome-volume` element |
+
+Matching the element name alone would work on Classical and do nothing on Apple Music. There is no `input[type=range]` on either page: a CDP walk of all 13 shadow roots on `music.apple.com` found none. Svelte scope hashes are deliberately absent from the selector; they change on any Apple rebuild.
+
+Handler behaviour:
+
+- `event.ctrlKey` returns early, so Ctrl+scroll and pinch still zoom.
+- `preventDefault()` fires whenever the gate matches, so the page never scrolls under the control. It fires nowhere else, and nothing calls `stopPropagation()`, so Apple's own handlers still see the event.
+- `deltaY` accumulates and each 100 pixels applies one step, carrying the remainder. 100 is Chromium's default `deltaY` for one wheel notch, so a mouse gets exactly one step per notch and a touchpad accumulates smoothly. A direction reversal resets the accumulator. The step is never scaled by `deltaY` magnitude: Chromium reports a wheel and a touchpad identically as `DOM_DELTA_PIXEL`, so magnitude would give a wheel a full-range jump and a touchpad an invisible nudge.
+- The value is clamped to 0 and 1 and rounded to two decimal places, because MusicKit throws on an out-of-range value and `0.7 - 0.05` is `0.6499999999999999` in binary floating point.
+- The base value is read from `mk.volume` on every event, never from a cached local, so a write MusicKit drops (`capabilities.canSetVolume` false) self-corrects on the next notch.
+
+The listener is on `window`, not on the volume element. That element does not exist when the hook runs and is replaced on navigation and service switches, so binding to it would need a `MutationObserver` in the file whose duplicate listeners once cost 180 MiB/s (#153).
 
 ---
 
@@ -1058,6 +1085,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 |---|---|---|---|
 | Apple blocks Electron user agent | High | Low | Spoof Chrome UA on all requests |
 | Apple changes MusicKit.js API | Medium | Low | MusicKit.js is a public developer API with versioning |
+| Apple renames the `chrome-volume` class | Low | Medium | Scroll-to-change-volume stops responding; every other volume path is unaffected. The token is the only DOM detail the hook depends on, and no Svelte scope hash is matched, so an Apple rebuild alone does not break it |
 | CastLabs Electron lags Electron releases | Low | Medium | Only affects security patching cadence; v40.7.0+wvcus, tracking close to mainline |
 | Live radio stations crash | Medium | Confirmed | Known issue in apple-music-wrapper; investigate `did-crash` handler |
 | CSP blocks script injection | Low | Very low | `executeJavaScript()` bypasses page CSP in Electron |
