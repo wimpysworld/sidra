@@ -11,110 +11,66 @@ vi.mock('../src/i18n', () => ({
 import { isNewer } from '../src/update';
 
 describe('isNewer', () => {
-  it('detects major version bump', () => {
-    expect(isNewer('1.0.0', '0.3.0')).toBe(true);
-  });
+  it.each<[string, string, boolean]>([
+    // Ordinary numeric comparison.
+    ['1.0.0', '0.3.0', true], // major bump
+    ['0.4.0', '0.3.0', true], // minor bump
+    ['0.3.1', '0.3.0', true], // patch bump
+    ['0.3.0', '0.3.0', false], // equal versions
+    ['0.2.0', '0.3.0', false], // remote older
+    ['0.10.0', '0.9.0', true], // double-digit part, where a string compare would lose
+    ['0.3.0', '0.3.1', false], // patch decides when major and minor are equal
 
-  it('detects minor version bump', () => {
-    expect(isNewer('0.4.0', '0.3.0')).toBe(true);
-  });
+    // A part past the end of a short version counts as 0.
+    ['1.0', '0.3.0', true], // short remote
+    ['0.2', '0.3.0', false], // short remote
+    ['1.0.0', '0.3', true], // short local
+    ['0.2.0', '0.3', false], // short local
+    ['0.3', '0.3.0', false], // equal across differing part counts
+    ['0.3.0', '0.3', false], // equal across differing part counts
+    ['1', '1.0.0', false], // equal across differing part counts
 
-  it('detects patch version bump', () => {
-    expect(isNewer('0.3.1', '0.3.0')).toBe(true);
-  });
+    // Only the first three parts are compared.
+    ['0.3.0.1', '0.3.0', false], // a fourth part never decides
+    ['0.3.1.0', '0.3.0.9', true], // the third part decides before the fourth is reached
+    ['0.4.0.x', '0.3.0', true], // a non-numeric fourth part is never read, so it cannot refuse
 
-  it('returns false for equal versions', () => {
-    expect(isNewer('0.3.0', '0.3.0')).toBe(false);
-  });
-
-  it('returns false when remote is older', () => {
-    expect(isNewer('0.2.0', '0.3.0')).toBe(false);
-  });
-
-  it('handles double-digit components', () => {
-    expect(isNewer('0.10.0', '0.9.0')).toBe(true);
-  });
-
-  it('compares patch when major and minor are equal', () => {
-    expect(isNewer('0.3.0', '0.3.1')).toBe(false);
-  });
-
-  it('treats a missing part of a short remote as 0', () => {
-    expect(isNewer('1.0', '0.3.0')).toBe(true);
-    expect(isNewer('0.2', '0.3.0')).toBe(false);
-  });
-
-  it('treats a missing part of a short local as 0', () => {
-    expect(isNewer('1.0.0', '0.3')).toBe(true);
-    expect(isNewer('0.2.0', '0.3')).toBe(false);
-  });
-
-  it('returns false for equal versions of differing part counts', () => {
-    expect(isNewer('0.3', '0.3.0')).toBe(false);
-    expect(isNewer('0.3.0', '0.3')).toBe(false);
-    expect(isNewer('1', '1.0.0')).toBe(false);
-  });
-
-  it('compares only the first three parts', () => {
-    expect(isNewer('0.3.0.1', '0.3.0')).toBe(false);
-    expect(isNewer('0.3.1.0', '0.3.0.9')).toBe(true);
-  });
-
-  it('returns false for a non-numeric part', () => {
-    expect(isNewer('0.x.0', '0.3.0')).toBe(false);
-  });
-
-  it('returns false when a non-numeric part precedes a larger later part', () => {
-    expect(isNewer('0.x.99', '0.3.0')).toBe(false);
-  });
-
-  it('returns false when a non-numeric part follows a deciding part', () => {
+    // A non-numeric part refuses the whole version, on either side.
+    ['0.x.0', '0.3.0', false], // non-numeric part
+    // NaN > x and NaN < x are both false, so testing NaN in the comparisons let
+    // this fall through to the third part and offer an update over 0.3.0.
+    ['0.x.99', '0.3.0', false], // non-numeric part before a larger later part
     // The minor part alone says 0.4.x is newer, but a tag Sidra cannot parse
     // must not drive an update prompt, so the whole version is refused.
-    expect(isNewer('0.4.x', '0.3.0')).toBe(false);
-  });
+    ['0.4.x', '0.3.0', false], // non-numeric part after a deciding part
+    ['0.4.0', '0.x.0', false], // non-numeric part in the local version
+    ['0.4.0', '0.3.x', false], // non-numeric part in the local version
 
-  it('returns false for a non-numeric part in the local version', () => {
-    expect(isNewer('0.4.0', '0.x.0')).toBe(false);
-    expect(isNewer('0.4.0', '0.3.x')).toBe(false);
-  });
-
-  it('ignores a non-numeric part beyond the third', () => {
-    expect(isNewer('0.4.0.x', '0.3.0')).toBe(true);
-  });
-
-  it('returns false for an empty part inside the version', () => {
     // Number('') is 0, so 2..0 once read as 2.0.0 and offered an update. A part
     // past the end of a short version still counts as 0; an empty one does not.
-    expect(isNewer('2..0', '1.0.0')).toBe(false);
-    expect(isNewer('1..0', '0.3.0')).toBe(false);
-    expect(isNewer('2.0.0', '1..0')).toBe(false);
-  });
+    ['2..0', '1.0.0', false], // empty part inside the remote version
+    ['1..0', '0.3.0', false], // empty part inside the remote version
+    ['2.0.0', '1..0', false], // empty part inside the local version
 
-  it('returns false for a whitespace part', () => {
     // Number(' ') is 0 as well.
-    expect(isNewer('1. .0', '0.9.0')).toBe(false);
-    expect(isNewer('2.0.0', '1. .0')).toBe(false);
-  });
+    ['1. .0', '0.9.0', false], // whitespace part in the remote version
+    ['2.0.0', '1. .0', false], // whitespace part in the local version
 
-  it('returns false for a hexadecimal part', () => {
     // Number('0x10') is 16.
-    expect(isNewer('0x10.0.0', '1.0.0')).toBe(false);
-    expect(isNewer('0.0x10.0', '0.3.0')).toBe(false);
-    expect(isNewer('2.0.0', '0x1.0.0')).toBe(false);
-  });
+    ['0x10.0.0', '1.0.0', false], // hexadecimal major part
+    ['0.0x10.0', '0.3.0', false], // hexadecimal minor part
+    ['2.0.0', '0x1.0.0', false], // hexadecimal part in the local version
 
-  it('returns false for an exponent part', () => {
     // Number('1e2') is 100.
-    expect(isNewer('1e2.0.0', '1.0.0')).toBe(false);
-    expect(isNewer('0.1e2.0', '0.3.0')).toBe(false);
-    expect(isNewer('2.0.0', '1e0.0.0')).toBe(false);
-  });
+    ['1e2.0.0', '1.0.0', false], // exponent major part
+    ['0.1e2.0', '0.3.0', false], // exponent minor part
+    ['2.0.0', '1e0.0.0', false], // exponent part in the local version
 
-  it('returns false for a signed part', () => {
     // Deliberate: no Sidra release tag carries a sign, so a part spelling a
     // number Number() would accept is refused along with the rest.
-    expect(isNewer('+2.0.0', '1.0.0')).toBe(false);
-    expect(isNewer('2.0.0', '-1.0.0')).toBe(false);
+    ['+2.0.0', '1.0.0', false], // leading plus
+    ['2.0.0', '-1.0.0', false], // negative part in the local version
+  ])('isNewer(%s, %s) is %s', (remote, local, expected) => {
+    expect(isNewer(remote, local)).toBe(expected);
   });
 });
