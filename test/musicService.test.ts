@@ -51,6 +51,8 @@ describe('MUSIC_SERVICES registry', () => {
   // One whole-registry comparison rather than a field at a time: an added, renamed or dropped
   // entry is caught as well, and a failure prints the whole diff instead of one stray value.
   // Start page order is the tray submenu order, so the arrays are compared in order.
+  // Both services probe readiness with the same selector; a second copy of the literal would
+  // drift silently, so the registry must reference the one in contentReady.ts.
   it('matches the expected registry shape', () => {
     expect(MUSIC_SERVICES).toEqual({
       music: {
@@ -85,18 +87,6 @@ describe('MUSIC_SERVICES registry', () => {
         defaultStartPage: 'home',
       },
     });
-  });
-});
-
-// Both services probe readiness with the same selector; a second copy of the literal would
-// drift silently, so the registry must reference the one in contentReady.ts.
-describe('content ready selector', () => {
-  it('music entry uses CONTENT_READY_SELECTOR', () => {
-    expect(MUSIC_SERVICES['music'].contentReadySelector).toBe(CONTENT_READY_SELECTOR);
-  });
-
-  it('classical entry uses CONTENT_READY_SELECTOR', () => {
-    expect(MUSIC_SERVICES['classical'].contentReadySelector).toBe(CONTENT_READY_SELECTOR);
   });
 });
 
