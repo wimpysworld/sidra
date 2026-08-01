@@ -1,7 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { describe, it, expect, expectTypeOf, vi } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+
+import type { MusicServiceId } from '../src/musicService';
+
+// getShareUrl() falls back to the persisted service, so the fallback is only
+// observable when the test can move it away from the default.
+const { state } = vi.hoisted(() => ({ state: { service: 'music' as MusicServiceId } }));
+
+vi.mock('../src/config', () => ({
+  getMusicService: vi.fn(() => state.service),
+}));
 
 import { PlaybackState, Player, getShareUrl, type PlayerEvents } from '../src/player';
 
@@ -372,6 +382,10 @@ describe('Channel contract', () => {
 });
 
 describe('getShareUrl', () => {
+  beforeEach(() => {
+    state.service = 'music';
+  });
+
   it('returns payload.url when present', () => {
     expect(getShareUrl({ url: 'https://music.apple.com/album/123?i=456' })).toBe(
       'https://music.apple.com/album/123?i=456',
@@ -408,5 +422,39 @@ describe('getShareUrl', () => {
 
   it('returns undefined when playParams exists but has no ids', () => {
     expect(getShareUrl({ playParams: { kind: 'song', isLibrary: true } })).toBeUndefined();
+  });
+
+  // MPRIS OpenUri navigates to either service without calling switchService(),
+  // so the window can sit on Classical while config still names music.
+  it('uses the payload host when it names Classical and config names music', () => {
+    expect(
+      getShareUrl({ sourceHost: 'classical.music.apple.com', playParams: { catalogId: '42' } }),
+    ).toBe('https://classical.music.apple.com/song/42');
+  });
+
+  // switchService() persists the new id before it navigates, and the tray rebuild
+  // in between reads the previous service's payload, which is the reverse mismatch.
+  it('uses the payload host when it names music and config names Classical', () => {
+    state.service = 'classical';
+    expect(
+      getShareUrl({ sourceHost: 'music.apple.com', playParams: { globalId: 'abc' } }),
+    ).toBe('https://music.apple.com/song/abc');
+  });
+
+  // A payload from a hook older than this field must keep its previous result
+  // rather than losing the URL.
+  it('falls back to the persisted service when the payload carries no host', () => {
+    state.service = 'classical';
+    expect(getShareUrl({ playParams: { catalogId: '42' } })).toBe(
+      'https://classical.music.apple.com/song/42',
+    );
+  });
+
+  // An unexpected host names no service, and guessing an origin from it would
+  // build a URL for a host Sidra does not know.
+  it('falls back to the persisted service when the payload host is unknown', () => {
+    expect(
+      getShareUrl({ sourceHost: 'beta.music.apple.com', playParams: { catalogId: '42' } }),
+    ).toBe('https://music.apple.com/song/42');
   });
 });

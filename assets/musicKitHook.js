@@ -171,6 +171,10 @@
           isrc: item.attributes?.isrc,
           queueLength: mk.queue?.length,
           queueIndex: mk.nowPlayingItemIndex,
+          // The document this item came from. The main process persists the
+          // active service separately and the two can disagree, so a share URL
+          // built from config can name a host the track was never on.
+          sourceHost: window.location.hostname,
         });
       });
 

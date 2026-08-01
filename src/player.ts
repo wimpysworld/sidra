@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { getMusicService } from './config';
-import { getService } from './musicService';
+import { getService, getServiceByHost } from './musicService';
 
 const playerLog = log.scope('player');
 
@@ -37,6 +37,8 @@ export interface NowPlayingPayload {
   isrc?: string;
   queueLength?: number;
   queueIndex?: number;
+  /** Hostname of the document that produced this payload, set by assets/musicKitHook.js. */
+  sourceHost?: string;
 }
 
 /**
@@ -45,7 +47,12 @@ export interface NowPlayingPayload {
  */
 export function getShareUrl(payload: NowPlayingPayload): string | undefined {
   if (payload.url) return payload.url;
-  const origin = getService(getMusicService()).origin;
+  // The origin comes from the document that announced the track, not from the
+  // persisted service: the two can disagree, and config would then name a host
+  // the track was never on. An absent or unknown host falls back to config, so
+  // an older hook and an unexpected host both degrade to the previous result.
+  const sourceService = payload.sourceHost ? getServiceByHost(payload.sourceHost) : undefined;
+  const origin = (sourceService ?? getService(getMusicService())).origin;
   const catalogId = payload.playParams?.catalogId;
   if (catalogId) return `${origin}/song/${catalogId}`;
   const globalId = payload.playParams?.globalId;
