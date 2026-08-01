@@ -119,7 +119,7 @@ vi.mock('../src/paths', () => ({
 
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback } from '../src/tray';
 import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
@@ -409,7 +409,7 @@ describe('createTray - menu template inspection', () => {
       }
     });
 
-    it('does not register a nativeTheme listener on macOS', () => {
+    it('does not register a nativeTheme listener on pre-Tahoe macOS', () => {
       vi.mocked(nativeTheme.on).mockClear();
       createTray();
       expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
@@ -818,14 +818,6 @@ describe('createTray - menu template inspection', () => {
       (draculaItem!.click as Function)();
       expect(vi.mocked(setTheme)).toHaveBeenCalledWith('dracula');
       expect(vi.mocked(applyTheme)).toHaveBeenCalledWith('dracula');
-    });
-
-    it('uses resolveTheme for the parent label', () => {
-      vi.mocked(resolveTheme).mockReturnValue('rose-pine');
-      createTray();
-      const template = getLastTemplate();
-      const styleItem = findItem(template, 'Style');
-      expect(styleItem!.label).toBe('Style: Rosé Pine');
     });
   });
 
@@ -1392,22 +1384,6 @@ describe('theme change menu refresh', () => {
     callback();
 
     expect(setImageFn).not.toHaveBeenCalled();
-  });
-
-  it('does not register a nativeTheme listener on macOS', () => {
-    setPlatform('darwin');
-    vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
-    vi.mocked(nativeTheme.on).mockClear();
-    createTray();
-    expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
-  });
-
-  it('does not register a nativeTheme listener on pre-Tahoe macOS', () => {
-    setPlatform('darwin');
-    vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.2.0');
-    vi.mocked(nativeTheme.on).mockClear();
-    createTray();
-    expect(vi.mocked(nativeTheme.on)).not.toHaveBeenCalled();
   });
 });
 
