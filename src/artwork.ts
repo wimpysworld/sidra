@@ -4,6 +4,7 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import log from 'electron-log/main';
 import { errorMessage } from './utils';
 
@@ -105,28 +106,10 @@ async function fetchArtwork(url: string): Promise<string | null> {
       return null;
     }
 
-    const file = fs.createWriteStream(tmpPath);
-
-    await new Promise<void>((resolve, reject) => {
-      file.on('error', (err) => {
-        reject(err);
-      });
-      const readable = Readable.fromWeb(response.body! as import('stream/web').ReadableStream);
-      readable.on('error', (err) => {
-        file.destroy();
-        reject(err);
-      });
-      readable.pipe(file);
-      file.on('finish', () => {
-        file.close((err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
-    });
+    await pipeline(
+      Readable.fromWeb(response.body as import('stream/web').ReadableStream),
+      fs.createWriteStream(tmpPath),
+    );
 
     await fsPromises.rename(tmpPath, filepath);
     artworkLog.debug('artwork cached: %s', filepath);
