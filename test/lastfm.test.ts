@@ -1042,6 +1042,47 @@ describe('queued scrobbles', () => {
 
     expect(batches()).toHaveLength(0);
   });
+
+  it('drains again after a drain request that never answers is cut off', async () => {
+    // A previous run left this behind, so the first request out drains it.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // The batch request answers nothing at all and settles only when the signal
+    // Sidra passes aborts it, which is what a connection that hangs rather than
+    // failing looks like.
+    vi.mocked(net.fetch).mockImplementation((_input, init) => {
+      const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+      if (!params.has('artist[0]')) return Promise.resolve(new Response('{}'));
+      return new Promise<Response>((_ok, fail) => {
+        init?.signal?.addEventListener('abort', () => fail(new Error('The operation was aborted.')));
+      });
+    });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+    expect(batches()).toHaveLength(1);
+
+    // The abort ends that one request and nothing more: no second batch goes
+    // out by itself, and the plays stay on the queue.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(batches()).toHaveLength(1);
+    expect(queue.pending).toHaveLength(1);
+
+    // Unbounded, the drain would still hold its marker and this request would
+    // return at the guard, stranding the queue for the life of the session.
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    await flush();
+
+    expect(batches()).toHaveLength(2);
+    expect(batches()[1].get('track[0]')).toBe('Ceremony');
+    expect(queue.pending).toHaveLength(1);
+  });
 });
 
 // Last.fm has no auth callback, so the flow polls auth.getSession on this

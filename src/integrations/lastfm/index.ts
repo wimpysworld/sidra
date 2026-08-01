@@ -71,6 +71,17 @@ const POSITION_TOLERANCE_MS = 2000;
 // again rather than trusting this one.
 const MAX_PENDING_SCROBBLES = 50;
 
+// How long a drain request is given before it is aborted. A drain marks its
+// generation while it is out and clears the marker only once the request
+// settles, so a connection that hangs rather than failing would hold that
+// marker for the life of the session and every later drain would return at the
+// guard with the queue never going out again. The abort ends the request, which
+// fails it the way a dropped connection does: the batch stays queued and the
+// marker clears. It is not a retry - nothing is re-issued and nothing is
+// re-armed, so the batch still waits for a drain the user's own playback
+// triggers. Only the drain is bounded; every other request settles on its own.
+const DRAIN_TIMEOUT_MS = 30_000;
+
 // Authentication poll: Last.fm has no callback, so poll auth.getSession until the
 // user approves the token in their browser, then give up.
 const AUTH_POLL_INTERVAL_MS = 4000;
@@ -153,7 +164,7 @@ export function scrobbleThresholdMs(durationMs: number): number | null {
   return Math.min(durationMs / 2, SCROBBLE_CAP_MS);
 }
 
-async function apiCall(params: Record<string, string>, post: boolean): Promise<LastfmResponse> {
+async function apiCall(params: Record<string, string>, post: boolean, signal?: AbortSignal): Promise<LastfmResponse> {
   const signed = { ...params, api_sig: signParams(params, API_SECRET) };
   const query = new URLSearchParams({ ...signed, format: 'json' });
 
@@ -162,8 +173,9 @@ async function apiCall(params: Record<string, string>, post: boolean): Promise<L
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: query.toString(),
+        signal,
       })
-    : await net.fetch(`${API_ROOT}?${query.toString()}`);
+    : await net.fetch(`${API_ROOT}?${query.toString()}`, { signal });
 
   // The body is read before the status because Last.fm reports its own errors
   // in the body and sends several of them with a non-2xx status: checking the
@@ -371,7 +383,10 @@ function flushPendingScrobbles(sessionKey: string): void {
     if (entry.durationSec) params[`duration[${index}]`] = String(entry.durationSec);
   });
 
-  apiCall(params, true)
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), DRAIN_TIMEOUT_MS);
+
+  apiCall(params, true, controller.signal)
     .then(() => {
       if (generation !== sessionGeneration) {
         lastfmLog.info('queued scrobbles submitted for an account that has gone:', batch.length);
@@ -402,6 +417,7 @@ function flushPendingScrobbles(sessionKey: string): void {
       lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
     })
     .finally(() => {
+      clearTimeout(abortTimer);
       // Only this drain's own marker is cleared. A stale drain settling late
       // would otherwise release the live drain's place and let a second one
       // start beside it.
