@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, nativeImage, nativeTheme, ShareMenu, shell, Tray } from 'electron';
+import { app, BrowserWindow, Menu, nativeImage, nativeTheme, ShareMenu, Tray } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
@@ -13,6 +13,7 @@ import { applyTheme, hasCustomCss, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
+import { openExternalUrl } from './openExternal';
 import { createPauseTimer } from './pauseTimer';
 import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
 
@@ -442,16 +443,7 @@ function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
         label: updateLabel,
         ...(icon ? { icon } : {}),
         click: () => {
-          try {
-            const parsed = new URL(update.url);
-            if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-              void shell.openExternal(parsed.toString());
-            } else {
-              trayLog.warn('blocked non-http(s) update URL:', update.url);
-            }
-          } catch {
-            trayLog.warn('invalid update URL:', update.url);
-          }
+          openExternalUrl(update.url, (message, detail) => trayLog.warn(message, detail));
         },
       },
     ];

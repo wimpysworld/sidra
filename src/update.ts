@@ -1,8 +1,9 @@
-import { app, net, shell, Tray } from 'electron';
+import { app, net, Tray } from 'electron';
 import log from 'electron-log/main';
 import { getNotificationsEnabled } from './config';
 import { getUpdateStrings } from './i18n';
 import { createNotification } from './notify';
+import { openExternalUrl } from './openExternal';
 import { errorMessage } from './utils';
 
 // Update state shared with the tray, plus the notify-only check used where
@@ -151,12 +152,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
         });
         if (notification) {
           notification.on('click', () => {
-            try {
-              const parsed = new URL(releaseUrl);
-              if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-                shell.openExternal(releaseUrl);
-              }
-            } catch { /* ignore malformed URL */ }
+            openExternalUrl(releaseUrl, (message, detail) => updateLog.warn(message, detail));
           });
           notification.show();
           updateLog.debug('update notification shown');
