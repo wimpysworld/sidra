@@ -24,6 +24,7 @@ import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 import { contentReadyProbeScript } from './contentReady';
 import { initNotificationProbe } from './notify';
+import { runSteps } from './utils';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
 const CONTENT_READY_POLL_MS = 100;
@@ -621,31 +622,30 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 
     if (firstLoad) {
       // Integration failures are contained for the same reason: markCssReady()
-      // below is the only thing that dismisses the splash.
-      try {
-        initNotifications({ player, getMainWindow: () => win });
-        initDiscordPresence({ player });
-        initLastfm({ player, getMainWindow: () => win });
-        initDock({ player, getMainWindow: () => win });
-        initWindowsTaskbar({ player, getMainWindow: () => win });
-
-        if (process.platform === 'linux') {
+      // below is the only thing that dismisses the splash. Each initialiser is
+      // its own step, so a throw from one cannot cancel the rest for the
+      // lifetime of the process.
+      runSteps([
+        ['notifications', () => initNotifications({ player, getMainWindow: () => win })],
+        ['discord', () => initDiscordPresence({ player })],
+        ['lastfm', () => initLastfm({ player, getMainWindow: () => win })],
+        ['dock', () => initDock({ player, getMainWindow: () => win })],
+        ['windowsTaskbar', () => initWindowsTaskbar({ player, getMainWindow: () => win })],
+        ['mpris', () => {
+          if (process.platform !== 'linux') return;
           const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
           mpris.init({ player, getMainWindow: () => win });
-        }
-
-        initWedgeDetector({ player, getMainWindow: () => win });
-
-        if (appTray) {
+        }],
+        ['wedgeDetector', () => initWedgeDetector({ player, getMainWindow: () => win })],
+        ['trayState', () => {
+          if (!appTray) return;
           // The returned closure destroys the pause timer, cancels the pending
           // rebuild and removes the three player listeners. Dropping it left
           // all four attached.
           const teardownTrayState = initTrayStateManager(player, appTray);
           app.on('will-quit', teardownTrayState);
-        }
-      } catch (e: unknown) {
-        mainLog.error('integration initialisation failed:', e);
-      }
+        }],
+      ], (name, e) => mainLog.error(`integration initialisation failed: ${name}:`, e));
 
       markCssReady();
       setTimeout(() => {

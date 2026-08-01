@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
-import { errorMessage } from '../src/utils';
+import { errorMessage, runSteps } from '../src/utils';
 
 describe('errorMessage', () => {
   it('extracts message from Error instances', () => {
@@ -25,5 +25,37 @@ describe('errorMessage', () => {
 
   it('uses toString() on objects', () => {
     expect(errorMessage({ toString() { return 'custom'; } })).toBe('custom');
+  });
+});
+
+describe('runSteps', () => {
+  it('runs later steps after an earlier one throws, and reports instead of propagating', () => {
+    const second = vi.fn();
+    const third = vi.fn();
+    const report = vi.fn();
+    const boom = new Error('boom');
+
+    expect(() => runSteps([
+      ['first', () => { throw boom; }],
+      ['second', second],
+      ['third', third],
+    ], report)).not.toThrow();
+
+    expect(second).toHaveBeenCalledOnce();
+    expect(third).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledExactlyOnceWith('first', boom);
+  });
+
+  it('runs every step in order when none throw', () => {
+    const order: string[] = [];
+    const report = vi.fn();
+
+    runSteps([
+      ['a', () => { order.push('a'); }],
+      ['b', () => { order.push('b'); }],
+    ], report);
+
+    expect(order).toEqual(['a', 'b']);
+    expect(report).not.toHaveBeenCalled();
   });
 });
