@@ -176,7 +176,18 @@ let previousState = 0;
 let authInProgress = false;
 let authPollTimer: ReturnType<typeof setTimeout> | null = null;
 let authGeneration = 0;
-let draining = false;
+// Counts the identity of the stored session, and changes on every disconnect
+// and every successful connect. A request captures it when it goes out, so a
+// response settling after the account changed can be told from one that still
+// belongs to the account connected. Comparing the session key is not enough:
+// the same key can come back when the same account reconnects, and the queue is
+// emptied in between either way.
+let sessionGeneration = 0;
+// The generation the drain in flight went out under, or null when none is out.
+// A stale value still blocks the next drain, which is deliberate: two drains at
+// once would share `trimmedWhileDraining` between them. It clears when the
+// stale request settles.
+let drainGeneration: number | null = null;
 let trimmedWhileDraining = 0;
 let getWindow: () => BrowserWindow | null = () => null;
 
@@ -273,12 +284,14 @@ function handleInvalidSession(err: unknown, requestKey: string): boolean {
  *
  * A trim made while a drain is in flight is counted, because it takes an entry
  * off the head that the drain has already submitted and is about to remove
- * again.
+ * again. Only a drain from the session still connected counts: one from an
+ * account that has gone removes nothing, so a trim against it would be
+ * subtracted from a batch that is never dropped.
  */
 function queueScrobble(entry: PendingScrobble): void {
   const queued = [...getPendingScrobbles(), entry];
   const trimmed = Math.max(queued.length - MAX_PENDING_SCROBBLES, 0);
-  if (draining) trimmedWhileDraining += trimmed;
+  if (drainGeneration === sessionGeneration) trimmedWhileDraining += trimmed;
   setPendingScrobbles(queued.slice(trimmed));
 }
 
@@ -302,13 +315,19 @@ function dropSubmitted(count: number): void {
  * The session key is passed in by the caller and checked against the stored one
  * for the same reason `handleInvalidSession()` takes it: a drain signed with a
  * key the user has since replaced belongs to nobody.
+ *
+ * The result is thrown away when the account changes while the request is out.
+ * `disconnect()` empties the queue, so by the time such a drain settles the
+ * entries under it are the next account's plays, and removing the batch length
+ * would discard them.
  */
 function flushPendingScrobbles(sessionKey: string): void {
-  if (draining) return;
+  if (drainGeneration !== null) return;
   const batch = getPendingScrobbles();
   if (batch.length === 0) return;
   if (getLastfmSessionKey() !== sessionKey) return;
-  draining = true;
+  const generation = sessionGeneration;
+  drainGeneration = generation;
   trimmedWhileDraining = 0;
 
   const params: Record<string, string> = { method: 'track.scrobble', api_key: API_KEY, sk: sessionKey };
@@ -322,6 +341,10 @@ function flushPendingScrobbles(sessionKey: string): void {
 
   apiCall(params, true)
     .then(() => {
+      if (generation !== sessionGeneration) {
+        lastfmLog.info('queued scrobbles submitted for an account that has gone:', batch.length);
+        return;
+      }
       dropSubmitted(batch.length);
       lastfmLog.info('queued scrobbles submitted:', batch.length);
     })
@@ -333,7 +356,9 @@ function flushPendingScrobbles(sessionKey: string): void {
         if (!handleInvalidSession(err, sessionKey)) {
           lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
         }
-        dropSubmitted(batch.length);
+        // `handleInvalidSession()` may have disconnected, which empties the
+        // queue and moves the generation on; either way the batch is gone.
+        if (generation === sessionGeneration) dropSubmitted(batch.length);
         return;
       }
       // The API never saw them, so the queue stands and the next successful
@@ -341,7 +366,7 @@ function flushPendingScrobbles(sessionKey: string): void {
       lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
     })
     .finally(() => {
-      draining = false;
+      drainGeneration = null;
     });
 }
 
@@ -414,6 +439,7 @@ function doScrobble(): void {
   scrobbled = true;
 
   const sessionKey = getLastfmSessionKey()!;
+  const generation = sessionGeneration;
   // The queued entry and the live request are built from one object so the play
   // that goes on the queue cannot drift from the play that was submitted.
   const entry: PendingScrobble = { artist: artist!, track: track!, timestamp: trackStartUnix };
@@ -441,7 +467,10 @@ function doScrobble(): void {
   // A transport failure says nothing about the track: Last.fm never saw it. The
   // play goes on the queue instead, and leaves with the next request playback
   // triggers. `scrobbled` still stays set, because a queued play counts as
-  // submitted and nothing here re-arms.
+  // submitted and nothing here re-arms. It is only queued while the account
+  // that listened is still connected: the queue is drained under whichever key
+  // is stored when it goes out, so queuing past a disconnect would hand this
+  // play to the next account.
   apiCall(params, true)
     .then(() => {
       lastfmLog.info('scrobbled:', `${artist} - ${track}`);
@@ -451,6 +480,10 @@ function doScrobble(): void {
       if (handleInvalidSession(err, sessionKey)) return;
       if (err instanceof LastfmApiError) {
         lastfmLog.warn('scrobble failed, not retried:', err.message);
+        return;
+      }
+      if (generation !== sessionGeneration) {
+        lastfmLog.warn('scrobble not queued, the account it belongs to has gone:', err.message);
         return;
       }
       queueScrobble(entry);
@@ -577,6 +610,7 @@ function pollForSession(token: string, startedAt: number, generation: number, on
         authInProgress = false;
         authPollTimer = null;
         setLastfmSession(key, name);
+        sessionGeneration += 1;
         lastfmLog.info('authenticated as', name);
         notify(getLastfmConnectedText(name));
         enable();
@@ -604,6 +638,9 @@ export function disconnect(): void {
   cancelAuth();
   disable();
   clearLastfmSession();
+  // Every request already out was signed for the account that has gone, so its
+  // response must not touch the queue the next account fills.
+  sessionGeneration += 1;
   // The queued plays go with the account. They are the user's listening history
   // held in plain text, and Disconnect is what removes Sidra's copy of that; a
   // queue that outlived the account would also submit those plays to whichever

@@ -699,6 +699,94 @@ describe('queued scrobbles', () => {
     expect(queue.pending[0].track).toBe('Blue Monday');
   });
 
+  it('keeps a play queued for the new account when a drain from the old one settles', async () => {
+    // A previous run left plays behind, so the first request out drains them.
+    queue.pending = [
+      { artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 },
+      { artist: 'New Order', track: 'Procession', timestamp: 1_700_000_100 },
+    ];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // The drain is held open. Live scrobbles fail before they reach Last.fm,
+    // and auth answers, so a different account can be linked while it is out.
+    const held: Array<(response: Response) => void> = [];
+    vi.mocked(net.fetch).mockImplementation((input, init) => {
+      const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+      if (params.has('artist[0]')) return new Promise<Response>((resolve) => held.push(resolve));
+      if (params.get('method') === 'track.scrobble') return Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'));
+      if (String(input).includes('auth.')) return authResponse(input, 'new-key', 'someone-else');
+      return Promise.resolve(new Response('{}'));
+    });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+    expect(held).toHaveLength(1);
+
+    // Disconnect empties the queue while the drain is still out, and someone
+    // else links their account on the same machine.
+    lastfm.disconnect();
+    expect(queue.pending).toHaveLength(0);
+    session.enabled = true;
+    lastfm.startAuth();
+    await flush();
+    expect(session.key).toBe('new-key');
+
+    // The new account plays a track and the network drops the scrobble, so the
+    // queue now holds a play that belongs to them alone.
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    play(player, 40_000);
+    await flush();
+    expect(queue.pending).toHaveLength(1);
+
+    // The old account's drain finally answers. It submitted plays that left
+    // with the account, so it takes nothing off a queue that is no longer its
+    // own.
+    held[0](new Response('{}'));
+    await flush();
+
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Temptation');
+  });
+
+  it('queues no play for the account that has gone', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // The live scrobble is held open, and auth answers so a different account
+    // can be linked while it is still out.
+    const held: Array<(err: Error) => void> = [];
+    vi.mocked(net.fetch).mockImplementation((input, init) => {
+      const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+      if (params.get('method') === 'track.scrobble') return new Promise<Response>((_ok, fail) => held.push(fail));
+      if (String(input).includes('auth.')) return authResponse(input, 'new-key', 'someone-else');
+      return Promise.resolve(new Response('{}'));
+    });
+
+    playPastThreshold(player);
+    await flush();
+    expect(held).toHaveLength(1);
+
+    lastfm.disconnect();
+    session.enabled = true;
+    lastfm.startAuth();
+    await flush();
+    expect(session.key).toBe('new-key');
+
+    // The network finally gives up on the request the old account made. That
+    // play belongs to an account Sidra no longer holds, so it cannot go on a
+    // queue the next request submits under someone else's key.
+    held[0](new Error('net::ERR_INTERNET_DISCONNECTED'));
+    await flush();
+
+    expect(queue.pending).toHaveLength(0);
+  });
+
   it('sends no queued play to the account connected after a disconnect', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
@@ -741,6 +829,19 @@ const AUTH_POLL_INTERVAL_MS = 4000;
 function noSession(): void {
   session.key = null;
   session.enabled = false;
+}
+
+/**
+ * Answers one auth request: a token for auth.getToken, an approved session for
+ * auth.getSession. For tests whose fetch mock has to serve scrobbles too, so
+ * respondToAuth() cannot own the whole implementation.
+ */
+function authResponse(input: unknown, key: string, name: string): Promise<Response> {
+  return Promise.resolve(
+    String(input).includes('auth.getToken')
+      ? new Response(JSON.stringify({ token: 'auth-token' }))
+      : new Response(JSON.stringify({ session: { key, name } })),
+  );
 }
 
 /** Answers auth.getToken with a token, and every auth.getSession with `session`. */
