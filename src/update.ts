@@ -40,6 +40,28 @@ export function setUpdateReady(version: string): void {
   updateLog.info('update ready to install:', version);
 }
 
+/**
+ * Raise the "update available" notification. Both update paths announce the same
+ * release and differ only in what a click does, so the notification is built
+ * here and src/autoUpdate.ts calls in with its own handler. Does nothing when
+ * notifications are off or when createNotification() reports nothing can receive
+ * one.
+ */
+export function showUpdateNotification(version: string, onClick: () => void): void {
+  if (!getNotificationsEnabled()) return;
+
+  const notification = createNotification({
+    title: getUpdateStrings().updateAvailable.replace('{version}', version),
+    body: `Sidra ${version}`,
+    silent: true,
+  });
+  if (!notification) return;
+
+  notification.on('click', onClick);
+  notification.show();
+  updateLog.debug('update notification shown');
+}
+
 /** A version part is a run of decimal digits and nothing else. */
 const VERSION_PART = /^[0-9]+$/;
 
@@ -143,21 +165,9 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
       updateInfo = { version: cleanVersion, url: releaseUrl, ready: false };
       rebuildMenu(tray);
 
-      if (getNotificationsEnabled()) {
-        const strings = getUpdateStrings();
-        const notification = createNotification({
-          title: strings.updateAvailable.replace('{version}', cleanVersion),
-          body: `Sidra ${cleanVersion}`,
-          silent: true,
-        });
-        if (notification) {
-          notification.on('click', () => {
-            openExternalUrl(releaseUrl, (message, detail) => updateLog.warn(message, detail));
-          });
-          notification.show();
-          updateLog.debug('update notification shown');
-        }
-      }
+      showUpdateNotification(cleanVersion, () => {
+        openExternalUrl(releaseUrl, (message, detail) => updateLog.warn(message, detail));
+      });
     } else {
       updateLog.debug('up to date:', localVersion);
       rebuildMenu(tray);
