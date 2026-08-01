@@ -7,6 +7,17 @@ import { setUpdateReady, showUpdateNotification } from './update';
 const autoUpdateLog = log.scope('autoUpdate');
 
 /**
+ * The single load point for electron-updater. It is required here and never
+ * imported at module level, so it never loads on a platform that does not
+ * support it. The return annotation is a type-only reference that tsc erases,
+ * so the emitted JavaScript carries no top-level require of its own and the
+ * whole updater surface is still checked against the published types.
+ */
+function loadAutoUpdater(): typeof import('electron-updater') {
+  return require('electron-updater');
+}
+
+/**
  * True only where Sidra owns the install: an AppImage or a packaged Windows
  * NSIS build. Every other target is updated by its package manager, so the
  * updater must stay out of the way there and src/update.ts notifies instead.
@@ -48,10 +59,7 @@ export function isAutoUpdateSupported(): boolean {
 
 /** Install a downloaded update and restart. Only reachable once one is ready. */
 export function quitAndInstall(): void {
-  // electron-updater is lazy-required, never imported at module level, so it
-  // never loads on a platform that does not support it
-  const { autoUpdater } = require('electron-updater');
-  autoUpdater.quitAndInstall();
+  loadAutoUpdater().autoUpdater.quitAndInstall();
 }
 
 /**
@@ -60,9 +68,7 @@ export function quitAndInstall(): void {
  * and offers a restart.
  */
 export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
-  // electron-updater is lazy-required, never imported at module level, so it
-  // never loads on a platform that does not support it
-  const { autoUpdater } = require('electron-updater');
+  const { autoUpdater, NsisUpdater } = loadAutoUpdater();
 
   // electron-updater's own logger is off; this module logs under its own scope,
   // which is what makes an updater load on deb, rpm or Nix visible in the log
@@ -70,16 +76,20 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
   autoUpdater.autoDownload = true;
 
   // Windows builds are unsigned, so the signature check would reject every
-  // update Sidra publishes
-  if (process.platform === 'win32') {
-    autoUpdater.verifyUpdateCodeSignature = false;
+  // update Sidra publishes. The property takes a verifier function, and its
+  // setter ignores any falsy value, so the check is turned off by supplying one
+  // that always passes rather than by assigning false. The instanceof narrows
+  // to the only updater that carries the property, and electron-updater builds
+  // an NsisUpdater on win32 and nowhere else.
+  if (autoUpdater instanceof NsisUpdater) {
+    autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
   }
 
-  autoUpdater.on('update-available', (info: { version: string }) => {
+  autoUpdater.on('update-available', (info) => {
     autoUpdateLog.info('update available:', info.version);
   });
 
-  autoUpdater.on('update-downloaded', async (info: { version: string }) => {
+  autoUpdater.on('update-downloaded', async (info) => {
     autoUpdateLog.info('update downloaded:', info.version);
     setUpdateReady(info.version);
     rebuildMenu(tray);
@@ -103,7 +113,7 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
     }
   });
 
-  autoUpdater.on('error', (error: Error) => {
+  autoUpdater.on('error', (error) => {
     // A repository with no release yet is a normal state, not a fault
     if (error.message.includes('No published versions')) {
       autoUpdateLog.info('no published releases found; skipping update check');
