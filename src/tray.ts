@@ -524,7 +524,7 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     ...(artistIcon ? { icon: artistIcon } : {}),
   };
   const albumLabel = truncateMenuLabel(payload.albumName ?? '');
-  // 1981 is the last year before the CD shipped, so anything older shows the vinyl icon.
+  // 1981 is the last year before the CD shipped, so 1981 and earlier shows the vinyl icon.
   const releaseYear = payload.releaseDate ? parseInt(payload.releaseDate.slice(0, 4), 10) : NaN;
   const albumIconKey = !isNaN(releaseYear) && releaseYear <= 1981 ? 'record-vinyl' : 'album';
   const albumIcon = getMenuIcon(albumIconKey);
