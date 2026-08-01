@@ -21,45 +21,24 @@ const HOOK_SOURCE = fs.readFileSync(
   'utf-8',
 );
 
+// The numbers are MusicKit's, not Sidra's, so each one is pinned rather than
+// left to whatever the enum happens to declare.
 describe('PlaybackState', () => {
-  it('None is 0', () => {
-    expect(PlaybackState.None).toBe(0);
-  });
+  const STATE_VALUES: ReadonlyArray<readonly [keyof typeof PlaybackState, number]> = [
+    ['None', 0],
+    ['Loading', 1],
+    ['Playing', 2],
+    ['Paused', 3],
+    ['Stopped', 4],
+    ['Ended', 5],
+    ['Seeking', 6],
+    ['Waiting', 7],
+    ['Stalled', 8],
+    ['Completed', 9],
+  ];
 
-  it('Loading is 1', () => {
-    expect(PlaybackState.Loading).toBe(1);
-  });
-
-  it('Playing is 2', () => {
-    expect(PlaybackState.Playing).toBe(2);
-  });
-
-  it('Paused is 3', () => {
-    expect(PlaybackState.Paused).toBe(3);
-  });
-
-  it('Stopped is 4', () => {
-    expect(PlaybackState.Stopped).toBe(4);
-  });
-
-  it('Ended is 5', () => {
-    expect(PlaybackState.Ended).toBe(5);
-  });
-
-  it('Seeking is 6', () => {
-    expect(PlaybackState.Seeking).toBe(6);
-  });
-
-  it('Waiting is 7', () => {
-    expect(PlaybackState.Waiting).toBe(7);
-  });
-
-  it('Stalled is 8', () => {
-    expect(PlaybackState.Stalled).toBe(8);
-  });
-
-  it('Completed is 9', () => {
-    expect(PlaybackState.Completed).toBe(9);
+  it.each(STATE_VALUES)('%s is %i', (name, value) => {
+    expect(PlaybackState[name]).toBe(value);
   });
 
   it('has exactly 10 states', () => {
@@ -185,112 +164,43 @@ describe('Player playbackSnapshot', () => {
 // nothing is typed, so a malformed payload must be dropped rather than emitted:
 // integrations read these events as though the declared type held.
 describe('Player handle* payload validation', () => {
-  it('handlePlaybackStateDidChange ignores string payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('playbackStateDidChange', listener);
+  /** The public payload handlers. A new one widens this union. */
+  type HandlerMethod = Extract<keyof Player, `handle${string}`>;
+  /** Each handler emits the event its own name carries, minus the handle prefix. */
+  type EventOf<M extends string> = M extends `handle${infer Event}` ? Uncapitalize<Event> : never;
 
-    (player.handlePlaybackStateDidChange as (p: unknown) => void)('invalid');
+  const eventOf = <M extends HandlerMethod>(method: M): EventOf<M> => {
+    const event = method.slice('handle'.length);
+    return (event[0].toLowerCase() + event.slice(1)) as EventOf<M>;
+  };
 
-    expect(listener).not.toHaveBeenCalled();
+  // eventOf() only finds a real listener while every handler owns an event of
+  // that name, so the naming rule it relies on is checked rather than assumed.
+  it('every handler name maps onto a declared event', () => {
+    expectTypeOf<EventOf<HandlerMethod>>().toEqualTypeOf<keyof PlayerEvents>();
   });
 
-  it('handlePlaybackStateDidChange ignores payload missing state field', () => {
+  const BAD_PAYLOADS: ReadonlyArray<readonly [HandlerMethod, string, unknown]> = [
+    ['handlePlaybackStateDidChange', 'string payload', 'invalid'],
+    ['handlePlaybackStateDidChange', 'payload missing state field', { status: true }],
+    ['handlePlaybackStateDidChange', 'payload with non-number state', { status: true, state: 'playing' }],
+    ['handleNowPlayingItemDidChange', 'string payload', 'invalid'],
+    ['handleNowPlayingItemDidChange', 'array payload', [1, 2, 3]],
+    ['handlePlaybackTimeDidChange', 'string payload', 'not-a-number'],
+    ['handlePlaybackTimeDidChange', 'undefined payload', undefined],
+    ['handleRepeatModeDidChange', 'string payload', 'repeat'],
+    ['handleShuffleModeDidChange', 'string payload', 'shuffle'],
+    ['handleVolumeDidChange', 'string payload', 'loud'],
+    ['handleVolumeDidChange', 'object payload', { volume: 0.5 }],
+  ];
+
+  it.each(BAD_PAYLOADS)('%s ignores %s', (method, _description, payload) => {
     const player = new Player();
     const listener = vi.fn();
-    player.on('playbackStateDidChange', listener);
+    player.on(eventOf(method), listener);
 
-    (player.handlePlaybackStateDidChange as (p: unknown) => void)({ status: true });
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handlePlaybackStateDidChange ignores payload with non-number state', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('playbackStateDidChange', listener);
-
-    (player.handlePlaybackStateDidChange as (p: unknown) => void)({ status: true, state: 'playing' });
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handleNowPlayingItemDidChange ignores string payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('nowPlayingItemDidChange', listener);
-
-    (player.handleNowPlayingItemDidChange as (p: unknown) => void)('invalid');
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handleNowPlayingItemDidChange ignores array payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('nowPlayingItemDidChange', listener);
-
-    (player.handleNowPlayingItemDidChange as (p: unknown) => void)([1, 2, 3]);
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handlePlaybackTimeDidChange ignores string payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('playbackTimeDidChange', listener);
-
-    (player.handlePlaybackTimeDidChange as (p: unknown) => void)('not-a-number');
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handlePlaybackTimeDidChange ignores undefined payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('playbackTimeDidChange', listener);
-
-    (player.handlePlaybackTimeDidChange as (p: unknown) => void)(undefined);
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handleRepeatModeDidChange ignores string payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('repeatModeDidChange', listener);
-
-    (player.handleRepeatModeDidChange as (p: unknown) => void)('repeat');
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handleShuffleModeDidChange ignores string payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('shuffleModeDidChange', listener);
-
-    (player.handleShuffleModeDidChange as (p: unknown) => void)('shuffle');
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handleVolumeDidChange ignores string payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('volumeDidChange', listener);
-
-    (player.handleVolumeDidChange as (p: unknown) => void)('loud');
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('handleVolumeDidChange ignores object payload', () => {
-    const player = new Player();
-    const listener = vi.fn();
-    player.on('volumeDidChange', listener);
-
-    (player.handleVolumeDidChange as (p: unknown) => void)({ volume: 0.5 });
+    // The cast is the point of the test: this argument arrives untyped over IPC.
+    (player[method] as (p: unknown) => void)(payload);
 
     expect(listener).not.toHaveBeenCalled();
   });
