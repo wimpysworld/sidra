@@ -81,6 +81,22 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
   return themeCssOp;
 }
 
+// Insert a stylesheet and record its key, the only place either happens. The
+// generation is re-checked after the insert: a key recorded once the document
+// has gone would be removed against the new one, which rejects and takes the
+// theme change behind it down with it.
+async function insertAndTrack(
+  contents: WebContents,
+  css: string,
+  generation: number,
+  appliedMessage: string,
+): Promise<void> {
+  const key = await contents.insertCSS(css);
+  if (documentReplaced(generation)) return;
+  themeCssKey = key;
+  themeLog.debug(appliedMessage);
+}
+
 // Apply or remove theme CSS on the main window.
 // Handles enable, disable, and re-injection (variant change) cases.
 //
@@ -201,12 +217,7 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
       themeLog.warn(`Theme CSS unavailable: ${theme}`);
       return;
     }
-    const key = await contents.insertCSS(css);
-    // A key recorded here after the document went would be removed against the
-    // new one, which rejects and takes the theme change behind it down with it.
-    if (documentReplaced(generation)) return;
-    themeCssKey = key;
-    themeLog.debug(`Theme CSS injected: ${theme}`);
+    await insertAndTrack(contents, css, generation, `Theme CSS injected: ${theme}`);
   });
 }
 
@@ -224,25 +235,20 @@ export function initThemeCSS(win: BrowserWindow): void {
 
   applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async (generation) => {
     const css = getThemeCss(name);
-    if (css !== null && themeCssKey !== null) {
-      await win.webContents.removeInsertedCSS(themeCssKey);
+    const previousKey = themeCssKey;
+    if (previousKey !== null) {
+      await win.webContents.removeInsertedCSS(previousKey);
+      themeCssKey = null;
       // The removal is awaited, so the new document's own injection may already
       // have run; inserting now would put a second sheet on it.
       if (documentReplaced(generation)) return;
-      const key = await win.webContents.insertCSS(css);
-      if (documentReplaced(generation)) return;
-      themeCssKey = key;
-      themeLog.debug(`Theme CSS re-injected: ${name}`);
-    } else if (css !== null) {
-      const key = await win.webContents.insertCSS(css);
-      if (documentReplaced(generation)) return;
-      themeCssKey = key;
-      themeLog.debug(`Theme CSS injected: ${name}`);
-    } else if (themeCssKey !== null) {
-      await win.webContents.removeInsertedCSS(themeCssKey);
-      themeCssKey = null;
-      themeLog.debug(`Theme CSS removed: ${name}`);
     }
+    if (css === null) {
+      if (previousKey !== null) themeLog.debug(`Theme CSS removed: ${name}`);
+      return;
+    }
+    const verb = previousKey !== null ? 're-injected' : 'injected';
+    await insertAndTrack(win.webContents, css, generation, `Theme CSS ${verb}: ${name}`);
   });
 
   nativeTheme.on('updated', () => {
