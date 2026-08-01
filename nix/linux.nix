@@ -49,6 +49,8 @@
 let
   pname = "sidra";
 
+  # The url and hash below are rewritten together by the nix-hash CI job, which
+  # reads the filename off the published release. Do not edit them by hand.
   src = fetchurl {
     url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
     hash = "sha256-aMcumabAkwKiDJ/NdtWF/Mm6jsKQhFyKvr6FWKqG6/Y=";

@@ -324,28 +324,78 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION="${GITHUB_REF_NAME}"
+          PKG_VERSION="${GITHUB_REF_NAME#v}"
+          # Literal Nix interpolation, not a shell expansion.
+          # shellcheck disable=SC2016
+          NIX_VERSION='${version}'
 
-          # Fetch and hash the Linux deb
-          linux_url="https://github.com/wimpysworld/sidra/releases/download/${VERSION}/Sidra-${VERSION}-linux-amd64.deb"
+          # The artifactName template in package.json decides these filenames and
+          # nothing in the repository restates it, so the published release is the
+          # only authority on them. Both the prefetch and the URL written into the
+          # Nix files come from the assets it lists.
+          assets=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets')
+
+          # Resolve one asset download URL, refusing zero matches or several.
+          asset_url() {
+            local pattern="$1" urls count
+            urls=$(printf '%s' "$assets" | jq -r --arg p "$pattern" '.[] | select(.name | test($p)) | .url')
+            count=$(printf '%s\n' "$urls" | grep -c '.' || true)
+            if [[ "${count}" -ne 1 ]]; then
+              echo "::error::Expected 1 release asset matching /${pattern}/, found ${count}" >&2
+              return 1
+            fi
+            printf '%s' "$urls"
+          }
+
+          # Write the URL and its hash together, so the two can never disagree.
+          # The URL goes back version-templated, keeping the Nix files tied to
+          # package.json: a hash left stale then fails loudly instead of serving
+          # an older release under the new version number.
+          update_nix() {
+            local file="$1" url="$2" hash="$3" nix_url
+            # This is the only point at which the Nix files are written, so it
+            # is where a resolution that produced nothing has to stop. Do not
+            # rely on errexit alone to have caught that further up: a job that
+            # runs at release time only is checked by users, not by CI.
+            if [[ -z "${url}" || "${hash}" != sha256-* ]]; then
+              echo "::error::${file}: refusing to write url '${url}' and hash '${hash}'" >&2
+              return 1
+            fi
+            nix_url="${url//${PKG_VERSION}/${NIX_VERSION}}"
+            sed -i \
+              -e "s|^\([[:space:]]*\)url = \"[^\"]*\";|\1url = \"${nix_url}\";|" \
+              -e "s|^\([[:space:]]*\)hash = \"sha256-[^\"]*\";|\1hash = \"${hash}\";|" \
+              "${file}"
+            grep -Fq "url = \"${nix_url}\";" "${file}" || {
+              echo "::error::${file}: url not rewritten to ${nix_url}" >&2
+              return 1
+            }
+            grep -Fq "hash = \"${hash}\";" "${file}" || {
+              echo "::error::${file}: hash not rewritten to ${hash}" >&2
+              return 1
+            }
+          }
+
+          # One deb is built. The dmg is built for both arches and nix/darwin.nix
+          # covers aarch64-darwin alone, so that one is matched on its arch.
+          linux_url=$(asset_url '\.deb$')
+          darwin_url=$(asset_url 'arm64\.dmg$')
+
           echo "⬇️  Fetching Linux deb: ${linux_url}"
-          linux_hash=$(nix store prefetch-file --json --hash-type sha256 "$linux_url" | jq -r '.hash')
+          linux_hash=$(nix store prefetch-file --json --hash-type sha256 "${linux_url}" | jq -r '.hash')
           echo "🔑 Linux hash: ${linux_hash}"
 
-          # Fetch and hash the Darwin dmg
-          darwin_url="https://github.com/wimpysworld/sidra/releases/download/${VERSION}/Sidra-${VERSION}-mac-arm64.dmg"
           echo "⬇️  Fetching Darwin dmg: ${darwin_url}"
-          darwin_hash=$(nix store prefetch-file --json --hash-type sha256 "$darwin_url" | jq -r '.hash')
+          darwin_hash=$(nix store prefetch-file --json --hash-type sha256 "${darwin_url}" | jq -r '.hash')
           echo "🔑 Darwin hash: ${darwin_hash}"
 
-          # Update Linux hash
-          sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"${linux_hash}\"|" nix/linux.nix
-
-          # Update Darwin hash
-          sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"${darwin_hash}\"|" nix/darwin.nix
+          update_nix nix/linux.nix "${linux_url}" "${linux_hash}" || exit 1
+          update_nix nix/darwin.nix "${darwin_url}" "${darwin_hash}" || exit 1
 
           echo "✅ Updated nix/linux.nix and nix/darwin.nix"
           git diff nix/linux.nix nix/darwin.nix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create PR with hash updates 🚀
         run: |
