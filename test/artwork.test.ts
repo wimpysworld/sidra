@@ -2,25 +2,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Readable, Writable } from 'stream';
 
-// Mock fs before importing the module under test
-vi.mock('fs', () => ({
-  default: {
-    existsSync: vi.fn(() => false),
-    mkdirSync: vi.fn(),
-    createWriteStream: vi.fn(),
-  },
+// The fs mocks are installed twice: once here, and again in beforeEach after
+// vi.resetModules() discards them. Both copies must stay identical, so the
+// factories are declared once. vi.hoisted() runs before the hoisted vi.mock
+// calls below. Each call builds fresh vi.fn() spies, so a reset never hands
+// back a set carrying call counts from the previous test
+const { fsFactory, fsPromisesFactory } = vi.hoisted(() => ({
+  fsFactory: () => ({
+    default: {
+      existsSync: vi.fn(() => false),
+      mkdirSync: vi.fn(),
+      createWriteStream: vi.fn(),
+    },
+  }),
+  fsPromisesFactory: () => ({
+    default: {
+      rename: vi.fn(() => Promise.resolve()),
+      unlink: vi.fn(() => Promise.resolve()),
+      readdir: vi.fn(() => Promise.resolve([])),
+      stat: vi.fn(() => Promise.resolve({ mtimeMs: Date.now() })),
+      utimes: vi.fn(() => Promise.resolve()),
+    },
+  }),
 }));
 
-// Mock fs/promises before importing the module under test
-vi.mock('fs/promises', () => ({
-  default: {
-    rename: vi.fn(() => Promise.resolve()),
-    unlink: vi.fn(() => Promise.resolve()),
-    readdir: vi.fn(() => Promise.resolve([])),
-    stat: vi.fn(() => Promise.resolve({ mtimeMs: Date.now() })),
-    utimes: vi.fn(() => Promise.resolve()),
-  },
-}));
+// Mock fs and fs/promises before importing the module under test
+vi.mock('fs', fsFactory);
+vi.mock('fs/promises', fsPromisesFactory);
 
 import fs from 'fs';
 import fsPromises from 'fs/promises';
@@ -72,23 +80,8 @@ describe('downloadArtwork', () => {
     vi.resetModules();
 
     // Re-mock fs and fs/promises after resetModules so the fresh import picks them up
-    vi.doMock('fs', () => ({
-      default: {
-        existsSync: vi.fn(() => false),
-        mkdirSync: vi.fn(),
-        createWriteStream: vi.fn(),
-      },
-    }));
-
-    vi.doMock('fs/promises', () => ({
-      default: {
-        rename: vi.fn(() => Promise.resolve()),
-        unlink: vi.fn(() => Promise.resolve()),
-        readdir: vi.fn(() => Promise.resolve([])),
-        stat: vi.fn(() => Promise.resolve({ mtimeMs: Date.now() })),
-        utimes: vi.fn(() => Promise.resolve()),
-      },
-    }));
+    vi.doMock('fs', fsFactory);
+    vi.doMock('fs/promises', fsPromisesFactory);
 
     const mod = await import('../src/artwork');
     downloadArtwork = mod.downloadArtwork;
