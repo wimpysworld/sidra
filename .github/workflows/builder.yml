@@ -69,6 +69,8 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: Type-check
         run: npx tsc --noEmit
+      - name: Type-check tests
+        run: npx tsc -p tsconfig.test.json --noEmit
 
   lint-actions:
     name: Lint Action ⚙️
@@ -106,6 +108,8 @@ jobs:
         run: node scripts/validate-build-config.cjs
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: Audit dependencies
+        run: npm audit
 
   test-code:
     name: Test Code 🧪
