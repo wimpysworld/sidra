@@ -32,13 +32,15 @@ function alreadyPopulated() {
 
 if ((!apiKey || !apiSecret) && alreadyPopulated()) {
   console.log("  ✓ Last.fm credentials kept (no env vars set)");
-  return;
+} else {
+  fs.writeFileSync(
+    outPath,
+    JSON.stringify({ apiKey, apiSecret }, null, 2) + "\n"
+  );
+
+  console.log(
+    apiKey && apiSecret
+      ? "  ✓ Last.fm credentials injected"
+      : "  ✓ Last.fm credentials file written empty (no env vars set)"
+  );
 }
-
-fs.writeFileSync(outPath, JSON.stringify({ apiKey, apiSecret }, null, 2) + "\n");
-
-console.log(
-  apiKey && apiSecret
-    ? "  ✓ Last.fm credentials injected"
-    : "  ✓ Last.fm credentials file written empty (no env vars set)"
-);
