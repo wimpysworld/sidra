@@ -371,6 +371,13 @@ function dropSubmitted(count: number): void {
  * would discard them.
  */
 function flushPendingScrobbles(sessionKey: string): void {
+  // Off is an instruction to stop sending. Nothing cancels a request already
+  // out, so one that left while the feature was on can settle after the toggle
+  // and carry the whole queue to Last.fm from here. The check belongs in the
+  // drain rather than at its callers, so every path into it is covered. The
+  // plays stay queued: the user consented to them when they played them, and
+  // they go out if the feature is turned back on.
+  if (!getLastfmEnabled()) return;
   // A drain from a generation that has moved on is left where it is: it never
   // reaches `dropSubmitted()`, so it cannot collide with this one, and `null`
   // never matches a generation.

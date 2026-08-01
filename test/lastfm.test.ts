@@ -1114,6 +1114,39 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(0);
   });
 
+  it('sends no queued play once the user turns scrobbling off while a request is out', async () => {
+    // A previous run left this behind, so the next request to succeed drains it.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // Every request is held open, so the toggle lands while one is still out.
+    const held: Array<(response: Response) => void> = [];
+    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => held.push(resolve)));
+
+    // The now-playing update goes out while the feature is still on.
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+    expect(held).toHaveLength(1);
+
+    // The tray toggle, off, exactly as buildLastfmSubmenu drives it. It cancels
+    // nothing already in flight.
+    session.enabled = false;
+    lastfm.disable();
+
+    // The request that went out while the feature was on now answers. Off is an
+    // instruction to stop sending, so its success must carry nothing out.
+    held[0](new Response('{}'));
+    await flush();
+
+    expect(batches()).toHaveLength(0);
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Ceremony');
+  });
+
   it('drains again after a drain request that never answers is cut off', async () => {
     // A previous run left this behind, so the first request out drains it.
     queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
