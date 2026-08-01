@@ -168,8 +168,9 @@ describe('downloadArtwork', () => {
   it('resolves null on abort timeout', async () => {
     const url = 'https://example.com/slow.jpg';
 
-    // Simulate an abort error (what AbortController produces)
-    vi.mocked(net.fetch).mockRejectedValue(new DOMException('The operation was aborted', 'AbortError'));
+    // Simulate the rejection AbortSignal.timeout() produces: a TimeoutError
+    // DOMException, not the AbortError an AbortController would raise
+    vi.mocked(net.fetch).mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 
     const result = await downloadArtwork(url);
     expect(result).toBeNull();
