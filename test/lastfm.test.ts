@@ -532,6 +532,53 @@ function batches(): URLSearchParams[] {
   return scrobbles().filter((params) => params.has('artist[0]'));
 }
 
+/**
+ * Leaves a drain from the old account in flight, links a different account, and
+ * puts one of their plays on the queue. Every batch request is held open, so the
+ * resolvers returned are the drains still out, oldest first. Live scrobbles fail
+ * before they reach Last.fm, which is what puts a play on the queue, and auth
+ * answers so a second account can be linked while the first drain is out.
+ *
+ * The new account's own now-playing update carries their queue out, so on fixed
+ * code two drains are left out: the old account's and theirs.
+ *
+ * The caller seeds `queue.pending` beforehand: that is what the first request
+ * drains.
+ */
+async function drainHeldAcrossReconnect(
+  lastfm: typeof import('../src/integrations/lastfm'),
+  player: FakePlayer,
+): Promise<Array<(response: Response) => void>> {
+  const held: Array<(response: Response) => void> = [];
+  vi.mocked(net.fetch).mockImplementation((input, init) => {
+    const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+    if (params.has('artist[0]')) return new Promise<Response>((resolve) => held.push(resolve));
+    if (params.get('method') === 'track.scrobble') return Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'));
+    if (String(input).includes('auth.')) return authResponse(input, 'new-key', 'someone-else');
+    return Promise.resolve(new Response('{}'));
+  });
+
+  player.emitNowPlaying(TRACK);
+  player.emitPlaybackState(PlaybackState.Playing);
+  await flush();
+
+  // Disconnect empties the queue while the drain is still out, and someone else
+  // links their account on the same machine.
+  lastfm.disconnect();
+  session.enabled = true;
+  lastfm.startAuth();
+  await flush();
+
+  // The new account plays a track and the network drops the scrobble, so the
+  // queue now holds a play that belongs to them alone.
+  player.setPositionUs(0);
+  player.emitNowPlaying(SHORT_TRACK);
+  play(player, 40_000);
+  await flush();
+
+  return held;
+}
+
 describe('queued scrobbles', () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
@@ -839,6 +886,55 @@ describe('queued scrobbles', () => {
 
     expect(queue.pending).toHaveLength(1);
     expect(queue.pending[0].track).toBe('Temptation');
+  });
+
+  it('drains the new account queue while a drain from the old one is still out', async () => {
+    // A previous run left a play behind, so the first request out drains it.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    const held = await drainHeldAcrossReconnect(lastfm, player);
+
+    // Two drains are out: the old account's, and the one the new account's own
+    // playback started. The old one can take nothing off a queue that is no
+    // longer its own, so holding this drain behind it would strand the new
+    // account's plays for as long as it stays out, and forever if it never
+    // settles.
+    expect(held).toHaveLength(2);
+    expect(batches()[1].get('track[0]')).toBe('Temptation');
+
+    held[1](new Response('{}'));
+    await flush();
+
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('starts no second live drain when the old account drain settles late', async () => {
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    const held = await drainHeldAcrossReconnect(lastfm, player);
+    expect(held).toHaveLength(2);
+
+    // The old account's drain finally answers while the live one is still out.
+    // It only ever held its own place, so the live drain keeps the queue.
+    held[0](new Response('{}'));
+    await flush();
+
+    player.setPositionUs(0);
+    player.emitNowPlaying({ ...SHORT_TRACK, name: 'Leave Me Alone' });
+    await flush();
+
+    // Two live drains at once would share the mid-drain trim count between
+    // them, and each would remove a batch length the other had already taken.
+    expect(held).toHaveLength(2);
+    expect(queue.pending).toHaveLength(1);
   });
 
   it('queues no play for the account that has gone', async () => {

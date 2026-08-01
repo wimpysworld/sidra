@@ -206,9 +206,11 @@ let authGeneration = 0;
 // emptied in between either way.
 let sessionGeneration = 0;
 // The generation the drain in flight went out under, or null when none is out.
-// A stale value still blocks the next drain, which is deliberate: two drains at
-// once would share `trimmedWhileDraining` between them. It clears when the
-// stale request settles.
+// Only a drain from the account still connected blocks the next one, because
+// two of those would share `trimmedWhileDraining` between them. A stale value
+// blocks nothing: that drain can take nothing off the queue it left behind, so
+// holding the next account's plays behind it would strand them for as long as
+// it stays out, and forever if it never settles.
 let drainGeneration: number | null = null;
 let trimmedWhileDraining = 0;
 let getWindow: () => BrowserWindow | null = () => null;
@@ -344,7 +346,10 @@ function dropSubmitted(count: number): void {
  * would discard them.
  */
 function flushPendingScrobbles(sessionKey: string): void {
-  if (drainGeneration !== null) return;
+  // A drain from a generation that has moved on is left where it is: it never
+  // reaches `dropSubmitted()`, so it cannot collide with this one, and `null`
+  // never matches a generation.
+  if (drainGeneration === sessionGeneration) return;
   const batch = getPendingScrobbles();
   if (batch.length === 0) return;
   if (getLastfmSessionKey() !== sessionKey) return;
@@ -392,7 +397,10 @@ function flushPendingScrobbles(sessionKey: string): void {
       lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
     })
     .finally(() => {
-      drainGeneration = null;
+      // Only this drain's own marker is cleared. A stale drain settling late
+      // would otherwise release the live drain's place and let a second one
+      // start beside it.
+      if (drainGeneration === generation) drainGeneration = null;
     });
 }
 
