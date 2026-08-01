@@ -13,20 +13,39 @@
 // Import this file as a side-effect: import './mocks/storefront-deps';
 import { vi } from 'vitest';
 
-vi.mock('../../src/config', () => ({
-  getStorefront: vi.fn(),
-  setStorefront: vi.fn(),
-  getLanguage: vi.fn(),
-  setLanguage: vi.fn(),
-  getStartPage: vi.fn(() => 'new'),
-  getLastPageUrl: vi.fn(),
-  getZoomFactor: vi.fn(() => 1.0),
-  getMusicService: vi.fn(() => 'music'),
-  getClassicalStartPage: vi.fn(() => 'home'),
-  getClassicalLastPageUrl: vi.fn(),
-  setClassicalLastPageUrl: vi.fn(),
-  setLastPageUrl: vi.fn(),
-}));
+vi.mock('../../src/config', () => {
+  // The service-keyed accessors delegate to the per-service mocks, matching what
+  // config.ts does, so a test that stubs or asserts on either pair still sees the call.
+  const getStartPage = vi.fn(() => 'new');
+  const getLastPageUrl = vi.fn();
+  const setLastPageUrl = vi.fn();
+  const getClassicalStartPage = vi.fn(() => 'home');
+  const getClassicalLastPageUrl = vi.fn();
+  const setClassicalLastPageUrl = vi.fn();
+  return {
+    getStorefront: vi.fn(),
+    setStorefront: vi.fn(),
+    getLanguage: vi.fn(),
+    setLanguage: vi.fn(),
+    getStartPage,
+    getLastPageUrl,
+    getZoomFactor: vi.fn(() => 1.0),
+    getMusicService: vi.fn(() => 'music'),
+    getClassicalStartPage,
+    getClassicalLastPageUrl,
+    setClassicalLastPageUrl,
+    setLastPageUrl,
+    getStartPageFor: vi.fn((id: string) => (id === 'classical' ? getClassicalStartPage() : getStartPage())),
+    getLastPageUrlFor: vi.fn((id: string) => (id === 'classical' ? getClassicalLastPageUrl() : getLastPageUrl())),
+    setLastPageUrlFor: vi.fn((id: string, url: string) => {
+      if (id === 'classical') {
+        setClassicalLastPageUrl(url);
+      } else {
+        setLastPageUrl(url);
+      }
+    }),
+  };
+});
 
 vi.mock('../../src/i18n', () => ({
   getLoadingText: vi.fn(() => ({ text: 'Loading...', lang: 'en' })),

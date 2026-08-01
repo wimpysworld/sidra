@@ -4,7 +4,7 @@
 // registry in src/musicService.ts, so neither host is written down here.
 
 import log from 'electron-log/main';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getStartPage, getLastPageUrl, getMusicService, getClassicalStartPage, getClassicalLastPageUrl, setClassicalLastPageUrl, setLastPageUrl } from './config';
+import { getStorefront, setStorefront, getLanguage, setLanguage, getMusicService, getStartPageFor, getLastPageUrlFor, setLastPageUrlFor } from './config';
 import { getStorefront as getLocaleStorefront } from './i18n';
 import { getService, getServiceByHost } from './musicService';
 import type { ItmsRouteToken } from './itms';
@@ -56,12 +56,11 @@ export function buildAppleMusicURL(): string {
   const serviceId = getMusicService();
   const service = getService(serviceId);
 
-  const isClassical = serviceId === 'classical';
-  const startPage = isClassical ? getClassicalStartPage() : getStartPage();
+  const startPage = getStartPageFor(serviceId);
 
   if (startPage === 'last') {
-    // Read the stored path only in this branch; the getters stay untouched for every other page.
-    const lastPath = isClassical ? getClassicalLastPageUrl() : getLastPageUrl();
+    // Read the stored path only in this branch; the getter stays untouched for every other page.
+    const lastPath = getLastPageUrlFor(serviceId);
     if (lastPath) {
       return appendLanguage(`${service.origin}/${storefront}/${lastPath}`, language);
     }
@@ -159,11 +158,7 @@ export function handleLastPageNavigation(url: string): void {
       // Keep the query so a search or a filtered view resumes as it was left.
       // The fragment is dropped: it is renderer state, not a page address.
       const path = `${pageSegments.join('/')}${parsed.search}`;
-      if (service.id === 'classical') {
-        setClassicalLastPageUrl(path);
-      } else {
-        setLastPageUrl(path);
-      }
+      setLastPageUrlFor(service.id, path);
     }
   } catch {
     storefrontLog.warn('failed to parse URL for last-page tracking:', url);

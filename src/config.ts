@@ -11,6 +11,7 @@ import type { ThemeName } from './theme';
 import {
   DEFAULT_SERVICE_ID,
   isMusicServiceId,
+  type AnyStartPageId,
   type ClassicalStartPageId,
   type MusicServiceId,
   type MusicStartPageId,
@@ -250,5 +251,47 @@ export function getClassicalLastPageUrl(): string | undefined {
 
 export function setClassicalLastPageUrl(url: string): void {
   setConfigValue('classical.lastPageUrl', url);
+}
+
+/**
+ * Service-keyed views of the pairs above, so a caller holding a MusicServiceId
+ * reads and writes without branching on it. This table is the only place a
+ * service id maps to its stored keys, and the Record annotation makes a new
+ * service a compile error here rather than a missed branch at a call site.
+ */
+const SERVICE_PAGE_ACCESSORS: Record<MusicServiceId, {
+  getStartPage: () => AnyStartPageId | 'last';
+  getLastPageUrl: () => string | undefined;
+  setLastPageUrl: (url: string) => void;
+}> = {
+  music: {
+    getStartPage,
+    getLastPageUrl,
+    setLastPageUrl,
+  },
+  classical: {
+    getStartPage: getClassicalStartPage,
+    getLastPageUrl: getClassicalLastPageUrl,
+    setLastPageUrl: setClassicalLastPageUrl,
+  },
+};
+
+/**
+ * Stored start page for a service. The union covers both services, because the
+ * caller's id is a variable: a caller that knows which service it means takes
+ * the narrower pair above. Reading wide is safe - the id is matched against the
+ * service's own startPages, and one from the wrong service matches nothing and
+ * falls back to that service's default.
+ */
+export function getStartPageFor(id: MusicServiceId): AnyStartPageId | 'last' {
+  return SERVICE_PAGE_ACCESSORS[id].getStartPage();
+}
+
+export function getLastPageUrlFor(id: MusicServiceId): string | undefined {
+  return SERVICE_PAGE_ACCESSORS[id].getLastPageUrl();
+}
+
+export function setLastPageUrlFor(id: MusicServiceId, url: string): void {
+  SERVICE_PAGE_ACCESSORS[id].setLastPageUrl(url);
 }
 
