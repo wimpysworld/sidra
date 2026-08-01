@@ -207,46 +207,48 @@ export interface TrayStrings {
 export function getTrayStrings(): TrayStrings {
   const langs = getSystemLanguages();
   const productName: string = getProductInfo().productName;
-  const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
-  const about = aboutTemplate.replace('{name}', productName);
-  const quit = getLocalizedString(QUIT_TEXT, langs);
-  const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
-  const discord = getLocalizedString(DISCORD_TEXT, langs);
-  const player = getLocalizedString(PLAYER_TEXT, langs);
-  const lastfmConnect = getLocalizedString(LASTFM_CONNECT_TEXT, langs);
-  const lastfmDisconnect = getLocalizedString(LASTFM_DISCONNECT_TEXT, langs);
-  const startPage = getLocalizedString(START_PAGE_TEXT, langs);
-  const startPageHome = getLocalizedString(START_PAGE_HOME_TEXT, langs);
-  const startPageNew = getLocalizedString(START_PAGE_NEW_TEXT, langs);
-  const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
-  const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
-  const startPageBrowse = getLocalizedString(START_PAGE_BROWSE_TEXT, langs);
-  const startPageLibrary = getLocalizedString(START_PAGE_LIBRARY_TEXT, langs);
-  const startPagePlaylists = getLocalizedString(START_PAGE_PLAYLISTS_TEXT, langs);
-  const startPageSearch = getLocalizedString(START_PAGE_SEARCH_TEXT, langs);
-  const startPageLast = getLocalizedString(START_PAGE_LAST_TEXT, langs);
-  const on = getLocalizedString(ON_TEXT, langs);
-  const off = getLocalizedString(OFF_TEXT, langs);
-  const style = getLocalizedString(STYLE_TEXT, langs);
-  const styleAppleMusic = 'Apple Music'; // A brand name, so never translated
-  const zoom = getLocalizedString(ZOOM_TEXT, langs);
-  const zoom100 = ZOOM_100;
-  const zoom125 = ZOOM_125;
-  const zoom150 = ZOOM_150;
-  const zoom175 = ZOOM_175;
-  const zoom200 = ZOOM_200;
-  const previous = getLocalizedString(PREVIOUS_TEXT, langs);
-  const play = getLocalizedString(PLAY_TEXT, langs);
-  const pause = getLocalizedString(PAUSE_TEXT, langs);
-  const notPlaying = getLocalizedString(NOT_PLAYING_TEXT, langs);
-  const next = getLocalizedString(NEXT_TEXT, langs);
-  const volume = getLocalizedString(VOLUME_TEXT, langs);
-  const mute = getLocalizedString(MUTE_TEXT, langs);
-  const share = getLocalizedString(SHARE_TEXT, langs);
-  const hideWindow = getLocalizedString(HIDE_WINDOW_TEXT, langs).replace('{name}', productName);
-  const showWindow = getLocalizedString(SHOW_WINDOW_TEXT, langs).replace('{name}', productName);
-  const closeToTray = getLocalizedString(CLOSE_TO_TRAY_TEXT, langs);
-  return { about, quit, notifications, discord, player, lastfmConnect, lastfmDisconnect, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageBrowse, startPageLibrary, startPagePlaylists, startPageSearch, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, notPlaying, next, volume, mute, share, hideWindow, showWindow, closeToTray };
+  const t = (record: Record<string, string>): string => getLocalizedString(record, langs);
+  const named = (record: Record<string, string>): string => t(record).replace('{name}', productName);
+  return {
+    about: named(ABOUT_TEXT),
+    quit: t(QUIT_TEXT),
+    notifications: t(NOTIFICATIONS_TEXT),
+    discord: t(DISCORD_TEXT),
+    player: t(PLAYER_TEXT),
+    lastfmConnect: t(LASTFM_CONNECT_TEXT),
+    lastfmDisconnect: t(LASTFM_DISCONNECT_TEXT),
+    startPage: t(START_PAGE_TEXT),
+    startPageHome: t(START_PAGE_HOME_TEXT),
+    startPageNew: t(START_PAGE_NEW_TEXT),
+    startPageRadio: t(START_PAGE_RADIO_TEXT),
+    startPageAllPlaylists: t(START_PAGE_ALL_PLAYLISTS_TEXT),
+    startPageBrowse: t(START_PAGE_BROWSE_TEXT),
+    startPageLibrary: t(START_PAGE_LIBRARY_TEXT),
+    startPagePlaylists: t(START_PAGE_PLAYLISTS_TEXT),
+    startPageSearch: t(START_PAGE_SEARCH_TEXT),
+    startPageLast: t(START_PAGE_LAST_TEXT),
+    on: t(ON_TEXT),
+    off: t(OFF_TEXT),
+    style: t(STYLE_TEXT),
+    styleAppleMusic: 'Apple Music', // A brand name, so never translated
+    zoom: t(ZOOM_TEXT),
+    zoom100: ZOOM_100,
+    zoom125: ZOOM_125,
+    zoom150: ZOOM_150,
+    zoom175: ZOOM_175,
+    zoom200: ZOOM_200,
+    previous: t(PREVIOUS_TEXT),
+    play: t(PLAY_TEXT),
+    pause: t(PAUSE_TEXT),
+    notPlaying: t(NOT_PLAYING_TEXT),
+    next: t(NEXT_TEXT),
+    volume: t(VOLUME_TEXT),
+    mute: t(MUTE_TEXT),
+    share: t(SHARE_TEXT),
+    hideWindow: named(HIDE_WINDOW_TEXT),
+    showWindow: named(SHOW_WINDOW_TEXT),
+    closeToTray: t(CLOSE_TO_TRAY_TEXT),
+  };
 }
 
 export function getLastfmConnectedText(name: string): string {
