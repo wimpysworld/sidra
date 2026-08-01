@@ -449,6 +449,77 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a reconnected session when Last.fm hands back the key it refused', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    const pending: Array<(response: Response) => void> = [];
+    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => pending.push(resolve)));
+
+    playPastThreshold(player);
+    expect(pending).toHaveLength(2);
+
+    // The first refusal disconnects the account, as it should.
+    pending[0](apiError(9));
+    await flush();
+    expect(session.key).toBeNull();
+
+    // The user reconnects the same account and Last.fm returns the key it
+    // issued before: a session key belongs to the account, not to the
+    // authorisation, so re-approving Sidra hands the same one back.
+    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'session-key', name: 'wimpy' } })));
+    session.enabled = true;
+    lastfm.startAuth();
+    await flush();
+    expect(session.key).toBe('session-key');
+
+    // The reconnected session earns a play the network drops, so it has a queue
+    // of its own for the stale refusal to empty.
+    failScrobbleTransport();
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    play(player, 40_000);
+    await flush();
+    expect(queue.pending).toHaveLength(1);
+
+    // Only now does the request from before the disconnect fail. It carries the
+    // key the reconnected session holds, so the key tells them apart from
+    // nothing; the generation it went out under is what does.
+    pending[1](apiError(9));
+    await flush();
+
+    expect(session.key).toBe('session-key');
+    expect(session.enabled).toBe(true);
+    expect(queue.pending).toHaveLength(1);
+    // The failure and the reconnection, and nothing from the stale refusal.
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(2);
+  });
+
+  it('disconnects when the refusal belongs to the reconnected session', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // Reconnecting the same account moves the generation on while leaving the
+    // stored key exactly as it was, so only a live refusal may act from here.
+    lastfm.disconnect();
+    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'session-key', name: 'wimpy' } })));
+    session.enabled = true;
+    lastfm.startAuth();
+    await flush();
+    expect(session.key).toBe('session-key');
+
+    vi.mocked(Notification).mockClear();
+    refuseScrobbles(9);
+    playPastThreshold(player);
+    await flush();
+
+    expect(session.key).toBeNull();
+    expect(session.enabled).toBe(false);
+    expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the session through a transient error', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();

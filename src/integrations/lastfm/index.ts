@@ -298,16 +298,24 @@ function active(): boolean {
  * Without this the session stays set, nothing retries, and the tray still shows
  * the account as connected: scrobbling is dead and the UI says otherwise.
  *
- * The rejection only counts against the key the request was signed with, which
- * is why the caller passes it in rather than reading the stored one again. A
- * second request in flight when the first is refused names a key that is gone,
- * so it settles here silently and the user sees one notification. A refusal
- * that arrives after the user has reconnected names the old key too, so it
- * cannot tear down the session that replaced it.
+ * The rejection only counts against the session the request went out under,
+ * which is why the caller passes in the generation it captured rather than
+ * reading anything stored again here. A second request in flight when the first
+ * is refused belongs to a session that is already gone, so it settles here
+ * silently and the user sees one notification. A refusal that arrives after the
+ * user has reconnected belongs to the old session too, so it cannot tear down
+ * the session that replaced it.
+ *
+ * The generation is the gate rather than the session key because Last.fm hands
+ * back the same key when the same account reconnects. Comparing keys let such a
+ * refusal pass as current: it disconnected the session the user had just
+ * established and emptied the queue with it. The generation moves at both
+ * writers of the stored key, so an equal generation means the session that sent
+ * the request is still the one connected.
  */
-function handleInvalidSession(err: unknown, requestKey: string): boolean {
+function handleInvalidSession(err: unknown, generation: number): boolean {
   if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR) return false;
-  if (getLastfmSessionKey() !== requestKey) return true;
+  if (generation !== sessionGeneration) return true;
   lastfmLog.warn('session rejected by Last.fm; reconnect from the tray to resume scrobbling');
   disconnect();
   notify(getLastfmConnectFailedText(), true);
@@ -354,8 +362,8 @@ function dropSubmitted(count: number): void {
  * over-long batch forever when the request never reached Last.fm at all.
  *
  * The session key is passed in by the caller and checked against the stored one
- * for the same reason `handleInvalidSession()` takes it: a drain signed with a
- * key the user has since replaced belongs to nobody.
+ * because a drain signed with a key the user has since replaced belongs to
+ * nobody.
  *
  * The result is thrown away when the account changes while the request is out.
  * `disconnect()` empties the queue, so by the time such a drain settles the
@@ -400,7 +408,7 @@ function flushPendingScrobbles(sessionKey: string): void {
       // batch goes whether or not the session survived it. Keeping a batch the
       // API can only refuse would block every later drain behind it forever.
       if (isFinalRefusal(err)) {
-        if (!handleInvalidSession(err, sessionKey)) {
+        if (!handleInvalidSession(err, generation)) {
           lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
         }
         // `handleInvalidSession()` may have disconnected, which empties the
@@ -438,13 +446,14 @@ function sendNowPlaying(): void {
   if (album) params.album = album;
   if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
 
+  const generation = sessionGeneration;
   apiCall(params, true)
     .then(() => {
       lastfmLog.debug('now playing:', `${artist} - ${track}`);
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
-      if (handleInvalidSession(err, sessionKey)) return;
+      if (handleInvalidSession(err, generation)) return;
       lastfmLog.warn('now playing failed:', err.message);
     });
 }
@@ -533,7 +542,7 @@ function doScrobble(): void {
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
-      if (handleInvalidSession(err, sessionKey)) return;
+      if (handleInvalidSession(err, generation)) return;
       if (isFinalRefusal(err)) {
         lastfmLog.warn('scrobble failed, not retried:', err.message);
         return;
