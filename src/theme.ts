@@ -83,8 +83,20 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
 
 // Apply or remove theme CSS on the main window.
 // Handles enable, disable, and re-injection (variant change) cases.
-// No-op until initThemeCSS() assigns the real implementation.
-let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = () => Promise.resolve();
+//
+// Until initThemeCSS() assigns the real implementation there is no window and no
+// document, so this one warns and applies nothing. The gap is reachable: main.ts
+// builds the tray, whose Style items are live from that moment, before it awaits
+// the session and then calls initThemeCSS(), so a click landing inside that await
+// arrives here. Nothing is replayed because nothing is lost - the tray persists
+// the choice with setTheme() before it calls applyTheme(), and injectThemeCss()
+// reads the store on every page load, so the first load applies it. Queueing the
+// call instead would need a documentGeneration for a document that does not yet
+// exist, and initThemeCSS() still runs before the first loadURL().
+let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = (name: ThemeName) => {
+  themeLog.warn(`Theme CSS not applied, theme system not initialised yet: ${name}`);
+  return Promise.resolve();
+};
 
 // Rebuild the tray menu after a custom.css change.
 // tray.ts imports theme.ts, so theme.ts cannot import rebuildTrayMenu back; main.ts supplies it.

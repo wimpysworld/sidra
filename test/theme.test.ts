@@ -416,6 +416,31 @@ describe('theme helpers', () => {
     expect(harness.insertCSS).toHaveBeenCalledTimes(1);
   });
 
+  it('warns and applies nothing when a theme is requested before initThemeCSS', async () => {
+    // The tray Style items are live from createTray(), which main.ts calls
+    // before it awaits the session and then calls initThemeCSS(), so a click can
+    // land here. Nothing is applied because there is no document yet; the tray
+    // persisted the choice first and the first page load injects it from the
+    // store. The warning is the only report a caller gets, because applyTheme()
+    // returns void.
+    // A fresh copy, because initThemeCSS() has already replaced the no-op on the
+    // module the other tests share. electron-log is re-imported after the same
+    // reset, so the logger read here is the one the fresh copy scoped.
+    vi.resetModules();
+    const logModule = await import('electron-log/main');
+    const theme = await import('../src/theme');
+    // The scoped logger shares one mock function across every level, so it is
+    // cleared first and the single call below is the warning.
+    const warn = vi.mocked(logModule.default.scope('theme').warn);
+    warn.mockClear();
+
+    theme.applyTheme('nord');
+    await flushCssQueue();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('nord');
+  });
+
   it('returns null for apple-music even with populated custom.css', () => {
     // apple-music means "inject no override CSS", so it must never pick up the
     // custom.css a fall-through past the guard would reach.
