@@ -70,9 +70,10 @@ function main() {
       throw new Error(`Linux desktop action ${method}.Name must be a non-empty string`);
     }
     //    The Exec is matched token by token rather than as one whole string, so
-    //    extra whitespace or a reordered flag stays harmless while the four
+    //    extra whitespace or a reordered flag stays harmless while the five
     //    parts that decide whether the launcher control works are all pinned:
-    //    the command, the destination, the object path and the member.
+    //    the command, the destination, the object path, the member and the
+    //    argument count, because all four methods take no arguments.
     const exec = typeof action.Exec === "string" ? action.Exec : "";
     const tokens = exec.split(/\s+/).filter((token) => token !== "");
     const command = tokens.shift() ?? "";
@@ -88,6 +89,9 @@ function main() {
     }
     if (operands[1] !== `org.mpris.MediaPlayer2.Player.${method}`) {
       throw new Error(`Linux desktop action ${method}.Exec must call org.mpris.MediaPlayer2.Player.${method}`);
+    }
+    if (operands.length > 2) {
+      throw new Error(`Linux desktop action ${method}.Exec must pass no arguments to org.mpris.MediaPlayer2.Player.${method}`);
     }
   }
   console.log(`  \u2713 Linux desktop actions: wired to ${busName}`);
