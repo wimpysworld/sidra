@@ -441,41 +441,44 @@ function dropSubmitted(count: number): void {
 }
 
 /**
- * Submits the queued plays in one batch, capped at the 50 Last.fm accepts in a
- * single track.scrobble request. Anything past that stays on the queue and goes
- * out with the next drain: nothing here is scheduled, so a longer queue clears
- * over as many requests as the user's own playback triggers. Sending it whole
- * would be refused, losing the backlog to a final error and resending the same
- * over-long batch forever when the request never reached Last.fm at all.
+ * Runs every check a drain must pass, in the order it must pass them, and
+ * returns the batch to submit or null when one of them stops it. Nothing is
+ * claimed here: the caller marks the drain, so the checks stay free of side
+ * effects.
+ *
+ * Off is an instruction to stop sending. Nothing cancels a request already out,
+ * so one that left while the feature was on can settle after the toggle and
+ * carry the whole queue to Last.fm from here. The check belongs in the drain
+ * rather than at its callers, so every path into it is covered. The plays stay
+ * queued: the user consented to them when they played them, and they go out if
+ * the feature is turned back on.
+ *
+ * A drain from a generation that has moved on is left where it is: it never
+ * reaches `dropSubmitted()`, so it cannot collide with this one, and `null`
+ * never matches a generation.
+ *
+ * The batch is capped at the 50 Last.fm accepts in a single track.scrobble
+ * request. Anything past that stays on the queue and goes out with the next
+ * drain: nothing here is scheduled, so a longer queue clears over as many
+ * requests as the user's own playback triggers. Sending it whole would be
+ * refused, losing the backlog to a final error and resending the same over-long
+ * batch forever when the request never reached Last.fm at all.
  *
  * The session key is passed in by the caller and checked against the stored one
  * because a drain signed with a key the user has since replaced belongs to
  * nobody.
- *
- * The result is thrown away when the account changes while the request is out.
- * `disconnect()` empties the queue, so by the time such a drain settles the
- * entries under it are the next account's plays, and removing the batch length
- * would discard them.
  */
-function flushPendingScrobbles(sessionKey: string): void {
-  // Off is an instruction to stop sending. Nothing cancels a request already
-  // out, so one that left while the feature was on can settle after the toggle
-  // and carry the whole queue to Last.fm from here. The check belongs in the
-  // drain rather than at its callers, so every path into it is covered. The
-  // plays stay queued: the user consented to them when they played them, and
-  // they go out if the feature is turned back on.
-  if (!getLastfmEnabled()) return;
-  // A drain from a generation that has moved on is left where it is: it never
-  // reaches `dropSubmitted()`, so it cannot collide with this one, and `null`
-  // never matches a generation.
-  if (drainGeneration === sessionGeneration) return;
+function drainGuard(sessionKey: string): PendingScrobble[] | null {
+  if (!getLastfmEnabled()) return null;
+  if (drainGeneration === sessionGeneration) return null;
   const batch = getPendingScrobbles().slice(0, MAX_PENDING_SCROBBLES);
-  if (batch.length === 0) return;
-  if (getLastfmSessionKey() !== sessionKey) return;
-  const generation = sessionGeneration;
-  drainGeneration = generation;
-  trimmedWhileDraining = 0;
+  if (batch.length === 0) return null;
+  if (getLastfmSessionKey() !== sessionKey) return null;
+  return batch;
+}
 
+/** Encodes a batch as the indexed parameters one track.scrobble request takes. */
+function buildBatchParams(batch: PendingScrobble[], sessionKey: string): Record<string, string> {
   const params: Record<string, string> = { method: 'track.scrobble', api_key: API_KEY, sk: sessionKey };
   batch.forEach((entry, index) => {
     params[`artist[${index}]`] = entry.artist;
@@ -484,53 +487,83 @@ function flushPendingScrobbles(sessionKey: string): void {
     if (entry.album) params[`album[${index}]`] = entry.album;
     if (entry.durationSec) params[`duration[${index}]`] = String(entry.durationSec);
   });
+  return params;
+}
 
+/**
+ * Reports what became of a submitted batch and takes it off the queue.
+ *
+ * The result is thrown away when the account changed while the request was out.
+ * `disconnect()` empties the queue, so by the time such a drain settles the
+ * entries under it are the next account's plays, and removing the batch length
+ * would discard them.
+ */
+function onDrainSettled(res: LastfmResponse, batch: PendingScrobble[], generation: number): void {
+  if (generation !== sessionGeneration) {
+    lastfmLog.info('queued scrobbles submitted for an account that has gone:', batch.length);
+    return;
+  }
+  dropSubmitted(batch.length);
+  // The batch clears whatever Last.fm made of it, and the codes are reported
+  // and then let go rather than held for another attempt: a filtered artist
+  // or track, and a timestamp too old or too new, all answer about the play
+  // itself and would be filtered again on any resend, while the daily limit
+  // needs a queue policy this integration does not have. So the log is the
+  // only place the loss is visible at all.
+  const outcome = readScrobbleOutcome(res);
+  if (!outcome) {
+    lastfmLog.info('queued scrobbles submitted:', batch.length);
+    return;
+  }
+  const reasons = outcome.codes.length > 0 ? `; ignored codes: ${outcome.codes.join(', ')}` : '';
+  const counts = `Last.fm accepted ${outcome.accepted}, ignored ${outcome.ignored}${reasons}`;
+  lastfmLog.info(`queued scrobbles submitted: ${batch.length}; ${counts}`);
+}
+
+/** Decides whether a failed batch is gone or still owed, and reports which. */
+function onDrainFailed(err: Error, batch: PendingScrobble[], generation: number): void {
+  // A refusal is as final for a queued play as it is for a live one, so the
+  // batch goes whether or not the session survived it. Keeping a batch the
+  // API can only refuse would block every later drain behind it forever.
+  if (isFinalRefusal(err)) {
+    if (!handleInvalidSession(err, generation)) {
+      lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
+    }
+    // `handleInvalidSession()` may have disconnected, which empties the
+    // queue and moves the generation on; either way the batch is gone.
+    if (generation === sessionGeneration) dropSubmitted(batch.length);
+    return;
+  }
+  // A transport failure, or a service that answered about itself rather
+  // than about these plays. Nothing took them, so the queue stands and the
+  // next successful request carries it out. That cannot wedge: no code here
+  // can be provoked by the batch, so the condition is the service's and it
+  // clears when the service does. Nothing is scheduled either, so the next
+  // attempt waits on a request the user's own playback triggers.
+  lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
+}
+
+/**
+ * Submits the queued plays in one batch: guard, build, dispatch.
+ *
+ * The drain marks its generation while it is out and clears the marker only
+ * once the request settles, which is what keeps a second batch from starting
+ * beside this one and sharing `trimmedWhileDraining` with it.
+ */
+function flushPendingScrobbles(sessionKey: string): void {
+  const batch = drainGuard(sessionKey);
+  if (!batch) return;
+  const generation = sessionGeneration;
+  drainGeneration = generation;
+  trimmedWhileDraining = 0;
+
+  const params = buildBatchParams(batch, sessionKey);
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(), DRAIN_TIMEOUT_MS);
 
   apiCall(params, true, controller.signal)
-    .then((res) => {
-      if (generation !== sessionGeneration) {
-        lastfmLog.info('queued scrobbles submitted for an account that has gone:', batch.length);
-        return;
-      }
-      dropSubmitted(batch.length);
-      // The batch clears whatever Last.fm made of it, and the codes are reported
-      // and then let go rather than held for another attempt: a filtered artist
-      // or track, and a timestamp too old or too new, all answer about the play
-      // itself and would be filtered again on any resend, while the daily limit
-      // needs a queue policy this integration does not have. So the log is the
-      // only place the loss is visible at all.
-      const outcome = readScrobbleOutcome(res);
-      if (!outcome) {
-        lastfmLog.info('queued scrobbles submitted:', batch.length);
-        return;
-      }
-      const reasons = outcome.codes.length > 0 ? `; ignored codes: ${outcome.codes.join(', ')}` : '';
-      const counts = `Last.fm accepted ${outcome.accepted}, ignored ${outcome.ignored}${reasons}`;
-      lastfmLog.info(`queued scrobbles submitted: ${batch.length}; ${counts}`);
-    })
-    .catch((err: Error) => {
-      // A refusal is as final for a queued play as it is for a live one, so the
-      // batch goes whether or not the session survived it. Keeping a batch the
-      // API can only refuse would block every later drain behind it forever.
-      if (isFinalRefusal(err)) {
-        if (!handleInvalidSession(err, generation)) {
-          lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
-        }
-        // `handleInvalidSession()` may have disconnected, which empties the
-        // queue and moves the generation on; either way the batch is gone.
-        if (generation === sessionGeneration) dropSubmitted(batch.length);
-        return;
-      }
-      // A transport failure, or a service that answered about itself rather
-      // than about these plays. Nothing took them, so the queue stands and the
-      // next successful request carries it out. That cannot wedge: no code here
-      // can be provoked by the batch, so the condition is the service's and it
-      // clears when the service does. Nothing is scheduled either, so the next
-      // attempt waits on a request the user's own playback triggers.
-      lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
-    })
+    .then((res) => onDrainSettled(res, batch, generation))
+    .catch((err: Error) => onDrainFailed(err, batch, generation))
     .finally(() => {
       clearTimeout(abortTimer);
       // Only this drain's own marker is cleared. A stale drain settling late
