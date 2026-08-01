@@ -99,7 +99,7 @@ When adding a language, add an entry to every record in every JSON file:
 }
 ```
 
-- All locale JSON files must be listed individually in `asarUnpack` in `package.json` - globs are not supported. `loadLocaleFile()` in `src/i18n.ts` catches a failed read or parse, logs the full path and the reason, then throws naming the path and the `asarUnpack` requirement. The throw is deliberate: this runs before any window exists, and falling back to the `en` records would hide a missing `asarUnpack` entry behind a UI that looks almost right
+- Every locale JSON file must be covered by an `asarUnpack` entry in `package.json`. They are currently listed one by one, so adding a locale file means adding its entry. That is not a constraint: `asarUnpack` takes glob patterns, and `assets/icons/**` in the same list is one. `loadLocaleFile()` in `src/i18n.ts` catches a failed read or parse, logs the full path and the reason, then throws naming the path and the `asarUnpack` requirement. The throw is deliberate: this runs before any window exists, and falling back to the `en` records would hide a missing `asarUnpack` entry behind a UI that looks almost right
 - Prefer specific regional tags only when the translation differs from the base language variant (e.g. `zh-CN` vs `zh-TW`); use the base tag (e.g. `fr`) for languages where one translation covers all regions
 - `test/i18n-consistency.test.ts` derives the records it checks from the `src/i18n.ts` exports, treating every object export as a record and every function export as not one, so a new record is guarded as soon as it is re-exported. It also reads `assets/locales/` and fails when a record there has no matching re-export. Do not put the record names back in a hand-written list: the previous one drifted to 36 of 43 and left the whole tray media-control group unchecked
 
@@ -191,7 +191,7 @@ Active Apple Music userstyle repositories provide reliable cross-referenced vari
 
 ### Asset packaging
 
-CSS files read via `fs.readFileSync` at runtime must be listed individually in `asarUnpack` in `package.json`. `asarUnpack` does not support globs - each file must be named explicitly or packaged builds will fail to read them.
+A CSS file read via `fs.readFileSync` at runtime must be covered by an `asarUnpack` entry in `package.json`, or the packaged build cannot read it. An uncovered file fails at runtime and never at build time, so nothing catches it before a user does. `asarUnpack` takes glob patterns as well as literal paths; the list names most files one by one and uses `assets/icons/**` for the icons.
 
 ## Architecture notes
 
