@@ -1,9 +1,10 @@
-import { app, net, shell, Tray } from 'electron';
+import { app, net, Tray } from 'electron';
 import log from 'electron-log/main';
 import { getNotificationsEnabled } from './config';
 import { getUpdateStrings } from './i18n';
 import { createNotification } from './notify';
 import { errorMessage } from './utils';
+import { openExternalUrl } from './utils/openExternal';
 
 // Update state shared with the tray, plus the notify-only check used where
 // isAutoUpdateSupported() is false. Those builds are updated by a package
@@ -169,14 +170,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
       updateInfo = { version: cleanVersion, url: releaseUrl, ready: false };
       rebuildMenu(tray);
 
-      showUpdateNotification(cleanVersion, 'update', () => {
-        try {
-          const parsed = new URL(releaseUrl);
-          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-            shell.openExternal(releaseUrl);
-          }
-        } catch { /* ignore malformed URL */ }
-      });
+      showUpdateNotification(cleanVersion, 'update', () => { openExternalUrl(releaseUrl, updateLog); });
     } else {
       updateLog.debug('up to date:', localVersion);
       rebuildMenu(tray);

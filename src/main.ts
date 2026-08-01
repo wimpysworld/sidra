@@ -1,4 +1,4 @@
-import { app, BrowserWindow, components, ipcMain, Menu, session, shell, Tray, webFrameMain } from 'electron';
+import { app, BrowserWindow, components, ipcMain, Menu, session, Tray, webFrameMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
@@ -25,6 +25,7 @@ import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeD
 import { contentReadyProbeScript } from './contentReady';
 import { initNotificationProbe } from './notify';
 import { runSteps } from './utils';
+import { openExternalUrl } from './utils/openExternal';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
 const CONTENT_READY_POLL_MS = 100;
@@ -502,17 +503,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
 
   // Open external links in the system browser (only http/https)
   win.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        mainLog.debug('opening external URL in browser:', url);
-        shell.openExternal(url);
-      } else {
-        mainLog.warn('blocked external URL with disallowed protocol:', url);
-      }
-    } catch {
-      mainLog.warn('blocked malformed external URL:', url);
-    }
+    openExternalUrl(url, mainLog);
     return { action: 'deny' };
   });
 }
