@@ -383,7 +383,35 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
   });
 }
 
-function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookScript: string): void {
+// Injects the MusicKit hook and then the navigation bar. Called from
+// did-finish-load and from did-navigate-in-page, which is why it never rejects:
+// in did-finish-load an escaping rejection skips markCssReady(), and that is the
+// only thing that dismisses the splash, so the app would show it for the life of
+// the process. Every await sits in its own try/catch, and the gate's getURL()
+// read is inside the first one because a destroyed webContents throws there.
+// A hook failure still injects the nav bar: back and forward buttons that work
+// beat none at all on a page whose media controls are already dead.
+async function injectRendererScripts(win: BrowserWindow, assets: Assets, context: string): Promise<void> {
+  try {
+    const currentUrl = win.webContents.getURL();
+    if (isAllowedNavigationUrl(currentUrl)) {
+      await win.webContents.executeJavaScript(assets.hookScript);
+      mainLog.debug('MusicKit hook injected');
+    } else {
+      mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
+    }
+  } catch (e: unknown) {
+    mainLog.warn(`failed to inject hookScript ${context}:`, e);
+  }
+  try {
+    await win.webContents.executeJavaScript(assets.navBarScript);
+    mainLog.debug('Navigation bar injected');
+  } catch (e: unknown) {
+    mainLog.warn(`failed to inject navBarScript ${context}:`, e);
+  }
+}
+
+function setupNavigationHandlers(win: BrowserWindow, assets: Assets): void {
   // Keeps the main frame on Apple's hosts, so the preload command bridge and the
   // injected hook can only ever reach Apple Music. Main-process loadURL() calls do
   // not raise this event, so launch, service switching and itms:// routing are unaffected.
@@ -405,21 +433,7 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
   win.webContents.on('did-navigate-in-page', async (_event, url) => {
     handleStorefrontNavigation(url);
     handleLastPageNavigation(url);
-    const currentUrl = win.webContents.getURL();
-    if (!isAllowedNavigationUrl(currentUrl)) {
-      mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
-    } else {
-      try {
-        await win.webContents.executeJavaScript(hookScript);
-      } catch (e: unknown) {
-        mainLog.warn('failed to inject hookScript on SPA navigation:', e);
-      }
-    }
-    try {
-      await win.webContents.executeJavaScript(navBarScript);
-    } catch (e: unknown) {
-      mainLog.warn('failed to inject navBarScript on SPA navigation:', e);
-    }
+    await injectRendererScripts(win, assets, 'on SPA navigation');
   });
 }
 
@@ -516,15 +530,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
     mainLog.debug('CSS fixes injected');
     await injectThemeCss(win.webContents);
-    const currentUrl = win.webContents.getURL();
-    if (isAllowedNavigationUrl(currentUrl)) {
-      await win.webContents.executeJavaScript(assets.hookScript);
-      mainLog.debug('MusicKit hook injected');
-    } else {
-      mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
-    }
-    await win.webContents.executeJavaScript(assets.navBarScript);
-    mainLog.debug('Navigation bar injected');
+    await injectRendererScripts(win, assets, 'on load');
   }
 
   let initialized = false;
@@ -535,11 +541,10 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     const firstLoad = !initialized;
     initialized = true;
 
-    // Injection failure must not abandon the rest of this handler. Apple owns
-    // the page, so a DOM change can make the hook throw, and a renderer torn
-    // down mid-injection rejects too. Without this the handler stops before
-    // markCssReady() and the splash never closes. The twin injection in
-    // did-navigate-in-page is guarded the same way.
+    // Injection failure must not abandon the rest of this handler. A renderer
+    // torn down mid-injection rejects the CSS calls above, and without this the
+    // handler stops before markCssReady() and the splash never closes.
+    // injectRendererScripts() contains its own failures and never rejects.
     try {
       await injectContent();
     } catch (e: unknown) {
@@ -634,7 +639,7 @@ if (gotLock) {
     setupSessionHeaders(ses);
     setupContentHandlers(win, player, markCssReady, assets);
     setupWindowEvents(win, markCssReady);
-    setupNavigationHandlers(win, assets.navBarScript, assets.hookScript);
+    setupNavigationHandlers(win, assets);
     setupAuthFrameInjection(win, assets.authFrameScript);
     if (process.env.SIDRA_DEVTOOLS === '1') {
       win.webContents.openDevTools();
