@@ -14,9 +14,7 @@ vi.mock('../src/paths', () => ({
   getProductInfo: () => ({ productName: 'Sidra', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
 }));
 
-import { BrowserWindow, app } from 'electron';
-import { showAboutWindow } from '../src/aboutWindow';
-import { getZoomFactor } from '../src/config';
+import type { BrowserWindow as ElectronBrowserWindow } from 'electron';
 
 // Helpers to build a mock BrowserWindow with event support
 interface MockWebContents {
@@ -54,28 +52,36 @@ function createMockBrowserWindow(): MockBrowserWindowInstance {
   };
 }
 
-// Track the latest mock instance so the constructor function can return it.
+// The most recently constructed mock window, assigned by the constructor mock.
 let latestMockInstance: MockBrowserWindowInstance;
 
-// Previous instance used to trigger 'closed' between tests, resetting module state.
-let previousMockInstance: MockBrowserWindowInstance | null = null;
-
 describe('showAboutWindow', () => {
-  beforeEach(() => {
-    // Close the previous window so the module-level aboutWindow resets to null
-    if (previousMockInstance?._listeners['closed']?.length) {
-      previousMockInstance._listeners['closed'][0]();
-    }
+  let showAboutWindow: typeof import('../src/aboutWindow').showAboutWindow;
+  let BrowserWindow: typeof import('electron').BrowserWindow;
+  let app: typeof import('electron').app;
+  let getZoomFactor: typeof import('../src/config').getZoomFactor;
 
-    latestMockInstance = createMockBrowserWindow();
+  beforeEach(async () => {
+    // src/aboutWindow.ts holds its window at module scope, so each test loads a
+    // fresh copy rather than closing the previous window by hand.
+    vi.resetModules();
+
+    // resetModules re-runs the mock factories, so the local references must be
+    // rebound or they point at the previous test's instances.
+    const electron = await import('electron');
+    BrowserWindow = electron.BrowserWindow;
+    app = electron.app;
+    ({ getZoomFactor } = await import('../src/config'));
+
     // BrowserWindow is called with `new`, so the mock must be a constructor function
     vi.mocked(BrowserWindow).mockImplementation(function (this: unknown) {
-      return latestMockInstance as unknown as BrowserWindow;
-    } as unknown as () => BrowserWindow);
+      latestMockInstance = createMockBrowserWindow();
+      return latestMockInstance as unknown as ElectronBrowserWindow;
+    } as unknown as () => ElectronBrowserWindow);
     vi.mocked(getZoomFactor).mockReturnValue(1.0);
     vi.mocked(BrowserWindow).mockClear();
 
-    previousMockInstance = latestMockInstance;
+    ({ showAboutWindow } = await import('../src/aboutWindow'));
   });
 
   it('creates a BrowserWindow with correct options', () => {
@@ -151,17 +157,10 @@ describe('showAboutWindow', () => {
     // The module holds one window reference, so a closed window that is not
     // cleared leaves the About item dead for the rest of the session: focus()
     // would be called on a destroyed window and nothing would be shown.
-    const newMockInstance = createMockBrowserWindow();
-    latestMockInstance = newMockInstance;
     vi.mocked(BrowserWindow).mockClear();
-    vi.mocked(BrowserWindow).mockImplementation(function (this: unknown) {
-      return newMockInstance as unknown as BrowserWindow;
-    } as unknown as () => BrowserWindow);
 
     showAboutWindow();
     expect(BrowserWindow).toHaveBeenCalledOnce();
-
-    previousMockInstance = newMockInstance;
   });
 
   it('shows window and sets zoom on ready-to-show', () => {
