@@ -41,6 +41,15 @@ let artworkUrl: string | undefined = undefined;
 let durationMs = 0;
 let trackUrl: string | undefined = undefined;
 
+function clearTrackMetadata(): void {
+  trackName = null;
+  artistName = null;
+  albumName = null;
+  artworkUrl = undefined;
+  durationMs = 0;
+  trackUrl = undefined;
+}
+
 // Playback state. init() assigns playerRef before it builds the only client, so
 // nothing can reach the send path without one. Every call below enable()/disable()
 // carries the Player as an argument, so tsc checks it rather than an assertion.
@@ -122,7 +131,23 @@ function loginOrRetry(player: Player, target: Client, context: string): void {
   });
 }
 
+// Every request for an activity arrives here, so this is where the connection
+// is answered for: a disabled toggle arms no timer, and a client that is down is
+// asked to log in rather than given a debounce whose expiry would find it down
+// anyway. Its 'ready' handler schedules the update the login was for, so nothing
+// is lost. An armed reconnect already owns the retry, so the login is skipped
+// there instead of running a second one on the same instance.
 function scheduleUpdate(player: Player): void {
+  if (!getDiscordEnabled() || !client) return;
+
+  if (!client.isConnected) {
+    if (!reconnectTimer) {
+      discordLog.debug('not connected, attempting login');
+      loginOrRetry(player, client, 'login');
+    }
+    return;
+  }
+
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
@@ -148,21 +173,11 @@ function disconnectClient(player: Player): void {
   discordLog.info('disconnected from Discord (disabled via toggle)');
 }
 
+// Builds the activity and sends it. The connection is scheduleUpdate()'s
+// business: only a live client is ever given a debounce, and disable() clears a
+// pending one, so this cannot run behind a toggle that has gone off.
 function sendActivity(player: Player): void {
   if (!client) return;
-
-  if (!getDiscordEnabled()) {
-    if (client.isConnected || reconnectTimer || debounceTimer) {
-      disconnectClient(player);
-    }
-    return;
-  }
-
-  if (!client.isConnected) {
-    discordLog.debug('not connected, attempting login');
-    loginOrRetry(player, client, 'login');
-    return;
-  }
 
   if (!trackName) {
     discordLog.debug('no track metadata, skipping activity update');
@@ -264,12 +279,7 @@ export function init(ctx: IntegrationContext): void {
   // Named listener references for removeListener in will-quit
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     if (!payload) {
-      trackName = null;
-      artistName = null;
-      albumName = null;
-      artworkUrl = undefined;
-      durationMs = 0;
-      trackUrl = undefined;
+      clearTrackMetadata();
     } else {
       trackName = payload.name ?? null;
       artistName = payload.artistName ?? null;
@@ -327,12 +337,7 @@ export function init(ctx: IntegrationContext): void {
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
 
-    trackName = null;
-    artistName = null;
-    albumName = null;
-    artworkUrl = undefined;
-    durationMs = 0;
-    trackUrl = undefined;
+    clearTrackMetadata();
     previousState = 0;
     retryCount = 0;
   });
