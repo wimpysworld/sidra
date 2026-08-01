@@ -401,6 +401,18 @@ describe('Config store runtime behaviour', () => {
     expect(getPendingScrobbles()).toEqual([]);
   });
 
+  it('getPendingScrobbles drops an entry timestamped in the future and keeps the valid one', () => {
+    // Last.fm ignores a future scrobble without an API error, so the flush reads
+    // success and drops the whole batch, taking the valid plays beside it. The
+    // millisecond value is what a hand-edited store most often holds.
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 },
+      { artist: 'Orbital', track: 'Chime', timestamp: 4102444800 },
+      { artist: 'Underworld', track: 'Born Slippy', timestamp: 1700000000000 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([{ artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 }]);
+  });
+
   it('setStartPage persists to the music start page key, not the Classical one', () => {
     setStartPage('radio');
     expect(getStartPage()).toBe('radio');

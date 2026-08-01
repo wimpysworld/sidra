@@ -131,7 +131,9 @@ export function clearLastfmSession(): void {
  * ones included: `flushPendingScrobbles()` stringifies whatever survives into
  * one batch, and Last.fm refuses the batch whole, so a single malformed entry
  * costs every queued play. The ranges match what the integration produces - a
- * Unix second and a rounded track length, both positive integers.
+ * Unix second and a rounded track length, both positive integers. A second later
+ * than now is refused because Last.fm ignores such a scrobble without an API
+ * error, so the flush reads success and drops the batch with the valid plays in it.
  */
 function isPendingScrobble(value: unknown): value is PendingScrobble {
   if (typeof value !== 'object' || value === null) return false;
@@ -140,6 +142,7 @@ function isPendingScrobble(value: unknown): value is PendingScrobble {
     && typeof entry.track === 'string' && entry.track.length > 0
     && typeof entry.timestamp === 'number'
     && Number.isInteger(entry.timestamp) && entry.timestamp > 0
+    && entry.timestamp <= Math.floor(Date.now() / 1000)
     && (entry.album === undefined || typeof entry.album === 'string')
     && (entry.durationSec === undefined
       || (typeof entry.durationSec === 'number'
