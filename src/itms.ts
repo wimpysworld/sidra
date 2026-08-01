@@ -5,24 +5,24 @@
 
 import { MUSIC_SERVICES } from './musicService';
 
+// The one list of route tokens. The type is derived from it, so the allowlist the
+// parser tests against and the union every consumer sees cannot drift apart.
+const ROUTE_TOKENS = ['library', 'browse', 'radio', 'listenNow', 'subscribe'] as const;
+
 /** The named destinations Apple's itms://music.apple.com/deeplink?p= form carries. */
-export type ItmsRouteToken = 'library' | 'browse' | 'radio' | 'listenNow' | 'subscribe';
+export type ItmsRouteToken = typeof ROUTE_TOKENS[number];
 
 /** Either a catalogue URL to open as-is, or a route the storefront resolves to one. */
 export type ItmsTarget =
   | { kind: 'url'; url: string }
   | { kind: 'route'; token: ItmsRouteToken };
 
-const ROUTE_TOKENS: ReadonlySet<ItmsRouteToken> = new Set<ItmsRouteToken>([
-  'library',
-  'browse',
-  'radio',
-  'listenNow',
-  'subscribe',
-]);
+// Typed ReadonlySet<string>, not ReadonlySet<ItmsRouteToken>: the value under test
+// comes from the OS, so a narrow set would need a cast at the trust boundary.
+const ROUTE_TOKEN_LOOKUP: ReadonlySet<string> = new Set(ROUTE_TOKENS);
 
 function isRouteToken(value: string | null): value is ItmsRouteToken {
-  return value !== null && ROUTE_TOKENS.has(value as ItmsRouteToken);
+  return value !== null && ROUTE_TOKEN_LOOKUP.has(value);
 }
 
 /**
