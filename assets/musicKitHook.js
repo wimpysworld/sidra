@@ -33,6 +33,25 @@
     }
 
     /**
+     * The media session to report position state on, or null when the page
+     * cannot take it.
+     *
+     * Resolved on every call rather than once: the hook is injected into a page
+     * it does not control, and Safari exposes navigator.mediaSession without
+     * setPositionState.
+     *
+     * @returns {MediaSession | null} The usable media session, or null
+     */
+    function getPositionSink() {
+      if (typeof navigator === 'undefined' ||
+          !navigator.mediaSession ||
+          typeof navigator.mediaSession.setPositionState !== 'function') {
+        return null;
+      }
+      return navigator.mediaSession;
+    }
+
+    /**
      * Attach event listeners to a MusicKit instance and expose control
      * methods on window.__sidra.
      *
@@ -67,11 +86,8 @@
        * @returns {void}
        */
       function reportPositionState() {
-        if (typeof navigator === 'undefined' ||
-            !navigator.mediaSession ||
-            typeof navigator.mediaSession.setPositionState !== 'function') {
-          return;
-        }
+        const sink = getPositionSink();
+        if (!sink) return;
 
         // An unresolvable duration or position clears the state rather than
         // reporting duration: Infinity, because the hook cannot tell genuinely
@@ -96,7 +112,7 @@
         }
 
         try {
-          navigator.mediaSession.setPositionState({
+          sink.setPositionState({
             duration,
             playbackRate: 1,
             position: Math.min(position, duration),
@@ -112,14 +128,11 @@
        * @returns {void}
        */
       function clearPositionState() {
-        if (typeof navigator === 'undefined' ||
-            !navigator.mediaSession ||
-            typeof navigator.mediaSession.setPositionState !== 'function') {
-          return;
-        }
+        const sink = getPositionSink();
+        if (!sink) return;
 
         try {
-          navigator.mediaSession.setPositionState();
+          sink.setPositionState();
         } catch (_) {
           // Clearing is best effort; the caller has nothing else to try.
         }
