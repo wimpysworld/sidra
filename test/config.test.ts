@@ -340,6 +340,67 @@ describe('Config store runtime behaviour', () => {
     expect(getPendingScrobbles()).toEqual([{ artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 }]);
   });
 
+  it('getPendingScrobbles keeps a valid entry with both optional fields absent', () => {
+    // The guard must not be so strict that it discards the user's real history:
+    // album and duration are optional and a play without either is normal.
+    const entry = { artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 };
+    store.set('lastfm.pendingScrobbles', [entry]);
+    expect(getPendingScrobbles()).toEqual([entry]);
+  });
+
+  it('getPendingScrobbles keeps a valid entry with both optional fields present', () => {
+    const entry = {
+      artist: 'Underworld',
+      track: 'Born Slippy',
+      timestamp: 1700000000,
+      album: 'Second Toughest',
+      durationSec: 566,
+    };
+    store.set('lastfm.pendingScrobbles', [entry]);
+    expect(getPendingScrobbles()).toEqual([entry]);
+  });
+
+  it('getPendingScrobbles drops an entry whose album is not a string', () => {
+    // A malformed optional field is stringified into the batch parameters and
+    // Last.fm refuses the whole batch, so one bad entry costs every queued play.
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Chime', timestamp: 1700000600, album: 42 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('getPendingScrobbles drops an entry whose durationSec is not an integer', () => {
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Chime', timestamp: 1700000600, durationSec: 312.5 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('getPendingScrobbles drops an entry whose durationSec is zero or negative', () => {
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Chime', timestamp: 1700000600, durationSec: 0 },
+      { artist: 'Orbital', track: 'Chime', timestamp: 1700000601, durationSec: -312 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('getPendingScrobbles drops an entry with an empty artist or track', () => {
+    store.set('lastfm.pendingScrobbles', [
+      { artist: '', track: 'Chime', timestamp: 1700000600 },
+      { artist: 'Orbital', track: '', timestamp: 1700000601 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('getPendingScrobbles drops an entry whose timestamp is not a positive integer', () => {
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Chime', timestamp: 1700000600.5 },
+      { artist: 'Orbital', track: 'Chime', timestamp: -1700000600 },
+      { artist: 'Orbital', track: 'Chime', timestamp: 0 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
   it('setStartPage persists to the music start page key, not the Classical one', () => {
     setStartPage('radio');
     expect(getStartPage()).toBe('radio');

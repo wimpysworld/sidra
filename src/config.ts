@@ -126,13 +126,24 @@ export function clearLastfmSession(): void {
   configLog.info('lastfm session cleared');
 }
 
+/**
+ * The store is hand-editable JSON on disk, so every field is checked, optional
+ * ones included: `flushPendingScrobbles()` stringifies whatever survives into
+ * one batch, and Last.fm refuses the batch whole, so a single malformed entry
+ * costs every queued play. The ranges match what the integration produces - a
+ * Unix second and a rounded track length, both positive integers.
+ */
 function isPendingScrobble(value: unknown): value is PendingScrobble {
   if (typeof value !== 'object' || value === null) return false;
   const entry = value as Partial<PendingScrobble>;
-  return typeof entry.artist === 'string'
-    && typeof entry.track === 'string'
+  return typeof entry.artist === 'string' && entry.artist.length > 0
+    && typeof entry.track === 'string' && entry.track.length > 0
     && typeof entry.timestamp === 'number'
-    && Number.isFinite(entry.timestamp);
+    && Number.isInteger(entry.timestamp) && entry.timestamp > 0
+    && (entry.album === undefined || typeof entry.album === 'string')
+    && (entry.durationSec === undefined
+      || (typeof entry.durationSec === 'number'
+        && Number.isInteger(entry.durationSec) && entry.durationSec > 0));
 }
 
 export function getPendingScrobbles(): PendingScrobble[] {
