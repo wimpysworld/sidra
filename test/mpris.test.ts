@@ -68,8 +68,17 @@ interface PlayerInterface {
   readonly Position: number;
 }
 
-/** Every PropertiesChanged payload of this test file, never cleared. */
-const allEmissions: Array<Record<string, unknown>> = [];
+/**
+ * PropertiesChanged payloads that carried a Position key, never cleared.
+ *
+ * Position moves on its own, so a PropertiesChanged carrying it would be
+ * either a lie or a flood. The MPRIS spec forbids it outright: clients poll
+ * the property or follow the Seeked signal. The check lives on the shared spy
+ * so it covers every emission the file produces and belongs to no single test.
+ * A debounced emission whose timer fires after its own test still fails the
+ * next afterEach, which is why this array is never cleared.
+ */
+const positionBreaches: Array<Record<string, unknown>> = [];
 
 /** The PropertiesChanged payloads of the current test, cleared in beforeEach. */
 let emissions: Array<Record<string, unknown>> = [];
@@ -98,7 +107,12 @@ beforeEach(() => {
   vi.spyOn(dbus, 'sessionBus').mockReturnValue(busStub);
   vi.spyOn(dbus.interface.Interface, 'emitPropertiesChanged').mockImplementation((iface, changed, invalidated) => {
     emissions.push(changed);
-    allEmissions.push(changed);
+    // Recorded rather than asserted here: production wraps the emission in a
+    // try/catch, which would swallow a thrown assertion and log a warning
+    // while the test still passed. afterEach reads this.
+    if ('Position' in changed) {
+      positionBreaches.push(changed);
+    }
     realEmitPropertiesChanged(iface, changed, invalidated);
   });
   emissions = [];
@@ -112,7 +126,10 @@ beforeEach(() => {
 // would break every later test that awaits a promise, so they come off here
 // whether a test installed them or not.
 afterEach(() => {
+  // Timers come off first: an assertion that throws would skip the rest of
+  // this hook and leave fake timers installed for every later test.
   vi.useRealTimers();
+  expect(positionBreaches).toEqual([]);
 });
 
 describe('MPRIS OpenUri', () => {
@@ -448,16 +465,5 @@ describe('MPRIS without a session bus', () => {
     expect(player.listenerCount('playbackStateDidChange')).toBe(0);
     expect(player.listenerCount('nowPlayingItemDidChange')).toBe(0);
     expect(player.listenerCount('playbackTimeDidChange')).toBe(0);
-  });
-});
-
-// Position moves on its own, so a PropertiesChanged carrying it would be
-// either a lie or a flood. The MPRIS spec forbids it outright: clients poll
-// the property or follow the Seeked signal. This block reads the payloads
-// every test above produced, so it has to stay last in the file.
-describe('MPRIS PropertiesChanged payloads', () => {
-  it('never publishes Position', () => {
-    expect(allEmissions.length).toBeGreaterThan(0);
-    expect(allEmissions.filter((payload) => 'Position' in payload)).toEqual([]);
   });
 });
