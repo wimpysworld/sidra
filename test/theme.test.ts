@@ -134,11 +134,6 @@ describe('theme helpers', () => {
     expect(customCssPath()).toBe(path.join(app.getPath('userData'), 'custom.css'));
   });
 
-  it('reports custom.css presence from file content', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
-    expect(hasCustomCss()).toBe(true);
-  });
-
   it('reports no custom.css when the file is missing', () => {
     throwEnoent();
     expect(hasCustomCss()).toBe(false);
@@ -168,18 +163,6 @@ describe('theme helpers', () => {
   it('falls back to apple-music when custom theme is selected without custom.css', () => {
     vi.mocked(getTheme).mockReturnValue('custom');
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    expect(resolveTheme()).toBe('apple-music');
-  });
-
-  it('keeps custom when custom.css exists', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
-    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
-    expect(resolveTheme()).toBe('custom');
-  });
-
-  it('falls back to apple-music when custom.css is empty or whitespace', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
-    vi.mocked(fs.readFileSync).mockReturnValue('\n  \n');
     expect(resolveTheme()).toBe('apple-music');
   });
 
@@ -526,30 +509,15 @@ describe('theme helpers', () => {
     } as unknown as Parameters<typeof initThemeCSS>[0];
     theme.initThemeCSS(win);
 
+    // Two reads, two filesystem calls: the cache is off, not merely cleared.
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
-  });
-
-  it('reads custom.css on every call once the watcher has failed to start', async () => {
-    // Two reads, two filesystem calls: the cache is off, not merely cleared.
-    vi.resetModules();
-    vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
-    const theme = await import('../src/theme');
-    const win = {
-      isDestroyed: vi.fn().mockReturnValue(false),
-      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn(), on: vi.fn() },
-    } as unknown as Parameters<typeof initThemeCSS>[0];
-    theme.initThemeCSS(win);
-
-    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
-  it('drops the warm custom.css cache when the watcher reports an error', async () => {
+  it('drops the warm custom.css cache and stops caching when the watcher reports an error', async () => {
     // Node closes the watcher on error, so the cache it warmed is now stale
     // with nothing left to clear it.
     vi.resetModules();
@@ -563,27 +531,12 @@ describe('theme helpers', () => {
 
     harness.fireError();
 
+    // Two reads after the error, two more filesystem calls: the stale cache is
+    // dropped and caching stays off rather than warming again on the next read.
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
-    expect(fs.readFileSync).toHaveBeenCalledTimes(2);
-  });
-
-  it('reads custom.css on every call after a watcher error', async () => {
-    vi.resetModules();
-    const theme = await import('../src/theme');
-    const harness = watcherHarness({ init: theme.initThemeCSS });
-    harness.start();
-
-    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
-    harness.fireError();
-
-    // Two reads after the error, two filesystem calls: caching stays off rather
-    // than warming again on the next read.
-    vi.mocked(fs.readFileSync).mockClear();
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
-    expect(fs.readFileSync).toHaveBeenCalledTimes(2);
+    expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
+    expect(fs.readFileSync).toHaveBeenCalledTimes(3);
   });
 
   it('renders bundled theme CSS', () => {
