@@ -4,6 +4,13 @@
 // palette. Catppuccin renders byte for byte to the values the retired
 // hand-written catppuccin.css asset shipped, which test/themes.test.ts
 // pins, so the emitted form is not free to drift.
+//
+// Everything inside the template literals below is output, comments included:
+// the string ships to the renderer with insertCSS() on every page load. A
+// comment there is therefore a one-line section label, so a reader of a
+// DevTools style pane can find their place; the banner naming this file is the
+// one exception. Why a rule exists goes in a TypeScript comment outside the
+// literals, like this one.
 
 /** The 12 semantic colour slots a palette fills for one colour scheme. */
 export interface SchemeColours {
@@ -59,11 +66,25 @@ function rgbaSpaced(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex).split(',').join(', ')}, ${alpha})`;
 }
 
+// Four notes on the rules below, kept here because a comment beside a rule
+// would ship to the renderer.
+//
+// The * block is the only declaration site for the accent group. The shadow DOM
+// of amp-* elements does not inherit from :root, and Apple declares those
+// variables without !important, so * wins at the root element too. It also
+// carries the variables Apple re-declares on the element itself.
+//
+// .chrome-player::before paints the player bar, which is itself transparent.
+// Classical declares the gradient on that pseudo and music re-declares its fill
+// there, so neither is reachable from the * block.
+//
+// .side-panel and its header wrapper paint a direct background-color, which no
+// :root variable reaches.
+//
 // The scheme block carries no ::-webkit-scrollbar-* rules. From Chrome 121
 // Chromium ignores that pseudo-element on any element carrying a non-auto
 // scrollbar-color, and the block sets one on every element; Sidra runs
-// Chromium 144, so such rules could never apply. The explanation lives here
-// rather than in the emitted CSS, which ships to the renderer on every load.
+// Chromium 144, so such rules could never apply.
 function schemeBlock(c: SchemeColours): string {
   const playerBG = rgba(c.mantle, 0.88);
   return `  :root {
@@ -119,10 +140,7 @@ function schemeBlock(c: SchemeColours): string {
     scrollbar-color: ${c.surface1} ${c.mantle} !important;
   }
 
-  /* Force variables into shadow-DOM-scoped elements, and variables Apple
-     re-declares on the element itself. This is also the only declaration
-     site for the accent variables: * matches the root element too, and
-     Apple declares them without !important, so these win everywhere. */
+  /* Accent variables, and variables Apple re-declares on the element */
   * {
     --keyColor: ${c.accent} !important;
     --keyColor-rgb: ${rgbTriplet(c.accent)} !important;
@@ -137,15 +155,13 @@ function schemeBlock(c: SchemeColours): string {
     --lcd-bg-color: ${c.surface0} !important;
   }
 
-  /* Player bar: the bar is transparent and its ::before paints it. Classical
-     declares the gradient on that pseudo and music re-declares its fill there,
-     so neither is reachable from the * block. */
+  /* Player bar */
   .chrome-player::before {
     background-color: ${playerBG} !important;
     background-image: none !important;
   }
 
-  /* Side panels (Lyrics + Up Next): not covered by :root variables */
+  /* Side panels (Lyrics + Up Next) */
   .side-panel {
     background-color: ${rgbaSpaced(c.mantle, 0.97)} !important;
     backdrop-filter: blur(50px) saturate(100%) !important;
@@ -207,6 +223,10 @@ function schemeBlock(c: SchemeColours): string {
  * Renders the whole override stylesheet for a theme, both colour-scheme variants
  * included. Everything inside the returned literal, comments as well as rules,
  * ships to the renderer, so keep rationale in the source and out of the output.
+ *
+ * The trailing .button.primary button.click-action rule is here because Apple
+ * hardcodes background-color: rgb(214, 0, 23) on that button and never reads
+ * --keyColor there, so an accent-coloured button needs the direct override.
  */
 export function buildThemeCss(theme: ThemeDefinition): string {
   return `/*
@@ -223,7 +243,7 @@ ${schemeBlock(theme.dark)}
 ${schemeBlock(theme.light)}
 }
 
-/* Override hardcoded primary button background to use the theme accent */
+/* Accent-coloured buttons */
 .button.primary button.click-action {
   background-color: var(--keyColor) !important;
 }

@@ -222,6 +222,21 @@ describe('buildThemeCss', () => {
         }
       });
 
+      // The generated stylesheet ships to the renderer, so a comment in it is
+      // output. Section labels stay; why a rule exists belongs in a TypeScript
+      // comment in src/themeTemplate.ts, outside the template literals. A label
+      // fits on one line and an explanation does not, so this is the mechanical
+      // form of that boundary. The leading banner is skipped: it identifies the
+      // sheet rather than explaining a rule.
+      it('emits section labels only, past the banner', () => {
+        const body = css.slice(css.indexOf('*/') + 2);
+        for (const comment of body.match(/\/\*[\s\S]*?\*\//g) ?? []) {
+          expect(comment, `${theme.name}: explanation emitted into the stylesheet`).not.toContain(
+            '\n',
+          );
+        }
+      });
+
       it('styles footer, locale switcher, and banner in both variants', () => {
         for (const block of [darkCss, lightCss]) {
           expect(block).toContain('/* Footer */');
