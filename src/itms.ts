@@ -26,9 +26,10 @@ function isRouteToken(value: string | null): value is ItmsRouteToken {
 }
 
 /**
- * Validates one itms:// URL and converts it to something Sidra can open. This is
- * a trust boundary: the URL arrives from the OS, so the scheme, the host and the
- * route token are each checked against an allowlist and anything else is null.
+ * Validates one itms:// URL and converts it to something Sidra can open. This is a
+ * trust boundary: the URL arrives from the OS, so a bad scheme or host is null, and
+ * a /deeplink path is null unless its `p` token is on the allowlist. Any other path
+ * becomes an https catalogue URL with the `app` parameter stripped.
  */
 export function transformItmsUrl(input: string): ItmsTarget | null {
   let parsed: URL;
