@@ -39,6 +39,15 @@ function cssVar(block: string, name: string): string {
   return match[1];
 }
 
+/** Reads the thumb and track of the scrollbar-color declaration. */
+function scrollbarColor(block: string): { thumb: string; track: string } {
+  const match = /scrollbar-color: (\S+) (\S+) !important;/.exec(block);
+  if (match === null) {
+    throw new Error('scrollbar-color is missing from the generated block');
+  }
+  return { thumb: match[1], track: match[2] };
+}
+
 /** Reads the background-color of the .chrome-player::before rule. */
 function chromePlayerFill(block: string): string {
   const match = /\.chrome-player::before \{\s*background-color: ([^;]+) !important;/.exec(block);
@@ -176,13 +185,38 @@ describe('buildThemeCss', () => {
       const css = buildThemeCss(theme);
       const darkCss = mediaBlock(css, 'prefers-color-scheme: dark');
       const lightCss = mediaBlock(css, 'prefers-color-scheme: light');
+      const schemeBlocks = [
+        { block: darkCss, colours: theme.dark },
+        { block: lightCss, colours: theme.light },
+      ];
 
-      it('styles scrollbars in both colour-scheme variants', () => {
-        for (const block of [darkCss, lightCss]) {
-          expect(block).toContain('scrollbar-color:');
-          expect(block).toContain('*::-webkit-scrollbar');
-          expect(block).toContain('*::-webkit-scrollbar-thumb');
-          expect(block).toContain('*::-webkit-scrollbar-track');
+      // Both sides come from the palette, so a slot change cannot drift past
+      // this test.
+      it('paints the scrollbar thumb and track from the palette', () => {
+        for (const { block, colours } of schemeBlocks) {
+          expect(scrollbarColor(block)).toEqual({
+            thumb: colours.surface1,
+            track: colours.mantle,
+          });
+        }
+      });
+
+      // From Chrome 121 Chromium ignores ::-webkit-scrollbar-* on any element
+      // carrying a non-auto scrollbar-color, and the * rule above sets one on
+      // every element, so any such rule would be dead text in every build.
+      it('emits no scrollbar rules Chromium ignores', () => {
+        expect(css).not.toContain('::-webkit-scrollbar');
+      });
+
+      // The accent group was dropped from :root, leaving the * block as its
+      // only declaration site. cssVar reads the first match, so a resolved
+      // value here proves the root still reaches one.
+      it('resolves the accent variables from the * block', () => {
+        for (const { block, colours } of schemeBlocks) {
+          expect(cssVar(block, 'keyColor')).toBe(colours.accent);
+          expect(cssVar(block, 'keyColor-rollover')).toBe(colours.accentHover);
+          expect(cssVar(block, 'musicKeyColor')).toBe(colours.accent);
+          expect(cssVar(block, 'selectionColor')).toBe(colours.accent);
         }
       });
 

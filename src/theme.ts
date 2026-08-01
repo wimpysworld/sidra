@@ -27,6 +27,21 @@ let customCssCacheEnabled = true;
 // Track injected theme CSS for live toggle
 let themeCssKey: string | null = null;
 
+// Every mutation of themeCssKey runs on this one chain, so a theme change and a
+// post-load injection cannot interleave and strand a stylesheet on the page.
+let themeCssOp: Promise<void> = Promise.resolve();
+
+function enqueueThemeCssOp(work: () => Promise<void>): Promise<void> {
+  themeCssOp = themeCssOp
+    // The catch sits ahead of the then so a failed operation cannot deadlock
+    // the queue: the next one still runs.
+    .catch((error: unknown) => {
+      themeLog.warn('Theme CSS operation failed', error);
+    })
+    .then(work);
+  return themeCssOp;
+}
+
 // Apply or remove theme CSS on the main window.
 // Handles enable, disable, and re-injection (variant change) cases.
 // No-op until initThemeCSS() assigns the real implementation.
@@ -107,43 +122,42 @@ export function getThemeCss(name: ThemeName): string | null {
 }
 
 // Inject the resolved theme CSS after a page load. main.ts calls this on every load.
-export async function injectThemeCss(contents: WebContents): Promise<void> {
-  const theme = resolveTheme();
-  if (theme === 'apple-music') return;
-  const css = getThemeCss(theme);
-  if (css === null) {
-    themeLog.warn(`Theme CSS unavailable: ${theme}`);
-    return;
-  }
-  setThemeCssKey(await contents.insertCSS(css));
-  themeLog.debug(`Theme CSS injected: ${theme}`);
+// The load replaced the document, so nothing is removed here: any key held belongs
+// to the old document and removeInsertedCSS would reject on it.
+export function injectThemeCss(contents: WebContents): Promise<void> {
+  return enqueueThemeCssOp(async () => {
+    const theme = resolveTheme();
+    if (theme === 'apple-music') {
+      themeCssKey = null;
+      return;
+    }
+    const css = getThemeCss(theme);
+    if (css === null) {
+      themeLog.warn(`Theme CSS unavailable: ${theme}`);
+      return;
+    }
+    themeCssKey = await contents.insertCSS(css);
+    themeLog.debug(`Theme CSS injected: ${theme}`);
+  });
 }
 
 export function initThemeCSS(win: BrowserWindow): void {
 
-  let themeCssOp = Promise.resolve();
-  applyThemeCSSInternal = (name: ThemeName) => {
-    themeCssOp = themeCssOp
-      .catch((error: unknown) => {
-        themeLog.warn('Theme CSS operation failed', error);
-      })
-      .then(async () => {
-        const css = getThemeCss(name);
-        if (css !== null && themeCssKey !== null) {
-          await win.webContents.removeInsertedCSS(themeCssKey);
-          themeCssKey = await win.webContents.insertCSS(css);
-          themeLog.debug(`Theme CSS re-injected: ${name}`);
-        } else if (css !== null) {
-          themeCssKey = await win.webContents.insertCSS(css);
-          themeLog.debug(`Theme CSS injected: ${name}`);
-        } else if (themeCssKey !== null) {
-          await win.webContents.removeInsertedCSS(themeCssKey);
-          themeCssKey = null;
-          themeLog.debug(`Theme CSS removed: ${name}`);
-        }
-      });
-    return themeCssOp;
-  };
+  applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async () => {
+    const css = getThemeCss(name);
+    if (css !== null && themeCssKey !== null) {
+      await win.webContents.removeInsertedCSS(themeCssKey);
+      themeCssKey = await win.webContents.insertCSS(css);
+      themeLog.debug(`Theme CSS re-injected: ${name}`);
+    } else if (css !== null) {
+      themeCssKey = await win.webContents.insertCSS(css);
+      themeLog.debug(`Theme CSS injected: ${name}`);
+    } else if (themeCssKey !== null) {
+      await win.webContents.removeInsertedCSS(themeCssKey);
+      themeCssKey = null;
+      themeLog.debug(`Theme CSS removed: ${name}`);
+    }
+  });
 
   nativeTheme.on('updated', () => {
     const currentTheme = resolveTheme();

@@ -22,6 +22,7 @@ vi.mock('fs', () => ({ default: fsMock, ...fsMock }));
 
 import { getMusicService, getTheme } from '../src/config';
 import {
+  applyTheme,
   customCssPath,
   getThemeCss,
   hasCustomCss,
@@ -205,6 +206,21 @@ describe('theme helpers', () => {
       return { insertCSS, contents: { insertCSS } as unknown as WebContents };
     }
 
+    // A WebContents whose insertCSS stays pending until release() is called, so
+    // a test can hold a page-load injection open and queue work behind it.
+    function heldContents() {
+      let release: (key: string) => void = () => { /* replaced below */ };
+      const pending = new Promise<string>((resolve) => { release = resolve; });
+      const insertCSS = vi.fn().mockReturnValue(pending);
+      return { insertCSS, release: (key: string) => { release(key); }, contents: { insertCSS } as unknown as WebContents };
+    }
+
+    // applyTheme() returns void and the CSS queue is not exported, so draining
+    // the microtask queue is the only way to wait for work it enqueued.
+    async function flushCssQueue(): Promise<void> {
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    }
+
     it('injects bundled theme CSS while classical is active', async () => {
       vi.mocked(getTheme).mockReturnValue('catppuccin');
       vi.mocked(getMusicService).mockReturnValue('classical');
@@ -224,6 +240,60 @@ describe('theme helpers', () => {
       await injectThemeCss(contents);
 
       expect(insertCSS).not.toHaveBeenCalled();
+    });
+
+    it('clears a stale key on the apple-music path', async () => {
+      // The load replaced the document, so a key held from the previous one is
+      // stale. removeInsertedCSS rejects on a stale key and that rejection
+      // aborts the theme change that follows, so the key must not survive here.
+      const harness = watcherHarness();
+      harness.start();
+      vi.mocked(getTheme).mockReturnValue('apple-music');
+      setThemeCssKey('stale-key');
+      const { insertCSS, contents } = fakeContents();
+
+      await injectThemeCss(contents);
+      expect(insertCSS).not.toHaveBeenCalled();
+
+      // The next theme change must reach its insert, with no removal attempted.
+      applyTheme('catppuccin');
+      await flushCssQueue();
+
+      expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
+      expect(harness.insertCSS).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves one stylesheet when a theme change lands during a page load', async () => {
+      // Both entry points share one queue, so the theme change waits for the
+      // in-flight injection and removes the key that injection produced.
+      // Interleaved, the change would insert against a null key and strand the
+      // page-load stylesheet with nothing left holding its key.
+      const harness = watcherHarness();
+      harness.insertCSS.mockResolvedValue('theme-key');
+      harness.start();
+      vi.mocked(getTheme).mockReturnValue('catppuccin');
+      const { insertCSS, release, contents } = heldContents();
+
+      const loading = injectThemeCss(contents);
+      await flushCssQueue();
+      expect(insertCSS).toHaveBeenCalledTimes(1);
+
+      applyTheme('nord');
+      await flushCssQueue();
+
+      // The theme change is queued behind the load, not racing it.
+      expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
+      expect(harness.insertCSS).not.toHaveBeenCalled();
+
+      release('load-key');
+      await loading;
+      await flushCssQueue();
+
+      // Two inserts, one removal of the first insert's key: one sheet survives.
+      expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
+      expect(harness.removeInsertedCSS).toHaveBeenCalledWith('load-key');
+      expect(insertCSS).toHaveBeenCalledTimes(1);
+      expect(harness.insertCSS).toHaveBeenCalledTimes(1);
     });
   });
 

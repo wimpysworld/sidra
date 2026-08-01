@@ -57,6 +57,11 @@ function rgbaSpaced(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex).split(',').join(', ')}, ${alpha})`;
 }
 
+// The scheme block carries no ::-webkit-scrollbar-* rules. From Chrome 121
+// Chromium ignores that pseudo-element on any element carrying a non-auto
+// scrollbar-color, and the block sets one on every element; Sidra runs
+// Chromium 144, so such rules could never apply. The explanation lives here
+// rather than in the emitted CSS, which ships to the renderer on every load.
 function schemeBlock(c: SchemeColours): string {
   const playerBG = rgba(c.mantle, 0.88);
   return `  :root {
@@ -67,17 +72,6 @@ function schemeBlock(c: SchemeColours): string {
     --fallbackMaterialBG: ${rgba(c.mantle, 0.97)} !important;
     --shelfBG: ${rgba(c.surface0, 0.15)} !important;
     --genericJoeColor: ${c.surface1} !important;
-
-    /* Accent */
-    --keyColor: ${c.accent} !important;
-    --keyColor-rgb: ${rgbTriplet(c.accent)} !important;
-    --keyColor-rollover: ${c.accentHover} !important;
-    --keyColor-pressed: ${c.accentHover} !important;
-    --keyColor-deepPressed: ${c.accentHover} !important;
-    --keyColor-disabled: ${rgba(c.accent, 0.35)} !important;
-    --musicKeyColor: ${c.accent} !important;
-    --musicBrandBG: ${c.accent} !important;
-    --selectionColor: ${c.accent} !important;
 
     /* Text */
     --systemPrimary: ${rgba(c.text, 0.85)} !important;
@@ -123,24 +117,10 @@ function schemeBlock(c: SchemeColours): string {
     scrollbar-color: ${c.surface1} ${c.mantle} !important;
   }
 
-  *::-webkit-scrollbar {
-    width: 12px !important;
-    height: 12px !important;
-    background-color: ${c.mantle} !important;
-  }
-
-  *::-webkit-scrollbar-thumb {
-    background-color: ${c.surface1} !important;
-    border: 3px solid ${c.mantle} !important;
-    border-radius: 999px !important;
-  }
-
-  *::-webkit-scrollbar-track {
-    background-color: ${c.mantle} !important;
-  }
-
   /* Force variables into shadow-DOM-scoped elements, and variables Apple
-     re-declares on the element itself */
+     re-declares on the element itself. This is also the only declaration
+     site for the accent variables: * matches the root element too, and
+     Apple declares them without !important, so these win everywhere. */
   * {
     --keyColor: ${c.accent} !important;
     --keyColor-rgb: ${rgbTriplet(c.accent)} !important;
