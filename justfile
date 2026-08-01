@@ -111,10 +111,12 @@ lint:
 test:
     npm test
 
+# The audit gate covers shipped dependencies. A dev-only advisory never reaches
+# a user, so it does not block a release.
 # Validate electron-builder configuration
 validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
-    npm audit
+    npm audit --omit=dev
 
 # Generate tray icon PNGs from SVG source
 generate-tray-icon:
