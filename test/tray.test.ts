@@ -235,13 +235,18 @@ describe('createTray - menu template inspection', () => {
     expect(tray.setContextMenu).toBeDefined();
   });
 
-  describe('Linux platform', () => {
+  // Linux and Windows build the About and Quit items the same way, so the only
+  // difference between these runs is the platform the row installs.
+  describe.each([
+    { platform: 'Linux', setup: (): void => setPlatform('linux') },
+    { platform: 'Windows', setup: (): void => setPlatform('win32') },
+  ])('$platform About and Quit items', ({ setup }) => {
     beforeEach(() => {
-      setPlatform('linux');
+      setup();
       Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
     });
 
-    it('uses plain text label for About on Linux', () => {
+    it('uses plain text label for About', () => {
       createTray();
       const template = getLastTemplate();
       const aboutItem = findItem(template, 'About Sidra');
@@ -249,14 +254,14 @@ describe('createTray - menu template inspection', () => {
       expect(aboutItem!.label).toBe('About Sidra');
     });
 
-    it('attaches icon to About on Linux', () => {
+    it('attaches icon to About', () => {
       createTray();
       const template = getLastTemplate();
       const aboutItem = findItem(template, 'About Sidra');
       expect(aboutItem!.icon).toBeDefined();
     });
 
-    it('uses plain text label for Quit on Linux', () => {
+    it('uses plain text label for Quit', () => {
       createTray();
       const template = getLastTemplate();
       const quitItem = findItem(template, 'Quit');
@@ -264,11 +269,18 @@ describe('createTray - menu template inspection', () => {
       expect(quitItem!.label).toBe('Quit');
     });
 
-    it('attaches icon to Quit on Linux', () => {
+    it('attaches icon to Quit', () => {
       createTray();
       const template = getLastTemplate();
       const quitItem = findItem(template, 'Quit');
       expect(quitItem!.icon).toBeDefined();
+    });
+  });
+
+  describe('Linux platform', () => {
+    beforeEach(() => {
+      setPlatform('linux');
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
     });
 
     it('attaches icons to all top-level submenu parents on Linux', () => {
@@ -309,36 +321,6 @@ describe('createTray - menu template inspection', () => {
     beforeEach(() => {
       setPlatform('win32');
       Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
-    });
-
-    it('uses plain text label for About on Windows', () => {
-      createTray();
-      const template = getLastTemplate();
-      const aboutItem = findItem(template, 'About Sidra');
-      expect(aboutItem).toBeDefined();
-      expect(aboutItem!.label).toBe('About Sidra');
-    });
-
-    it('attaches icon to About on Windows', () => {
-      createTray();
-      const template = getLastTemplate();
-      const aboutItem = findItem(template, 'About Sidra');
-      expect(aboutItem!.icon).toBeDefined();
-    });
-
-    it('uses plain text label for Quit on Windows', () => {
-      createTray();
-      const template = getLastTemplate();
-      const quitItem = findItem(template, 'Quit');
-      expect(quitItem).toBeDefined();
-      expect(quitItem!.label).toBe('Quit');
-    });
-
-    it('attaches icon to Quit on Windows', () => {
-      createTray();
-      const template = getLastTemplate();
-      const quitItem = findItem(template, 'Quit');
-      expect(quitItem!.icon).toBeDefined();
     });
 
     it('registers a nativeTheme listener on Windows', () => {
@@ -1210,13 +1192,29 @@ describe('createTray - menu template inspection', () => {
       });
     });
 
-    describe('Windows Now Playing icons', () => {
+    // Windows takes a themed PNG and macOS Tahoe+ an SF Symbol, but the menu
+    // carries an icon either way, so each row differs only in the setup it runs.
+    describe.each([
+      {
+        platform: 'Windows',
+        setup: (): void => {
+          setPlatform('win32');
+          Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+        },
+      },
+      {
+        platform: 'macOS Tahoe+',
+        setup: (): void => {
+          setPlatform('darwin');
+          vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
+        },
+      },
+    ])('$platform Now Playing icons', ({ setup }) => {
       beforeEach(() => {
-        setPlatform('win32');
-        Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+        setup();
       });
 
-      it('attaches icons to Now Playing items on Windows', () => {
+      it('attaches icons to Now Playing items', () => {
         createTrayWithNowPlaying();
         const template = getLastTemplate();
         for (const label of ['Test Artist', 'Test Album', 'Previous', 'Pause', 'Next']) {
@@ -1228,34 +1226,7 @@ describe('createTray - menu template inspection', () => {
         expect(volumeItem!.icon).toBeDefined();
       });
 
-      it('preserves artwork icon on track name item on Windows', () => {
-        createTrayWithNowPlaying();
-        const template = getLastTemplate();
-        const trackItem = findItem(template, 'Test Track');
-        expect(trackItem).toBeDefined();
-        expect(trackItem!.icon).toBeDefined();
-      });
-    });
-
-    describe('macOS Tahoe+ Now Playing icons', () => {
-      beforeEach(() => {
-        setPlatform('darwin');
-        vi.spyOn(process, 'getSystemVersion').mockReturnValue('26.1.0');
-      });
-
-      it('attaches SF Symbol icons to Now Playing items on macOS Tahoe+', () => {
-        createTrayWithNowPlaying();
-        const template = getLastTemplate();
-        for (const label of ['Test Artist', 'Test Album', 'Previous', 'Pause', 'Next']) {
-          const item = findItem(template, label);
-          expect(item, `${label} should exist`).toBeDefined();
-          expect(item!.icon, `${label} should have icon`).toBeDefined();
-        }
-        const volumeItem = findItem(template, 'Volume');
-        expect(volumeItem!.icon).toBeDefined();
-      });
-
-      it('preserves artwork icon on track name item on macOS Tahoe+', () => {
+      it('preserves artwork icon on track name item', () => {
         createTrayWithNowPlaying();
         const template = getLastTemplate();
         const trackItem = findItem(template, 'Test Track');
