@@ -124,12 +124,13 @@ describe('palettes', () => {
     }
   });
 
-  it('resolves labels for bundled, custom, and unknown names', () => {
+  // themeLabel takes a ThemeName, so a misspelt name fails tsc rather than
+  // rendering as Apple Music; there is no unknown-name case left to check.
+  it('resolves labels for bundled, custom, and apple-music names', () => {
     expect(themeLabel('catppuccin')).toBe('Catppuccin');
     expect(themeLabel('rose-pine')).toBe('Ros\u00e9 Pine');
     expect(themeLabel('custom')).toBe('Custom');
     expect(themeLabel('apple-music')).toBe('Apple Music');
-    expect(themeLabel('no-such-theme')).toBe('Apple Music');
   });
 });
 
@@ -202,13 +203,6 @@ describe('buildThemeCss', () => {
         }
       });
 
-      // From Chrome 121 Chromium ignores ::-webkit-scrollbar-* on any element
-      // carrying a non-auto scrollbar-color, and the * rule above sets one on
-      // every element, so any such rule would be dead text in every build.
-      it('emits no scrollbar rules Chromium ignores', () => {
-        expect(css).not.toContain('::-webkit-scrollbar');
-      });
-
       // The * block is the only declaration site for the accent group, because
       // the shadow DOM of amp-* elements does not inherit from :root. cssVar
       // reads the first match, so a resolved value here proves the root element
@@ -237,33 +231,6 @@ describe('buildThemeCss', () => {
         }
       });
 
-      it('styles footer, locale switcher, and banner in both variants', () => {
-        for (const block of [darkCss, lightCss]) {
-          expect(block).toContain('/* Footer */');
-          expect(block).toContain('.scrollable-page footer');
-          expect(block).toContain('[class*="locale-switcher"]');
-          expect(block).toContain('[data-testid="banner-container"]');
-        }
-      });
-
-      it('retains player variables and the accent button override', () => {
-        expect(darkCss).toContain('--playerBackground:');
-        expect(darkCss).toContain('--keyColor:');
-        expect(css).toContain('.button.primary button.click-action');
-        expect(css).toContain('background-color: var(--keyColor) !important;');
-      });
-
-      it('themes the player bar and the Classical LCD in both variants', () => {
-        for (const block of [darkCss, lightCss]) {
-          expect(block).toContain('.chrome-player::before');
-          expect(block).toContain('background-image: none !important;');
-          expect(block).toContain('--chromePlayerBGFill:');
-          expect(block).toContain('--lcd-bg-color:');
-          expect(block).toContain('--playerMissingArtworkBg:');
-          expect(block).toContain('--playerMissingArtworkIcon:');
-        }
-      });
-
       it('paints the player bar with the player background value', () => {
         for (const block of [darkCss, lightCss]) {
           expect(chromePlayerFill(block)).toBe(cssVar(block, 'playerBackground'));
@@ -271,45 +238,109 @@ describe('buildThemeCss', () => {
           expect(cssVar(block, 'lcd-bg-color')).toBe(cssVar(block, 'playerLCDBGFill'));
         }
       });
+    });
+  }
+});
 
-      it('emits no Svelte scope hash', () => {
-        expect(css).not.toMatch(/svelte-[a-z0-9]/);
-      });
+// buildThemeCss() renders one template and schemeBlock() takes a SchemeColours
+// record with no theme name in it, so every palette emits the same selectors,
+// properties, and section labels; only the values differ. The checks below read
+// selectors and property names alone, so one generated stylesheet answers for
+// all of them. Anything reading a palette value stays in the loop above.
+describe('buildThemeCss emitted structure', () => {
+  const css = buildThemeCss(BUNDLED_THEMES[0]);
+  const darkCss = mediaBlock(css, 'prefers-color-scheme: dark');
+  const lightCss = mediaBlock(css, 'prefers-color-scheme: light');
 
-      it('keeps old player structural selectors out', () => {
-        expect(css).not.toContain('.wrapper amp-chrome-player::before');
-        expect(css).not.toContain('amp-chrome-player');
-        expect(css).not.toContain('.player-bar');
-        expect(css).not.toContain('.chrome-player.chrome-player__music');
-        expect(css).not.toContain('amp-lcd');
-      });
+  // From Chrome 121 Chromium ignores ::-webkit-scrollbar-* on any element
+  // carrying a non-auto scrollbar-color, and the * rule sets one on every
+  // element, so any such rule would be dead text in every build.
+  it('emits no scrollbar rules Chromium ignores', () => {
+    expect(css).not.toContain('::-webkit-scrollbar');
+  });
 
-      it('keeps selectors and properties Apple no longer ships out', () => {
-        expect(css).not.toContain('dt-footer');
-        expect(css).not.toContain('page-footer');
-        expect(css).not.toContain('--lovedBGColor');
-        expect(css).not.toContain('--playerBGFill');
-        expect(css).not.toContain('--playerScrubberPlayhead');
-        expect(css).not.toContain('--playerVolumeFill');
-        expect(css).not.toContain('--playerVolumeIconFill');
-        expect(css).not.toContain('--playerVolumeTrack');
-        expect(css).not.toContain('--systemAccentBG');
-      });
+  it('styles footer, locale switcher, and banner in both variants', () => {
+    for (const block of [darkCss, lightCss]) {
+      expect(block).toContain('/* Footer */');
+      expect(block).toContain('.scrollable-page footer');
+      expect(block).toContain('[class*="locale-switcher"]');
+      expect(block).toContain('[data-testid="banner-container"]');
+    }
+  });
 
-      it('keeps country/location banner control styling on Apple Music defaults', () => {
-        expect(css).not.toContain('[class*="country-select"]');
-        expect(css).not.toContain('[class*="country-selector"]');
-        expect(css).not.toContain('[class*="location-selector"]');
-        expect(css).not.toContain('[class*="storefront-selector"]');
-        expect(css).not.toContain('[data-testid*="country" i]');
-        expect(css).not.toContain('[aria-label*="country" i]');
-        expect(css).not.toContain('[role="combobox"]');
-        expect(css).not.toContain('[class*="menu"]');
-        expect(css).not.toContain('[class*="continue"]');
-        expect(css).not.toContain('[aria-label*="continue" i]');
-        expect(css).not.toContain('[class*="close-button"]');
-        expect(css).not.toContain('[aria-label*="close" i]');
-      });
+  it('retains player variables and the accent button override', () => {
+    expect(darkCss).toContain('--playerBackground:');
+    expect(darkCss).toContain('--keyColor:');
+    expect(css).toContain('.button.primary button.click-action');
+    expect(css).toContain('background-color: var(--keyColor) !important;');
+  });
+
+  it('themes the player bar and the Classical LCD in both variants', () => {
+    for (const block of [darkCss, lightCss]) {
+      expect(block).toContain('.chrome-player::before');
+      expect(block).toContain('background-image: none !important;');
+      expect(block).toContain('--chromePlayerBGFill:');
+      expect(block).toContain('--lcd-bg-color:');
+      expect(block).toContain('--playerMissingArtworkBg:');
+      expect(block).toContain('--playerMissingArtworkIcon:');
+    }
+  });
+
+  // A scope hash changes on any Apple rebuild, so a selector carrying one is
+  // dead the next time they ship.
+  it('emits no Svelte scope hash', () => {
+    expect(css).not.toMatch(/svelte-[a-z0-9]/);
+  });
+
+  // One case per selector, so a failure names the selector that came back
+  // rather than the file.
+  const RETIRED_PLAYER_SELECTORS = [
+    '.wrapper amp-chrome-player::before',
+    'amp-chrome-player',
+    '.player-bar',
+    '.chrome-player.chrome-player__music',
+    'amp-lcd',
+  ];
+  for (const selector of RETIRED_PLAYER_SELECTORS) {
+    it(`keeps the old player selector ${selector} out`, () => {
+      expect(css).not.toContain(selector);
+    });
+  }
+
+  const RETIRED_APPLE_TOKENS = [
+    'dt-footer',
+    'page-footer',
+    '--lovedBGColor',
+    '--playerBGFill',
+    '--playerScrubberPlayhead',
+    '--playerVolumeFill',
+    '--playerVolumeIconFill',
+    '--playerVolumeTrack',
+    '--systemAccentBG',
+  ];
+  for (const token of RETIRED_APPLE_TOKENS) {
+    it(`keeps ${token}, which Apple no longer ships, out`, () => {
+      expect(css).not.toContain(token);
+    });
+  }
+
+  const BANNER_CONTROL_SELECTORS = [
+    '[class*="country-select"]',
+    '[class*="country-selector"]',
+    '[class*="location-selector"]',
+    '[class*="storefront-selector"]',
+    '[data-testid*="country" i]',
+    '[aria-label*="country" i]',
+    '[role="combobox"]',
+    '[class*="menu"]',
+    '[class*="continue"]',
+    '[aria-label*="continue" i]',
+    '[class*="close-button"]',
+    '[aria-label*="close" i]',
+  ];
+  for (const selector of BANNER_CONTROL_SELECTORS) {
+    it(`leaves ${selector} on the Apple Music default`, () => {
+      expect(css).not.toContain(selector);
     });
   }
 });
