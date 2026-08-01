@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { app } from 'electron';
 import { downloadArtwork } from '../src/artwork';
 import { createNotification } from '../src/notify';
 import { setNotificationsEnabled } from '../src/config';
 import { init } from '../src/integrations/notifications';
 import { NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
+import { quit } from './mocks/appLifecycle';
 
 // Matches NOTIFICATION_DEBOUNCE_MS in src/integrations/notifications/index.ts,
 // which the module keeps private.
@@ -55,16 +55,6 @@ const TRACK: NowPlayingPayload = {
   artistName: 'New Order',
   albumName: 'Power, Corruption & Lies',
 };
-
-/**
- * Runs the `will-quit` handlers the integration registered, as quitting does.
- * The electron mock records them rather than firing them, and its `app.on` is a
- * plain `vi.fn()`, so the overloaded signature is narrowed to what is stored.
- */
-function quit(): void {
-  const registered = vi.mocked(app.on).mock.calls as unknown as Array<[string, () => void]>;
-  for (const [event, handler] of registered) if (event === 'will-quit') handler();
-}
 
 /** The notification the integration asked for, or undefined if it asked for none. */
 function shown(): FakeNotification | undefined {

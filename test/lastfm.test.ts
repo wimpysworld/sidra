@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'crypto';
-import { app, net, shell, Notification } from 'electron';
+import { net, shell, Notification } from 'electron';
 import log from 'electron-log/main';
 import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
 import type { PendingScrobble } from '../src/config';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
+import { quit } from './mocks/appLifecycle';
 
 // The stored session key drives both the request path and the tray's connected
 // state, so the mock holds it as state rather than a constant: a test can then
@@ -1399,16 +1400,6 @@ function respondToAuth(sessionResponse: () => Response): void {
         : sessionResponse(),
     ),
   );
-}
-
-/**
- * Runs the `will-quit` handlers the integration registered, as quitting does.
- * The electron mock records them rather than firing them, and its `app.on` is a
- * plain `vi.fn()`, so the overloaded signature is narrowed to what is stored.
- */
-function quit(): void {
-  const registered = vi.mocked(app.on).mock.calls as unknown as Array<[string, () => void]>;
-  for (const [event, handler] of registered) if (event === 'will-quit') handler();
 }
 
 /**

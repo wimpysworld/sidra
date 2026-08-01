@@ -14,6 +14,7 @@ import { app } from 'electron';
 import { PlaybackState } from '../src/player';
 import type { IntegrationContext } from '../src/player';
 import { FakePlayer } from './mocks/player';
+import { quit } from './mocks/appLifecycle';
 
 const SRC_DIR = path.join(__dirname, '..', 'src');
 const INTEGRATIONS_DIR = path.join(SRC_DIR, 'integrations');
@@ -163,16 +164,6 @@ function findCleanupFaults(source: string): string[] {
   }
 
   return faults;
-}
-
-/**
- * Runs the `will-quit` handlers a module registered, as quitting does. The
- * electron mock records them rather than firing them, and its `app.on` is a
- * plain `vi.fn()`, so the overloaded signature is narrowed to what is stored.
- */
-function quit(): void {
-  const registered = vi.mocked(app.on).mock.calls as unknown as Array<[string, () => void]>;
-  for (const [event, handler] of registered) if (event === 'will-quit') handler();
 }
 
 describe('player listener cleanup', () => {
