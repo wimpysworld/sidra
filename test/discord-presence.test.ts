@@ -340,6 +340,34 @@ describe('discord presence reconnect', () => {
     expect(sent).toMatchObject({ details: 'Blue Monday' });
   });
 
+  it('reads the playhead through the replacement client, so a reconnected session still carries timestamps', async () => {
+    // The snapshot read is what once sat behind a non-null assertion. The
+    // client that makes it here is the one scheduleReconnect() built, not the
+    // one init() did, so it proves the player reaches a client init() never saw.
+    rpc.outcome = (attempt) => (attempt === 1 ? 'transport' : 'connected');
+    const discord = await loadDiscord();
+    discord.init({ player, getMainWindow: () => null });
+    player.setPlaybackState(PlaybackState.Playing);
+    player.setPositionUs(30_000_000);
+    player.emitNowPlaying(TRACK);
+
+    // The first connect fails, the debounced update finds the client down and
+    // asks it to log in again, then the backoff replaces the client and that
+    // one connects. Each advance is a single scheduled step, so the moment the
+    // activity is sent is known: base delay plus one debounce.
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(RECONNECT_BASE_MS - DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(rpc.instances).toHaveLength(2);
+    const sentAt = START.getTime() + RECONNECT_BASE_MS + DEBOUNCE_MS;
+    expect(activity()).toMatchObject({
+      startTimestamp: new Date(sentAt - 30_000),
+      endTimestamp: new Date(sentAt - 30_000 + 240_000),
+    });
+  });
+
   it('sends an activity again after disable() and enable()', async () => {
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
@@ -359,5 +387,25 @@ describe('discord presence reconnect', () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 
     expect(rpc.setActivity).toHaveBeenCalledTimes(2);
+  });
+});
+
+// The send path takes the Player as an argument, and init() is the only place
+// that has one. The exported toggles are the boundary where that is checked, so
+// a tray click before init() has to be inert rather than reaching a client.
+describe('discord presence tray toggles before init', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('builds no client and sends nothing', async () => {
+    const discord = await loadDiscord();
+
+    expect(() => discord.enable()).not.toThrow();
+    expect(() => discord.disable()).not.toThrow();
+
+    expect(rpc.instances).toHaveLength(0);
+    expect(rpc.setActivity).not.toHaveBeenCalled();
+    expect(rpc.clearActivity).not.toHaveBeenCalled();
   });
 });

@@ -41,7 +41,9 @@ let artworkUrl: string | undefined = undefined;
 let durationMs = 0;
 let trackUrl: string | undefined = undefined;
 
-// Playback state
+// Playback state. init() assigns playerRef before it builds the only client, so
+// nothing can reach the send path without one. Every call below enable()/disable()
+// carries the Player as an argument, so tsc checks it rather than an assertion.
 let playerRef: Player | null = null;
 let previousState = 0;
 
@@ -57,7 +59,7 @@ const pauseTimeout = createPauseTimer(PAUSE_TIMEOUT_MS, () => {
   client?.user?.clearActivity().catch(() => {});
 });
 
-function createClient(): Client {
+function createClient(player: Player): Client {
   const created = new Client({ clientId: CLIENT_ID });
 
   created.on('ready', () => {
@@ -67,12 +69,12 @@ function createClient(): Client {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
-    scheduleUpdate();
+    scheduleUpdate(player);
   });
 
   created.on('disconnected', () => {
     discordLog.info('disconnected from Discord');
-    scheduleReconnect();
+    scheduleReconnect(player);
   });
 
   return created;
@@ -84,26 +86,26 @@ function createClient(): Client {
 // available to a consumer. removeAllListeners() must run before destroy():
 // destroy() closes the transport, whose close handler emits 'disconnected' on
 // the old client, and that stray event would arm a second backoff chain.
-function replaceClient(): Client {
+function replaceClient(player: Player): Client {
   if (client) {
     client.removeAllListeners();
     client.destroy().catch(() => {});
   }
-  client = createClient();
+  client = createClient(player);
   return client;
 }
 
-function scheduleUpdate(): void {
+function scheduleUpdate(player: Player): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    sendActivity();
+    sendActivity(player);
   }, DEBOUNCE_MS);
 }
 
-function disconnectClient(): void {
+function disconnectClient(player: Player): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
@@ -116,16 +118,16 @@ function disconnectClient(): void {
   retryCount = 0;
 
   client?.user?.clearActivity().catch(() => {});
-  replaceClient();
+  replaceClient(player);
   discordLog.info('disconnected from Discord (disabled via toggle)');
 }
 
-function sendActivity(): void {
+function sendActivity(player: Player): void {
   if (!client) return;
 
   if (!getDiscordEnabled()) {
     if (client.isConnected || reconnectTimer || debounceTimer) {
-      disconnectClient();
+      disconnectClient(player);
     }
     return;
   }
@@ -134,7 +136,7 @@ function sendActivity(): void {
     discordLog.debug('not connected, attempting login');
     client.login().catch((err: Error) => {
       discordLog.warn('login failed:', err.message);
-      scheduleReconnect();
+      scheduleReconnect(player);
     });
     return;
   }
@@ -176,7 +178,7 @@ function sendActivity(): void {
 
   // Discord draws the progress bar from absolute timestamps, so the start is
   // back-dated by the current playhead and the end sits one duration past it.
-  const snap = playerRef!.playbackSnapshot();
+  const snap = player.playbackSnapshot();
   if (snap.isPlaying && durationMs > 0) {
     const currentPositionMs = snap.positionUs / 1000;
     const now = Date.now();
@@ -191,7 +193,7 @@ function sendActivity(): void {
   });
 }
 
-function scheduleReconnect(): void {
+function scheduleReconnect(player: Player): void {
   if (!getDiscordEnabled()) return;
   if (reconnectTimer) return;
 
@@ -203,29 +205,31 @@ function scheduleReconnect(): void {
     reconnectTimer = null;
     if (client?.isConnected) return;
     discordLog.info('attempting reconnect');
-    replaceClient().login().catch((err: Error) => {
+    replaceClient(player).login().catch((err: Error) => {
       discordLog.warn('reconnect failed:', err.message);
-      scheduleReconnect();
+      scheduleReconnect(player);
     });
   }, delay);
 }
 
 /** Turns presence on from the tray toggle; connects if the client is idle. */
 export function enable(): void {
-  if (!client) return;
+  const player = playerRef;
+  if (!player || !client) return;
   if (!client.isConnected) {
     discordLog.info('enabling Discord presence');
     client.login().catch((err: Error) => {
       discordLog.warn('login failed:', err.message);
-      scheduleReconnect();
+      scheduleReconnect(player);
     });
   }
 }
 
 /** Turns presence off from the tray toggle; clears the activity and drops every timer. */
 export function disable(): void {
-  if (!client) return;
-  disconnectClient();
+  const player = playerRef;
+  if (!player || !client) return;
+  disconnectClient(player);
 }
 
 /** Starts the presence client and mirrors player events into a Discord activity. */
@@ -234,12 +238,12 @@ export function init(ctx: IntegrationContext): void {
   playerRef = player;
   discordLog.info('discord presence module initialised');
 
-  client = createClient();
+  client = createClient(player);
 
   if (getDiscordEnabled()) {
     client.login().catch((err: Error) => {
       discordLog.warn('initial login failed:', err.message);
-      scheduleReconnect();
+      scheduleReconnect(player);
     });
   }
 
@@ -265,7 +269,7 @@ export function init(ctx: IntegrationContext): void {
     // timer must not fire over the new track
     pauseTimeout.cancel();
 
-    scheduleUpdate();
+    scheduleUpdate(player);
   };
 
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
@@ -281,7 +285,7 @@ export function init(ctx: IntegrationContext): void {
       pauseTimeout.start();
     }
 
-    scheduleUpdate();
+    scheduleUpdate(player);
   };
 
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);

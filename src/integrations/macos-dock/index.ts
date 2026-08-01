@@ -154,6 +154,9 @@ export function init(ctx: IntegrationContext): void {
     // The 30 second timer outlives the listeners, and clearNowPlaying() calls
     // app.dock.setMenu(), so a pending one fires into a torn-down dock.
     dockPauseTimer.destroy();
+    // The callback closes over the main window, so the module holds it until
+    // this is cleared.
+    getMainWindowCallback = null;
   });
 
   // The menu must exist before playback starts, so the dock carries the
