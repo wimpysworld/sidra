@@ -79,9 +79,16 @@ describe('theme helpers', () => {
         close: vi.fn(),
       } as unknown as fs.FSWatcher;
     });
+    const contentsListeners = new Map<string, () => void>();
     const win = {
       isDestroyed: vi.fn().mockReturnValue(options.isDestroyed ?? false),
-      webContents: { removeInsertedCSS, insertCSS },
+      webContents: {
+        removeInsertedCSS,
+        insertCSS,
+        on: vi.fn((event: string, handler: () => void) => {
+          contentsListeners.set(event, handler);
+        }),
+      },
     } as unknown as Parameters<typeof initThemeCSS>[0];
 
     return {
@@ -89,6 +96,10 @@ describe('theme helpers', () => {
       removeInsertedCSS,
       win,
       start: () => { (options.init ?? initThemeCSS)(win); },
+      // Commit a main-frame navigation, which replaces the document.
+      navigate() {
+        contentsListeners.get('did-navigate')?.();
+      },
       // Fire the watcher's own error event, which Node follows by closing it.
       fireError(error: Error = new Error('EBADF: bad file descriptor')) {
         watcherListeners.get('error')?.(error);
@@ -295,6 +306,44 @@ describe('theme helpers', () => {
       expect(insertCSS).toHaveBeenCalledTimes(1);
       expect(harness.insertCSS).toHaveBeenCalledTimes(1);
     });
+
+    it('drops queued work when the document is replaced before it runs', async () => {
+      // insertCSS reaches whatever document the WebContents holds at call time.
+      // Queued behind an in-flight operation, an injection for the old page
+      // would land on the new one, beside that page's own injection, and only
+      // the later key would be tracked.
+      const harness = watcherHarness();
+      harness.start();
+      vi.mocked(getTheme).mockReturnValue('catppuccin');
+      const held = heldContents();
+      const stale = fakeContents();
+
+      const inFlight = injectThemeCss(held.contents);
+      await flushCssQueue();
+      expect(held.insertCSS).toHaveBeenCalledTimes(1);
+
+      // A second load queues behind the first, then its document is replaced.
+      const queued = injectThemeCss(stale.contents);
+      harness.navigate();
+      held.release('load-key');
+      await inFlight;
+      await queued;
+      await flushCssQueue();
+
+      expect(stale.insertCSS).not.toHaveBeenCalled();
+
+      // The key the released operation wrote belongs to the replaced document,
+      // so the next theme change must insert without attempting a removal.
+      applyTheme('nord');
+      await flushCssQueue();
+      expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
+      expect(harness.insertCSS).toHaveBeenCalledTimes(1);
+
+      // The queue still runs work queued after the navigation.
+      const fresh = fakeContents();
+      await injectThemeCss(fresh.contents);
+      expect(fresh.insertCSS).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('returns null for apple-music even with populated custom.css', () => {
@@ -378,7 +427,7 @@ describe('theme helpers', () => {
     const theme = await import('../src/theme');
     const win = {
       isDestroyed: vi.fn().mockReturnValue(false),
-      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn() },
+      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn(), on: vi.fn() },
     } as unknown as Parameters<typeof initThemeCSS>[0];
     theme.initThemeCSS(win);
 
@@ -395,7 +444,7 @@ describe('theme helpers', () => {
     const theme = await import('../src/theme');
     const win = {
       isDestroyed: vi.fn().mockReturnValue(false),
-      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn() },
+      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn(), on: vi.fn() },
     } as unknown as Parameters<typeof initThemeCSS>[0];
     theme.initThemeCSS(win);
 

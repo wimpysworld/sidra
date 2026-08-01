@@ -31,14 +31,33 @@ let themeCssKey: string | null = null;
 // post-load injection cannot interleave and strand a stylesheet on the page.
 let themeCssOp: Promise<void> = Promise.resolve();
 
+// insertCSS applies to whatever document the WebContents holds when the call is
+// made, not the one that queued the work, and the WebContents outlives every
+// document it loads. Work that waits its turn across a navigation would insert
+// into the new page on behalf of the old one, on top of that page's own
+// injection, leaving two theme sheets with only the later key tracked. The
+// counter advances on main-frame did-navigate, which is the commit point, so a
+// captured value that no longer matches means the document is gone.
+let documentGeneration = 0;
+
 function enqueueThemeCssOp(work: () => Promise<void>): Promise<void> {
+  const generation = documentGeneration;
   themeCssOp = themeCssOp
     // The catch sits ahead of the then so a failed operation cannot deadlock
     // the queue: the next one still runs.
     .catch((error: unknown) => {
       themeLog.warn('Theme CSS operation failed', error);
     })
-    .then(work);
+    .then(() => {
+      if (generation !== documentGeneration) {
+        // Any sheet the old document held died with it, so the tracked key is
+        // stale too; removeInsertedCSS would reject on it.
+        themeCssKey = null;
+        themeLog.debug('Theme CSS operation skipped: document replaced');
+        return;
+      }
+      return work();
+    });
   return themeCssOp;
 }
 
@@ -142,6 +161,11 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
 }
 
 export function initThemeCSS(win: BrowserWindow): void {
+  // Commit of a main-frame navigation; did-navigate-in-page keeps the document,
+  // so it is not one and must not advance the counter.
+  win.webContents.on('did-navigate', () => {
+    documentGeneration += 1;
+  });
 
   applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async () => {
     const css = getThemeCss(name);
