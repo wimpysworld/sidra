@@ -87,11 +87,78 @@ const DRAIN_TIMEOUT_MS = 30_000;
 const AUTH_POLL_INTERVAL_MS = 4000;
 const AUTH_POLL_TIMEOUT_MS = 120_000;
 
+/**
+ * One entry of a track.scrobble result. `ignoredMessage.code` is Last.fm's
+ * verdict on that single play: "0" means it was stored, and 1 to 5 mean it was
+ * filtered out (artist, track, timestamp too old, timestamp too new, daily
+ * limit). The code is a string because Last.fm's JSON transform expresses XML
+ * attributes and text nodes as strings.
+ */
+interface LastfmScrobble {
+  ignoredMessage?: { code?: string; '#text'?: string };
+}
+
 interface LastfmResponse {
   error?: number;
   message?: string;
   token?: string;
   session?: { name?: string; key?: string };
+  // Only track.scrobble answers with this. `@attr` counts the batch, and
+  // `scrobble` is a bare object when the result describes a single play and an
+  // array when it describes several: the transform groups repeated child nodes
+  // into an array and leaves a lone one as an object. The counts arrive as
+  // numbers in captured bodies, but that same transform documents attributes as
+  // strings, so both are accepted and coerced rather than trusted.
+  scrobbles?: {
+    '@attr'?: { accepted?: number | string; ignored?: number | string };
+    scrobble?: LastfmScrobble | LastfmScrobble[];
+  };
+}
+
+/** What Last.fm did with a submitted batch: the counts, and the distinct reasons. */
+interface ScrobbleOutcome {
+  accepted: number;
+  ignored: number;
+  codes: string[];
+}
+
+function toCount(value: number | string | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Reads what Last.fm actually stored out of a track.scrobble body, or null when
+ * the body carries no `scrobbles` field at all.
+ *
+ * Filtering is not an error. A batch Last.fm kept nothing from still answers
+ * `status: ok` with no `error` field, so it settles on the success path and
+ * cannot be told from a batch stored whole unless the body is read. That is the
+ * only reason this exists.
+ *
+ * The null return is what keeps a body without the field reported exactly as it
+ * always was: reading an absent field as zero accepted would report a loss for
+ * every response that merely does not carry the counts.
+ */
+function readScrobbleOutcome(res: LastfmResponse): ScrobbleOutcome | null {
+  const scrobbles = res.scrobbles;
+  if (!scrobbles) return null;
+  const entries = Array.isArray(scrobbles.scrobble)
+    ? scrobbles.scrobble
+    : scrobbles.scrobble
+      ? [scrobbles.scrobble]
+      : [];
+  const codes = new Set<string>();
+  for (const entry of entries) {
+    const code = entry.ignoredMessage?.code;
+    // "0" is the code a kept play carries, so it is not a reason for anything.
+    if (code && code !== '0') codes.add(code);
+  }
+  return {
+    accepted: toCount(scrobbles['@attr']?.accepted),
+    ignored: toCount(scrobbles['@attr']?.ignored),
+    codes: [...codes].sort(),
+  };
 }
 
 // Last.fm error 9, "Invalid session key - Please re-authenticate". Session keys
@@ -416,13 +483,26 @@ function flushPendingScrobbles(sessionKey: string): void {
   const abortTimer = setTimeout(() => controller.abort(), DRAIN_TIMEOUT_MS);
 
   apiCall(params, true, controller.signal)
-    .then(() => {
+    .then((res) => {
       if (generation !== sessionGeneration) {
         lastfmLog.info('queued scrobbles submitted for an account that has gone:', batch.length);
         return;
       }
       dropSubmitted(batch.length);
-      lastfmLog.info('queued scrobbles submitted:', batch.length);
+      // The batch clears whatever Last.fm made of it, and the codes are reported
+      // and then let go rather than held for another attempt: a filtered artist
+      // or track, and a timestamp too old or too new, all answer about the play
+      // itself and would be filtered again on any resend, while the daily limit
+      // needs a queue policy this integration does not have. So the log is the
+      // only place the loss is visible at all.
+      const outcome = readScrobbleOutcome(res);
+      if (!outcome) {
+        lastfmLog.info('queued scrobbles submitted:', batch.length);
+        return;
+      }
+      const reasons = outcome.codes.length > 0 ? `; ignored codes: ${outcome.codes.join(', ')}` : '';
+      const counts = `Last.fm accepted ${outcome.accepted}, ignored ${outcome.ignored}${reasons}`;
+      lastfmLog.info(`queued scrobbles submitted: ${batch.length}; ${counts}`);
     })
     .catch((err: Error) => {
       // A refusal is as final for a queued play as it is for a live one, so the

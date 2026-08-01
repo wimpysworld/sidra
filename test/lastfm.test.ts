@@ -604,6 +604,24 @@ function batches(): URLSearchParams[] {
 }
 
 /**
+ * Answers the batch with `body` and every other request with an empty object.
+ * The now-playing update that starts the drain is a request of its own, so
+ * answering it with the same body would put a second scrobble result through
+ * the log and the assertions could not tell the two apart.
+ */
+function answerBatchWith(body: string): void {
+  vi.mocked(net.fetch).mockImplementation((_input, init) => {
+    const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+    return Promise.resolve(params.has('artist[0]') ? new Response(body) : new Response('{}'));
+  });
+}
+
+/** Everything the integration logged, joined: one mock stands behind every level. */
+function loggedLines(): string {
+  return vi.mocked(log.scope('lastfm').info).mock.calls.flat().join(' ');
+}
+
+/**
  * Leaves a drain from the old account in flight, links a different account, and
  * puts one of their plays on the queue. Every batch request is held open, so the
  * resolvers returned are the drains still out, oldest first. Live scrobbles fail
@@ -1249,6 +1267,103 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(2);
     expect(batches()[1].get('track[0]')).toBe('Ceremony');
     expect(queue.pending).toHaveLength(1);
+  });
+
+  it('reports a batch Last.fm kept nothing from, and still clears it', async () => {
+    // Filtering is not an error. Last.fm answers status ok with no error field,
+    // so a batch it stored nothing from settles on the success path and used to
+    // log exactly as one it stored whole: fifty plays never reached the user's
+    // profile and the log said they had gone out.
+    queue.pending = Array.from({ length: 50 }, (_, i) => ({
+      artist: 'New Order',
+      track: `Track ${i}`,
+      timestamp: 1_700_000_000 + i,
+    }));
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 1: the artist was filtered. 5: the daily scrobble limit was reached. Two
+    // different reasons in one batch, because one code alone would hide the rest.
+    answerBatchWith(
+      JSON.stringify({
+        scrobbles: {
+          '@attr': { accepted: 0, ignored: 50 },
+          scrobble: Array.from({ length: 50 }, (_, i) =>
+            i % 2 === 0
+              ? { ignoredMessage: { code: '1', '#text': 'Artist was ignored' } }
+              : { ignoredMessage: { code: '5', '#text': 'Daily scrobble limit exceeded' } },
+          ),
+        },
+      }),
+    );
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    const logged = loggedLines();
+    expect(logged).toContain('Last.fm accepted 0, ignored 50');
+    // Each distinct code once, however many entries carried it.
+    expect(logged).toContain('ignored codes: 1, 5');
+
+    // None of those codes clears on a resend, so the batch goes as it always
+    // did and the log is the only place the loss is visible.
+    expect(batches()).toHaveLength(1);
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('reads a result that describes a single play as a bare object', async () => {
+    // Last.fm's JSON transform groups repeated nodes into an array and leaves a
+    // lone one as an object, so a one-play batch answers with `scrobble` as an
+    // object. Treating it as an array throws, and the throw would be reported
+    // as a request that never reached Last.fm.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    answerBatchWith(
+      JSON.stringify({
+        scrobbles: {
+          '@attr': { accepted: 1, ignored: 0 },
+          scrobble: { ignoredMessage: { code: '0', '#text': '' } },
+        },
+      }),
+    );
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    const logged = loggedLines();
+    expect(logged).toContain('Last.fm accepted 1, ignored 0');
+    // "0" is the code a stored play carries, so it is a reason for nothing.
+    expect(logged).not.toContain('ignored codes');
+    // Nothing threw: a failure here reports the batch as still queued.
+    expect(logged).not.toContain('queued scrobbles not sent');
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('reports a response carrying no counts exactly as it always did', async () => {
+    // An absent `scrobbles` field is not a batch of nothing. Counting it as
+    // zero accepted would report a loss for every response that merely does not
+    // carry the counts, which is what every other test here answers with.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    answerBatchWith('{}');
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    const logged = loggedLines();
+    expect(logged).toContain('queued scrobbles submitted: 1');
+    expect(logged).not.toContain('Last.fm accepted');
+    expect(queue.pending).toHaveLength(0);
   });
 });
 
