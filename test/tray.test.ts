@@ -143,6 +143,19 @@ function findItem(template: Electron.MenuItemConstructorOptions[], labelSubstrin
   return template.find((item) => typeof item.label === 'string' && item.label.includes(labelSubstring));
 }
 
+// The tray branches on the platform in several places, so the tests write it
+// directly. Restoring after every test keeps a block that sets it from reaching
+// the next one.
+const originalPlatform = process.platform;
+
+function setPlatform(platform: string): void {
+  Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
+}
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
+});
+
 // The state the menu is built in everywhere else, installed before every test.
 // Mock return values are not reset between tests, so a block that changes one
 // only has to change it: the next test reads the default back without a restore
@@ -208,14 +221,7 @@ describe('sanitiseLinuxLabel', () => {
 });
 
 describe('createTray - menu template inspection', () => {
-  const originalPlatform = process.platform;
-
-  function setPlatform(platform: string): void {
-    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
-  }
-
   afterEach(() => {
-    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
     vi.mocked(Menu.buildFromTemplate).mockClear();
     vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   });
@@ -1321,19 +1327,9 @@ describe('createTray - menu template inspection', () => {
 });
 
 describe('theme change menu refresh', () => {
-  const originalPlatform = process.platform;
-
-  function setPlatform(platform: string): void {
-    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
-  }
-
   beforeEach(() => {
     vi.mocked(nativeTheme.on).mockClear();
     vi.mocked(Menu.buildFromTemplate).mockClear();
-  });
-
-  afterEach(() => {
-    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
   });
 
   it('rebuilds context menu on theme change on Linux', () => {
@@ -1416,14 +1412,7 @@ describe('theme change menu refresh', () => {
 });
 
 describe('getMenuIcon', () => {
-  const originalPlatform = process.platform;
-
-  function setPlatform(platform: string): void {
-    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
-  }
-
   afterEach(() => {
-    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
     vi.mocked(nativeImage.createFromPath).mockClear();
     vi.mocked(nativeImage.createFromNamedImage).mockClear();
   });
