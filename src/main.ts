@@ -559,14 +559,10 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
   });
 
   // A single did-fail-load handler covers both error logging and splash
-  // dismissal. The first-fire markCssReady() call prevents the splash screen
-  // from hanging indefinitely when Apple Music fails to load.
-  let cssMarked = false;
+  // dismissal. markCssReady() stops a failed page load from leaving the splash
+  // screen up for the life of the process.
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-    if (!cssMarked) {
-      markCssReady();
-      cssMarked = true;
-    }
+    markCssReady();
     mainLog.error('page load failed:', errorCode, errorDescription);
   });
 
