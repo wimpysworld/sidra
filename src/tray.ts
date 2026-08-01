@@ -256,95 +256,88 @@ function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructo
   return buildStartPageSubmenuFor(MUSIC_SERVICES.music, getStartPage(), setStartPage, ctx);
 }
 
-function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+interface ToggleSubmenuOptions {
+  label: string;
+  iconKey: string;
+  get: () => boolean;
+  set: (value: boolean) => void;
+  onEnable?: () => void;
+  onDisable?: () => void;
+  extraItems?: Electron.MenuItemConstructorOptions[];
+}
+
+/**
+ * Parent item for an on/off preference: a "Label: On" row over the two radio
+ * choices. The side effect runs after the setter and before refresh, so the
+ * rebuilt menu already reads the new state.
+ */
+function buildToggleSubmenu(options: ToggleSubmenuOptions, ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
-  const notifEnabled = getNotificationsEnabled();
-  const parentLabel = `${strings.notifications}: ${notifEnabled ? strings.on : strings.off}`;
-  const icon = getMenuIcon('notifications');
+  const { label, iconKey, get, set, onEnable, onDisable, extraItems } = options;
+  const enabled = get();
+  const icon = getMenuIcon(iconKey);
   return {
-    label: parentLabel,
+    label: `${label}: ${enabled ? strings.on : strings.off}`,
     ...(icon ? { icon } : {}),
     submenu: [
       {
         label: strings.on,
-        type: 'radio',
-        checked: notifEnabled,
-        click: () => { setNotificationsEnabled(true); refresh(); },
+        type: 'radio' as const,
+        checked: enabled,
+        click: () => { set(true); onEnable?.(); refresh(); },
       },
       {
         label: strings.off,
-        type: 'radio',
-        checked: !notifEnabled,
-        click: () => { setNotificationsEnabled(false); refresh(); },
+        type: 'radio' as const,
+        checked: !enabled,
+        click: () => { set(false); onDisable?.(); refresh(); },
       },
+      ...(extraItems ?? []),
     ],
   };
+}
+
+function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  return buildToggleSubmenu({
+    label: ctx.strings.notifications,
+    iconKey: 'notifications',
+    get: getNotificationsEnabled,
+    set: setNotificationsEnabled,
+  }, ctx);
 }
 
 function buildCloseToTraySubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const enabled = getCloseToTrayEnabled();
-  const parentLabel = `${strings.closeToTray}: ${enabled ? strings.on : strings.off}`;
-  const icon = getMenuIcon('close-to-tray');
-  return {
-    label: parentLabel,
-    ...(icon ? { icon } : {}),
-    submenu: [
-      {
-        label: strings.on,
-        type: 'radio',
-        checked: enabled,
-        click: () => { setCloseToTrayEnabled(true); refresh(); },
-      },
-      {
-        label: strings.off,
-        type: 'radio',
-        checked: !enabled,
-        click: () => {
-          setCloseToTrayEnabled(false);
-          const mainWin = getMainWindowCallback?.();
-          if (mainWin && !mainWin.isVisible()) { mainWin.show(); mainWin.focus(); }
-          refresh();
-        },
-      },
-    ],
-  };
+  return buildToggleSubmenu({
+    label: ctx.strings.closeToTray,
+    iconKey: 'close-to-tray',
+    get: getCloseToTrayEnabled,
+    set: setCloseToTrayEnabled,
+    onDisable: () => {
+      const mainWin = getMainWindowCallback?.();
+      if (mainWin && !mainWin.isVisible()) { mainWin.show(); mainWin.focus(); }
+    },
+  }, ctx);
 }
 
 function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const discordEnabled = getDiscordEnabled();
-  const parentLabel = `${strings.discord}: ${discordEnabled ? strings.on : strings.off}`;
-  const icon = getMenuIcon('discord');
-  return {
-    label: parentLabel,
-    ...(icon ? { icon } : {}),
-    submenu: [
-      {
-        label: strings.on,
-        type: 'radio',
-        checked: discordEnabled,
-        click: () => { setDiscordEnabled(true); enableDiscord(); refresh(); },
-      },
-      {
-        label: strings.off,
-        type: 'radio',
-        checked: !discordEnabled,
-        click: () => { setDiscordEnabled(false); disableDiscord(); refresh(); },
-      },
-    ],
-  };
+  return buildToggleSubmenu({
+    label: ctx.strings.discord,
+    iconKey: 'discord',
+    get: getDiscordEnabled,
+    set: setDiscordEnabled,
+    onEnable: enableDiscord,
+    onDisable: disableDiscord,
+  }, ctx);
 }
 
 function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
   const { strings, refresh } = ctx;
   const connected = !!getLastfmSessionKey();
-  const username = getLastfmUsername();
-  const icon = getMenuIcon('lastfm');
 
   // Not yet linked: a single, obvious call to action that opens the browser
   // approval flow. No API keys or configuration for the user to deal with.
   if (!connected) {
+    const icon = getMenuIcon('lastfm');
     return {
       label: 'Last.fm',
       ...(icon ? { icon } : {}),
@@ -357,28 +350,20 @@ function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOp
     };
   }
 
-  const enabled = getLastfmEnabled();
-  return {
-    label: `Last.fm: ${enabled ? strings.on : strings.off}`,
-    ...(icon ? { icon } : {}),
-    submenu: [
-      {
-        label: strings.on,
-        type: 'radio',
-        checked: enabled,
-        click: () => { setLastfmEnabled(true); enableLastfm(); refresh(); },
-      },
-      {
-        label: strings.off,
-        type: 'radio',
-        checked: !enabled,
-        click: () => { setLastfmEnabled(false); disableLastfm(); refresh(); },
-      },
+  const username = getLastfmUsername();
+  return buildToggleSubmenu({
+    label: 'Last.fm',
+    iconKey: 'lastfm',
+    get: getLastfmEnabled,
+    set: setLastfmEnabled,
+    onEnable: enableLastfm,
+    onDisable: disableLastfm,
+    extraItems: [
       { type: 'separator' },
       { label: `✓ ${username}`, enabled: false },
       { label: strings.lastfmDisconnect, click: () => { disconnectLastfm(); refresh(); } },
     ],
-  };
+  }, ctx);
 }
 
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
