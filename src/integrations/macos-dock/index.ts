@@ -67,18 +67,6 @@ function buildDockMenu(
   return Menu.buildFromTemplate(items);
 }
 
-function updateDockProgressBar(positionUs: number, durationMs: number | undefined): void {
-  const win = getMainWindowCallback?.();
-  if (!win) return;
-  updateProgressBar(win, positionUs, durationMs);
-}
-
-function clearDockProgressBar(): void {
-  const win = getMainWindowCallback?.();
-  if (!win) return;
-  clearProgressBar(win);
-}
-
 /** Installs the macOS dock menu and progress bar; no-op on every other platform. */
 export function init(ctx: IntegrationContext): void {
   if (process.platform !== 'darwin') return;
@@ -93,10 +81,22 @@ export function init(ctx: IntegrationContext): void {
     if (app.dock) app.dock.setMenu(buildDockMenu(currentPayload, isPlaying));
   };
 
+  // Resolves the window once per event, keeping the listener's own arguments.
+  // The module-scoped callback is read on every call, so the null-out in
+  // will-quit releases the window rather than being held by this closure.
+  const withWindow =
+    <A extends unknown[]>(fn: (win: BrowserWindow, ...args: A) => void) =>
+      (...args: A): void => {
+        const target = getMainWindowCallback?.();
+        if (target) fn(target, ...args);
+      };
+
+  const clearDockProgress = withWindow(clearProgressBar);
+
   const clearNowPlaying = (): void => {
     dockLog.debug('dock pause timeout reached, clearing Now Playing');
     currentPayload = null;
-    clearDockProgressBar();
+    clearDockProgress();
     rebuildDock(false);
   };
 
@@ -107,7 +107,7 @@ export function init(ctx: IntegrationContext): void {
     dockPauseTimer.cancel();
     currentPayload = payload;
     if (!payload) {
-      clearDockProgressBar();
+      clearDockProgress();
       rebuildDock(false);
       return;
     }
@@ -121,7 +121,7 @@ export function init(ctx: IntegrationContext): void {
         state === PlaybackState.Ended || state === PlaybackState.Completed) {
       dockPauseTimer.cancel();
       currentPayload = null;
-      clearDockProgressBar();
+      clearDockProgress();
       rebuildDock(false);
       return;
     }
@@ -139,9 +139,9 @@ export function init(ctx: IntegrationContext): void {
     rebuildDock(isPlaying);
   };
 
-  const onPlaybackTimeDidChange = (positionUs: number): void => {
-    updateDockProgressBar(positionUs, currentPayload?.durationInMillis);
-  };
+  const onPlaybackTimeDidChange = withWindow((target, positionUs: number) => {
+    updateProgressBar(target, positionUs, currentPayload?.durationInMillis);
+  });
 
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
