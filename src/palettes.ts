@@ -35,6 +35,9 @@ export type BundledThemeName =
   | 'rose-pine'
   | 'solarized';
 
+/** Active theme. 'apple-music' means no override CSS is injected at all. */
+export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
+
 // Dracula defines no official light scheme; the dark palette serves both
 // colour schemes, matching how Dracula presents everywhere else.
 const draculaDark: SchemeColours = {
@@ -228,9 +231,23 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
   },
 ];
 
-/** Tray label for a theme name. An unknown name reads as Apple Music, the no-override default. */
-export function themeLabel(name: string): string {
+const bundledThemesByName = new Map(BUNDLED_THEMES.map(theme => [theme.name, theme] as const));
+
+/** The palette behind a bundled theme name. */
+export function bundledTheme(name: BundledThemeName): BundledTheme | undefined {
+  return bundledThemesByName.get(name);
+}
+
+/** True when a stored string is a theme Sidra can render. */
+export function isThemeName(value: string): value is ThemeName {
+  return value === 'apple-music'
+    || value === 'custom'
+    || bundledThemesByName.has(value as BundledThemeName);
+}
+
+/** Tray label for a theme name. */
+export function themeLabel(name: ThemeName): string {
+  if (name === 'apple-music') return 'Apple Music';
   if (name === 'custom') return 'Custom';
-  const theme = BUNDLED_THEMES.find(t => t.name === name);
-  return theme ? theme.label : 'Apple Music';
+  return bundledThemesByName.get(name)?.label ?? name;
 }

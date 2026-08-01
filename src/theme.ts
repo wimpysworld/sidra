@@ -2,18 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import log from 'electron-log/main';
-import { BUNDLED_THEMES, type BundledThemeName } from './palettes';
+import { bundledTheme, isThemeName, type BundledThemeName, type ThemeName } from './palettes';
 import { buildThemeCss } from './themeTemplate';
 import { getTheme } from './config';
 
-/** Active theme. 'apple-music' means no override CSS is injected at all. */
-export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
+export type { ThemeName };
 
 const themeLog = log.scope('theme');
 
 const THEME_RELOAD_DEBOUNCE_MS = 150;
 const customCssFilename = 'custom.css';
-const bundledThemesByName = new Map(BUNDLED_THEMES.map(theme => [theme.name, theme] as const));
 const bundledCssCache = new Map<BundledThemeName, string>();
 
 // custom.css is read on every tray rebuild, through both hasCustomCss() and
@@ -133,12 +131,6 @@ export function hasCustomCss(): boolean {
   return getThemeCss('custom') !== null;
 }
 
-function isThemeName(value: string): value is ThemeName {
-  return value === 'apple-music'
-    || value === 'custom'
-    || bundledThemesByName.has(value as BundledThemeName);
-}
-
 /**
  * The theme to render: the stored one, falling back to 'apple-music' when it is
  * unknown or when 'custom' is stored with no readable custom.css behind it.
@@ -193,7 +185,7 @@ export function getThemeCss(name: ThemeName): string | null {
 
   const cached = bundledCssCache.get(name);
   if (cached) return cached;
-  const theme = bundledThemesByName.get(name);
+  const theme = bundledTheme(name);
   if (!theme) return null;
   const css = buildThemeCss(theme);
   bundledCssCache.set(name, css);
