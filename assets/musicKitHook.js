@@ -284,7 +284,12 @@
         console.warn(`[Sidra] blocked unrecognised command: "${method}"`);
         return;
       }
-      if (typeof window.__sidra[method] === 'function') {
+      // window.__sidra is the last thing attachToInstance() assigns, and
+      // attachSafely() installs this listener even when the attach threw before
+      // reaching it, so the hook object may be absent. Index it unguarded and a
+      // TypeError escapes the listener, which is the containment attachSafely()
+      // exists to provide leaking straight back out.
+      if (typeof window.__sidra?.[method] === 'function') {
         window.__sidra[method](...(args || []));
       }
     });

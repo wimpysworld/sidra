@@ -283,6 +283,24 @@ describe('musicKitHook', () => {
     expect(window.__sidraHookedMk).toBe(musicKit);
   });
 
+  it('drops a player command quietly when the initial attach threw', () => {
+    // attachSafely() contains the failure and installs the message listener
+    // anyway, so the listener is live with no window.__sidra behind it. An
+    // unguarded index on undefined throws a TypeError out of the listener.
+    const { messageListeners, window } = createHarness({ volumeThrows: true });
+
+    expect(window.__sidra).toBeUndefined();
+
+    const event = {
+      data: { type: 'sidra:command', channel: 'player:next', args: [] },
+      source: window,
+    };
+
+    expect(() => {
+      for (const listener of messageListeners) listener(event);
+    }).not.toThrow();
+  });
+
   it('re-attaches once when MusicKit replaces its instance', () => {
     const { musicKit, replaceInstance, runMonitorCycles } = createHarness();
 
