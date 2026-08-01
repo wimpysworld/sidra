@@ -22,10 +22,12 @@ A now-playing update goes out when a track starts or resumes, and a scrobble onc
 
 Connecting stores a Last.fm session key and your Last.fm username in Sidra's configuration file (`config.json` in Sidra's user data directory), in plain text. The session key authorises scrobbling to your account. It goes nowhere except Last.fm.
 
+When a scrobble cannot reach Last.fm, because the connection dropped for example, the same file holds that play until the next request carries it out. Each held play is a track title, artist name, album name, track length and the time playback started. At most 50 are held, and the oldest goes once that is full.
+
 ## Turning it off and revoking access
 
 - **Off** in the tray Last.fm submenu stops scrobbling and keeps the account linked.
-- **Disconnect** deletes the session key and username from your machine.
+- **Disconnect** deletes the session key, the username and any held plays from your machine.
 
 Last.fm session keys never expire and the Last.fm API has no call to revoke one, so Disconnect cannot invalidate the key at Last.fm's end. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that.
 

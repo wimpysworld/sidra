@@ -89,7 +89,7 @@ Your chosen theme applies to both Apple Music and Apple Music Classical.
 
 Nothing is sent to Last.fm until you connect an account. Open the tray menu, choose **Last.fm** → **Connect to Last.fm…**, and Sidra opens the Last.fm approval page in your browser. Approve Sidra there and the tray shows your username, along with a notification if you have those switched on.
 
-Once connected, the **Last.fm** submenu turns scrobbling on and off and offers **Disconnect**. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's.
+Once connected, the **Last.fm** submenu turns scrobbling on and off and offers **Disconnect**. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
 
 Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
 

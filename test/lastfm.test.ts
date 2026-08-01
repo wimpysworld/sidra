@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { app, net, shell, Notification } from 'electron';
 import log from 'electron-log/main';
 import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
+import type { PendingScrobble } from '../src/config';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
 
@@ -10,6 +11,11 @@ import { FakePlayer } from './mocks/player';
 // state, so the mock holds it as state rather than a constant: a test can then
 // see clearLastfmSession() take effect the way production does.
 const session = vi.hoisted(() => ({ key: 'session-key' as string | null, enabled: true }));
+
+// The pending queue is persisted config, so it outlives the process: the mock
+// holds it as state a test can seed before the module loads, which is what a
+// previous run leaving plays behind looks like.
+const queue = vi.hoisted(() => ({ pending: [] as PendingScrobble[] }));
 
 vi.mock('../src/config', () => ({
   getLastfmEnabled: vi.fn(() => session.enabled),
@@ -19,6 +25,8 @@ vi.mock('../src/config', () => ({
   setLastfmEnabled: vi.fn((enabled: boolean) => { session.enabled = enabled; }),
   getNotificationsEnabled: vi.fn(() => true),
   getMusicService: vi.fn(() => 'music'),
+  getPendingScrobbles: vi.fn(() => [...queue.pending]),
+  setPendingScrobbles: vi.fn((entries: PendingScrobble[]) => { queue.pending = entries; }),
 }));
 
 vi.mock('../src/i18n', () => ({
@@ -137,6 +145,7 @@ function startFromConnected(): void {
   daemon.available = true;
   session.key = 'session-key';
   session.enabled = true;
+  queue.pending = [];
   vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
   vi.mocked(Notification).mockImplementation(() => ({ on: vi.fn(), show: vi.fn() }) as unknown as Notification);
   vi.useFakeTimers();
@@ -501,6 +510,183 @@ describe('revoked session', () => {
     expect(session.key).toBe('session-key');
     expect(session.enabled).toBe(true);
     expect(vi.mocked(Notification)).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Fails every scrobble request before it reaches Last.fm, the way a dropped
+ * connection does, while still accepting now-playing updates.
+ */
+function failScrobbleTransport(): void {
+  vi.mocked(net.fetch).mockImplementation((_input, init) => {
+    const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
+    return method === 'track.scrobble'
+      ? Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'))
+      : Promise.resolve(new Response('{}'));
+  });
+}
+
+/** The batched track.scrobble requests, which carry indexed parameter names. */
+function batches(): URLSearchParams[] {
+  return scrobbles().filter((params) => params.has('artist[0]'));
+}
+
+describe('queued scrobbles', () => {
+  beforeEach(startFromConnected);
+  afterEach(restoreRealTime);
+
+  it('keeps a play the request never delivered', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    failScrobbleTransport();
+
+    playPastThreshold(player);
+    await flush();
+
+    // The listening happened; only the request did not. Last.fm never saw the
+    // track, so dropping it would cost the user a play for a network blip.
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0]).toMatchObject({
+      artist: 'New Order',
+      track: 'Blue Monday',
+      timestamp: Number(START_UNIX),
+    });
+  });
+
+  it('drops a play the API refused', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 16: the service is temporarily unavailable, so the session survives, but
+    // Last.fm still answered and the track is spent.
+    refuseScrobbles(16);
+
+    playPastThreshold(player);
+    await flush();
+
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('submits a queued play with its original timestamp once a request succeeds', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    failScrobbleTransport();
+
+    playPastThreshold(player);
+    await flush();
+
+    // The network comes back and the next track's now-playing update carries
+    // the queue out with it. Nothing else would: no timer retries. Only what
+    // the recovered network carries counts, so the earlier attempts go.
+    vi.mocked(net.fetch).mockClear();
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    await flush();
+
+    const submitted = batches();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('artist[0]')).toBe('New Order');
+    expect(submitted[0].get('track[0]')).toBe('Blue Monday');
+    // The timestamp is when the play started, not when it was finally sent.
+    expect(submitted[0].get('timestamp[0]')).toBe(START_UNIX);
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('submits a play queued before the app restarted', async () => {
+    // A previous run left this behind, which is the whole point of persisting
+    // the queue: a dropped connection often ends in a restart.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    const submitted = batches();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('track[0]')).toBe('Ceremony');
+    expect(submitted[0].get('timestamp[0]')).toBe('1700000000');
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('holds the newest 50 plays and submits none of them twice', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    failScrobbleTransport();
+
+    player.emitPlaybackState(PlaybackState.Playing);
+    for (let i = 0; i < 51; i += 1) {
+      player.setPositionUs(0);
+      player.emitNowPlaying({ ...SHORT_TRACK, name: `Track ${i}` });
+      play(player, 40_000);
+      await flush();
+    }
+
+    // 50 is the batch maximum Last.fm accepts, so one request always empties
+    // the queue. Past it the oldest play goes, being the one the user is least
+    // likely to miss.
+    expect(queue.pending).toHaveLength(50);
+    expect(queue.pending[0].track).toBe('Track 1');
+    expect(queue.pending[49].track).toBe('Track 50');
+
+    // Only what the recovered network carries counts from here.
+    vi.mocked(net.fetch).mockClear();
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    player.setPositionUs(0);
+    player.emitNowPlaying(TRACK);
+    await flush();
+
+    expect(batches()).toHaveLength(1);
+    expect(batches()[0].get('track[49]')).toBe('Track 50');
+    expect(queue.pending).toHaveLength(0);
+
+    // The request after the drain finds an empty queue, so no play is sent a
+    // second time.
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    await flush();
+
+    expect(batches()).toHaveLength(1);
+  });
+
+  it('sends no queued play to the account connected after a disconnect', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    failScrobbleTransport();
+
+    playPastThreshold(player);
+    await flush();
+    expect(queue.pending).toHaveLength(1);
+
+    // Disconnect removes Sidra's copy of the account. The queued plays are the
+    // user's listening history in plain text and they belong to the account
+    // that has just gone, so they go with it.
+    lastfm.disconnect();
+    expect(queue.pending).toHaveLength(0);
+
+    // Someone else links their account on the same machine, and the network is
+    // back. Only what it carries from here counts: the attempts made while it
+    // was down were addressed to the account that has gone.
+    vi.mocked(net.fetch).mockClear();
+    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'someone-else' } })));
+    session.enabled = true;
+    lastfm.startAuth();
+    await flush();
+
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    expect(batches()).toHaveLength(0);
   });
 });
 

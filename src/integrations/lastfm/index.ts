@@ -11,6 +11,9 @@ import {
   clearLastfmSession,
   setLastfmEnabled,
   getNotificationsEnabled,
+  getPendingScrobbles,
+  setPendingScrobbles,
+  type PendingScrobble,
 } from '../../config';
 import { getLastfmConnectedText, getLastfmConnectFailedText } from '../../i18n';
 import { errorMessage } from '../../utils';
@@ -60,6 +63,11 @@ const SCROBBLE_CAP_MS = 240_000;
 // time, and the scrobble timer fires on wall time, so an honest play arrives at
 // the threshold marginally short. Allow for that before refusing a scrobble.
 const POSITION_TOLERANCE_MS = 2000;
+
+// 50 is the maximum number of tracks Last.fm accepts in one track.scrobble
+// request, so a single drain always empties the queue and no entry is left
+// behind by a partial submission. Past the cap the oldest play is dropped.
+const MAX_PENDING_SCROBBLES = 50;
 
 // Authentication poll: Last.fm has no callback, so poll auth.getSession until the
 // user approves the token in their browser, then give up.
@@ -168,6 +176,7 @@ let previousState = 0;
 let authInProgress = false;
 let authPollTimer: ReturnType<typeof setTimeout> | null = null;
 let authGeneration = 0;
+let draining = false;
 let getWindow: () => BrowserWindow | null = () => null;
 
 /**
@@ -255,6 +264,75 @@ function handleInvalidSession(err: unknown, requestKey: string): boolean {
   return true;
 }
 
+/**
+ * Holds a play the network stopped from reaching Last.fm. The queue is
+ * persisted, so it survives the restart that a dropped connection often ends
+ * in, and the newest entries win once it is full: an old play is the one the
+ * user is least likely to miss.
+ */
+function queueScrobble(entry: PendingScrobble): void {
+  setPendingScrobbles([...getPendingScrobbles(), entry].slice(-MAX_PENDING_SCROBBLES));
+}
+
+/**
+ * Removes the batch just submitted. Entries are only ever appended, so the
+ * leading `count` are exactly what went out, even when a live scrobble failed
+ * and queued itself while the drain was in flight.
+ */
+function dropSubmitted(count: number): void {
+  setPendingScrobbles(getPendingScrobbles().slice(count));
+}
+
+/**
+ * Submits the queued plays in one batch. Nothing here is scheduled: the drain
+ * rides on a request the user's own playback already triggered, so a failed
+ * submission never re-fires on a timer.
+ *
+ * The session key is passed in by the caller and checked against the stored one
+ * for the same reason `handleInvalidSession()` takes it: a drain signed with a
+ * key the user has since replaced belongs to nobody.
+ */
+function flushPendingScrobbles(sessionKey: string): void {
+  if (draining) return;
+  const batch = getPendingScrobbles();
+  if (batch.length === 0) return;
+  if (getLastfmSessionKey() !== sessionKey) return;
+  draining = true;
+
+  const params: Record<string, string> = { method: 'track.scrobble', api_key: API_KEY, sk: sessionKey };
+  batch.forEach((entry, index) => {
+    params[`artist[${index}]`] = entry.artist;
+    params[`track[${index}]`] = entry.track;
+    params[`timestamp[${index}]`] = String(entry.timestamp);
+    if (entry.album) params[`album[${index}]`] = entry.album;
+    if (entry.durationSec) params[`duration[${index}]`] = String(entry.durationSec);
+  });
+
+  apiCall(params, true)
+    .then(() => {
+      dropSubmitted(batch.length);
+      lastfmLog.info('queued scrobbles submitted:', batch.length);
+    })
+    .catch((err: Error) => {
+      // A refusal is as final for a queued play as it is for a live one, so the
+      // batch goes whether or not the session survived it. Keeping a batch the
+      // API can only refuse would block every later drain behind it forever.
+      if (err instanceof LastfmApiError) {
+        if (!handleInvalidSession(err, sessionKey)) {
+          lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
+        }
+        dropSubmitted(batch.length);
+        return;
+      }
+      // The API never saw them, so the queue stands and the next successful
+      // request carries it out.
+      lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
+    })
+    .finally(() => {
+      draining = false;
+    });
+}
+
 function sendNowPlaying(): void {
   if (!active()) return;
   const sessionKey = getLastfmSessionKey()!;
@@ -269,7 +347,10 @@ function sendNowPlaying(): void {
   if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
 
   apiCall(params, true)
-    .then(() => lastfmLog.debug('now playing:', `${artist} - ${track}`))
+    .then(() => {
+      lastfmLog.debug('now playing:', `${artist} - ${track}`);
+      flushPendingScrobbles(sessionKey);
+    })
     .catch((err: Error) => {
       if (handleInvalidSession(err, sessionKey)) return;
       lastfmLog.warn('now playing failed:', err.message);
@@ -321,28 +402,47 @@ function doScrobble(): void {
   scrobbled = true;
 
   const sessionKey = getLastfmSessionKey()!;
+  // The queued entry and the live request are built from one object so the play
+  // that goes on the queue cannot drift from the play that was submitted.
+  const entry: PendingScrobble = { artist: artist!, track: track!, timestamp: trackStartUnix };
+  if (album) entry.album = album;
+  if (durationMs > 0) entry.durationSec = Math.round(durationMs / 1000);
+
   const params: Record<string, string> = {
     method: 'track.scrobble',
-    artist: artist!,
-    track: track!,
-    timestamp: String(trackStartUnix),
+    artist: entry.artist,
+    track: entry.track,
+    timestamp: String(entry.timestamp),
     api_key: API_KEY,
     sk: sessionKey,
   };
-  if (album) params.album = album;
-  if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
+  if (entry.album) params.album = entry.album;
+  if (entry.durationSec) params.duration = String(entry.durationSec);
 
-  // A failure is final for this track. `scrobbled` stays set, so the track is
+  // A refusal is final for this track. `scrobbled` stays set, so the track is
   // submitted once and once only. Clearing it re-opened the submission without
   // re-arming anything, so the only way back to a request was the user pausing
   // and resuming; a retry that fires on a failed submission is a retry loop,
   // and the remaining time it would wait comes from `accumulatedMs`, which is
   // only folded at pause and so means nothing mid-play.
+  //
+  // A transport failure says nothing about the track: Last.fm never saw it. The
+  // play goes on the queue instead, and leaves with the next request playback
+  // triggers. `scrobbled` still stays set, because a queued play counts as
+  // submitted and nothing here re-arms.
   apiCall(params, true)
-    .then(() => lastfmLog.info('scrobbled:', `${artist} - ${track}`))
+    .then(() => {
+      lastfmLog.info('scrobbled:', `${artist} - ${track}`);
+      flushPendingScrobbles(sessionKey);
+    })
     .catch((err: Error) => {
       if (handleInvalidSession(err, sessionKey)) return;
-      lastfmLog.warn('scrobble failed, not retried:', err.message);
+      if (err instanceof LastfmApiError) {
+        lastfmLog.warn('scrobble failed, not retried:', err.message);
+        return;
+      }
+      queueScrobble(entry);
+      lastfmLog.warn('scrobble queued, the request did not reach Last.fm:', err.message);
     });
 }
 
@@ -492,6 +592,11 @@ export function disconnect(): void {
   cancelAuth();
   disable();
   clearLastfmSession();
+  // The queued plays go with the account. They are the user's listening history
+  // held in plain text, and Disconnect is what removes Sidra's copy of that; a
+  // queue that outlived the account would also submit those plays to whichever
+  // account was connected next.
+  setPendingScrobbles([]);
   setLastfmEnabled(false);
   lastfmLog.info('disconnected from Last.fm');
 }

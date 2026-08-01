@@ -10,6 +10,14 @@ import {
 
 const configLog = log.scope('config');
 
+export interface PendingScrobble {
+  artist: string;
+  track: string;
+  timestamp: number;
+  album?: string;
+  durationSec?: number;
+}
+
 interface StoreSchema {
   storefront: string;
   language: string | null;
@@ -19,6 +27,7 @@ interface StoreSchema {
   'lastfm.enabled': boolean;
   'lastfm.sessionKey': string | null;
   'lastfm.username': string | null;
+  'lastfm.pendingScrobbles': PendingScrobble[];
   theme: ThemeName;
   'autoUpdate.enabled': boolean;
   startPage: MusicStartPageId | 'last';
@@ -115,6 +124,34 @@ export function clearLastfmSession(): void {
   store.set('lastfm.sessionKey', null);
   store.set('lastfm.username', null);
   configLog.info('lastfm session cleared');
+}
+
+function isPendingScrobble(value: unknown): value is PendingScrobble {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Partial<PendingScrobble>;
+  return typeof entry.artist === 'string'
+    && typeof entry.track === 'string'
+    && typeof entry.timestamp === 'number'
+    && Number.isFinite(entry.timestamp);
+}
+
+export function getPendingScrobbles(): PendingScrobble[] {
+  const stored: unknown = getConfigValue('lastfm.pendingScrobbles', []);
+  if (!Array.isArray(stored)) {
+    configLog.warn('lastfm.pendingScrobbles is not an array - discarding');
+    return [];
+  }
+  const entries = stored.filter(isPendingScrobble);
+  if (entries.length !== stored.length) {
+    // Never log the dropped entries: track titles are the user's listening history.
+    configLog.warn('lastfm.pendingScrobbles dropped malformed entries:', stored.length - entries.length);
+  }
+  return entries;
+}
+
+export function setPendingScrobbles(entries: PendingScrobble[]): void {
+  store.set('lastfm.pendingScrobbles', entries);
+  configLog.info('lastfm.pendingScrobbles set, queued:', entries.length);
 }
 
 export function getTheme(): ThemeName {

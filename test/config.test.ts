@@ -14,6 +14,7 @@ import {
   getLastfmEnabled,
   getLastfmSessionKey, getLastfmUsername,
   setLastfmSession, clearLastfmSession,
+  getPendingScrobbles, setPendingScrobbles,
   getTheme, setTheme,
   getAutoUpdateEnabled, setAutoUpdateEnabled,
   getLastPageUrl, setLastPageUrl,
@@ -23,6 +24,7 @@ import {
   getClassicalStartPage, setClassicalStartPage,
   getClassicalLastPageUrl, setClassicalLastPageUrl,
 } from '../src/config';
+import type { PendingScrobble } from '../src/config';
 import { Conf } from 'electron-conf/main';
 import { DEFAULT_SERVICE_ID } from '../src/musicService';
 import type { ClassicalStartPageId, MusicServiceId } from '../src/musicService';
@@ -125,6 +127,14 @@ describe('Config store type assertions', () => {
 
   it('setClassicalLastPageUrl accepts string', () => {
     expectTypeOf(setClassicalLastPageUrl).parameter(0).toEqualTypeOf<string>();
+  });
+
+  it('getPendingScrobbles returns PendingScrobble[]', () => {
+    expectTypeOf(getPendingScrobbles).returns.toEqualTypeOf<PendingScrobble[]>();
+  });
+
+  it('setPendingScrobbles accepts PendingScrobble[]', () => {
+    expectTypeOf(setPendingScrobbles).parameter(0).toEqualTypeOf<PendingScrobble[]>();
   });
 });
 
@@ -301,6 +311,33 @@ describe('Config store runtime behaviour', () => {
     // would pass against a clear that did nothing at all.
     expect(getLastfmSessionKey()).toBeNull();
     expect(getLastfmUsername()).toBeNull();
+  });
+
+  it('getPendingScrobbles defaults to an empty queue', () => {
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('setPendingScrobbles round-trips a queue', () => {
+    const queue: PendingScrobble[] = [
+      { artist: 'Underworld', track: 'Born Slippy', timestamp: 1700000000, album: 'Second Toughest', durationSec: 566 },
+      { artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 },
+    ];
+    setPendingScrobbles(queue);
+    expect(getPendingScrobbles()).toEqual(queue);
+  });
+
+  it('getPendingScrobbles returns an empty queue when the persisted value is not an array', () => {
+    store.set('lastfm.pendingScrobbles', 'not-a-queue');
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('getPendingScrobbles drops a malformed entry and keeps the valid one', () => {
+    // A hand-edited or corrupted config must not produce a request the API can only refuse.
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 },
+      { artist: 'Orbital', track: 'Chime', timestamp: 'yesterday' },
+    ]);
+    expect(getPendingScrobbles()).toEqual([{ artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 }]);
   });
 
   it('setStartPage persists to the music start page key, not the Classical one', () => {
