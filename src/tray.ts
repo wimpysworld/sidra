@@ -216,7 +216,6 @@ let switchServiceCallback: ((serviceId: MusicServiceId) => void) | null = null;
 
 interface SubmenuContext {
   strings: TrayStrings;
-  isLinux: boolean;
   refresh: () => void;
 }
 
@@ -604,7 +603,7 @@ function buildContextMenu(tray: Tray): Menu {
   const refresh = () => tray.setContextMenu(buildContextMenu(tray));
   const strings = getTrayStrings();
   const isLinux = process.platform === 'linux';
-  const ctx: SubmenuContext = { strings, isLinux, refresh };
+  const ctx: SubmenuContext = { strings, refresh };
   const aboutIcon = getMenuIcon('about');
   const quitIcon = getMenuIcon('quit');
 
@@ -722,8 +721,7 @@ export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null)
   tray.setToolTip(escaped);
 }
 
-export function createTray(applyZoom?: (factor: number) => void): Tray {
-  applyZoomCallback = applyZoom ?? null;
+export function createTray(): Tray {
   const iconPath = getTrayIconPath();
   trayLog.info('creating tray with icon:', iconPath);
 
