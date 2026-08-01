@@ -53,6 +53,9 @@ jobs:
   lint-code:
     name: Lint Code 🧹
     needs: [version-gate]
+    # version-gate runs on tags only, so it is skipped on every other run, and
+    # always() is what lets this job proceed past that skip. Each gated job
+    # repeats the condition because Actions cannot share an `if` between jobs.
     if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     runs-on: ubuntu-slim
     permissions:
@@ -151,12 +154,6 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     needs: [lint-code, lint-actions, test-config, test-code]
-    if: >-
-      always()
-      && needs.lint-code.result == 'success'
-      && needs.lint-actions.result == 'success'
-      && needs.test-config.result == 'success'
-      && needs.test-code.result == 'success'
     strategy:
       fail-fast: false
       matrix:
