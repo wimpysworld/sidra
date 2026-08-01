@@ -1,6 +1,12 @@
 import { app } from 'electron';
 import path from 'path';
 
+/**
+ * Resolve a path to a bundled asset in both a checkout and a packaged build. A
+ * packaged build reads from app.asar.unpacked, so anything resolved here must
+ * also be listed individually under asarUnpack in package.json; asarUnpack takes
+ * no globs, and a missing entry fails only at runtime.
+ */
 export function getAssetPath(...parts: string[]): string {
   const base = app.isPackaged
     ? path.join(process.resourcesPath, 'app.asar.unpacked')
@@ -24,6 +30,13 @@ export interface ProductInfo {
 
 let cachedProductInfo: ProductInfo | null = null;
 
+/**
+ * Product details taken from package.json, which is the single source for the
+ * About window and the tray. The author email is stripped, because the About
+ * window shows the name alone. require() reads through the asar archive, so
+ * package.json is loaded relative to the compiled output and needs no
+ * asarUnpack entry, unlike everything getAssetPath() resolves.
+ */
 export function getProductInfo(): ProductInfo {
   if (cachedProductInfo) {
     return cachedProductInfo;

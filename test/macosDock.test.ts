@@ -2,8 +2,8 @@
 //
 // The dock menu is built from getTrayStrings(), so every expectation reads the
 // same i18n module the integration does rather than an English literal. The
-// idle header is the case worth pinning: it once carried the Pause label, which
-// reads as a transport control rather than as a state.
+// idle header is the case worth pinning: the Pause label there reads as a
+// transport control rather than as a statement of what is playing.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { app } from 'electron';
 

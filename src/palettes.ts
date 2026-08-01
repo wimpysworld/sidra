@@ -26,6 +26,7 @@ interface BundledTheme extends ThemeDefinition {
   name: BundledThemeName;
 }
 
+/** Names of the themes Sidra ships, as stored in config and shown in the tray. */
 export type BundledThemeName =
   | 'catppuccin'
   | 'dracula'
@@ -51,6 +52,7 @@ const draculaDark: SchemeColours = {
   accentHover: '#ff79c6',
 };
 
+/** Every bundled theme, in the order the tray Style submenu lists them. */
 export const BUNDLED_THEMES: readonly BundledTheme[] = [
   {
     name: 'catppuccin',
@@ -226,6 +228,7 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
   },
 ];
 
+/** Tray label for a theme name. An unknown name reads as Apple Music, the no-override default. */
 export function themeLabel(name: string): string {
   if (name === 'custom') return 'Custom';
   const theme = BUNDLED_THEMES.find(t => t.name === name);

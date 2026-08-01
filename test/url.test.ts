@@ -1,4 +1,6 @@
-// test/url.test.ts
+// Covers the storefront fallback chain buildAppleMusicURL() resolves against:
+// the persisted code first, then the one derived from the system locale.
+// test/storefront.test.ts covers the same builder with a storefront always set.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import './mocks/storefront-deps';
 

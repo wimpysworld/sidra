@@ -1,10 +1,11 @@
 import { describe, it, expect, expectTypeOf, beforeEach } from 'vitest';
 import type { ThemeName } from '../src/theme';
 
-// No mock of ../src/config here, deliberately. A hand-written stand-in used to sit
-// at this point in the file and every runtime assertion below read that stand-in's
-// own defaults back out, so real defects in src/config.ts passed. electron-conf/main
-// is mocked globally in test/setup.ts, so the real module loads and runs unmodified.
+// No mock of ../src/config here, deliberately. A hand-written stand-in would
+// sit at this point in the file and every runtime assertion below would read
+// that stand-in's own defaults back out, so a real defect in src/config.ts
+// would pass. electron-conf/main is mocked globally in test/setup.ts, so the
+// real module loads and runs unmodified.
 import {
   getStorefront, setStorefront,
   getLanguage, setLanguage,
@@ -29,8 +30,11 @@ import { Conf } from 'electron-conf/main';
 import { DEFAULT_SERVICE_ID } from '../src/musicService';
 import type { ClassicalStartPageId, MusicServiceId } from '../src/musicService';
 
-// Type assertions verify that each getter return type matches its StoreSchema key type.
-// These are compile-time checks via expectTypeOf.
+// Each assertion pins a getter return type or a setter parameter type against
+// its StoreSchema key type, so a key whose type drifts fails at the boundary
+// rather than at whichever caller happens to read it. expectTypeOf checks
+// nothing at run time: Vitest transpiles without type-checking, so these only
+// fail under `npx tsc -p tsconfig.test.json --noEmit`, which `just lint` runs.
 
 describe('Config store type assertions', () => {
   it('getStorefront returns string | undefined', () => {

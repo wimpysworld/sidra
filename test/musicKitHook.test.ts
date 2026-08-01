@@ -57,8 +57,9 @@ function createMusicKit(
     ...overrides,
   };
   if (volumeThrows) {
-    // Models a getter throwing while MusicKit re-initialises. This is the read
-    // that sits above the marker assignment in the original code.
+    // Models a getter throwing while MusicKit re-initialises. The eager volume
+    // read inside attachToInstance() is the most likely thrower, so this drives
+    // the part-attached path the marker and attachSafely() exist to contain.
     Object.defineProperty(instance, 'volume', {
       get() { throw new Error('volume unavailable during re-initialisation'); },
       configurable: true,
@@ -255,10 +256,10 @@ describe('musicKitHook', () => {
   });
 
   // The 5-second monitor re-attaches whenever __sidraHookedMk does not match
-  // the live instance. The marker used to be assigned last, so anything that
-  // threw inside attachToInstance left it stale and every cycle added another
-  // full set of listeners: the #153 / #154 failure, reached by a different
-  // route. These three pin the marker being claimed first.
+  // the live instance, so attachToInstance() must claim the marker as its first
+  // statement. Claimed last, anything that throws in between leaves it stale and
+  // every cycle adds another full set of MusicKit listeners. These three pin the
+  // marker being claimed first.
   it('attaches each MusicKit listener once when the IPC bridge is missing', () => {
     const { musicKit, runMonitorCycles } = createHarness({ bridgeMissing: true });
 

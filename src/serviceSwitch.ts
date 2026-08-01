@@ -15,11 +15,18 @@ import { reset as resetWedgeDetector } from './wedgeDetector';
 let getTrayCallback: (() => Tray | null) | null = null;
 let loadURLCallback: ((url: string) => void) | null = null;
 
+/** Receives the window and tray accessors from main.ts. Call once, before any switch. */
 export function initServiceSwitch(deps: { getTray: () => Tray | null; loadURL: (url: string) => void }): void {
   getTrayCallback = deps.getTray;
   loadURLCallback = deps.loadURL;
 }
 
+/**
+ * Persist the service and navigate to it. The order is essential: the wedge
+ * detector goes first because stopping its timer suppresses a skip-forward into
+ * the page as it re-initialises, and the service is persisted before the tray
+ * menu and the URL are built, since both read it back.
+ */
 export function switchService(id: MusicServiceId, targetUrl?: string): void {
   resetWedgeDetector();
   setMusicService(id);

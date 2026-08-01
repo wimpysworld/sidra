@@ -21,9 +21,10 @@ const CSS_RGBA_RE = /^rgba\((\d+),(\d+),(\d+),([0-9.]+)\)$/;
 /** WCAG 2.x AA floor for body text. */
 const CONTRAST_FLOOR = 4.5;
 
-// Catppuccin Latte ships subtext0 at #6c6f85, which lands at 4.37:1. Latte is
-// the one palette that was checked on screen, and WW-101 leaves every
-// Catppuccin value untouched, so it holds its shipped ratio.
+// Catppuccin Latte ships subtext0 at #6c6f85, which lands at 4.37:1. It is the
+// one documented exception to the floor: the Catppuccin values are Catppuccin's
+// own and are kept byte for byte, and Latte was checked on screen. A new palette
+// gets no entry here.
 const SECONDARY_FLOORS: Record<string, number> = {
   'catppuccin light': 4.37,
 };
@@ -208,9 +209,10 @@ describe('buildThemeCss', () => {
         expect(css).not.toContain('::-webkit-scrollbar');
       });
 
-      // The accent group was dropped from :root, leaving the * block as its
-      // only declaration site. cssVar reads the first match, so a resolved
-      // value here proves the root still reaches one.
+      // The * block is the only declaration site for the accent group, because
+      // the shadow DOM of amp-* elements does not inherit from :root. cssVar
+      // reads the first match, so a resolved value here proves the root element
+      // still reaches one despite the lower specificity.
       it('resolves the accent variables from the * block', () => {
         for (const { block, colours } of schemeBlocks) {
           expect(cssVar(block, 'keyColor')).toBe(colours.accent);

@@ -11,6 +11,7 @@ const aboutLog = log.scope('about');
 
 let aboutWindow: BrowserWindow | null = null;
 
+/** Show the About window, or focus the one already open. */
 export function showAboutWindow(): void {
   if (aboutWindow) {
     aboutWindow.focus();
@@ -18,6 +19,8 @@ export function showAboutWindow(): void {
   }
 
   aboutLog.info('showing About window');
+  // The window is not resizable, so its size must scale with the zoom factor
+  // applied to the contents or the page is clipped
   const zoomFactor = getZoomFactor();
   aboutWindow = new BrowserWindow({
     width: Math.round(ABOUT_WINDOW_WIDTH_PX * zoomFactor),
@@ -37,6 +40,7 @@ export function showAboutWindow(): void {
     },
   });
 
+  // Held back until the page has rendered, so the window never flashes empty
   aboutWindow.once('ready-to-show', () => {
     aboutWindow?.webContents.setZoomFactor(getZoomFactor());
     aboutWindow?.show();
@@ -50,6 +54,8 @@ export function showAboutWindow(): void {
   const trayStrings = getTrayStrings();
   const aboutStrings = getAboutStrings();
 
+  // The page is sandboxed with no preload, so every string and every product
+  // detail reaches it as a query parameter
   aboutWindow.loadFile(getAssetPath('assets', 'about.html'), {
     query: {
       name: info.productName,

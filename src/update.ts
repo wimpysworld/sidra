@@ -5,6 +5,12 @@ import { getUpdateStrings } from './i18n';
 import { createNotification } from './notify';
 import { errorMessage } from './utils';
 
+// Update state shared with the tray, plus the notify-only check used where
+// isAutoUpdateSupported() is false. Those builds are updated by a package
+// manager, so the check reports a new release and links to it rather than
+// downloading anything; src/autoUpdate.ts owns the AppImage and NSIS path and
+// reports back here through setUpdateReady().
+
 const SEMVER_PARTS = 3;
 const UPDATE_CHECK_TIMEOUT_MS = 10000;
 
@@ -14,21 +20,31 @@ const GITHUB_API_URL = 'https://api.github.com/repos/wimpysworld/sidra/releases/
 
 export interface UpdateInfo {
   version: string;
+  /** Release page to open. Empty when the update is already downloaded. */
   url: string;
+  /** True once the update is downloaded and a restart would install it. */
   ready: boolean;
 }
 
 let updateInfo: UpdateInfo | null = null;
 
+/** The newest update seen this session, or null when none has been found. */
 export function getUpdateInfo(): UpdateInfo | null {
   return updateInfo;
 }
 
+/** Record a downloaded update, so the tray offers a restart rather than a link. */
 export function setUpdateReady(version: string): void {
   updateInfo = { version, url: '', ready: true };
   updateLog.info('update ready to install:', version);
 }
 
+/**
+ * Compare two major.minor.patch versions numerically, so 0.10.0 beats 0.9.0
+ * where a string compare would not. Sidra tags releases with exactly three
+ * numeric parts; any other form yields NaN, every comparison is then false and
+ * the result is "not newer", so a malformed tag never offers an update.
+ */
 export function isNewer(remote: string, local: string): boolean {
   const r = remote.split('.').map(Number);
   const l = local.split('.').map(Number);
@@ -39,6 +55,12 @@ export function isNewer(remote: string, local: string): boolean {
   return false;
 }
 
+/**
+ * Ask GitHub for the latest release and record it when it is newer. The menu is
+ * rebuilt on both answers, because the tray shows the up-to-date state too. A
+ * failed check is logged at debug and never surfaced: the user did not ask for
+ * it, and no network is a normal condition.
+ */
 export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
   const localVersion = app.getVersion();
   updateLog.debug('checking for updates, current version:', localVersion);

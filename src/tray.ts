@@ -81,6 +81,12 @@ function isMacOSTahoeOrLater(): boolean {
   return !isNaN(major) && major >= 26;
 }
 
+/**
+ * Icon for a menu action, or undefined when the platform or the action has
+ * none. Callers spread the result conditionally, because Electron renders a
+ * blank gutter for an empty NativeImage. macOS draws SF Symbols and only from
+ * Tahoe, where they are available; Linux and Windows use themed PNGs.
+ */
 export function getMenuIcon(action: string): Electron.NativeImage | undefined {
   if (process.platform === 'darwin') {
     if (!isMacOSTahoeOrLater()) return undefined;
@@ -127,7 +133,6 @@ function getTrayIconPath(): string {
     return path.join(iconsDir, 'sidra-tray.png');
   }
 
-  // Linux: select icon based on current theme
   return getLinuxTrayIconPath();
 }
 
@@ -138,10 +143,22 @@ function escapePango(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Replaces `&` with a fullwidth ampersand (U+FF06) for Linux menu labels.
+ * Electron escapes labels only partially for GTK/Pango and leaves a bare `&`,
+ * which Pango reads as the start of a markup entity and then rejects the label.
+ * macOS and Windows need no such substitution, so callers apply this on Linux only.
+ */
 export function sanitiseLinuxLabel(text: string): string {
   return text.replace(/&/g, '\uFF06');
 }
 
+/**
+ * Shortens a track, artist or album name for a menu row. The text is first cut
+ * at the opening bracket of a trailing qualifier such as "(Remastered 2011)",
+ * which carries little for the reader and consumes the whole row, then
+ * ellipsised at maxLength so one long title cannot stretch the menu.
+ */
 export function truncateMenuLabel(text: string, maxLength = 32): string {
   const splitIndex = text.search(/[([]/);
   const trimmed = splitIndex > 0 ? text.slice(0, splitIndex).trimEnd() : text;
@@ -491,10 +508,8 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     }
   }
 
-  // Metadata items - Electron partially escapes labels for GTK/Pango but
-  // does not escape bare `&`, which Pango consumes as a markup entity start.
-  // sanitiseLinuxLabel replaces `&` with fullwidth ampersand (U+FF06) to
-  // avoid this on Linux without affecting macOS or Windows.
+  // Metadata items. Every label is user content Apple supplies, so each one
+  // goes through sanitiseLinuxLabel on Linux to keep Pango from reading it as markup.
   const trackLabel = truncateMenuLabel(payload.name ?? '');
   const trackItem: Electron.MenuItemConstructorOptions = {
     label: isLinux ? sanitiseLinuxLabel(trackLabel) : trackLabel,
@@ -509,6 +524,7 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     ...(artistIcon ? { icon: artistIcon } : {}),
   };
   const albumLabel = truncateMenuLabel(payload.albumName ?? '');
+  // 1981 is the last year before the CD shipped, so anything older shows the vinyl icon.
   const releaseYear = payload.releaseDate ? parseInt(payload.releaseDate.slice(0, 4), 10) : NaN;
   const albumIconKey = !isNaN(releaseYear) && releaseYear <= 1981 ? 'record-vinyl' : 'album';
   const albumIcon = getMenuIcon(albumIconKey);
@@ -540,7 +556,6 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
     click: () => { if (sendCommand) sendCommand('player:next'); },
   };
 
-  // Volume submenu with radio items
   const volumePct = Math.round(volume * 100);
   const volumeIcon = getMenuIcon('volume');
   const volumeParentLabel = `${strings.volume}: ${volumePct}%`;
@@ -773,6 +788,13 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
   return tray;
 }
 
+/**
+ * Keeps the tray menu and tooltip in step with playback, and clears Now Playing
+ * once a pause has lasted TRAY_PAUSE_TIMEOUT_MS. The caller must register the
+ * returned closure on will-quit: it destroys the pause timer, cancels a pending
+ * rebuild and removes the three player listeners, all of which otherwise outlive
+ * the tray they act on.
+ */
 export function initTrayStateManager(player: Player, tray: Tray): () => void {
   const TRAY_PAUSE_TIMEOUT_MS = 30_000;
   let currentVolume = 1;
@@ -792,7 +814,6 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
   const trayPauseTimer = createPauseTimer(TRAY_PAUSE_TIMEOUT_MS, clearNowPlaying);
 
   const onNowPlayingItemDidChange = async (payload: NowPlayingPayload | null): Promise<void> => {
-    // Cancel pause timer on track change
     trayPauseTimer.cancel();
     if (!payload) {
       trayLog.debug('nowPlayingItemDidChange (tray handler): null payload, clearing state');
@@ -832,7 +853,9 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     }
     const { isPlaying } = player.playbackSnapshot();
 
-    // Pause timeout: clear Now Playing after 30s of inactivity
+    // The timer is armed on the playing-to-paused edge only. Paused states
+    // repeat, and starting it on each one would push the clear-down further
+    // away every time, so a paused player would keep its Now Playing rows.
     if (isPlaying) {
       trayPauseTimer.cancel();
     }

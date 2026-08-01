@@ -99,9 +99,9 @@ describe('serviceSwitch', () => {
   });
 });
 
-// The itms:// path in main.ts is this function plus a URL. main.ts runs app.whenReady()
-// at import and cannot be loaded here, so the branch it used to hold lives in the module
-// under test and is driven directly.
+// The itms:// path in main.ts is this function plus a URL. The service branch lives
+// here rather than in main.ts, which runs app.whenReady() at import and cannot be
+// loaded under Vitest, so driving the function directly covers the whole path.
 describe('routeToMusicService', () => {
   const tray = new Tray('/tmp/sidra-test/icon.png');
   const loadURL = vi.fn((_url: string) => { calls.push('loadURL'); });

@@ -4,6 +4,12 @@ import { Player, PlaybackState, PlaybackStatePayload, NowPlayingPayload, Integra
 
 const wedgeLog = log.scope('wedge');
 
+// Recovery for a wedged player: the web player can keep reporting Playing while
+// the playhead stops advancing, and nothing on the page recovers from it. A one
+// second check skips forward when nothing has advanced for STALL_THRESHOLD_MS.
+// END_SAFETY_MARGIN_MS holds the end of a track out of scope, where a track
+// about to finish looks the same as a stall, and MAX_SKIP_ATTEMPTS bounds the
+// recovery so a queue that will not play cannot be skipped through end to end.
 const STALL_THRESHOLD_MS = 5000;
 const END_SAFETY_MARGIN_MS = 10000;
 const CHECK_INTERVAL_MS = 1000;
@@ -42,11 +48,17 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
   getWin()?.webContents.send('player:next' satisfies ReceiveChannel);
 }
 
+/**
+ * Clear the skip count and stop the check timer. A reload and a service switch
+ * must call this first: the timer otherwise survives the navigation and fires a
+ * spurious skip-forward once the page has re-initialised.
+ */
 export function reset(): void {
   skipAttempts = 0;
   stopTimer();
 }
 
+/** Attach the detector to the player. A repeat call is refused, see below. */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow: getWin } = ctx;
   if (!getWin) throw new Error('wedgeDetector requires getMainWindow');
@@ -67,7 +79,8 @@ export function init(ctx: IntegrationContext): void {
 
   let lastSeenPositionUs = 0;
 
-  // Named listener references for removeListener in will-quit
+  // Named references, because will-quit removes each one and an inline listener
+  // cannot be removed
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     const nowPlaying = payload?.state === PlaybackState.Playing;
     lastAdvanceTime = Date.now();

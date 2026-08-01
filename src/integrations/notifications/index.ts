@@ -21,12 +21,14 @@ async function showNotification(
   }
 
   // Checked before the artwork download so a daemon-less session does no
-  // repeated network and disk work per track
+  // network and disk work per track
   if (!notificationsAvailable()) {
     notifLog.debug('skipping notification: no notification daemon');
     return;
   }
 
+  // A slow artwork fetch must not hold the notification past the track it
+  // announces, so the download races a timeout and loses its icon on expiry
   const artworkPath = payload.artworkUrl
     ? await Promise.race([
         downloadArtwork(payload.artworkUrl).catch((error: unknown) => {
@@ -73,6 +75,10 @@ async function showNotification(
   notifLog.debug('notification requested:', payload.name);
 }
 
+/**
+ * Announces each new track as a desktop notification. The debounce keeps a
+ * queue jump or a burst of metadata updates to a single notification.
+ */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;
   const getWin = getMainWindow ?? (() => null);

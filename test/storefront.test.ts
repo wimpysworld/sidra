@@ -1,4 +1,3 @@
-// test/storefront.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import './mocks/storefront-deps';
 
@@ -201,8 +200,9 @@ describe('buildAppleMusicURL - classical service', () => {
   });
 
   it('falls back to home when a removed library start page is still persisted', () => {
-    // 'library' was persisted before WW-92 dropped the page: the type no longer admits it,
-    // the store still holds it.
+    // Classical has no library route on the web, so the type no longer admits the id.
+    // A store written by an older build still holds it, and it must resolve to home
+    // rather than building a URL that 404s.
     mockedGetClassicalStartPage.mockReturnValue('library' as ClassicalStartPageId);
     const url = buildAppleMusicURL();
     expect(url).toBe('https://classical.music.apple.com/gb');

@@ -4,13 +4,16 @@
 
 import { CONTENT_READY_SELECTOR } from './contentReady';
 
+/** The two Apple web services Sidra wraps. */
 export type MusicServiceId = 'music' | 'classical';
 
+/** One start page choice: the id persisted in config, and its path under the storefront. */
 export interface StartPage<PageId extends string = string> {
   id: PageId;
   path: string;
 }
 
+/** A wrapped web service and everything Sidra needs to address and drive it. */
 export interface MusicService<PageId extends string = string> {
   id: MusicServiceId;
   host: string;
@@ -36,6 +39,7 @@ function defineService<const PageId extends string>(
 
 const SHARED_AUTH_FRAME_HOSTS = ['auth.music.apple.com', 'idmsa.apple.com'] as const;
 
+/** The registry. Every host, origin and start page comes from here, never from a literal at the call site. */
 export const MUSIC_SERVICES = {
   music: defineService({
     id: 'music',
@@ -78,8 +82,10 @@ export type ClassicalStartPageId = typeof MUSIC_SERVICES.classical.startPages[nu
 /** Every start page id in the registry, for records that must cover both services. */
 export type AnyStartPageId = MusicStartPageId | ClassicalStartPageId;
 
+/** Service used when nothing is persisted, and when a stored id turns out not to be one. */
 export const DEFAULT_SERVICE_ID: MusicServiceId = 'music';
 
+/** Narrows a stored or externally supplied string to a registry id. */
 export function isMusicServiceId(value: string): value is MusicServiceId {
   return Object.hasOwn(MUSIC_SERVICES, value);
 }
@@ -90,10 +96,12 @@ export function getService(id: MusicServiceId): MusicService {
   return MUSIC_SERVICES[id] ?? MUSIC_SERVICES[DEFAULT_SERVICE_ID];
 }
 
+/** The service serving a hostname, or undefined when the host is not one of ours. */
 export function getServiceByHost(host: string): MusicService | undefined {
   return Object.values(MUSIC_SERVICES).find(svc => svc.host === host);
 }
 
+/** Every registered service, for callers that iterate rather than look one up. */
 export function allServices(): readonly MusicService[] {
   return Object.values(MUSIC_SERVICES);
 }

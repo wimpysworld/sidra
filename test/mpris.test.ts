@@ -143,9 +143,9 @@ describe('MPRIS OpenUri', () => {
     expect(win.loadURL).toHaveBeenCalledWith('https://classical.music.apple.com/gb/album/foo');
   });
 
-  // Every registered host is accepted whatever the active service is. The check
-  // once compared against the active service's host, so with Classical selected
-  // every music.apple.com URI an MPRIS client sent was dropped.
+  // Every registered host is accepted whatever the active service is. A check
+  // against the active service's host instead would drop every music.apple.com
+  // URI an MPRIS client sends while Classical is selected.
   it('loads a music.apple.com URI while Classical is the active service', () => {
     setMusicService('classical');
     initPlayerInterface().OpenUri('https://music.apple.com/gb/album/foo');
@@ -170,8 +170,8 @@ describe('MPRIS OpenUri', () => {
 });
 
 // MPRIS has three PlaybackStatus values and MusicKit has ten states, so the
-// mapping is lossy by design. Stopped (4) reached MPRIS as 'Paused' until
-// WW-128, which left a client showing a pause button for a player that had
+// mapping is lossy by design. Stopped (4) is the row that matters: mapping it
+// to 'Paused' leaves a client showing a pause button for a player that has
 // stopped. AGENTS.md also forbids an early-return guard for the transient
 // states, so those are pinned here rather than left to read as an accident.
 describe('MPRIS PlaybackStatus mapping', () => {
@@ -283,8 +283,9 @@ describe('MPRIS metadata', () => {
 });
 
 // MusicKit never populates attributes.url on a library item, so a payload that
-// carries one is the catalogue case and every library track reached MPRIS with
-// no xesam:url at all. getShareUrl() rebuilds it from the playParams ids.
+// carries one is the catalogue case and without a fallback every library track
+// reaches MPRIS with no xesam:url at all. getShareUrl() rebuilds it from the
+// playParams ids.
 describe('MPRIS xesam:url fallback', () => {
   it('rebuilds the song URL from catalogId when the payload carries no url', () => {
     const iface = initPlayerInterface();
@@ -319,10 +320,9 @@ describe('MPRIS volume', () => {
     vi.useFakeTimers();
   });
 
-  // The setter cached the new value and told the renderer, but emitted
-  // nothing, so only the client that made the change knew about it. A second
-  // MPRIS client kept showing the old level until something else moved the
-  // volume.
+  // A setter that caches the new value and tells the renderer without emitting
+  // leaves only the client that made the change knowing about it, so a second
+  // MPRIS client shows the old level until something else moves the volume.
   it('emits PropertiesChanged for a volume set over the interface', () => {
     const iface = initPlayerInterface();
     iface.Volume = 0.4;
@@ -340,9 +340,9 @@ describe('MPRIS volume', () => {
   });
 
   // A drag sets several values inside one echo round trip. With a single
-  // pending slot holding only the newest, the 0.5 and 0.6 echoes each looked
-  // like an in-app change and overwrote the cached volume, so the reported
-  // level finished one echo behind the real one.
+  // pending slot holding only the newest, the 0.5 and 0.6 echoes each read as
+  // an in-app change and overwrite the cached volume, leaving the reported
+  // level one echo behind the real one.
   it('reports the final value of a burst of sets', () => {
     const iface = initPlayerInterface();
     iface.Volume = 0.5;
@@ -358,10 +358,11 @@ describe('MPRIS volume', () => {
     expect(emissions).toEqual([{ Volume: 0.7 }]);
   });
 
-  // A long drag can put more sets in flight than the queue holds. Dropping the
-  // oldest entry made its echo look like an in-app change, and the later
-  // matched echoes never put the cached value back, so the volume finished at
-  // the fourth value of the drag and stayed there.
+  // A long drag can put more sets in flight than the queue holds. Evicting the
+  // oldest entry to make room makes its echo read as an in-app change, and the
+  // later matched echoes never put the cached value back, so the volume sticks
+  // at a value the drag left behind. A full queue therefore drops the value
+  // being added instead.
   it('reports the final value of a burst longer than the pending queue', () => {
     const iface = initPlayerInterface();
     const values = Array.from({ length: 12 }, (_, index) => (index + 1) * 0.05);

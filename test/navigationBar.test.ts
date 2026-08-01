@@ -10,9 +10,11 @@ const navBarSource = fs.readFileSync(
   'utf-8',
 );
 
-// The asset is not standalone-executable: src/main.ts substitutes the token when
-// it reads the file. These labels are deliberately not English, so a label that
-// reaches a button proves it came from here and not from a default in the asset.
+// The asset is not standalone-executable JavaScript: loadAssets() in src/main.ts
+// substitutes the label token when it reads the file, so this test has to do the
+// same before it runs it. These labels are deliberately not English, so a label
+// that reaches a button proves it came from here and not from a default in the
+// asset.
 const LABELS = { back: 'Zurück', forward: 'Vorwärts', reload: 'Neu laden' };
 
 const navBarScript = navBarSource.replace(NAV_LABELS_TOKEN, () => JSON.stringify(LABELS));

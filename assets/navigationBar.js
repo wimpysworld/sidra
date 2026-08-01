@@ -1,8 +1,14 @@
+// Back, forward and reload buttons for the Apple Music sidebar header. The web
+// UI has no need for them; a desktop window with no browser chrome does.
 (function () {
+  // The script runs on every page load and on SPA navigation, which can keep
+  // the existing header, so bail out rather than add a second set of buttons.
   if (document.getElementById('sidra-nav-buttons')) return;
 
-  // Replaced with a JSON object when src/main.ts reads this file. The script is
-  // injected with executeJavaScript(), so it cannot take query parameters.
+  // Not standalone-executable JavaScript: loadAssets() in src/main.ts replaces
+  // this bare token with the translated labels as JSON, because the script is
+  // injected with executeJavaScript() and cannot take the query parameters the
+  // splash screen uses. NAV_LABELS_TOKEN in src/i18n.ts is the shared spelling.
   /** @type {{ back: string, forward: string, reload: string }} */
   var LABELS = __SIDRA_NAV_LABELS__;
 
@@ -12,6 +18,8 @@
     return;
   }
 
+  // The buttons are appended to the logo row, so it has to lay out as a flex
+  // container before the margin-left: auto below can push them to the right.
   logoEl.setAttribute('style', [
     'display: flex !important',
     'align-items: center !important',

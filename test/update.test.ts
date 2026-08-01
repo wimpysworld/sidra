@@ -1,4 +1,3 @@
-// test/update.test.ts
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../src/config', () => ({

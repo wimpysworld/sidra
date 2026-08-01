@@ -1,10 +1,10 @@
 // test/integrationCleanup.test.ts
 //
 // Enforces the AGENTS.md claim that every listener is cleaned up on will-quit.
-// The claim had drifted in three places before this file existed: macos-dock
-// registered three anonymous listeners and had no will-quit handler at all,
-// wedgeDetector stopped its timer and left its listeners attached, and main.ts
-// discarded the teardown closure initTrayStateManager returns.
+// Nothing else in the suite notices when it breaks, and it breaks quietly:
+// anonymous listeners cannot be removed at all, a module can stop its timer
+// and leave its listeners attached, and a teardown closure is discarded by
+// calling the function that returns it as a bare statement.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -193,8 +193,8 @@ describe('player listener cleanup', () => {
     }
   });
 
-  // Fixtures for the sweep itself. The first one is the point of the region
-  // check: it passed a whole-file search for the removal, and must not pass now.
+  // Fixtures for the sweep itself. The first is the point of the region check:
+  // a whole-file search for the removal accepts it, and the sweep must not.
   describe('the sweep itself', () => {
     const REGISTER = "player.on('playbackStateDidChange', onPlaybackStateDidChange);";
     const REMOVE = "player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);";
@@ -279,8 +279,9 @@ describe('player listener cleanup', () => {
       ]);
     });
 
-    // The sweep once read `player.on(` only, so any other registration spelling
-    // was invisible to it and slipped past a file that reads as coverage.
+    // `addListener` is the same registration under another name, so a sweep
+    // matching `player.on(` alone passes a module that registers this way
+    // while reading as coverage.
     it('rejects an addListener registration with no removal', () => {
       const source = `
         export function init(): void {
@@ -359,8 +360,8 @@ describe('player listener cleanup', () => {
   it('main.ts invokes the teardown initTrayStateManager returns', () => {
     const source = fs.readFileSync(path.join(SRC_DIR, 'main.ts'), 'utf-8');
 
-    // A bare call statement discards the closure, which is how the tray pause
-    // timer and its three listeners survived quitting.
+    // A bare call statement discards the closure, leaving the tray pause timer
+    // and its three player listeners attached for the life of the process.
     expect(
       /^\s*initTrayStateManager\(/m.test(source),
       'main.ts calls initTrayStateManager() as a statement, discarding its teardown closure',

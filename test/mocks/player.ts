@@ -9,8 +9,6 @@
 // It extends the real Player rather than reimplementing the interface: Player
 // holds private fields, so a structural stand-in is not assignable to
 // IntegrationContext without a cast.
-//
-// Import it directly: import { FakePlayer } from './mocks/player';
 import { Player, PlaybackSnapshot, PlaybackState, NowPlayingPayload } from '../../src/player';
 
 export class FakePlayer extends Player {

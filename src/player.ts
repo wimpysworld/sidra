@@ -60,6 +60,12 @@ export function getShareUrl(payload: NowPlayingPayload): string | undefined {
   return undefined;
 }
 
+/**
+ * MusicKit playback states as the hook reports them. Integrations map every
+ * value, transient ones included: src/integrations/mpris gives Playing and
+ * Paused an MPRIS status of their own and lets the rest fall through to
+ * 'Stopped', and test/mpris.test.ts fails when a state added here has no row.
+ */
 export const PlaybackState = {
   None: 0,
   Loading: 1,
@@ -78,7 +84,7 @@ export type PlaybackStatePayload = { status: boolean; state: number } | null;
 export interface PlayerEvents {
   playbackStateDidChange: [payload: PlaybackStatePayload];
   nowPlayingItemDidChange: [payload: NowPlayingPayload | null];
-  /** Playback position in microseconds (from MusicKit.currentPlaybackTime * 1e6 in assets/musicKitHook.js:40). */
+  /** Playback position in microseconds, sent by the playbackTimeDidChange listener in assets/musicKitHook.js. */
   playbackTimeDidChange: [payload: number];
   repeatModeDidChange: [payload: number | null];
   shuffleModeDidChange: [payload: number | null];
@@ -105,9 +111,12 @@ const PLAYBACK_STATES: Record<number, string> = Object.fromEntries(
   Object.entries(PlaybackState).map(([k, v]) => [v, k.toLowerCase()])
 );
 
-// Type-safe EventEmitter wrapper. Provides compile-time payload checking on
-// emit, on, once, removeListener, and off while preserving full runtime
-// compatibility with Node's EventEmitter.
+/**
+ * Type-safe EventEmitter wrapper. Gives emit, on, once, removeListener and off
+ * compile-time payload checking while staying a plain Node EventEmitter at
+ * runtime, so a misspelled event or a wrong payload fails tsc rather than
+ * reaching an integration as a listener that never fires.
+ */
 export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> extends EventEmitter {
   override emit<K extends keyof Events & string>(event: K, ...args: Events[K]): boolean {
     return super.emit(event, ...args);
@@ -136,6 +145,12 @@ export interface PlaybackSnapshot {
   state: number;
 }
 
+/**
+ * Main-process hub for the renderer's MusicKit events. Each handle* method is
+ * wired to one IPC channel in initPlayerIPC() (src/main.ts), validates the
+ * payload the untrusted renderer sent, then re-emits it to the integrations.
+ * An invalid payload is logged and dropped rather than forwarded.
+ */
 export class Player extends TypedEmitter<PlayerEvents> {
   private lastTimeLogAt = 0;
   private _isPlaying = false;
@@ -146,6 +161,11 @@ export class Player extends TypedEmitter<PlayerEvents> {
     super();
   }
 
+  /**
+   * Current playback state, for callers that must read it outside an event.
+   * The Last.fm scrobble timer is wall-clock, so it re-reads this at submission
+   * time to confirm the play is still live and the playhead has advanced.
+   */
   playbackSnapshot(): PlaybackSnapshot {
     return { isPlaying: this._isPlaying, positionUs: this._positionUs, state: this._state };
   }

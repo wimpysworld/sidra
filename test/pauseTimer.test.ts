@@ -1,3 +1,7 @@
+// The tray and the macOS dock arm this timer on a pause and clear Now Playing
+// when it expires. cancel() and destroy() are separate for a reason: the
+// playback path cancels, and teardown on will-quit destroys, because an expiry
+// after teardown calls into a dock that no longer exists.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createPauseTimer } from '../src/pauseTimer';
 
@@ -41,7 +45,6 @@ describe('createPauseTimer', () => {
     vi.advanceTimersByTime(800);
     expect(onExpiry).not.toHaveBeenCalled();
 
-    // Restart resets the timeout
     timer.start();
     vi.advanceTimersByTime(800);
     expect(onExpiry).not.toHaveBeenCalled();
@@ -66,7 +69,8 @@ describe('createPauseTimer', () => {
     const onExpiry = vi.fn();
     const timer = createPauseTimer(1000, onExpiry);
 
-    // Should not throw
+    // The bare call is the subject: the playback path cancels on every state
+    // change, most of which armed no timer.
     timer.cancel();
     expect(onExpiry).not.toHaveBeenCalled();
   });

@@ -1,8 +1,8 @@
 (function () {
   // This flag persists for the page lifetime and is never cleared. Re-injection
   // must not re-run the IIFE: the 5-second monitor inside the hook already
-  // handles MusicKit instance replacement, and re-running would install
-  // duplicate message listeners (the bug fixed in #154 / issue #153).
+  // handles MusicKit instance replacement, and re-running would install a
+  // duplicate set of message and wheel listeners.
   if (window.__sidraHookInjected) return;
   window.__sidraHookInjected = true;
 
@@ -18,9 +18,9 @@
      *
      * window.AMWrapper is installed by the preload script. It is normally there
      * before this runs, but the hook is injected into a page it does not
-     * control and cannot assume it. A throw from the eager send in
-     * attachToInstance() used to escape before the instance marker was
-     * assigned, which put the 5-second monitor into an endless re-attach loop.
+     * control and cannot assume it. The eager volume send in attachToInstance()
+     * is the most likely thrower, and every send goes through here so no path
+     * can throw on an absent bridge.
      *
      * @param {string} channel - IPC channel name
      * @param {unknown} [payload] - Channel payload
@@ -42,15 +42,15 @@
      * @returns {void}
      */
     function attachToInstance(mk) {
-      // Claimed before anything below can throw, not after. The 5-second
-      // monitor re-attaches whenever this marker does not match the live
-      // instance, so assigning it last meant any throw in between put the hook
-      // into an endless loop, adding a duplicate set of listeners every cycle -
-      // the failure #153 and #154 fixed. A part-attached instance is the lesser
-      // fault, and the catch below records it.
+      // The first statement, claimed before anything below can throw. The
+      // 5-second monitor re-attaches whenever this marker does not match the
+      // live instance, so a throw ahead of the assignment leaves it stale and
+      // the monitor adds a duplicate set of listeners on every cycle. A
+      // part-attached instance is the lesser fault, and attachSafely() logs it.
       window.__sidraHookedMk = mk;
 
-      // Clear previous volume polling timer on re-hook
+      // The previous poll closes over the replaced instance, so a re-hook must
+      // stop it rather than leave two timers reporting different volumes.
       if (volumePollTimer !== null) {
         clearInterval(volumePollTimer);
         volumePollTimer = null;
@@ -58,6 +58,12 @@
 
       /**
        * Report explicit media session position state for OS media controls.
+       *
+       * The playbackTimeDidChange listener calls this on every tick and must
+       * not debounce it: music.apple.com writes to the same MediaSession from
+       * the same world, and the repeated call keeps Sidra's value in place. It
+       * starts no debounce timer, so the project rule against debounced sends
+       * from that event still holds.
        * @returns {void}
        */
       function reportPositionState() {
@@ -96,7 +102,8 @@
             position: Math.min(position, duration),
           });
         } catch (_) {
-          // Ignore media session position state errors.
+          // A value Chromium rejects is not worth failing the listener over;
+          // the next playbackTimeDidChange tick reports again.
         }
       }
 
@@ -114,7 +121,7 @@
         try {
           navigator.mediaSession.setPositionState();
         } catch (_) {
-          // Ignore media session position state errors.
+          // Clearing is best effort; the caller has nothing else to try.
         }
       }
 
@@ -178,7 +185,10 @@
         });
       });
 
-      /** Forward playback position (in microseconds) to the main process. */
+      /**
+       * Forward playback position (in microseconds) to the main process and
+       * refresh the media session position state.
+       */
       mk.addEventListener('playbackTimeDidChange', () => {
         sendToMain('playbackTimeDidChange',
           mk.currentPlaybackTime * 1_000_000
@@ -205,13 +215,18 @@
       // Send the initial volume so MPRIS (and any other listener) receives the
       // real value immediately, not just on subsequent changes.
       sendToMain('volumeDidChange', lastVolume);
+      // playbackVolumeDidChange is the only volume event MusicKit publishes, so
+      // binding volumeDidChange leaves the listener dead. The IPC channel below
+      // keeps the volumeDidChange name, which is Sidra's own and deliberately
+      // unrelated to the MusicKit event name.
       mk.addEventListener('playbackVolumeDidChange', () => {
         lastVolume = mk.volume;
         sendToMain('volumeDidChange', mk.volume);
       });
       // Poll mk.volume every 250ms as a fallback for a volume write the hook
-      // cannot observe through playbackVolumeDidChange - what the player bar
-      // volume control writes has not been confirmed.
+      // cannot observe through playbackVolumeDidChange. What the player bar
+      // volume control writes has never been confirmed, so this stays as the
+      // second of the only two paths reporting volume.
       volumePollTimer = setInterval(() => {
         const v = mk.volume;
         if (v !== lastVolume) {
@@ -288,17 +303,21 @@
         console.warn(`[Sidra] blocked unrecognised command: "${method}"`);
         return;
       }
-      // window.__sidra is the last thing attachToInstance() assigns, and
-      // attachSafely() installs this listener even when the attach threw before
-      // reaching it, so the hook object may be absent. Index it unguarded and a
-      // TypeError escapes the listener, which is the containment attachSafely()
-      // exists to provide leaking straight back out.
+      // window.__sidra is the last thing attachToInstance() assigns, and this
+      // listener installs even when the attach threw before reaching it, so the
+      // hook object may be absent. An unguarded index would throw a TypeError
+      // straight back out of the path attachSafely() exists to contain.
       if (typeof window.__sidra?.[method] === 'function') {
         window.__sidra[method](...(args || []));
       }
     });
 
-    /** Volume change applied per wheel notch. */
+    /**
+     * Volume change applied per wheel notch. The step is fixed and never scaled
+     * by deltaY magnitude: Chromium reports a wheel and a touchpad identically
+     * as DOM_DELTA_PIXEL, so scaling gives a wheel a full-range jump and a
+     * touchpad an invisible nudge.
+     */
     const VOLUME_STEP = 0.05;
     /** Chromium's default deltaY, in pixels, for one mouse wheel notch. */
     const WHEEL_NOTCH_DELTA = 100;
@@ -315,8 +334,14 @@
      * Both services put the `chrome-volume` class token on the control, on a
      * `div` for music.apple.com and on an `amp-chrome-volume` element for
      * classical.music.apple.com, so the gate matches that token anywhere in the
-     * composed path and never the element name. Writing mk.volume reaches the
-     * main process by the existing playbackVolumeDidChange route.
+     * composed path and never the element name, which would work on Classical
+     * and silently do nothing on Apple Music. Never write a Svelte scope hash
+     * into the selector; those change on any Apple rebuild. Writing mk.volume
+     * reaches the main process by the existing playbackVolumeDidChange route.
+     *
+     * The listener is on window rather than on the control itself, because the
+     * control does not exist when the hook runs and is replaced on navigation
+     * and service switches.
      *
      * @param {WheelEvent} event - The wheel event
      */
@@ -344,16 +369,17 @@
       wheelDelta -= steps * WHEEL_NOTCH_DELTA;
 
       // Read the live volume every time: a write MusicKit drops self-corrects
-      // on the next notch. Scrolling down (positive deltaY) lowers the volume.
+      // on the next notch. Scrolling down (positive deltaY) lowers the volume,
+      // and the result is clamped because MusicKit throws outside 0 to 1.
       const volume = hookedMk.volume - steps * VOLUME_STEP;
       hookedMk.volume = Math.min(1, Math.max(0, Math.round(volume * 100) / 100));
     }, { passive: false });
 
     console.log('[Sidra] MusicKit hooked successfully');
 
-    // Monitor for MusicKit instance replacement every 5 seconds.
-    // Apple Music may internally re-create the MusicKit instance during a
-    // session; this detects the change and re-attaches listeners.
+    // Apple Music may re-create the MusicKit instance during a session, which
+    // raises no event, so the replacement is only visible by comparing the live
+    // instance against the marker.
     setInterval(() => {
       try {
         const currentMk = MusicKit.getInstance();

@@ -19,6 +19,11 @@ function cleanupTmpFile(tmpPath: string): void {
   fsPromises.unlink(tmpPath).catch(() => {});
 }
 
+// The filename carries the size token from the final path segment beside the
+// UUID, because Apple serves every size of one artwork under the same UUID and
+// the UUID alone would collide. SIZE_REGEX is anchored so a segment such as
+// mzl.abc123x456.jpg cannot be read as a size. A URL that parses but carries no
+// UUID falls back to a hash of the whole URL.
 const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const SIZE_REGEX = /^\d+x\d+/;
 
@@ -39,15 +44,26 @@ function artworkCachePath(url: string): string {
 
 const inFlight = new Map<string, Promise<string | null>>();
 
+/**
+ * Download artwork into the cache directory and resolve its local path, or null
+ * when the download fails.
+ *
+ * Callers in flight for the same URL share one promise. Notifications, MPRIS and
+ * the tray all ask for the same artwork on a track change and all three run at
+ * once on Linux, so without this each change costs three fetches, three temp
+ * files and three renames onto one destination; on Windows a later rename can
+ * fail with EPERM while the tray holds the destination open. The key is the URL,
+ * not the cache path, because the URL is what the callers share.
+ */
 export function downloadArtwork(url: string): Promise<string | null> {
   const existing = inFlight.get(url);
   if (existing) {
     return existing;
   }
 
-  // The .finally() is attached before any caller sees the promise, so the entry is
-  // deleted ahead of every continuation and a call made after an await refetches
-  // instead of reusing a settled promise
+  // The .finally() is attached before any caller sees the promise, so the entry
+  // is deleted ahead of every continuation: a failure is never cached, and a
+  // call made after an await refetches instead of replaying a settled promise
   const pending = fetchArtwork(url).finally(() => {
     inFlight.delete(url);
   });
@@ -60,6 +76,9 @@ async function fetchArtwork(url: string): Promise<string | null> {
 
   if (fs.existsSync(filepath)) {
     artworkLog.debug('cache hit: %s', filepath);
+    // Touching mtime keeps the seven day sweep in cleanArtworkCache() from
+    // evicting artwork in daily use. Never awaited: a notification is waiting
+    // on the other end of this call
     const now = new Date();
     fsPromises.utimes(filepath, now, now).catch(() => {});
     return filepath;
@@ -67,6 +86,8 @@ async function fetchArtwork(url: string): Promise<string | null> {
 
   fs.mkdirSync(ARTWORK_CACHE_DIR, { recursive: true });
 
+  // Download to a temp file and rename, so a half-written file can never be
+  // read back as a cache hit
   const tmpPath = filepath + '.' + Date.now() + '.tmp';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ARTWORK_DOWNLOAD_TIMEOUT_MS);
@@ -119,6 +140,10 @@ async function fetchArtwork(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * Evict cached artwork untouched for seven days. Run once at startup and left
+ * unawaited, so a slow directory never delays the window.
+ */
 export async function cleanArtworkCache(): Promise<void> {
   let entries: string[];
   try {

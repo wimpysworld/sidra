@@ -6,6 +6,7 @@ import { BUNDLED_THEMES, type BundledThemeName } from './palettes';
 import { buildThemeCss } from './themeTemplate';
 import { getTheme } from './config';
 
+/** Active theme. 'apple-music' means no override CSS is injected at all. */
 export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
 
 const themeLog = log.scope('theme');
@@ -24,7 +25,8 @@ let customCssCache: string | null = null;
 let customCssCached = false;
 let customCssCacheEnabled = true;
 
-// Track injected theme CSS for live toggle
+// The insertCSS key of the sheet currently on the page, which is what a later
+// removeInsertedCSS needs. Null means no sheet is tracked.
 let themeCssKey: string | null = null;
 
 // Every mutation of themeCssKey runs on this one chain, so a theme change and a
@@ -64,15 +66,14 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
       }
       return work(generation);
     })
-    // The catch sits at the end so it handles this operation's own failure and
-    // the promise stored and returned here always fulfils. applyTheme() discards
-    // that promise, so a rejection left on it is an unhandled rejection in the
-    // main process until some later operation happens to chain onto it. A
-    // fulfilled promise is also what keeps a failure from deadlocking the queue:
-    // the next operation still runs. It drops the tracked key because the failed
-    // operation left it naming a sheet that either cannot be removed or is
-    // already gone, and keeping it would send every later change back down the
-    // same rejected removal, so none would reach its insertion.
+    // The catch sits at the end, so the promise stored and returned here always
+    // fulfils. applyTheme() discards that promise, and a rejection left on it is
+    // an unhandled rejection in the main process; a fulfilled one also keeps one
+    // failure from deadlocking the queue, because the next operation still runs.
+    // It drops the tracked key because a failed operation leaves it naming a
+    // sheet that either cannot be removed or is already gone, and keeping it
+    // would send every later change down the same rejected removal, so none
+    // would reach its insertion.
     .catch((error: unknown) => {
       themeCssKey = null;
       themeLog.warn('Theme CSS operation failed', error);
@@ -89,14 +90,17 @@ let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = () => Promise.re
 // tray.ts imports theme.ts, so theme.ts cannot import rebuildTrayMenu back; main.ts supplies it.
 let rebuildTrayCallback: (() => void) | null = null;
 
+/** Queue a theme change against the live page. Failures are logged, never thrown. */
 export function applyTheme(name: ThemeName): void {
   void applyThemeCSSInternal(name);
 }
 
+/** Where a user drops their own stylesheet: custom.css in the userData directory. */
 export function customCssPath(): string {
   return path.join(app.getPath('userData'), customCssFilename);
 }
 
+/** True when custom.css is readable and non-blank; existing is not enough. */
 export function hasCustomCss(): boolean {
   return getThemeCss('custom') !== null;
 }
@@ -107,6 +111,10 @@ function isThemeName(value: string): value is ThemeName {
     || bundledThemesByName.has(value as BundledThemeName);
 }
 
+/**
+ * The theme to render: the stored one, falling back to 'apple-music' when it is
+ * unknown or when 'custom' is stored with no readable custom.css behind it.
+ */
 export function resolveTheme(): ThemeName {
   const theme = getTheme();
   if (!isThemeName(theme)) return 'apple-music';
@@ -127,7 +135,7 @@ function readCustomCss(): string | null {
   }
 }
 
-// Exported for the watcher below and for tests; nothing else needs it.
+/** Drop the cached custom.css. Exported for the watcher below and for tests; nothing else needs it. */
 export function invalidateCustomCssCache(): void {
   customCssCache = null;
   customCssCached = false;
@@ -138,6 +146,11 @@ function disableCustomCssCache(): void {
   invalidateCustomCssCache();
 }
 
+/**
+ * Stylesheet for a theme, or null for 'apple-music' and for a missing or blank
+ * custom.css. Bundled themes are rendered once and cached; custom.css is cached
+ * only while the watcher below is alive to invalidate it.
+ */
 export function getThemeCss(name: ThemeName): string | null {
   if (name === 'apple-music') return null;
   if (name === 'custom') {
@@ -159,9 +172,11 @@ export function getThemeCss(name: ThemeName): string | null {
   return css;
 }
 
-// Inject the resolved theme CSS after a page load. main.ts calls this on every load.
-// The load replaced the document, so nothing is removed here: any key held belongs
-// to the old document and removeInsertedCSS would reject on it.
+/**
+ * Inject the resolved theme CSS after a page load. main.ts calls this on every
+ * load. The load replaced the document, so nothing is removed here: any key held
+ * belongs to the old document and removeInsertedCSS would reject on it.
+ */
 export function injectThemeCss(contents: WebContents): Promise<void> {
   return enqueueThemeCssOp(async (generation) => {
     const theme = resolveTheme();
@@ -183,6 +198,11 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
   });
 }
 
+/**
+ * Bring the theme system to life against a window: document tracking, the real
+ * applyTheme implementation, re-application on a system colour-scheme change,
+ * and the custom.css watcher. Call once.
+ */
 export function initThemeCSS(win: BrowserWindow): void {
   // Commit of a main-frame navigation; did-navigate-in-page keeps the document,
   // so it is not one and must not advance the counter.
@@ -269,10 +289,15 @@ export function initThemeCSS(win: BrowserWindow): void {
   });
 }
 
+/**
+ * Set or clear the tracked key. serviceSwitch.ts clears it before its navigation,
+ * because the document that key belongs to is about to be replaced.
+ */
 export function setThemeCssKey(key: string | null): void {
   themeCssKey = key;
 }
 
+/** main.ts supplies rebuildTrayMenu here; see the note on rebuildTrayCallback above. */
 export function setRebuildTrayCallback(callback: () => void): void {
   rebuildTrayCallback = callback;
 }

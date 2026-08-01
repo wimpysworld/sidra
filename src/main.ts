@@ -57,7 +57,8 @@ const mainLog = log.scope('main');
 const splashLog = log.scope('splash');
 mainLog.info(`${app.name} ${app.getVersion()}`);
 
-// --- App identity: required on Windows for notifications to appear ---
+// --- App identity: must be set before app.whenReady() on Windows, or neither
+// desktop notifications nor the GSMTC media identity attach to Sidra ---
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.wimpysworld.sidra');
 }
@@ -65,10 +66,15 @@ if (process.platform === 'win32') {
 // --- Platform switches: must run before app.whenReady() ---
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations');
+  // MediaSessionService off: Sidra registers its own MPRIS service, and
+  // Chromium's would be a second, conflicting registration on the same bus.
+  // AudioServiceOutOfProcess off: it moves audio back in-process, which is
+  // where SetGlobalAppName can reach PulseAudio at all.
   app.commandLine.appendSwitch('disable-features', 'MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess');
   // Set the XDG desktop name so GetXdgAppId() returns 'sidra' and
   // GetPossiblyOverriddenApplicationName() can read Name= from sidra.desktop.
-  // Required for correct PulseAudio stream identity once Kesefon's patch lands.
+  // Pairs with the AudioServiceOutOfProcess switch above: without both, the
+  // PulseAudio stream is labelled "Chromium" and no PULSE_PROP_* override helps.
   app.setDesktopName('sidra.desktop');
   mainLog.info('Linux platform switches applied');
 }
@@ -289,6 +295,11 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
     },
   });
 
+  // did-finish-load fires while Apple Music is still an empty shell, so the
+  // window is held back until the service's contentReadySelector appears in the
+  // page. The poll starts at the first in-page navigation, which is where the
+  // SPA takes over rendering, and a timeout shows the window regardless so a
+  // selector Apple has renamed delays the launch instead of blocking it.
   let pollCancelled = false;
   const winReady = Promise.race([
     new Promise<void>(resolve => {
@@ -497,6 +508,12 @@ function buildAuthFrameInjectionScript(authCss: string): string {
   })();`;
 }
 
+// Apple's sign-in iframe offers passkey and "Sign in with iPhone" alongside
+// password sign-in, plus captions naming an iOS version requirement. Those are
+// hidden so password sign-in is the visible route. The script re-runs from a
+// MutationObserver because the frame re-renders as the user moves through the
+// flow, and the frame reports its results back over console-message, which is
+// the only channel out of a frame the main process has not preloaded.
 function setupAuthFrameInjection(win: BrowserWindow, authCss: string): void {
   const authLog = log.scope('auth-frame');
   const script = buildAuthFrameInjectionScript(authCss);
@@ -553,6 +570,9 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
     mainLog.error('page load failed:', errorCode, errorDescription);
   });
 
+  // Apple Music registers a beforeunload handler while audio plays. Electron
+  // shows no confirmation dialog, so the handler silently blocks close() and
+  // app.quit() with no error; overriding it here is what lets Sidra exit.
   win.webContents.on('will-prevent-unload', (event) => {
     event.preventDefault();
   });
@@ -639,9 +659,9 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
         ['wedgeDetector', () => initWedgeDetector({ player, getMainWindow: () => win })],
         ['trayState', () => {
           if (!appTray) return;
-          // The returned closure destroys the pause timer, cancels the pending
-          // rebuild and removes the three player listeners. Dropping it left
-          // all four attached.
+          // The returned closure is the teardown for all four resources it
+          // holds, so it must reach will-quit; called as a bare statement it
+          // would be discarded and every one of them would stay attached.
           const teardownTrayState = initTrayStateManager(player, appTray);
           app.on('will-quit', teardownTrayState);
         }],

@@ -1,3 +1,9 @@
+// Keeps an unscoped player enlargement rule out of styleFix.css. A bare
+// amp-chrome-player selector reaches the player on every page of both services,
+// so a declaration there that grows the element resizes the player bar
+// everywhere rather than in the one view it was written for. The check reads the
+// shipped stylesheet off disk, because no assertion can see the rule without a
+// renderer.
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

@@ -181,7 +181,9 @@ describe('Player playbackSnapshot', () => {
   });
 });
 
-// Validation tests for handle* methods with invalid payloads.
+// Every handle* method takes its argument straight off an IPC channel, where
+// nothing is typed, so a malformed payload must be dropped rather than emitted:
+// integrations read these events as though the declared type held.
 describe('Player handle* payload validation', () => {
   it('handlePlaybackStateDidChange ignores string payload', () => {
     const player = new Player();

@@ -23,6 +23,9 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 1) + '\u2026';
 }
 
+// Discord rejects an activity string shorter than MIN_STRING_LEN, and the
+// refusal costs the whole update, so a one-character track title is padded
+// with zero-width spaces instead.
 function padMin(s: string, min: number): string {
   while (s.length < min) {
     s += '\u200b';
@@ -171,6 +174,8 @@ function sendActivity(): void {
     buttons,
   };
 
+  // Discord draws the progress bar from absolute timestamps, so the start is
+  // back-dated by the current playhead and the end sits one duration past it.
   const snap = playerRef!.playbackSnapshot();
   if (snap.isPlaying && durationMs > 0) {
     const currentPositionMs = snap.positionUs / 1000;
@@ -205,6 +210,7 @@ function scheduleReconnect(): void {
   }, delay);
 }
 
+/** Turns presence on from the tray toggle; connects if the client is idle. */
 export function enable(): void {
   if (!client) return;
   if (!client.isConnected) {
@@ -216,11 +222,13 @@ export function enable(): void {
   }
 }
 
+/** Turns presence off from the tray toggle; clears the activity and drops every timer. */
 export function disable(): void {
   if (!client) return;
   disconnectClient();
 }
 
+/** Starts the presence client and mirrors player events into a Discord activity. */
 export function init(ctx: IntegrationContext): void {
   const { player } = ctx;
   playerRef = player;
@@ -253,7 +261,8 @@ export function init(ctx: IntegrationContext): void {
       trackUrl = payload.url;
     }
 
-    // Cancel pause timer on new track
+    // A track change supersedes an earlier pause, so the pending clear-activity
+    // timer must not fire over the new track
     pauseTimeout.cancel();
 
     scheduleUpdate();

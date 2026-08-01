@@ -1,10 +1,21 @@
 #!/usr/bin/env node
 "use strict";
 
+// Points package.json at the newest CastLabs Electron, electron-builder and
+// electron-updater releases. The "Update Electron Toolchain" workflow runs it
+// weekly and opens a pull request when package.json changed; it installs
+// nothing and builds nothing itself.
+//
+// Versions are read from git tags rather than the npm registry because the
+// Widevine-enabled Electron ships from castlabs/electron-releases and is
+// depended on as a GitHub tag, so the registry does not know about it.
+
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const packageJsonPath = "package.json";
+// Anchored on the +wvcus suffix: that is the Widevine CDM variant Sidra needs
+// for DRM playback, and the bare version triplet keeps prereleases out.
 const castLabsStableTagPattern = /^v(\d+)\.(\d+)\.(\d+)\+wvcus$/;
 const electronBuilderRepo = "https://github.com/electron-userland/electron-builder.git";
 
@@ -42,6 +53,9 @@ function latestCastLabsElectronTag() {
     "refs/tags/v*+wvcus",
   ]);
 
+  // git ls-remote lists an annotated tag twice, the second ref carrying a ^{}
+  // suffix for the commit it dereferences to, so those refs are dropped to
+  // leave one entry per release.
   const latest = refs
     .split(/\r?\n/)
     .map((line) => line.split(/\s+/)[1])
@@ -59,6 +73,9 @@ function latestCastLabsElectronTag() {
   return latest.tag;
 }
 
+// electron-builder and electron-updater are released from one monorepo whose
+// tags are prefixed "<package>@", so both versions come from the same remote
+// and the pattern has to be built per package.
 function latestElectronBuilderTag(packageName) {
   const tagPattern = new RegExp(`^${packageName}@(\\d+)\\.(\\d+)\\.(\\d+)$`);
   const refs = run("git", [
@@ -91,6 +108,9 @@ function latestElectronBuilderTag(packageName) {
   return latest.tag.replace(`${packageName}@`, "");
 }
 
+// Throws on an absent key rather than creating one: a dependency that moved
+// section or was renamed should fail the workflow, not gain a second entry in
+// the section this script expected it in.
 function setDependency(packageJson, section, name, value) {
   if (packageJson[section]?.[name] === undefined) {
     throw new Error(`${section}.${name} is missing from package.json`);

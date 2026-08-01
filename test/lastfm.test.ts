@@ -547,7 +547,7 @@ describe('revoked session', () => {
     await flush();
 
     // Pause and resume re-arms the timer past the threshold, which is the one
-    // path that used to resubmit a track the API had already refused.
+    // path that can resubmit a track the API has already refused.
     player.emitPlaybackState(PlaybackState.Paused);
     await vi.advanceTimersByTimeAsync(30_000);
     player.emitPlaybackState(PlaybackState.Playing);
@@ -628,8 +628,8 @@ function loggedLines(): string {
  * before they reach Last.fm, which is what puts a play on the queue, and auth
  * answers so a second account can be linked while the first drain is out.
  *
- * The new account's own now-playing update carries their queue out, so on fixed
- * code two drains are left out: the old account's and theirs.
+ * The new account's own now-playing update carries their queue out, so two
+ * drains are left out: the old account's and theirs.
  *
  * The caller seeds `queue.pending` beforehand: that is what the first request
  * drains.
@@ -1271,9 +1271,9 @@ describe('queued scrobbles', () => {
 
   it('reports a batch Last.fm kept nothing from, and still clears it', async () => {
     // Filtering is not an error. Last.fm answers status ok with no error field,
-    // so a batch it stored nothing from settles on the success path and used to
-    // log exactly as one it stored whole: fifty plays never reached the user's
-    // profile and the log said they had gone out.
+    // so a batch it stored nothing from settles on the success path beside one
+    // it stored whole. Without the counts, the log reads the same either way
+    // and fifty plays never reaching the user's profile are invisible.
     queue.pending = Array.from({ length: 50 }, (_, i) => ({
       artist: 'New Order',
       track: `Track ${i}`,

@@ -1,4 +1,5 @@
-// test/setup.ts
+// Loaded by Vitest before every test file, so a stand-in registered here is
+// shared by the whole suite.
 import { vi } from 'vitest';
 
 // Mock electron modules - these are unavailable outside the Electron runtime.
@@ -106,7 +107,8 @@ vi.mock('electron-conf/main', () => {
       get(key: string) { return data.get(key); }
       set(key: string, value: unknown) { data.set(key, value); }
       clear() { data.clear(); }
-      // Expose for test manipulation
+      // One map backs every Conf instance, exposed so test/config.test.ts can
+      // seed and clear what the getters read.
       static _data = data;
     },
   };

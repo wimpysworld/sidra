@@ -355,9 +355,10 @@ function foldPlayTime(): void {
 }
 
 /**
- * Cancels any in-progress auth flow. Bumping the generation invalidates in-flight
- * `apiCall` promises so a late response cannot reconnect the user, clears the poll
- * timer, and resets `authInProgress` so a fresh attempt is not blocked.
+ * Cancels any auth flow in progress. Bumping the generation sends every
+ * in-flight auth response back at its own guard, so a late one cannot reconnect
+ * the user. The poll timer is cleared and `authInProgress` released, so a fresh
+ * attempt is not blocked by the one abandoned.
  */
 function cancelAuth(): void {
   authGeneration += 1;
@@ -368,6 +369,11 @@ function cancelAuth(): void {
   authInProgress = false;
 }
 
+/**
+ * The single gate every request path checks: credentials in the build, the
+ * feature on, an account connected, and a track worth naming. A build without
+ * credentials therefore never reaches Last.fm at all.
+ */
 function active(): boolean {
   return isConfigured() && getLastfmEnabled() && !!getLastfmSessionKey() && !!artist && !!track;
 }
@@ -534,6 +540,11 @@ function flushPendingScrobbles(sessionKey: string): void {
     });
 }
 
+/**
+ * Tells Last.fm what is playing now, on every track start and resume. Its
+ * success is also one of the two places a queued backlog goes out, because a
+ * request the user's own playback triggered is the only thing that drains it.
+ */
 function sendNowPlaying(): void {
   if (!active()) return;
   const sessionKey = getLastfmSessionKey()!;
@@ -594,6 +605,10 @@ function playbackReachedThreshold(): boolean {
   return snapshot.positionUs / 1000 + POSITION_TOLERANCE_MS >= threshold;
 }
 
+/**
+ * Submits the current track as a play. Reached from the armed timer and from
+ * `armScrobbleTimer()` when the threshold is already behind the playhead.
+ */
 function doScrobble(): void {
   clearScrobbleTimer();
   if (scrobbled || !active()) return;
@@ -657,6 +672,12 @@ function doScrobble(): void {
     });
 }
 
+/**
+ * Waits out the play time the track still owes before it can be scrobbled.
+ * `accumulatedMs` already holds the time banked before the last pause, so a
+ * resume waits only for the remainder, and a threshold met while paused
+ * submits at once rather than waiting a second time.
+ */
 function armScrobbleTimer(): void {
   clearScrobbleTimer();
   if (scrobbled || !active()) return;
@@ -670,6 +691,12 @@ function armScrobbleTimer(): void {
   scrobbleTimer = setTimeout(doScrobble, remaining);
 }
 
+/**
+ * Adopts a new track and clears every counter the previous one left behind.
+ * `positionReported` goes with them, so the playhead cannot be trusted again
+ * until the player reports a position for this track: see
+ * `playbackReachedThreshold()`.
+ */
 function resetTrack(payload: NowPlayingPayload | null): void {
   clearScrobbleTimer();
   artist = payload?.artistName ?? null;
@@ -696,6 +723,10 @@ function markPlaybackStarted(): void {
   armScrobbleTimer();
 }
 
+/**
+ * Starts scrobbling for playback that is already under way, so turning the
+ * feature on mid-track counts that track rather than waiting for the next one.
+ */
 export function enable(): void {
   if (!isConfigured()) {
     lastfmLog.warn('enabled but no API credentials configured; scrobbling is inert');
@@ -707,6 +738,11 @@ export function enable(): void {
   lastfmLog.info('scrobbling enabled');
 }
 
+/**
+ * Stops scrobbling but keeps the track state. The play time banked so far is
+ * folded first, so turning the feature back on mid-track resumes the count
+ * instead of starting it over.
+ */
 export function disable(): void {
   clearScrobbleTimer();
   foldPlayTime();
@@ -766,6 +802,13 @@ export function startAuth(onComplete?: () => void): void {
     });
 }
 
+/**
+ * Asks for the session until the user approves the token in their browser.
+ * Last.fm offers no callback, so each refusal reschedules the next attempt and
+ * the whole flow gives up at `AUTH_POLL_TIMEOUT_MS`. Every response returns at
+ * the generation guard once `cancelAuth()` has run, so an abandoned flow cannot
+ * connect an account behind the user's back.
+ */
 function pollForSession(token: string, startedAt: number, generation: number, onComplete?: () => void): void {
   apiCall({ method: 'auth.getSession', api_key: API_KEY, token }, false)
     .then((res) => {
@@ -800,6 +843,11 @@ function pollForSession(token: string, startedAt: number, generation: number, on
     });
 }
 
+/**
+ * Forgets the account: the stored session, the queued plays and the enabled
+ * flag all go. Called from the tray, and from `handleInvalidSession()` when
+ * Last.fm rejects the key the user revoked at their end.
+ */
 export function disconnect(): void {
   cancelAuth();
   disable();
@@ -816,6 +864,11 @@ export function disconnect(): void {
   lastfmLog.info('disconnected from Last.fm');
 }
 
+/**
+ * Subscribes to the three player events scrobbling needs, and releases them on
+ * `will-quit`. The module runs on every platform and stays inert without
+ * credentials, so no gate keeps it out of a build.
+ */
 export function init(ctx: IntegrationContext): void {
   playerRef = ctx.player;
   getWindow = ctx.getMainWindow ?? (() => null);

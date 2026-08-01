@@ -143,13 +143,14 @@ describe('showAboutWindow', () => {
   it('resets aboutWindow to null on closed event', () => {
     showAboutWindow();
 
-    // Simulate the window closing
     const closedHandlers = latestMockInstance._listeners['closed'];
     expect(closedHandlers).toBeDefined();
     expect(closedHandlers.length).toBeGreaterThan(0);
     closedHandlers[0]();
 
-    // Now a new call should create a new window
+    // The module holds one window reference, so a closed window that is not
+    // cleared leaves the About item dead for the rest of the session: focus()
+    // would be called on a destroyed window and nothing would be shown.
     const newMockInstance = createMockBrowserWindow();
     latestMockInstance = newMockInstance;
     vi.mocked(BrowserWindow).mockClear();

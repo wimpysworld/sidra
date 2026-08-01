@@ -129,14 +129,16 @@ import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigu
 import { FakePlayer } from './mocks/player';
 import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type MusicServiceId } from '../src/musicService';
 
-// Helper: extract the template array from the last Menu.buildFromTemplate call
+// The last build is the one that reached the tray: several tests rebuild the
+// menu more than once and assert against the state the final rebuild saw.
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
   const calls = vi.mocked(Menu.buildFromTemplate).mock.calls;
   expect(calls.length).toBeGreaterThan(0);
   return calls[calls.length - 1][0] as Electron.MenuItemConstructorOptions[];
 }
 
-// Helper: find a menu item by label substring
+// Matching is on a substring because every submenu parent carries its current
+// value in the label, as in 'Start Page: New'.
 function findItem(template: Electron.MenuItemConstructorOptions[], labelSubstring: string): Electron.MenuItemConstructorOptions | undefined {
   return template.find((item) => typeof item.label === 'string' && item.label.includes(labelSubstring));
 }
@@ -653,8 +655,9 @@ describe('createTray - menu template inspection', () => {
     });
 
     it('falls back to Home when a stored library page is no longer offered', () => {
-      // 'library' was persisted before WW-92 dropped the page; the store can still
-      // hold it, the type no longer admits it.
+      // Classical has no library route on the web, so the type no longer admits
+      // the id. A store written by an older build still holds it, and the menu
+      // must tick Home rather than ticking nothing at all.
       vi.mocked(getClassicalStartPage).mockReturnValue('library' as string as ClassicalStartPageId);
       createTray();
       const template = getLastTemplate();
@@ -988,8 +991,10 @@ describe('createTray - menu template inspection', () => {
     });
 
     it('resolves a different icon for the Hide state and the Show state', () => {
-      // Both entries once shared a single icon key, so each state is checked for
-      // the icon it needs and against the icon the other state needs.
+      // Hide and Show are one menu entry built from the window's visibility, so
+      // each state is checked both for the icon it needs and against the icon
+      // the other state needs. A single shared icon key passes the first check
+      // alone.
       const iconPaths = (visible: boolean): string[] => {
         mockWin.isVisible.mockReturnValue(visible);
         vi.mocked(nativeImage.createFromPath).mockClear();
@@ -1255,7 +1260,8 @@ describe('createTray - menu template inspection', () => {
         const trackItem = findItem(template, 'Test Track');
         expect(trackItem).toBeDefined();
         expect(trackItem!.icon).toBeDefined();
-        // Artwork icon is loaded via nativeImage.createFromPath with resize
+        // The downloaded artwork, not a themed menu glyph: the path is what
+        // tells the two apart, since both arrive as a NativeImage.
         expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith('/tmp/artwork.png');
       });
 
@@ -1373,7 +1379,8 @@ describe('createTray - menu template inspection', () => {
         const albumItem = findItem(template, 'Test Album');
         expect(albumItem).toBeDefined();
         expect(albumItem!.icon).toBeDefined();
-        // Verify getMenuIcon was called with 'record-vinyl' by checking the resolved path
+        // createTray() picks the icon internally, so the resolved path is the
+        // only observable proof of which one it chose.
         expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
           expect.stringContaining('record-vinyl.png'),
         );
@@ -1431,7 +1438,6 @@ describe('theme change menu refresh', () => {
     const buildCountBefore = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
     const contextMenuCountBefore = setContextMenuFn.mock.calls.length;
 
-    // Extract and invoke the theme callback
     const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
     expect(themeCall).toBeDefined();
     const callback = themeCall![1] as () => void;
@@ -1706,14 +1712,13 @@ describe('initTrayStateManager', () => {
       player.setPlaybackState(PlaybackState.Paused);
       handlerFor('playbackStateDidChange')({ status: true, state: PlaybackState.Paused });
 
-      // Timer is now pending. Cleanup should clear it.
       cleanup();
 
-      // Advance past the 30s timeout - should not trigger any state clearing
+      // Past the 30s expiry: a timer that survived teardown would rebuild the
+      // menu here, against a tray the app is finished with.
       vi.mocked(Menu.buildFromTemplate).mockClear();
       vi.advanceTimersByTime(35_000);
 
-      // No additional menu rebuild from the timer callback
       expect(vi.mocked(Menu.buildFromTemplate)).not.toHaveBeenCalled();
     });
 
@@ -1737,25 +1742,22 @@ describe('initTrayStateManager', () => {
       player.setPlaybackState(PlaybackState.Playing);
       handlerFor('playbackStateDidChange')({ status: true, state: PlaybackState.Playing });
 
-      // Transition to paused
       player.setPlaybackState(PlaybackState.Paused);
       handlerFor('playbackStateDidChange')({ status: true, state: PlaybackState.Paused });
 
-      // Advance 29s - should not have cleared yet
       vi.mocked(Menu.buildFromTemplate).mockClear();
       const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
       setToolTipFn.mockClear();
 
+      // One second short of the expiry, the track is still on the tray.
       vi.advanceTimersByTime(29_000);
-      // The tooltip should not have been cleared to the product name yet
       expect(setToolTipFn).not.toHaveBeenCalled();
 
-      // Advance past 30s, then past the rebuild window
+      // Past the expiry and past the rebuild window: the tooltip goes back to
+      // the product name and the menu drops the Now Playing rows.
       vi.advanceTimersByTime(2_000);
 
-      // Now the tooltip should be reset (updateTrayTooltip(tray, null) sets product name)
       expect(setToolTipFn).toHaveBeenCalled();
-      // And the menu should be rebuilt
       expect(vi.mocked(Menu.buildFromTemplate)).toHaveBeenCalled();
     });
 
@@ -1805,7 +1807,6 @@ describe('initTrayStateManager', () => {
       setToolTipFn.mockClear();
       vi.advanceTimersByTime(35_000);
 
-      // No timeout-triggered tooltip reset
       expect(setToolTipFn).not.toHaveBeenCalled();
     });
   });
@@ -1859,23 +1860,23 @@ describe('initTrayStateManager', () => {
 
       player.setPlaybackState(PlaybackState.Playing);
 
-      // Fire first track
       const firstPromise = handlerFor('nowPlayingItemDidChange')(payload1) as Promise<void>;
 
-      // Fire second track before first artwork resolves
+      // The second track lands while the first artwork is still in flight.
       vi.mocked(downloadArtwork).mockResolvedValueOnce('/tmp/art2.png');
       await handlerFor('nowPlayingItemDidChange')(payload2);
 
-      // Clear the mock calls from the second track handler
+      // Settle the second track's own rebuild, so what follows is the first
+      // track's alone.
       vi.advanceTimersByTime(COALESCE_MS);
       vi.mocked(Menu.buildFromTemplate).mockClear();
 
-      // Resolve first artwork download - should be discarded (stale)
+      // The stale artwork arrives last and must not put the previous track back
+      // on a tray that has moved on.
       resolveFirst!('/tmp/art1.png');
       await firstPromise;
       vi.advanceTimersByTime(COALESCE_MS);
 
-      // No additional menu rebuild from the stale first track
       expect(vi.mocked(Menu.buildFromTemplate)).not.toHaveBeenCalled();
     });
   });

@@ -41,10 +41,10 @@ describe('wedgeDetector', () => {
   });
 
   it('fires skip after STALL_THRESHOLD_MS of stalled playback', () => {
-    // Start playing
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Advance past the stall threshold (5000ms) plus one check interval (1000ms)
+    // The stall threshold is 5000ms and the check runs on a 1000ms interval, so
+    // the first check that can see the stall lands at 6000ms.
     vi.advanceTimersByTime(6000);
 
     expect(mockWin.webContents.send).toHaveBeenCalledWith(
@@ -76,21 +76,18 @@ describe('wedgeDetector', () => {
   it('respects MAX_SKIP_ATTEMPTS (3)', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Each skip resets lastAdvanceTime, so we need 5s + check intervals per skip.
-    // After each skip, the detector resets lastAdvanceTime = Date.now().
-    // Skip 1
+    // Each skip resets lastAdvanceTime, so the stall has to build up again and
+    // every attempt costs another 6000ms.
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(1);
 
-    // Skip 2
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(2);
 
-    // Skip 3
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
 
-    // Skip 4 should not happen - max reached
+    // The cap is what stops a queue that will not play being skipped end to end.
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
   });
@@ -112,19 +109,17 @@ describe('wedgeDetector', () => {
   it('track change resets skip counter', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Trigger 2 skips
     vi.advanceTimersByTime(6000);
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(2);
 
-    // Track changes - resets skip counter
+    // A new track is a fresh recovery budget: the cap bounds the attempts spent
+    // on one track, not on the session.
     player.handleNowPlayingItemDidChange({ name: 'New Track', durationInMillis: 180000 });
 
-    // Should be able to skip again (counter reset to 0)
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
 
-    // And again
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(4);
   });
@@ -133,7 +128,6 @@ describe('wedgeDetector', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
     vi.advanceTimersByTime(2000);
 
-    // Pause
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Paused });
 
     vi.advanceTimersByTime(10000);
@@ -142,16 +136,13 @@ describe('wedgeDetector', () => {
   });
 
   it('does not fire skip near end of track (within END_SAFETY_MARGIN_MS)', () => {
-    // Set a track with known duration
     player.handleNowPlayingItemDidChange({ name: 'Track', durationInMillis: 200000 });
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Position near the end of the track (within 10s safety margin)
-    // durationMs = 200000, END_SAFETY_MARGIN_MS = 10000
-    // Condition: (durationMs - lastPositionUs / 1000) < END_SAFETY_MARGIN_MS
-    // lastPositionUs is in microseconds based on variable name, but looking at the code
-    // it receives the playbackTimeDidChange payload directly.
-    // The check is: (200000 - payload / 1000) < 10000 => payload > 190000000
+    // A track about to finish reports the same still playhead as a stall, so the
+    // last END_SAFETY_MARGIN_MS of it are out of scope. The detector compares
+    // durationMs against the position in microseconds: with a 200s track and a
+    // 10s margin, anything past 190,000,000 is inside it.
     player.handlePlaybackTimeDidChange(191000000);
 
     vi.advanceTimersByTime(10000);

@@ -1,4 +1,3 @@
-// test/windowsTaskbar.test.ts
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import path from 'path';
 import type { BrowserWindow } from 'electron';

@@ -1,3 +1,10 @@
+/**
+ * Typed wrapper around electron-conf and the single place persistent state is
+ * read or written; nothing else touches the store directly. Each key gets a
+ * getter/setter pair, and the schema carries no defaults: a default lives in
+ * the getter that needs one, so keys such as storefront can still report
+ * "never set" and drive the fallback chain in src/main.ts.
+ */
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
 import {
@@ -42,11 +49,17 @@ import { Conf } from 'electron-conf/main';
 
 const store = new Conf<StoreSchema>();
 
+/** Reads a key, or the caller's default when the user has never set it. */
 function getConfigValue<K extends keyof StoreSchema>(key: K, defaultValue: StoreSchema[K]): StoreSchema[K] {
   if (!store.has(key)) return defaultValue;
   return store.get(key);
 }
 
+/**
+ * Reads a key and returns undefined when it has never been set, for the keys
+ * where absence means something: an unset storefront defers to the system
+ * locale, while a stored null is the user's own choice.
+ */
 function getConfigValueOptional<K extends keyof StoreSchema>(key: K): StoreSchema[K] | undefined {
   if (!store.has(key)) return undefined;
   return store.get(key);

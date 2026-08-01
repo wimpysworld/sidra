@@ -1,10 +1,11 @@
 // Pure module: no electron imports so tests can exercise it directly.
 //
 // Renders a complete Apple Music override stylesheet from a 12-slot
-// palette. The template reproduces the structure of the original
-// hand-written catppuccin.css; the Catppuccin palette renders to the
-// same values it shipped with (see test/themes.test.ts).
+// palette. Catppuccin renders byte for byte to the values the retired
+// hand-written catppuccin.css asset shipped, which test/themes.test.ts
+// pins, so the emitted form is not free to drift.
 
+/** The 12 semantic colour slots a palette fills for one colour scheme. */
 export interface SchemeColours {
   /** Page background */
   base: string;
@@ -32,6 +33,7 @@ export interface SchemeColours {
   accentHover: string;
 }
 
+/** A theme: registry name, tray label, and one palette per colour scheme. */
 export interface ThemeDefinition {
   name: string;
   label: string;
@@ -51,8 +53,8 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex)},${alpha})`;
 }
 
-// The original stylesheet used spaced rgba() in the side-panel block;
-// preserved for byte compatibility with the previous catppuccin.css asset.
+// The side-panel block alone emits spaced rgba(). test/themes.test.ts pins that
+// form against the values the retired catppuccin.css asset shipped.
 function rgbaSpaced(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex).split(',').join(', ')}, ${alpha})`;
 }
@@ -201,6 +203,11 @@ function schemeBlock(c: SchemeColours): string {
   }`;
 }
 
+/**
+ * Renders the whole override stylesheet for a theme, both colour-scheme variants
+ * included. Everything inside the returned literal, comments as well as rules,
+ * ships to the renderer, so keep rationale in the source and out of the output.
+ */
 export function buildThemeCss(theme: ThemeDefinition): string {
   return `/*
  * ${theme.label} theme for Apple Music

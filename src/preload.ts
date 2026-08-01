@@ -45,11 +45,12 @@ const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
   'player:setShuffle': true,
 });
 
-// Register receive channel handlers that bridge commands to the main world.
 // The preload runs in the isolated world (contextIsolation: true), so it cannot
-// access window.__sidra directly - that object lives in the main world, set up
-// by musicKitHook.js. window.postMessage() crosses the isolation boundary;
-// musicKitHook.js listens for these messages and dispatches to __sidra methods.
+// call window.__sidra directly - that object lives in the main world, set up by
+// musicKitHook.js. window.postMessage() crosses the isolation boundary, and the
+// hook dispatches each sidra:command message to the matching __sidra method.
+// The target origin is window.location.origin, so the bridge works on either
+// service host without naming one.
 for (const channel of RECEIVE_CHANNELS.all) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
     window.postMessage({ type: 'sidra:command', channel, args }, window.location.origin);
@@ -57,8 +58,12 @@ for (const channel of RECEIVE_CHANNELS.all) {
 }
 
 /**
- * Minimal IPC bridge exposed to the renderer as window.AMWrapper.
- * MLP: validates contextBridge works. No MusicKit hook consumes this yet.
+ * The renderer-to-main half of the bridge, exposed as window.AMWrapper and used
+ * by sendToMain() in assets/musicKitHook.js. Sending is the only capability the
+ * renderer gets, and an unlisted channel is dropped with a warning rather than
+ * forwarded. The satisfies clause is what type-checks the payload at all:
+ * exposeInMainWorld() takes it untyped, so the declaration in
+ * src/types/hook.d.ts would otherwise be checked against nothing.
  */
 contextBridge.exposeInMainWorld('AMWrapper', {
   ipcRenderer: {

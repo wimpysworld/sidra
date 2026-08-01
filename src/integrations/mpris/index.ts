@@ -15,7 +15,13 @@ const {
 } = dbus.interface;
 const { Variant } = require('@holusion/dbus-next');
 
+// How close an incoming volume has to be to one this interface set for it to
+// count as that value echoing back rather than as a change made in the app.
 const VOLUME_ECHO_TOLERANCE = 0.01;
+// How many unmatched `set Volume` values are tracked at once. A drag issues a
+// burst of sets inside one echo round trip, and a single slot leaves all but
+// the newest untracked: their echoes then read as in-app changes and pull the
+// cached volume back behind the level the player has actually reached.
 const MAX_PENDING_VOLUMES = 8;
 const MS_TO_US = 1000;
 
@@ -23,6 +29,10 @@ const mprisLog = log.scope('mpris');
 
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 
+/**
+ * The `org.mpris.MediaPlayer2` root interface: how Sidra identifies itself to
+ * media clients, and the two window actions the spec puts here.
+ */
 class MediaPlayer2 extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
 
@@ -117,6 +127,8 @@ MediaPlayer2.configureMembers({
 
 const NO_TRACK = '/org/mpris/MediaPlayer2/TrackList/NoTrack';
 
+// `mpris:trackid` is a D-Bus object path ('o'), whose elements accept only
+// [A-Za-z0-9_]. An Apple identifier carrying anything else fails to marshal.
 function sanitiseTrackId(trackId: string): string {
   return trackId.replace(/[^A-Za-z0-9_]/g, '_');
 }
@@ -128,6 +140,10 @@ function buildTrackId(rawId: string): string {
 
 function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
   const trackId = buildTrackId(payload.trackId ?? 'unknown');
+  // MusicKit leaves `attributes.url` unset on a library item, so `xesam:url`
+  // comes from getShareUrl(), which rebuilds the link from the catalogue id.
+  // Radio and Classical playParams carry no such id, so it returns undefined
+  // there and the key is left out.
   const trackUrl = getShareUrl(payload);
 
   const metadata: Record<string, InstanceType<typeof Variant>> = {
@@ -183,6 +199,12 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
   return metadata;
 }
 
+/**
+ * The `org.mpris.MediaPlayer2.Player` interface. Property values are cached
+ * here rather than read on demand: D-Bus asks for them at any moment, and the
+ * renderer can only be reached asynchronously. Player events write the cache,
+ * and control methods travel the other way as IPC to the hook.
+ */
 class MediaPlayer2Player extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
 
@@ -202,8 +224,12 @@ class MediaPlayer2Player extends Interface {
   private _lastPositionUs = 0;
   private _lastPositionTimestamp = Date.now();
 
-  // Volume suppression state - prevents feedback loops when MPRIS sets volume
-  private readonly _volumeSafetyMs = 2000; // safety timeout to prevent permanent suppression
+  // Volume echo suppression state. A `set Volume` reaches MusicKit, which
+  // reports the new level straight back, and treating that report as an in-app
+  // change would loop. The safety timeout drops the whole queue, so an echo
+  // that never arrives cannot suppress volume changes for the rest of the
+  // session.
+  private readonly _volumeSafetyMs = 2000;
   private _pendingVolumes: number[] = [];
   private _volumeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -224,6 +250,14 @@ class MediaPlayer2Player extends Interface {
     }
   }
 
+  /**
+   * Coalesces property changes into one `PropertiesChanged` signal. dbus-next
+   * emits nothing of its own accord, so a cached property that changes without
+   * passing through here is one no client ever learns about.
+   *
+   * `Position` must never be among the properties: the MPRIS spec excludes it,
+   * and clients read the property or follow `Seeked` instead.
+   */
   private _schedulePropertyEmission(properties: Record<string, unknown>): void {
     Object.assign(this._pendingChanges, properties);
     if (this._debounceTimer) {
@@ -247,7 +281,12 @@ class MediaPlayer2Player extends Interface {
   updatePlaybackStatus(payload: PlaybackStatePayload): void {
     if (!payload) return;
 
-    // MusicKit PlaybackStates
+    // Only Playing and Paused have an MPRIS value of their own. Every other
+    // MusicKit state falls through to 'Stopped', the transient ones (loading,
+    // seeking, waiting, stalled) included, so MPRIS always reports the state
+    // the player is in. Do not add early returns for the transient states, and
+    // do not map Stopped to 'Paused', which shows clients a pause button for a
+    // player that has stopped.
     let status: string;
     if (payload.state === PlaybackState.Playing) {
       status = 'Playing';
@@ -261,6 +300,12 @@ class MediaPlayer2Player extends Interface {
     this._schedulePropertyEmission({ PlaybackStatus: status });
   }
 
+  /**
+   * Publishes the new track, or an empty metadata set when playback has nothing
+   * loaded. Either way the playhead goes back to zero and `Seeked(0)` is
+   * signalled: `Position` is barred from `PropertiesChanged`, so the signal is
+   * the only way a client learns the playhead has moved without it asking.
+   */
   updateNowPlaying(payload: NowPlayingPayload | null): void {
     if (!payload) {
       const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
@@ -291,7 +336,8 @@ class MediaPlayer2Player extends Interface {
     if (payload.artworkUrl && payload.artworkUrl.startsWith('https://')) {
       downloadArtwork(payload.artworkUrl).then((localPath) => {
         if (!localPath) return;
-        // Only update if this track is still current
+        // The download outlives a fast track change, and a late one would
+        // otherwise put the previous cover on the track now playing.
         if (this._currentTrackId !== trackId) return;
         const fileUri = `file://${localPath}`;
         metadata['mpris:artUrl'] = new Variant('s', fileUri);
@@ -370,6 +416,10 @@ class MediaPlayer2Player extends Interface {
     this._position = newPositionUs;
   }
 
+  /**
+   * Drops every timer and every piece of cached echo state on shutdown, so
+   * nothing fires into a bus that has already been disconnected.
+   */
   cleanup(): void {
     if (this._volumeSafetyTimer) {
       clearTimeout(this._volumeSafetyTimer);
@@ -512,7 +562,8 @@ class MediaPlayer2Player extends Interface {
   }
 
   Stop(): void {
-    // Maps to pause(), not mk.stop(), to preserve queue state
+    // Pause, never MusicKit's stop(): stop() clears the queue, and the MPRIS
+    // spec requires Play() after Stop() to resume from the start of the track.
     this._send('player:pause');
   }
 
@@ -537,6 +588,11 @@ class MediaPlayer2Player extends Interface {
     this._send('player:seek', targetSeconds);
   }
 
+  /**
+   * Opens a service URL a client hands over. The window navigates directly and
+   * the persisted `musicService` is left alone, so after an OpenUri the window
+   * can sit on one service's host while config still names the other.
+   */
   OpenUri(uri: string): void {
     try {
       const parsed = new URL(uri);
@@ -699,6 +755,11 @@ function disconnectBus(): void {
 
 // --- Public API ---
 
+/**
+ * Exports both MPRIS interfaces on the session bus, claims
+ * `org.mpris.MediaPlayer2.<app name>` and wires the interfaces to player
+ * events. Linux only, and required lazily by `main.ts` for that reason.
+ */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;
   if (!getMainWindow) throw new Error('MPRIS requires getMainWindow');
@@ -708,7 +769,8 @@ export function init(ctx: IntegrationContext): void {
   const rootIface = new MediaPlayer2(getMainWindow);
   const playerIface = new MediaPlayer2Player(getMainWindow);
 
-  // Thin wrappers with stable references for removeListener
+  // Named wrappers, because `will-quit` has to hand removeListener the same
+  // function reference; an inline handler could never be detached.
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     playerIface.updatePlaybackStatus(payload);
   };
@@ -743,11 +805,11 @@ export function init(ctx: IntegrationContext): void {
 
   // A session bus is not guaranteed to exist. dbus-next falls through to
   // getDbusAddressFromFs(), which throws synchronously when
-  // DBUS_SESSION_BUS_ADDRESS is unset - containers, bare X and su-launched
-  // sessions all hit it. init() runs inside the did-finish-load handler, so an
-  // escaping throw would skip every integration after this one and leave the
-  // splash screen up for the life of the process. Losing MPRIS is the correct
-  // outcome here; losing the app is not. The connection is not retried.
+  // DBUS_SESSION_BUS_ADDRESS is unset; containers, bare X and su-launched
+  // sessions all hit it. Catching it here reports a missing bus as the ordinary
+  // condition it is, rather than letting an exception stand in for it, and the
+  // return leaves the export and the player subscriptions below undone. Losing
+  // MPRIS is the correct outcome, and the connection is not retried.
   try {
     bus = dbus.sessionBus();
   } catch (err: unknown) {
@@ -769,7 +831,8 @@ export function init(ctx: IntegrationContext): void {
     mprisLog.error('failed to acquire bus name:', busName, err.message);
   });
 
-  // Subscribe to player events
+  // Subscribed after the bus, so the return on a missing bus leaves no
+  // listener attached to update an interface no client can reach.
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   player.on('repeatModeDidChange', onRepeatModeDidChange);

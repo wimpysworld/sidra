@@ -1,3 +1,8 @@
+// src/storefront.ts
+// Builds every URL Sidra navigates to itself, and records where the user has
+// been. Storefront, language and start page are resolved per service through the
+// registry in src/musicService.ts, so neither host is written down here.
+
 import log from 'electron-log/main';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getStartPage, getLastPageUrl, getMusicService, getClassicalStartPage, getClassicalLastPageUrl, setClassicalLastPageUrl, setLastPageUrl } from './config';
 import { getStorefront as getLocaleStorefront } from './i18n';
@@ -29,6 +34,11 @@ function appendLanguage(url: string, language: string | null | undefined): strin
   return parsed.toString();
 }
 
+/**
+ * Launch URL for the active service. The storefront is the persisted one, else
+ * the one detected from the system locale, else 'us'; the page is the stored
+ * start page, falling back to the service default when it names nothing valid.
+ */
 export function buildAppleMusicURL(): string {
   let storefront = getStorefront();
   let source: string;
@@ -67,6 +77,7 @@ export function buildAppleMusicURL(): string {
   return appendLanguage(`${service.origin}/${storefront}${pagePath}`, language);
 }
 
+/** In-app URL for an itms:// deeplink route token, on the user's storefront and language. */
 export function buildItmsRouteURL(token: ItmsRouteToken): string {
   let storefront = getStorefront();
   if (storefront === undefined) {
@@ -78,6 +89,11 @@ export function buildItmsRouteURL(token: ItmsRouteToken): string {
   return appendLanguage(`${getService('music').origin}/${storefront}/${path}`, language);
 }
 
+/**
+ * Reads the storefront and the 'l' language out of a service URL. Null when the
+ * URL is unparseable, the host is not a known service, or the first path segment
+ * is not a two-letter storefront code.
+ */
 export function extractStorefrontFromURL(url: string): { storefront: string; language: string | null } | null {
   try {
     const parsed = new URL(url);
@@ -100,6 +116,10 @@ export function extractStorefrontFromURL(url: string): { storefront: string; lan
   }
 }
 
+/**
+ * Follow the user: Apple's own region and language switchers navigate, so a
+ * changed storefront or language in the URL is persisted as the new preference.
+ */
 export function handleStorefrontNavigation(url: string): void {
   const result = extractStorefrontFromURL(url);
   if (!result) {
@@ -124,6 +144,10 @@ export function handleStorefrontNavigation(url: string): void {
   }
 }
 
+/**
+ * Record the current page against its service, for the 'last' start page. The
+ * storefront segment is stripped so the path survives a change of region.
+ */
 export function handleLastPageNavigation(url: string): void {
   try {
     const parsed = new URL(url);

@@ -26,17 +26,17 @@ function loadLocaleFile(filename: string): TranslationFile {
   }
 }
 
-// Module-level readFileSync calls are intentional here. The AGENTS.md guideline
-// about avoiding synchronous reads targets conditional platform modules, not
-// data-loading modules like this one. These reads must complete before the first
-// window renders, the locale files total under 5KB, and each read finishes in
-// under 1ms.
+// Read synchronously at module load, because the splash screen needs its string
+// before the first window renders and there is no point at which these files are
+// not wanted. The four together are a few kilobytes. The lazy-require rule in
+// AGENTS.md covers platform modules that must never load at all, which is a
+// different problem.
 const loadingData = loadLocaleFile('loading.json');
 const trayData = loadLocaleFile('tray.json');
 const aboutData = loadLocaleFile('about.json');
 const updateData = loadLocaleFile('update.json');
 
-// --- Re-export translation records (preserves existing import paths) ---
+// --- Translation records, re-exported so importers name a record, not a file ---
 
 export const LOADING_TEXT: Record<string, string> = loadingData.LOADING_TEXT;
 
@@ -97,6 +97,8 @@ const ZOOM_175 = '175%';
 const ZOOM_200 = '200%';
 
 // --- Cached system language list ---
+// Cached because every tray rebuild resolves the whole string set. A system
+// language changed mid-session therefore takes effect on the next launch
 let _cachedLangs: string[] | null = null;
 function getSystemLanguages(): string[] {
   if (!_cachedLangs) _cachedLangs = app.getPreferredSystemLanguages();
@@ -104,6 +106,12 @@ function getSystemLanguages(): string[] {
 }
 
 // --- Generic locale resolution ---
+
+/**
+ * Resolve one record against the caller's ordered language list: an exact BCP 47
+ * tag first, then the base language, so en-GB falls to en. English is the last
+ * resort, which every record must therefore carry.
+ */
 export function getLocalizedString(
   record: Record<string, string>,
   langs: string[],
@@ -125,6 +133,10 @@ function getLocalizedEntry(
 
 // --- Public API (uses Electron app internally) ---
 
+/**
+ * The Apple Music storefront path segment, taken from the region rather than the
+ * language: a Welsh or Gaelic UI in the United Kingdom still shops in gb.
+ */
 export function getStorefront(): string {
   const code = app.getLocaleCountryCode().toLowerCase();
   if (code) {
@@ -135,6 +147,10 @@ export function getStorefront(): string {
   return 'us';
 }
 
+/**
+ * The splash screen string, with the tag it resolved to. The splash needs the
+ * tag as well as the text, because Arabic and Hebrew switch it to right to left.
+ */
 export function getLoadingText(): { text: string; lang: string } {
   const langs = getSystemLanguages();
   const { value: text, lang } = getLocalizedEntry(LOADING_TEXT, langs);
@@ -183,6 +199,11 @@ export interface TrayStrings {
   closeToTray: string;
 }
 
+/**
+ * Every tray label in one object, resolved once per menu rebuild. Labels that
+ * name the app carry a {name} placeholder rather than the word "Sidra", so a
+ * translation cannot hardcode it and the product name stays in package.json.
+ */
 export function getTrayStrings(): TrayStrings {
   const langs = getSystemLanguages();
   const productName: string = getProductInfo().productName;
@@ -207,7 +228,7 @@ export function getTrayStrings(): TrayStrings {
   const on = getLocalizedString(ON_TEXT, langs);
   const off = getLocalizedString(OFF_TEXT, langs);
   const style = getLocalizedString(STYLE_TEXT, langs);
-  const styleAppleMusic = 'Apple Music';
+  const styleAppleMusic = 'Apple Music'; // A brand name, so never translated
   const zoom = getLocalizedString(ZOOM_TEXT, langs);
   const zoom100 = ZOOM_100;
   const zoom125 = ZOOM_125;

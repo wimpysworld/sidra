@@ -115,14 +115,11 @@ describe('downloadArtwork', () => {
     mockFinishingWriteStream();
     vi.mocked(net.fetch).mockResolvedValue(createMockResponse(200, true));
 
-    // First call - triggers download
     const firstResult = await downloadArtwork(url);
     expect(firstResult).toMatch(/\.jpg$/);
 
-    // Set existsSync to return true for the cached file
     vi.mocked(fs.existsSync).mockReturnValue(true);
 
-    // Second call with same URL - should return cached path without calling net.fetch again
     vi.mocked(net.fetch).mockClear();
     const secondResult = await downloadArtwork(url);
     expect(secondResult).toBe(firstResult);
@@ -142,7 +139,8 @@ describe('downloadArtwork', () => {
     expect(result).toMatch(/\.jpg$/);
     expect(fs.mkdirSync).toHaveBeenCalled();
     expect(fs.createWriteStream).toHaveBeenCalled();
-    // Verify .tmp file was written and renamed
+    // The download lands on a .tmp path and is renamed onto the cache path, so
+    // a half-written file can never be read back as a cache hit.
     const writeCall = vi.mocked(fs.createWriteStream).mock.calls[0][0] as string;
     expect(writeCall).toMatch(/\.tmp$/);
     expect(fsPromises.rename).toHaveBeenCalled();
@@ -155,7 +153,9 @@ describe('downloadArtwork', () => {
 
     const result = await downloadArtwork(url);
     expect(result).toBeNull();
-    // Should not attempt to write a file on non-200
+    // The status is checked before the stream is opened, so an error page body
+    // is never written and renamed onto the cache path, where it would be
+    // served as this track's artwork until the seven day sweep took it.
     expect(fs.createWriteStream).not.toHaveBeenCalled();
   });
 
@@ -166,7 +166,9 @@ describe('downloadArtwork', () => {
 
     const result = await downloadArtwork(url);
     expect(result).toBeNull();
-    // Should attempt to clean up the tmp file
+    // The tmp name carries a timestamp, so it is distinct on every attempt and
+    // a failure that skipped the unlink would add a file to the cache
+    // directory each time the network dropped.
     expect(fsPromises.unlink).toHaveBeenCalled();
   });
 

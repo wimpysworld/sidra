@@ -3,6 +3,11 @@ import log from 'electron-log/main';
 
 import { errorMessage } from './utils';
 
+// Linux-only companion to ./notify. It answers whether anything owns
+// org.freedesktop.Notifications, then follows NameOwnerChanged, so the freeze
+// documented in ./notify is avoided without a restart when a daemon arrives or
+// goes away mid-session.
+
 // @holusion/dbus-next is bare-required because this module only loads on Linux
 const dbus = require('@holusion/dbus-next');
 
@@ -29,8 +34,9 @@ interface DbusMessage {
 // Module-level bus reference for graceful shutdown
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
-// Typed interface for dbus-next internal socket access.
-// Verified against @holusion/dbus-next 0.11.2.
+// dbus-next exposes no public API to fully close its socket, so the internal
+// stream is reached through this shape. Verified against
+// @holusion/dbus-next 0.11.2.
 interface DbusMessageBusInternals {
   _connection?: {
     stream?: {
@@ -67,6 +73,12 @@ function dbusCall(member: string, argument: string): Promise<DbusMessage | null>
   }));
 }
 
+/**
+ * Report whether a notification daemon owns the name, once for the probe reply
+ * and again on every later owner change. A session bus that cannot be opened,
+ * which happens in containers and in su-launched sessions, leaves notifications
+ * off for the session; the connection is not retried.
+ */
 export function initDaemonProbe(onOwnerChange: (hasOwner: boolean) => void): void {
   try {
     bus = dbus.sessionBus();

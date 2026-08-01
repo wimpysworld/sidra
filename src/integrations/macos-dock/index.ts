@@ -13,6 +13,7 @@ const DOCK_PAUSE_TIMEOUT_MS = 30_000;
 let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 
+/** Supplies the main-process sender the dock menu items use to reach the renderer. */
 export function setDockSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
   sendCommandCallback = callback;
 }
@@ -33,7 +34,6 @@ function buildDockMenu(
     items.push({ label: nowPlayingText, enabled: false });
     items.push({ type: 'separator' });
 
-    // Share item using ShareMenu
     const shareUrl = getShareUrl(payload);
     if (shareUrl) {
       items.push({
@@ -79,6 +79,7 @@ function clearDockProgressBar(): void {
   clearProgressBar(win);
 }
 
+/** Installs the macOS dock menu and progress bar; no-op on every other platform. */
 export function init(ctx: IntegrationContext): void {
   if (process.platform !== 'darwin') return;
 
@@ -155,7 +156,8 @@ export function init(ctx: IntegrationContext): void {
     dockPauseTimer.destroy();
   });
 
-  // Initialise with empty dock menu
+  // The menu must exist before playback starts, so the dock carries the
+  // Not Playing entry from launch rather than nothing at all
   rebuildDock(false);
   dockLog.info('dock menu initialised');
 }

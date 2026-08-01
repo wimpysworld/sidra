@@ -1,8 +1,11 @@
 // Writes assets/lastfm-credentials.json from the SIDRA_LASTFM_API_KEY and
 // SIDRA_LASTFM_API_SECRET environment variables. It runs from npm's `prebuild`
 // hook and from the `build` recipe in the justfile, because `npx tsc` fires no
-// npm hook. In CI the env vars come from repository secrets; with no env set
-// the file is written empty and the integration stays inert.
+// npm hook. In CI the env vars come from repository secrets.
+//
+// With no env set the file is written empty rather than left absent, because
+// it is named in asarUnpack and packaging fails on a missing entry; an empty
+// key leaves the integration inert and the tray hides Last.fm entirely.
 //
 // An existing file that already holds credentials is left alone when the env is
 // unset, so building in a shell without the vars does not blank a working

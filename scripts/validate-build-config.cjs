@@ -1,3 +1,7 @@
+// Checks the electron-builder configuration before a packaging run. `just
+// validate` runs it locally and the test-config job in builder.yml runs it in
+// CI, so a fault is named here rather than surfacing later as an installer that
+// builds but misbehaves.
 const fs = require("fs");
 const path = require("path");
 
@@ -7,11 +11,16 @@ function main() {
   // 1. The whole electron-builder config lives in package.json under "build",
   //    so reading that file reads the whole config. electron-builder exposes no
   //    public API for loading or schema-validating it, so no schema pass runs.
+  //    Do not reach into app-builder-lib/out/... for its internal validator: a
+  //    compiled internal path breaks on a dependency bump and is then reported
+  //    as a module-not-found error rather than as anything about the config.
   const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
   const config = pkg.build ?? {};
   console.log("  \u2713 electron-builder config: read from package.json \"build\" (no schema check; electron-builder exposes no public validator)");
 
-  // 2. Check for deprecated options
+  // 2. Options electron-builder has dropped or renamed. Each error names the
+  //    replacement, because a setting that is no longer read shows up only as
+  //    an installer missing the behaviour it was meant to configure.
   if (config.npmSkipBuildFromSource === false) {
     throw new Error("npmSkipBuildFromSource is deprecated; use buildDependenciesFromSource");
   }
@@ -73,7 +82,10 @@ function main() {
     //    extra whitespace or a flag reordered ahead of the member stays
     //    harmless while the four parts that decide whether the launcher control
     //    works are all pinned: the command, the destination, the object path
-    //    and the member, which must be the final token.
+    //    and the member, which must be the final token. Do not replace this
+    //    with includes() over the whole string, which passes a wrong object
+    //    path, a suffixed member and a trailing argument alike, nor with
+    //    equality against one expected command, which fails on formatting.
     const exec = typeof action.Exec === "string" ? action.Exec : "";
     const tokens = exec.split(/\s+/).filter((token) => token !== "");
     const command = tokens.shift() ?? "";

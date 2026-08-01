@@ -11,9 +11,9 @@ type RecordEntry = [name: string, record: Record<string, string>];
 /**
  * The module exports translation records alongside functions, so an object
  * export is a record and a function export is not. Deriving the list this way
- * puts a new record under the guard with no edit to this file, which a
- * hand-written list did not: it had drifted to 36 of the 43 records, leaving
- * the whole tray media-control group unchecked.
+ * puts a new record under the guard with no edit to this file. Do not put the
+ * names back in a hand-written list: the previous one covered 36 of the 43
+ * records and left the whole tray media-control group unchecked.
  */
 function isRecordEntry(entry: [string, unknown]): entry is RecordEntry {
   return typeof entry[1] === 'object' && entry[1] !== null;

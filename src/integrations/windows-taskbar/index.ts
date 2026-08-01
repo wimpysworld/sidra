@@ -11,7 +11,8 @@ const taskbarLog = log.scope('taskbar');
 const iconsDir = getAssetPath('assets', 'icons');
 const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
 
-// Transient playback states where overlay should be left unchanged
+// Transient states hold the overlay badge at its last value: each one lasts a
+// moment and clearing the badge for it makes the taskbar icon flicker
 const TRANSIENT_STATES: ReadonlySet<number> = new Set([
   PlaybackState.Loading,
   PlaybackState.Seeking,
@@ -21,6 +22,7 @@ const TRANSIENT_STATES: ReadonlySet<number> = new Set([
 
 let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
 
+/** Supplies the main-process sender the thumbar buttons use to reach the renderer. */
 export function setTaskbarSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
   sendCommandCallback = callback;
 }
@@ -83,6 +85,7 @@ function setOverlayIcon(win: BrowserWindow, state: number): void {
   }
 }
 
+/** Installs the taskbar thumbar buttons, overlay badge and progress bar; no-op off Windows. */
 export function init(ctx: IntegrationContext): void {
   if (process.platform !== 'win32') return;
 
@@ -147,7 +150,6 @@ export function init(ctx: IntegrationContext): void {
     const { isPlaying } = player.playbackSnapshot();
     setThumbarButtons(win, isPlaying);
 
-    // Skip overlay update for transient states to avoid flicker
     if (!TRANSIENT_STATES.has(state)) {
       setOverlayIcon(win, state);
     }
