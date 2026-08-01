@@ -60,7 +60,8 @@
       "assets/authStyleFix.css",
       "assets/sidra-logo.png",
       "assets/splash.html",
-      "assets/styleFix.css"
+      "assets/styleFix.css",
+      "assets/windowChrome.css"
     ],
     "icon": "build/icon.png",
     "files": [

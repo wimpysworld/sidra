@@ -1,0 +1,25 @@
+/* Shared chrome for Sidra's own windows: splash.html and about.html. */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #1a0a10;
+  overflow: hidden;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.icon {
+  width: 128px;
+  height: 128px;
+  -webkit-user-drag: none;
+  -webkit-app-region: no-drag;
+}
