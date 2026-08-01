@@ -43,8 +43,9 @@ describe('wedgeDetector', () => {
   it('fires skip after STALL_THRESHOLD_MS of stalled playback', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // The stall threshold is 5000ms and the check runs on a 1000ms interval, so
-    // the first check that can see the stall lands at 6000ms.
+    // The check runs on a 1000ms interval and proceeds once the elapsed time is
+    // no longer below the 5000ms threshold, so the 5000ms tick fires the skip.
+    // Advance past it to keep the test off the boundary.
     vi.advanceTimersByTime(6000);
 
     expect(mockWin.webContents.send).toHaveBeenCalledWith(
