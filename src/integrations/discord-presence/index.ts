@@ -2,7 +2,7 @@ import { app } from 'electron';
 import log from 'electron-log/main';
 import { Client, SetActivity, StatusDisplayType } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext, getShareUrl } from '../../player';
 import { getDiscordEnabled, getMusicService } from '../../config';
 import { getService } from '../../musicService';
 import { createPauseTimer } from '../../pauseTimer';
@@ -156,9 +156,10 @@ function sendActivity(player: Player): void {
   const buttons: Array<{ label: string; url: string }> = [
     { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
   ];
-  if (track.url) {
+  const shareUrl = getShareUrl(track);
+  if (shareUrl) {
     const displayName = getService(getMusicService()).displayName;
-    buttons.push({ label: `Play on ${displayName}`, url: track.url });
+    buttons.push({ label: `Play on ${displayName}`, url: shareUrl });
   }
 
   const activity: SetActivity = {
