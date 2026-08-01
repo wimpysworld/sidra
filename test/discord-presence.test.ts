@@ -170,6 +170,17 @@ const TRACK: NowPlayingPayload = {
   url: 'https://music.apple.com/gb/album/blue-monday/1',
 };
 
+// A library item as MusicKit reports it: no attributes.url, only playParams and
+// the host of the document that announced it.
+const LIBRARY_TRACK: NowPlayingPayload = {
+  name: 'Temptation',
+  artistName: 'New Order',
+  albumName: 'Substance',
+  durationInMillis: 208_000,
+  playParams: { catalogId: '1615607783', isLibrary: true },
+  sourceHost: 'music.apple.com',
+};
+
 const START = new Date('2026-01-01T00:00:00Z');
 
 /**
@@ -268,6 +279,33 @@ describe('discord presence integration', () => {
     expect(sent).toMatchObject({ statusDisplayType: 2 });
     expect(sent).not.toHaveProperty('startTimestamp');
     expect(sent).not.toHaveProperty('endTimestamp');
+  });
+
+  // MusicKit never populates attributes.url on a library item, so reading
+  // payload.url directly left every library track with the Sidra button alone.
+  // getShareUrl() rebuilds the link from playParams; which origin it picks for a
+  // given sourceHost is pinned by test/player.test.ts.
+  it('builds the share button from playParams when the payload carries no url', () => {
+    player.setPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(LIBRARY_TRACK);
+    vi.advanceTimersByTime(DEBOUNCE_MS);
+
+    expect(activity()).toMatchObject({
+      buttons: [
+        { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
+        { label: 'Play on Apple Music', url: 'https://music.apple.com/song/1615607783' },
+      ],
+    });
+  });
+
+  it('sends the Sidra button alone when no url can be derived', () => {
+    player.setPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying({ name: 'Temptation', artistName: 'New Order', durationInMillis: 208_000 });
+    vi.advanceTimersByTime(DEBOUNCE_MS);
+
+    expect(activity().buttons).toEqual([
+      { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
+    ]);
   });
 });
 
