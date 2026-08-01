@@ -54,15 +54,6 @@ function documentReplaced(generation: number): boolean {
 function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise<void> {
   const generation = documentGeneration;
   themeCssOp = themeCssOp
-    // The catch sits ahead of the then so a failed operation cannot deadlock
-    // the queue: the next one still runs. It drops the tracked key because the
-    // failed operation left it naming a sheet that either cannot be removed or
-    // is already gone, and keeping it would send every later change back down
-    // the same rejected removal, so none would reach its insertion.
-    .catch((error: unknown) => {
-      themeCssKey = null;
-      themeLog.warn('Theme CSS operation failed', error);
-    })
     .then(() => {
       if (generation !== documentGeneration) {
         // Any sheet the old document held died with it, so the tracked key is
@@ -72,6 +63,19 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
         return;
       }
       return work(generation);
+    })
+    // The catch sits at the end so it handles this operation's own failure and
+    // the promise stored and returned here always fulfils. applyTheme() discards
+    // that promise, so a rejection left on it is an unhandled rejection in the
+    // main process until some later operation happens to chain onto it. A
+    // fulfilled promise is also what keeps a failure from deadlocking the queue:
+    // the next operation still runs. It drops the tracked key because the failed
+    // operation left it naming a sheet that either cannot be removed or is
+    // already gone, and keeping it would send every later change back down the
+    // same rejected removal, so none would reach its insertion.
+    .catch((error: unknown) => {
+      themeCssKey = null;
+      themeLog.warn('Theme CSS operation failed', error);
     });
   return themeCssOp;
 }

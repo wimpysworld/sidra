@@ -307,6 +307,23 @@ describe('theme helpers', () => {
       expect(harness.insertCSS).toHaveBeenCalledTimes(1);
     });
 
+    it('settles the returned promise when the operation itself fails', async () => {
+      // applyTheme() discards the promise the queue returns, so a rejection left
+      // on it has no handler and surfaces as an unhandled rejection in the main
+      // process until some later operation happens to chain its own catch on.
+      const insertCSS = vi.fn().mockRejectedValue(new Error('Failed to insert CSS'));
+      const failing = { insertCSS } as unknown as WebContents;
+      vi.mocked(getTheme).mockReturnValue('catppuccin');
+
+      await expect(injectThemeCss(failing)).resolves.toBeUndefined();
+      expect(insertCSS).toHaveBeenCalledTimes(1);
+
+      // Handling the failure must not stop the next queued operation running.
+      const next = fakeContents();
+      await injectThemeCss(next.contents);
+      expect(next.insertCSS).toHaveBeenCalledTimes(1);
+    });
+
     it('drops queued work when the document is replaced before it runs', async () => {
       // insertCSS reaches whatever document the WebContents holds at call time.
       // Queued behind an in-flight operation, an injection for the old page
