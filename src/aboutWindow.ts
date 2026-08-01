@@ -68,6 +68,7 @@ export function showAboutWindow(): void {
       versionPrefix: aboutStrings.versionPrefix,
       copyrightSuffix: aboutStrings.copyrightSuffix,
       licensePrefix: aboutStrings.licensePrefix,
+      year: String(new Date().getFullYear()),
     },
   });
 }

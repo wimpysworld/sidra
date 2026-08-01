@@ -126,6 +126,7 @@ describe('showAboutWindow', () => {
         versionPrefix: 'Version',
         copyrightSuffix: 'All rights reserved',
         licensePrefix: 'License',
+        year: String(new Date().getFullYear()),
       },
     });
   });

@@ -98,13 +98,14 @@ body {
   var versionPrefix = params.get('versionPrefix') || 'Version';
   var copyrightSuffix = params.get('copyrightSuffix') || 'All rights reserved.';
   var licensePrefix = params.get('licensePrefix') || 'Licensed under';
+  var year = params.get('year') || String(new Date().getFullYear());
 
   document.title = aboutText;
 
   document.getElementById('name').textContent = name;
   document.getElementById('version').textContent = versionPrefix + ' ' + version;
   document.getElementById('description').textContent = description;
-  document.getElementById('copyright').textContent = '\u00A9 2026 ' + author + '. ' + copyrightSuffix;
+  document.getElementById('copyright').textContent = '\u00A9 ' + year + ' ' + author + '. ' + copyrightSuffix;
   document.getElementById('license').textContent = licensePrefix + ' ' + license;
   document.getElementById('close-btn').textContent = closeText;
   document.querySelector('.close-btn').addEventListener('click', function() { window.close(); });
