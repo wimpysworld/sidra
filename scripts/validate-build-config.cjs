@@ -69,11 +69,24 @@ function main() {
     if (typeof action.Name !== "string" || action.Name.trim() === "") {
       throw new Error(`Linux desktop action ${method}.Name must be a non-empty string`);
     }
+    //    The Exec is matched token by token rather than as one whole string, so
+    //    extra whitespace or a reordered flag stays harmless while the four
+    //    parts that decide whether the launcher control works are all pinned:
+    //    the command, the destination, the object path and the member.
     const exec = typeof action.Exec === "string" ? action.Exec : "";
-    if (!exec.includes(`--dest=${busName} `)) {
+    const tokens = exec.split(/\s+/).filter((token) => token !== "");
+    const command = tokens.shift() ?? "";
+    if (command !== "dbus-send" && !command.endsWith("/dbus-send")) {
+      throw new Error(`Linux desktop action ${method}.Exec must run dbus-send`);
+    }
+    if (!tokens.includes(`--dest=${busName}`)) {
       throw new Error(`Linux desktop action ${method}.Exec must target --dest=${busName}`);
     }
-    if (!exec.includes(`org.mpris.MediaPlayer2.Player.${method}`)) {
+    const operands = tokens.filter((token) => !token.startsWith("-"));
+    if (operands[0] !== "/org/mpris/MediaPlayer2") {
+      throw new Error(`Linux desktop action ${method}.Exec must use the object path /org/mpris/MediaPlayer2`);
+    }
+    if (operands[1] !== `org.mpris.MediaPlayer2.Player.${method}`) {
       throw new Error(`Linux desktop action ${method}.Exec must call org.mpris.MediaPlayer2.Player.${method}`);
     }
   }
