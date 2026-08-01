@@ -216,24 +216,31 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('playbackTimeDidChange', payload);
   }
 
-  handleRepeatModeDidChange(payload: number | null): void {
+  /**
+   * Shared body of the repeat and shuffle handlers, which differ only in the
+   * event and the name table. The event name is the first word of every log
+   * line, so both modes stay distinguishable in the log.
+   */
+  private handleModeChange(
+    event: 'repeatModeDidChange' | 'shuffleModeDidChange',
+    payload: number | null,
+    names: Record<number, string>
+  ): void {
     if (payload != null && typeof payload !== 'number') {
-      playerLog.warn('repeatModeDidChange: invalid payload, expected number or null');
+      playerLog.warn(`${event}: invalid payload, expected number or null`);
       return;
     }
-    const modeName = typeof payload === 'number' ? (REPEAT_MODES[payload] ?? String(payload)) : payload;
-    playerLog.debug('repeatModeDidChange:', modeName);
-    this.emit('repeatModeDidChange', payload);
+    const modeName = typeof payload === 'number' ? (names[payload] ?? String(payload)) : payload;
+    playerLog.debug(`${event}:`, modeName);
+    this.emit(event, payload);
+  }
+
+  handleRepeatModeDidChange(payload: number | null): void {
+    this.handleModeChange('repeatModeDidChange', payload, REPEAT_MODES);
   }
 
   handleShuffleModeDidChange(payload: number | null): void {
-    if (payload != null && typeof payload !== 'number') {
-      playerLog.warn('shuffleModeDidChange: invalid payload, expected number or null');
-      return;
-    }
-    const modeName = typeof payload === 'number' ? (SHUFFLE_MODES[payload] ?? String(payload)) : payload;
-    playerLog.debug('shuffleModeDidChange:', modeName);
-    this.emit('shuffleModeDidChange', payload);
+    this.handleModeChange('shuffleModeDidChange', payload, SHUFFLE_MODES);
   }
 
   handleVolumeDidChange(payload: number | null): void {
