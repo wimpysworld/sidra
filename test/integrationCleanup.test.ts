@@ -32,6 +32,130 @@ function playerConsumerFiles(): string[] {
 }
 
 /**
+ * The two cleanup forms this tree uses: the `will-quit` handler an integration
+ * registers, and the teardown closure `initTrayStateManager` returns. A
+ * separate test in this file checks main.ts wires that closure to `will-quit`.
+ */
+const CLEANUP_OPENER =
+  /app\.on\(\s*'will-quit'\s*,\s*(?:async\s*)?\(\s*\)\s*=>\s*\{|return\s*(?:async\s*)?\(\s*\)\s*=>\s*\{/;
+
+/**
+ * The index of the quote that closes the string literal starting at
+ * `openIndex`, or -1 when it never closes. A `${}` expression inside a template is skipped whole; the
+ * braces in it balance, so passing over them costs the brace count nothing.
+ */
+function endOfString(source: string, openIndex: number): number {
+  const quote = source[openIndex];
+  for (let i = openIndex + 1; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\') {
+      i += 1;
+      continue;
+    }
+    if (ch === quote) return i;
+    if (quote !== '`' && ch === '\n') return -1;
+  }
+  return -1;
+}
+
+/**
+ * The body of the block whose `{` sits at `openIndex`, found by balancing
+ * braces forward, or `null` when the balance never returns to zero. Comments
+ * and string literals are stepped over so a brace inside either is not counted.
+ * Returning `null` fails the sweep rather than passing it: a block this scanner
+ * cannot read is a block whose removals it cannot see.
+ */
+function balancedBody(source: string, openIndex: number): string | null {
+  let depth = 0;
+  for (let i = openIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      const eol = source.indexOf('\n', i);
+      if (eol === -1) return null;
+      i = eol;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const end = source.indexOf('*/', i + 2);
+      if (end === -1) return null;
+      i = end + 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const end = endOfString(source, i);
+      if (end === -1) return null;
+      i = end;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(openIndex + 1, i);
+    }
+  }
+  return null;
+}
+
+/** Every cleanup block body in a file, plus the count of blocks that would not balance. */
+function cleanupRegions(source: string): { bodies: string[]; unbalanced: number } {
+  const opener = new RegExp(CLEANUP_OPENER.source, 'g');
+  const bodies: string[] = [];
+  let unbalanced = 0;
+  let match: RegExpExecArray | null = opener.exec(source);
+  while (match !== null) {
+    const body = balancedBody(source, match.index + match[0].length - 1);
+    if (body === null) unbalanced += 1;
+    else bodies.push(body);
+    match = opener.exec(source);
+  }
+  return { bodies, unbalanced };
+}
+
+/**
+ * What is wrong with one module's listener cleanup; empty means nothing is.
+ * Pure, so the on-disk sweep and the fixtures below exercise the same code.
+ *
+ * The removal has to sit inside a cleanup block, not merely somewhere in the
+ * file. A removal parked in a function nothing calls at teardown reads exactly
+ * like a real one to a whole-file search, and leaves the listener attached for
+ * the life of the process - the failure this file exists to catch. Position is
+ * not checked: mpris registers its `will-quit` handler above its `player.on`
+ * calls, and that order is fine.
+ */
+function findCleanupFaults(source: string): string[] {
+  const faults: string[] = [];
+
+  // Only a named reference can be removed later, so an inline listener is a
+  // failure whatever else the file does.
+  const named = [...source.matchAll(/player\.on\(\s*'([^']+)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g)];
+  const total = [...source.matchAll(/player\.on\(/g)].length;
+  if (named.length !== total) {
+    faults.push('registers a player listener with an inline function, which cannot be removed');
+  }
+
+  const { bodies, unbalanced } = cleanupRegions(source);
+  if (unbalanced > 0) {
+    faults.push(`has ${unbalanced} cleanup block(s) whose braces never balance`);
+  }
+  const cleanup = bodies.join('\n');
+
+  for (const [, event, handler] of named) {
+    const removal = new RegExp(
+      `player\\.(removeListener|off)\\(\\s*'${event}'\\s*,\\s*${handler}\\s*\\)`,
+    );
+    if (removal.test(cleanup)) continue;
+    faults.push(
+      removal.test(source)
+        ? `removes '${event}' as ${handler} outside any will-quit handler or teardown closure, so quitting leaves it attached`
+        : `registers '${event}' as ${handler} but never removes it`,
+    );
+  }
+
+  return faults;
+}
+
+/**
  * Runs the `will-quit` handlers a module registered, as quitting does. The
  * electron mock records them rather than firing them, and its `app.on` is a
  * plain `vi.fn()`, so the overloaded signature is narrowed to what is stored.
@@ -50,29 +174,100 @@ describe('player listener cleanup', () => {
     for (const file of playerConsumerFiles()) {
       const relative = path.relative(path.join(__dirname, '..'), file);
 
-      it(`${relative} removes every player listener it registers`, () => {
+      it(`${relative} removes every player listener it registers on quit`, () => {
         const source = fs.readFileSync(file, 'utf-8');
+        const faults = findCleanupFaults(source);
 
-        // Only a named reference can be removed later, so an inline listener
-        // is a failure whatever else the file does.
-        const named = [...source.matchAll(/player\.on\(\s*'([^']+)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g)];
-        const total = [...source.matchAll(/player\.on\(/g)].length;
-        expect(
-          named.length,
-          `${relative} registers a player listener with an inline function, which cannot be removed`,
-        ).toBe(total);
-
-        for (const [, event, handler] of named) {
-          const removal = new RegExp(
-            `player\\.(removeListener|off)\\(\\s*'${event}'\\s*,\\s*${handler}\\s*\\)`,
-          );
-          expect(
-            removal.test(source),
-            `${relative} registers '${event}' as ${handler} but never removes it`,
-          ).toBe(true);
-        }
+        expect(faults, `${relative} ${faults.join('; ')}`).toEqual([]);
       });
     }
+  });
+
+  // Fixtures for the sweep itself. The first one is the point of the region
+  // check: it passed a whole-file search for the removal, and must not pass now.
+  describe('the sweep itself', () => {
+    const REGISTER = "player.on('playbackStateDidChange', onPlaybackStateDidChange);";
+    const REMOVE = "player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);";
+
+    it('rejects a removal outside any cleanup block', () => {
+      const source = `
+        export function init(): void {
+          ${REGISTER}
+        }
+
+        function resetOnServiceSwitch(): void {
+          ${REMOVE}
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining('outside any will-quit handler or teardown closure'),
+      ]);
+    });
+
+    it('accepts a removal inside the will-quit handler', () => {
+      const source = `
+        export function init(): void {
+          ${REGISTER}
+
+          app.on('will-quit', () => {
+            if (timer) {
+              clearTimeout(timer);
+            }
+            ${REMOVE}
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('accepts a removal inside a returned teardown closure', () => {
+      const source = `
+        export function initTrayStateManager(): () => void {
+          ${REGISTER}
+
+          return () => {
+            player.off('playbackStateDidChange', onPlaybackStateDidChange);
+          };
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('accepts a cleanup block written above the registration, as mpris has it', () => {
+      const source = `
+        export function init(): void {
+          app.on('will-quit', () => {
+            ${REMOVE}
+            disconnectBus();
+          });
+
+          ${REGISTER}
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('rejects an inline listener even when a cleanup block exists', () => {
+      const source = `
+        export function init(): void {
+          player.on('playbackStateDidChange', (state) => {
+            update(state);
+          });
+
+          app.on('will-quit', () => {
+            teardown();
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining('inline function, which cannot be removed'),
+      ]);
+    });
   });
 
   it('main.ts invokes the teardown initTrayStateManager returns', () => {
