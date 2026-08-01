@@ -54,8 +54,9 @@ jobs:
     name: Lint Code 🧹
     needs: [version-gate]
     # version-gate runs on tags only, so it is skipped on every other run, and
-    # always() is what lets this job proceed past that skip. Each gated job
-    # repeats the condition because Actions cannot share an `if` between jobs.
+    # always() is what lets this job proceed past that skip. lint-actions,
+    # test-config and test-code repeat this line because Actions cannot share
+    # an `if` between jobs. The build job has its own condition, below.
     if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     runs-on: ubuntu-slim
     permissions:
@@ -156,6 +157,18 @@ jobs:
   build:
     name: Build (${{ matrix.os }})
     needs: [lint-code, lint-actions, test-config, test-code]
+    # Every part of this is needed. Actions propagates the skipped version-gate
+    # down the needs graph, and the four jobs above override it with their own
+    # always(), so without always() here the skip reaches this job through them.
+    # The four success checks are needed alongside it, because always() also
+    # runs the job when a dependency failed. Do not delete this as redundant:
+    # someone did, and the whole build matrix was skipped and Sentinel failed.
+    if: >-
+      always()
+      && needs.lint-code.result == 'success'
+      && needs.lint-actions.result == 'success'
+      && needs.test-config.result == 'success'
+      && needs.test-code.result == 'success'
     strategy:
       fail-fast: false
       matrix:
