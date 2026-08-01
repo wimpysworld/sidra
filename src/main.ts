@@ -149,7 +149,7 @@ function routeItmsTarget(target: ItmsTarget | null): void {
   mainLog.info(`itms target routed: kind=${target.kind}`);
 }
 
-export interface Assets {
+interface Assets {
   STYLE_FIX_CSS: string;
   AUTH_STYLE_FIX_CSS: string;
   navBarScript: string;
