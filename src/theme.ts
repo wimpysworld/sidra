@@ -55,8 +55,12 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
   const generation = documentGeneration;
   themeCssOp = themeCssOp
     // The catch sits ahead of the then so a failed operation cannot deadlock
-    // the queue: the next one still runs.
+    // the queue: the next one still runs. It drops the tracked key because the
+    // failed operation left it naming a sheet that either cannot be removed or
+    // is already gone, and keeping it would send every later change back down
+    // the same rejected removal, so none would reach its insertion.
     .catch((error: unknown) => {
+      themeCssKey = null;
       themeLog.warn('Theme CSS operation failed', error);
     })
     .then(() => {

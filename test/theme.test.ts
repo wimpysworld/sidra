@@ -378,6 +378,27 @@ describe('theme helpers', () => {
     expect(harness.insertCSS).toHaveBeenCalledTimes(1);
   });
 
+  it('recovers the theme after a failed CSS operation', async () => {
+    // A rejected removal leaves the tracked key naming a sheet that cannot be
+    // removed, so keeping it would send every later theme change back down the
+    // same removal and no theme would ever reach the page again.
+    const harness = watcherHarness();
+    harness.start();
+    setThemeCssKey('doomed-key');
+    harness.removeInsertedCSS.mockRejectedValue(new Error('Failed to remove inserted CSS'));
+
+    applyTheme('catppuccin');
+    await flushCssQueue();
+    expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
+    expect(harness.insertCSS).not.toHaveBeenCalled();
+
+    applyTheme('nord');
+    await flushCssQueue();
+
+    expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
+    expect(harness.insertCSS).toHaveBeenCalledTimes(1);
+  });
+
   it('returns null for apple-music even with populated custom.css', () => {
     // apple-music means "inject no override CSS", so it must never pick up the
     // custom.css a fall-through past the guard would reach.
