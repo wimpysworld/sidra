@@ -38,4 +38,29 @@ describe('isNewer', () => {
   it('compares patch when major and minor are equal', () => {
     expect(isNewer('0.3.0', '0.3.1')).toBe(false);
   });
+
+  it('treats a missing part of a short remote as 0', () => {
+    expect(isNewer('1.0', '0.3.0')).toBe(true);
+    expect(isNewer('0.2', '0.3.0')).toBe(false);
+  });
+
+  it('treats a missing part of a short local as 0', () => {
+    expect(isNewer('1.0.0', '0.3')).toBe(true);
+    expect(isNewer('0.2.0', '0.3')).toBe(false);
+  });
+
+  it('returns false for equal versions of differing part counts', () => {
+    expect(isNewer('0.3', '0.3.0')).toBe(false);
+    expect(isNewer('0.3.0', '0.3')).toBe(false);
+    expect(isNewer('1', '1.0.0')).toBe(false);
+  });
+
+  it('compares only the first three parts', () => {
+    expect(isNewer('0.3.0.1', '0.3.0')).toBe(false);
+    expect(isNewer('0.3.1.0', '0.3.0.9')).toBe(true);
+  });
+
+  it('returns false for a non-numeric part', () => {
+    expect(isNewer('0.x.0', '0.3.0')).toBe(false);
+  });
 });

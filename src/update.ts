@@ -42,15 +42,20 @@ export function setUpdateReady(version: string): void {
 /**
  * Compare two major.minor.patch versions numerically, so 0.10.0 beats 0.9.0
  * where a string compare would not. Sidra tags releases with exactly three
- * numeric parts; any other form yields NaN, every comparison is then false and
- * the result is "not newer", so a malformed tag never offers an update.
+ * numeric parts, but neither side is guaranteed to carry three: a part past the
+ * end of either version counts as 0, so 1.0 beats 0.3.0 and equals 1.0.0. Parts
+ * beyond the third are ignored. A non-numeric part still yields NaN, every
+ * comparison is then false and the result is "not newer", so a malformed tag
+ * never offers an update.
  */
 export function isNewer(remote: string, local: string): boolean {
   const r = remote.split('.').map(Number);
   const l = local.split('.').map(Number);
   for (let i = 0; i < SEMVER_PARTS; i++) {
-    if (r[i] > l[i]) return true;
-    if (r[i] < l[i]) return false;
+    const remotePart = i < r.length ? r[i] : 0;
+    const localPart = i < l.length ? l[i] : 0;
+    if (remotePart > localPart) return true;
+    if (remotePart < localPart) return false;
   }
   return false;
 }
