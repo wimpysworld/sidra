@@ -26,7 +26,7 @@ vi.mock('../src/tray', () => ({
 }));
 
 vi.mock('../src/theme', () => ({
-  setThemeCssKey: vi.fn(() => { calls.push('setThemeCssKey'); }),
+  notifyDocumentReplacing: vi.fn(() => { calls.push('notifyDocumentReplacing'); }),
 }));
 
 // Returns the persisted service, so a URL built before setMusicService names the old one.
@@ -37,7 +37,7 @@ vi.mock('../src/storefront', () => ({
 import { initServiceSwitch, routeToMusicService, switchService } from '../src/serviceSwitch';
 import { setMusicService } from '../src/config';
 import { rebuildTrayMenu } from '../src/tray';
-import { setThemeCssKey } from '../src/theme';
+import { notifyDocumentReplacing } from '../src/theme';
 import { buildAppleMusicURL } from '../src/storefront';
 
 describe('serviceSwitch', () => {
@@ -57,7 +57,7 @@ describe('serviceSwitch', () => {
       'resetWedgeDetector',
       'setMusicService',
       'rebuildTrayMenu',
-      'setThemeCssKey',
+      'notifyDocumentReplacing',
       'loadURL',
     ]);
   });
@@ -68,9 +68,9 @@ describe('serviceSwitch', () => {
     expect(rebuildTrayMenu).toHaveBeenCalledWith(tray);
   });
 
-  it('clears the tracked inserted-CSS key', () => {
+  it('tells the theme system the document is about to be replaced', () => {
     switchService('classical');
-    expect(setThemeCssKey).toHaveBeenCalledWith(null);
+    expect(notifyDocumentReplacing).toHaveBeenCalledTimes(1);
   });
 
   it('builds the default URL after persisting the service', () => {
@@ -89,7 +89,7 @@ describe('serviceSwitch', () => {
   it('completes the sequence when no tray exists', () => {
     initServiceSwitch({ getTray: () => null, loadURL });
     switchService('classical');
-    expect(calls).toEqual(['resetWedgeDetector', 'setMusicService', 'setThemeCssKey', 'loadURL']);
+    expect(calls).toEqual(['resetWedgeDetector', 'setMusicService', 'notifyDocumentReplacing', 'loadURL']);
     expect(rebuildTrayMenu).not.toHaveBeenCalled();
   });
 
@@ -120,11 +120,11 @@ describe('routeToMusicService', () => {
       'resetWedgeDetector',
       'setMusicService',
       'rebuildTrayMenu',
-      'setThemeCssKey',
+      'notifyDocumentReplacing',
       'loadURL',
     ]);
     expect(setMusicService).toHaveBeenCalledWith('music');
-    expect(setThemeCssKey).toHaveBeenCalledWith(null);
+    expect(notifyDocumentReplacing).toHaveBeenCalledTimes(1);
   });
 
   it('navigates once, to the link rather than the start page', () => {

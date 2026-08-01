@@ -29,9 +29,9 @@ import {
   initThemeCSS,
   injectThemeCss,
   invalidateCustomCssCache,
+  notifyDocumentReplacing,
   resolveTheme,
   setRebuildTrayCallback,
-  setThemeCssKey,
 } from '../src/theme';
 
 describe('theme helpers', () => {
@@ -118,10 +118,41 @@ describe('theme helpers', () => {
     };
   }
 
+  // A fresh copy of src/theme.ts wired to its own harness, for the tests that
+  // reach disableCustomCssCache(). The copy is what keeps the disabled flag,
+  // which nothing switches back on, out of every other test.
+  // failToStart makes fs.watch throw, which is the other route to that call.
+  async function loadThemeWithWatcher(options: { failToStart?: boolean } = {}) {
+    vi.resetModules();
+    const theme = await import('../src/theme');
+    const harness = watcherHarness({ init: theme.initThemeCSS });
+    // After watcherHarness(), so this implementation is the one initThemeCSS calls.
+    if (options.failToStart) {
+      vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
+    }
+    harness.start();
+    return { theme, harness };
+  }
+
   // applyTheme() returns void and the CSS queue is not exported, so draining
   // the microtask queue is the only way to wait for work it enqueued.
   async function flushCssQueue(): Promise<void> {
     for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  }
+
+  // Leave the module tracking an inserted-CSS key, which is the state the tests
+  // below start from. Nothing writes that key from outside the CSS queue, so a
+  // real theme change against the harness window is the only way to install one:
+  // its insertCSS resolves the key and the module records what it returned.
+  // The clear first means the change inserts without a removal, so a key left by
+  // an earlier test cannot put a call on removeInsertedCSS that a count below
+  // would then read as its own. insertCSS is cleared for the same reason.
+  async function trackKey(harness: ReturnType<typeof watcherHarness>, key: string): Promise<void> {
+    notifyDocumentReplacing();
+    harness.insertCSS.mockResolvedValue(key);
+    applyTheme('catppuccin');
+    await flushCssQueue();
+    harness.insertCSS.mockClear();
   }
 
   function throwEnoent(): void {
@@ -214,8 +245,10 @@ describe('theme helpers', () => {
   // covered.
   describe('injectThemeCss', () => {
     beforeEach(() => {
-      // The key outlives the module, so each test starts with none injected.
-      setThemeCssKey(null);
+      // The key outlives the module, so each test starts with none injected. The
+      // clear is queued, and the queue is FIFO, so it lands before anything the
+      // test itself queues.
+      notifyDocumentReplacing();
     });
 
     function fakeContents() {
@@ -259,8 +292,8 @@ describe('theme helpers', () => {
       // aborts the theme change that follows, so the key must not survive here.
       const harness = watcherHarness();
       harness.start();
+      await trackKey(harness, 'stale-key');
       vi.mocked(getTheme).mockReturnValue('apple-music');
-      setThemeCssKey('stale-key');
       const { insertCSS, contents } = fakeContents();
 
       await injectThemeCss(contents);
@@ -370,7 +403,7 @@ describe('theme helpers', () => {
     // injection, leaving a sheet nothing holds the key for.
     const harness = watcherHarness();
     harness.start();
-    setThemeCssKey('live-key');
+    await trackKey(harness, 'live-key');
     let releaseRemoval: () => void = () => { /* replaced below */ };
     harness.removeInsertedCSS.mockReturnValue(new Promise<void>((resolve) => { releaseRemoval = resolve; }));
 
@@ -401,7 +434,7 @@ describe('theme helpers', () => {
     // same removal and no theme would ever reach the page again.
     const harness = watcherHarness();
     harness.start();
-    setThemeCssKey('doomed-key');
+    await trackKey(harness, 'doomed-key');
     harness.removeInsertedCSS.mockRejectedValue(new Error('Failed to remove inserted CSS'));
 
     applyTheme('catppuccin');
@@ -516,46 +549,21 @@ describe('theme helpers', () => {
 
   it('stops caching when the watcher cannot start', async () => {
     // Nothing would clear a cache the watcher never populates events for, so a
-    // failed watcher has to fall back to reading on every call.
-    vi.resetModules();
-    vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
-    const theme = await import('../src/theme');
-    const win = {
-      isDestroyed: vi.fn().mockReturnValue(false),
-      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn(), on: vi.fn() },
-    } as unknown as Parameters<typeof initThemeCSS>[0];
-    theme.initThemeCSS(win);
+    // failed watcher has to fall back to reading on every call. Two reads, two
+    // filesystem calls: the cache is off, not merely cleared.
+    const { theme } = await loadThemeWithWatcher({ failToStart: true });
 
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: blue; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: blue; }');
-  });
-
-  it('reads custom.css on every call once the watcher has failed to start', async () => {
-    // Two reads, two filesystem calls: the cache is off, not merely cleared.
-    vi.resetModules();
-    vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
-    const theme = await import('../src/theme');
-    const win = {
-      isDestroyed: vi.fn().mockReturnValue(false),
-      webContents: { removeInsertedCSS: vi.fn(), insertCSS: vi.fn(), on: vi.fn() },
-    } as unknown as Parameters<typeof initThemeCSS>[0];
-    theme.initThemeCSS(win);
-
-    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
-    expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
   it('drops the warm custom.css cache when the watcher reports an error', async () => {
     // Node closes the watcher on error, so the cache it warmed is now stale
     // with nothing left to clear it.
-    vi.resetModules();
-    const theme = await import('../src/theme');
-    const harness = watcherHarness({ init: theme.initThemeCSS });
-    harness.start();
+    const { theme, harness } = await loadThemeWithWatcher();
 
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
@@ -569,10 +577,7 @@ describe('theme helpers', () => {
   });
 
   it('reads custom.css on every call after a watcher error', async () => {
-    vi.resetModules();
-    const theme = await import('../src/theme');
-    const harness = watcherHarness({ init: theme.initThemeCSS });
-    harness.start();
+    const { theme, harness } = await loadThemeWithWatcher();
 
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
     expect(theme.getThemeCss('custom')).toBe('body { color: red; }');
@@ -595,10 +600,10 @@ describe('theme helpers', () => {
 
   it('removes injected css when custom.css disappears for stored custom theme', async () => {
     const harness = watcherHarness();
+    harness.start();
+    await trackKey(harness, 'stale-theme-css-key');
     vi.mocked(getTheme).mockReturnValue('custom');
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    setThemeCssKey('stale-theme-css-key');
-    harness.start();
     await harness.emit('change');
     expect(harness.removeInsertedCSS).toHaveBeenCalledWith('stale-theme-css-key');
     expect(harness.insertCSS).not.toHaveBeenCalled();
@@ -609,7 +614,7 @@ describe('theme helpers', () => {
     setRebuildTrayCallback(rebuildTray);
     const harness = watcherHarness();
     vi.mocked(getTheme).mockReturnValue('custom');
-    setThemeCssKey(null);
+    notifyDocumentReplacing();
     harness.start();
 
     // Create: the file appears with content.
@@ -633,7 +638,7 @@ describe('theme helpers', () => {
     setRebuildTrayCallback(rebuildTray);
     const harness = watcherHarness();
     vi.mocked(getTheme).mockReturnValue('catppuccin');
-    setThemeCssKey(null);
+    notifyDocumentReplacing();
     harness.start();
 
     // custom.css appears while a bundled theme is active: no CSS work, but the
@@ -650,7 +655,7 @@ describe('theme helpers', () => {
     setRebuildTrayCallback(rebuildTray);
     const harness = watcherHarness({ isDestroyed: true });
     vi.mocked(getTheme).mockReturnValue('custom');
-    setThemeCssKey(null);
+    notifyDocumentReplacing();
     harness.start();
 
     vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');

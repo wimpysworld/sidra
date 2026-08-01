@@ -311,11 +311,23 @@ function initCustomCssWatcher(win: BrowserWindow): void {
 }
 
 /**
- * Set or clear the tracked key. serviceSwitch.ts clears it before its navigation,
- * because the document that key belongs to is about to be replaced.
+ * Told by serviceSwitch.ts that a navigation is about to replace the document, so
+ * the sheet the tracked key names is about to go with it and the next injection
+ * must not remove against that key.
+ *
+ * The clear is queued rather than written straight to the field, because the field
+ * belongs to the chain: an insert already in flight records its own key when it
+ * resolves, and a raw write made before that would be overwritten by it. Queueing
+ * cannot lose the clear either. Work dropped for a stale generation clears the key
+ * on its way out, so both paths through the queue leave nothing tracked, and FIFO
+ * order puts this ahead of the next document's own injection, which is queued from
+ * that document's load.
  */
-export function setThemeCssKey(key: string | null): void {
-  themeCssKey = key;
+export function notifyDocumentReplacing(): void {
+  void enqueueThemeCssOp(() => {
+    themeCssKey = null;
+    return Promise.resolve();
+  });
 }
 
 /** main.ts supplies rebuildTrayMenu here; see the note on rebuildTrayCallback above. */

@@ -6,7 +6,7 @@ import type { Tray } from 'electron';
 import { getMusicService, setMusicService } from './config';
 import type { MusicServiceId } from './musicService';
 import { buildAppleMusicURL } from './storefront';
-import { setThemeCssKey } from './theme';
+import { notifyDocumentReplacing } from './theme';
 import { rebuildTrayMenu } from './tray';
 import { reset as resetWedgeDetector } from './wedgeDetector';
 
@@ -32,9 +32,9 @@ export function switchService(id: MusicServiceId, targetUrl?: string): void {
   setMusicService(id);
   const tray = getTrayCallback?.() ?? null;
   if (tray) rebuildTrayMenu(tray);
-  // Drop the tracked inserted-CSS key. The navigation below replaces the document, so
-  // the next injection must not call removeInsertedCSS() with a key from the old one.
-  setThemeCssKey(null);
+  // The navigation below replaces the document, so the next injection must not call
+  // removeInsertedCSS() with a key from the old one.
+  notifyDocumentReplacing();
   // Resolved after setMusicService, so the default reads the service just persisted.
   const url = targetUrl ?? buildAppleMusicURL();
   loadURLCallback?.(url);
