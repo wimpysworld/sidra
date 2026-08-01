@@ -478,6 +478,9 @@ Full `org.mpris.MediaPlayer2.Player` property and method checklist. All must wor
 | `xesam:album` | `attributes.albumName` |
 | `xesam:artist` | `[attributes.artistName]` (array) |
 | `xesam:genre` | `attributes.genreNames` |
+| `xesam:url` | `getShareUrl()` (`attributes.url` → `/song/{catalogId}` → `/song/{globalId}`) |
+
+Library items never carry `attributes.url`; their `catalogId` is always present, so `getShareUrl()` reconstructs the canonical `/song/{id}` URL. Radio stations and Classical tracks carry neither id, so the field is omitted.
 
 ---
 

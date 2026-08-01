@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
+import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext, getShareUrl } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 import { getServiceByHost } from '../../musicService';
@@ -128,6 +128,7 @@ function buildTrackId(rawId: string): string {
 
 function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
   const trackId = buildTrackId(payload.trackId ?? 'unknown');
+  const trackUrl = getShareUrl(payload);
 
   const metadata: Record<string, InstanceType<typeof Variant>> = {
     'mpris:trackid': new Variant('o', trackId),
@@ -155,8 +156,8 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
     metadata['mpris:artUrl'] = new Variant('s', payload.artworkUrl);
   }
 
-  if (payload.url != null) {
-    metadata['xesam:url'] = new Variant('s', payload.url);
+  if (trackUrl != null) {
+    metadata['xesam:url'] = new Variant('s', trackUrl);
   }
 
   if (payload.genreNames != null && payload.genreNames.length > 0) {

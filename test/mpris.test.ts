@@ -282,6 +282,37 @@ describe('MPRIS metadata', () => {
   });
 });
 
+// MusicKit never populates attributes.url on a library item, so a payload that
+// carries one is the catalogue case and every library track reached MPRIS with
+// no xesam:url at all. getShareUrl() rebuilds it from the playParams ids.
+describe('MPRIS xesam:url fallback', () => {
+  it('rebuilds the song URL from catalogId when the payload carries no url', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: '999', playParams: { catalogId: '999', isLibrary: true, kind: 'song' } });
+
+    expect(iface.Metadata['xesam:url'].value).toBe('https://music.apple.com/song/999');
+  });
+
+  it('rebuilds the song URL from globalId when catalogId is absent too', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'abc', playParams: { globalId: 'abc', kind: 'song' } });
+
+    expect(iface.Metadata['xesam:url'].value).toBe('https://music.apple.com/song/abc');
+  });
+
+  // A radio station has no track to link to, and Classical sends no ids
+  // either. Both must leave the key out rather than name a URL that 404s, and
+  // neither needs a kind guard to get there.
+  it('omits xesam:url when playParams carries neither id', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'ra.123', playParams: { kind: 'radioStation' } });
+    expect(iface.Metadata['xesam:url']).toBeUndefined();
+
+    player.emitNowPlaying({ trackId: '1440857781' });
+    expect(iface.Metadata['xesam:url']).toBeUndefined();
+  });
+});
+
 describe('MPRIS volume', () => {
   beforeEach(() => {
     // 1000 ms property debounce, 2000 ms volume safety timeout.
