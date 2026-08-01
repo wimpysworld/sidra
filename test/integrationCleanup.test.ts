@@ -15,6 +15,7 @@ import { PlaybackState } from '../src/player';
 import type { IntegrationContext } from '../src/player';
 import { FakePlayer } from './mocks/player';
 import { quit } from './mocks/appLifecycle';
+import { setPlatform, restorePlatform } from './mocks/platform';
 
 const SRC_DIR = path.join(__dirname, '..', 'src');
 const INTEGRATIONS_DIR = path.join(SRC_DIR, 'integrations');
@@ -364,14 +365,12 @@ describe('player listener cleanup', () => {
 describe('macos-dock cleanup', () => {
   let player: FakePlayer;
   let setMenu: ReturnType<typeof vi.fn>;
-  let originalPlatform: PropertyDescriptor | undefined;
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.mocked(app.on).mockClear();
 
-    originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
-    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    setPlatform('darwin');
 
     setMenu = vi.fn();
     (app as unknown as { dock: { setMenu: typeof setMenu } }).dock = { setMenu };
@@ -382,7 +381,7 @@ describe('macos-dock cleanup', () => {
   });
 
   afterEach(() => {
-    if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+    restorePlatform();
     delete (app as unknown as { dock?: unknown }).dock;
     vi.useRealTimers();
   });

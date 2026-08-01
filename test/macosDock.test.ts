@@ -12,6 +12,7 @@ import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload } from '../src/player';
 import { init } from '../src/integrations/macos-dock';
 import { FakePlayer } from './mocks/player';
+import { setPlatform, restorePlatform } from './mocks/platform';
 
 const strings = getTrayStrings();
 
@@ -19,17 +20,7 @@ const strings = getTrayStrings();
 // returns { items: template }, so the built menu carries its own template.
 const setMenu = vi.fn<(menu: Electron.Menu) => void>();
 
-let originalPlatform: PropertyDescriptor | undefined;
-
-function setPlatform(platform: string): void {
-  originalPlatform ??= Object.getOwnPropertyDescriptor(process, 'platform');
-  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
-}
-
-function restorePlatform(): void {
-  if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
-  originalPlatform = undefined;
-}
+afterEach(restorePlatform);
 
 /** The template behind the menu most recently handed to the dock. */
 function dockTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -45,7 +36,6 @@ function labels(): Array<string | undefined> {
 
 describe('macos-dock off darwin', () => {
   afterEach(() => {
-    restorePlatform();
     delete (app as unknown as { dock?: unknown }).dock;
   });
 
@@ -85,7 +75,6 @@ describe('macos-dock menu', () => {
   });
 
   afterEach(() => {
-    restorePlatform();
     delete (app as unknown as { dock?: unknown }).dock;
     vi.useRealTimers();
   });

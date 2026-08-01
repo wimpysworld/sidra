@@ -127,7 +127,10 @@ import type { NowPlayingPayload, PlayerEvents } from '../src/player';
 import { applyTheme, hasCustomCss, resolveTheme } from '../src/theme';
 import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from '../src/integrations/lastfm';
 import { FakePlayer } from './mocks/player';
+import { setPlatform, restorePlatform } from './mocks/platform';
 import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type MusicServiceId } from '../src/musicService';
+
+afterEach(restorePlatform);
 
 // The last build is the one that reached the tray: several tests rebuild the
 // menu more than once and assert against the state the final rebuild saw.
@@ -188,19 +191,12 @@ describe('sanitiseLinuxLabel', () => {
 });
 
 describe('createTray - menu template inspection', () => {
-  const originalPlatform = process.platform;
-
   beforeEach(() => {
     vi.mocked(resolveTheme).mockReturnValue('apple-music');
     vi.mocked(hasCustomCss).mockReturnValue(false);
   });
 
-  function setPlatform(platform: string): void {
-    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
-  }
-
   afterEach(() => {
-    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
     vi.mocked(Menu.buildFromTemplate).mockClear();
     vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   });
@@ -1415,19 +1411,9 @@ describe('createTray - menu template inspection', () => {
 });
 
 describe('theme change menu refresh', () => {
-  const originalPlatform = process.platform;
-
-  function setPlatform(platform: string): void {
-    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
-  }
-
   beforeEach(() => {
     vi.mocked(nativeTheme.on).mockClear();
     vi.mocked(Menu.buildFromTemplate).mockClear();
-  });
-
-  afterEach(() => {
-    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
   });
 
   it('rebuilds context menu on theme change on Linux', () => {
@@ -1510,14 +1496,7 @@ describe('theme change menu refresh', () => {
 });
 
 describe('getMenuIcon', () => {
-  const originalPlatform = process.platform;
-
-  function setPlatform(platform: string): void {
-    Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
-  }
-
   afterEach(() => {
-    Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
     vi.mocked(nativeImage.createFromPath).mockClear();
     vi.mocked(nativeImage.createFromNamedImage).mockClear();
   });

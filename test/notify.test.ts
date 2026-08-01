@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Module from 'node:module';
 import type { Notification } from 'electron';
+import { setPlatform, restorePlatform } from './mocks/platform';
 
 interface DbusMessage {
   member?: string;
@@ -28,8 +29,6 @@ const busStub = {
   on: vi.fn<(event: string, listener: BusListener) => void>(),
   call: vi.fn<(msg: DbusMessage) => Promise<DbusMessage | null>>(),
 };
-
-const originalPlatform = process.platform;
 
 /** The answer the stubbed bus gives to the NameHasOwner probe. */
 let probeOwner = false;
@@ -79,7 +78,7 @@ interface Loaded {
  * into the next one.
  */
 async function loadNotify(platform: NodeJS.Platform): Promise<Loaded> {
-  Object.defineProperty(process, 'platform', { value: platform, writable: true, configurable: true });
+  setPlatform(platform);
   vi.resetModules();
   failedListeners.length = 0;
 
@@ -136,7 +135,7 @@ beforeEach(() => {
 
 afterEach(() => {
   moduleApi._load = realLoad;
-  Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true, configurable: true });
+  restorePlatform();
 });
 
 describe('notification gate on Linux', () => {

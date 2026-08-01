@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
 import { nativeImage, nativeTheme } from 'electron';
@@ -8,6 +8,7 @@ import { PlaybackState } from '../src/player';
 import type { IntegrationContext, NowPlayingPayload } from '../src/player';
 import { init, setTaskbarSendCommandCallback } from '../src/integrations/windows-taskbar';
 import { FakePlayer } from './mocks/player';
+import { setPlatform, restorePlatform } from './mocks/platform';
 
 // The real i18n module resolves against the ['en-GB', 'en'] the app mock in
 // test/setup.ts reports, so every expectation reads the record the integration
@@ -32,12 +33,6 @@ const sendCommand = vi.fn<(channel: ReceiveChannel, ...args: unknown[]) => void>
 
 let player: FakePlayer;
 let win: WindowStub;
-
-const originalPlatform = process.platform;
-
-function setPlatform(value: string): void {
-  Object.defineProperty(process, 'platform', { value, writable: true, configurable: true });
-}
 
 /**
  * The two colour modes are separate Windows settings. Every test sets both, so
@@ -96,9 +91,7 @@ beforeEach(() => {
   setTaskbarSendCommandCallback(sendCommand);
 });
 
-afterAll(() => {
-  setPlatform(originalPlatform);
-});
+afterEach(restorePlatform);
 
 describe('windows-taskbar init', () => {
   it('registers no listeners and touches no window off win32', () => {
