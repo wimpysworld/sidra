@@ -18,9 +18,9 @@
      *
      * window.AMWrapper is installed by the preload script. It is normally there
      * before this runs, but the hook is injected into a page it does not
-     * control and cannot assume it. The eager volume send in attachToInstance()
-     * is the most likely thrower, and every send goes through here so no path
-     * can throw on an absent bridge.
+     * control and cannot assume it. The eager volume send in attachVolume() is
+     * the most likely thrower, and every send goes through here so no path can
+     * throw on an absent bridge.
      *
      * @param {string} channel - IPC channel name
      * @param {unknown} [payload] - Channel payload
@@ -52,92 +52,80 @@
     }
 
     /**
-     * Attach event listeners to a MusicKit instance and expose control
-     * methods on window.__sidra.
+     * Clear media session position state for OS media controls.
+     * @returns {void}
+     */
+    function clearPositionState() {
+      const sink = getPositionSink();
+      if (!sink) return;
+
+      try {
+        sink.setPositionState();
+      } catch (_) {
+        // Clearing is best effort; the caller has nothing else to try.
+      }
+    }
+
+    /**
+     * Report explicit media session position state for OS media controls.
      *
-     * Called on initial hook and whenever MusicKit replaces its singleton.
+     * The playbackTimeDidChange listener calls this on every tick and must not
+     * debounce it: music.apple.com writes to the same MediaSession from the
+     * same world, and the repeated call keeps Sidra's value in place. It starts
+     * no debounce timer, so the project rule against debounced sends from that
+     * event still holds.
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
      * @returns {void}
      */
-    function attachToInstance(mk) {
-      // The first statement, claimed before anything below can throw. The
-      // 5-second monitor re-attaches whenever this marker does not match the
-      // live instance, so a throw ahead of the assignment leaves it stale and
-      // the monitor adds a duplicate set of listeners on every cycle. A
-      // part-attached instance is the lesser fault, and attachSafely() logs it.
-      window.__sidraHookedMk = mk;
+    function reportPositionState(mk) {
+      const sink = getPositionSink();
+      if (!sink) return;
 
-      // The previous poll closes over the replaced instance, so a re-hook must
-      // stop it rather than leave two timers reporting different volumes.
-      if (volumePollTimer !== null) {
-        clearInterval(volumePollTimer);
-        volumePollTimer = null;
-      }
-
-      /**
-       * Report explicit media session position state for OS media controls.
-       *
-       * The playbackTimeDidChange listener calls this on every tick and must
-       * not debounce it: music.apple.com writes to the same MediaSession from
-       * the same world, and the repeated call keeps Sidra's value in place. It
-       * starts no debounce timer, so the project rule against debounced sends
-       * from that event still holds.
-       * @returns {void}
-       */
-      function reportPositionState() {
-        const sink = getPositionSink();
-        if (!sink) return;
-
-        // An unresolvable duration or position clears the state rather than
-        // reporting duration: Infinity, because the hook cannot tell genuinely
-        // unbounded media (a radio station) from a duration not yet resolved.
-        let duration;
-        if (Number.isFinite(mk.currentPlaybackDuration) &&
-            mk.currentPlaybackDuration > 0) {
-          duration = mk.currentPlaybackDuration;
-        } else {
-          const durationInMillis = mk.nowPlayingItem?.attributes?.durationInMillis;
-          if (!Number.isFinite(durationInMillis) || durationInMillis <= 0) {
-            clearPositionState();
-            return;
-          }
-          duration = durationInMillis / 1000;
-        }
-
-        const position = mk.currentPlaybackTime;
-        if (!Number.isFinite(position) || position < 0) {
+      // An unresolvable duration or position clears the state rather than
+      // reporting duration: Infinity, because the hook cannot tell genuinely
+      // unbounded media (a radio station) from a duration not yet resolved.
+      let duration;
+      if (Number.isFinite(mk.currentPlaybackDuration) &&
+          mk.currentPlaybackDuration > 0) {
+        duration = mk.currentPlaybackDuration;
+      } else {
+        const durationInMillis = mk.nowPlayingItem?.attributes?.durationInMillis;
+        if (!Number.isFinite(durationInMillis) || durationInMillis <= 0) {
           clearPositionState();
           return;
         }
-
-        try {
-          sink.setPositionState({
-            duration,
-            playbackRate: 1,
-            position: Math.min(position, duration),
-          });
-        } catch (_) {
-          // A value Chromium rejects is not worth failing the listener over;
-          // the next playbackTimeDidChange tick reports again.
-        }
+        duration = durationInMillis / 1000;
       }
 
-      /**
-       * Clear media session position state for OS media controls.
-       * @returns {void}
-       */
-      function clearPositionState() {
-        const sink = getPositionSink();
-        if (!sink) return;
-
-        try {
-          sink.setPositionState();
-        } catch (_) {
-          // Clearing is best effort; the caller has nothing else to try.
-        }
+      const position = mk.currentPlaybackTime;
+      if (!Number.isFinite(position) || position < 0) {
+        clearPositionState();
+        return;
       }
 
+      try {
+        sink.setPositionState({
+          duration,
+          playbackRate: 1,
+          position: Math.min(position, duration),
+        });
+      } catch (_) {
+        // A value Chromium rejects is not worth failing the listener over;
+        // the next playbackTimeDidChange tick reports again.
+      }
+    }
+
+    /**
+     * Register the playback listeners that forward state, metadata, position,
+     * repeat and shuffle to the main process.
+     *
+     * Called once per attach, so a replaced instance receives its own set.
+     *
+     * @param {object} mk - The MusicKit.getInstance() singleton
+     * @returns {void}
+     */
+    function attachPlaybackListeners(mk) {
       /**
        * Forward playback state changes to the main process.
        * @param {{ state: number }} event - MusicKit playbackStateDidChange event
@@ -196,7 +184,7 @@
         sendToMain('playbackTimeDidChange',
           mk.currentPlaybackTime * 1_000_000
         );
-        reportPositionState();
+        reportPositionState(mk);
       });
 
       /** Forward repeat mode changes to the main process. */
@@ -208,7 +196,30 @@
       mk.addEventListener('shuffleModeDidChange', () => {
         sendToMain('shuffleModeDidChange', mk.shuffleMode);
       });
+    }
 
+    /**
+     * Stop the volume poll.
+     *
+     * The poll closes over the instance it was started for, so a re-hook must
+     * stop it rather than leave two timers reporting different volumes.
+     *
+     * @returns {void}
+     */
+    function stopVolumePoll() {
+      if (volumePollTimer === null) return;
+      clearInterval(volumePollTimer);
+      volumePollTimer = null;
+    }
+
+    /**
+     * Report the current volume, then keep reporting it by listener and by
+     * poll. Called once per attach, after stopVolumePoll().
+     *
+     * @param {object} mk - The MusicKit.getInstance() singleton
+     * @returns {void}
+     */
+    function attachVolume(mk) {
       /**
        * Last value sent over the volumeDidChange IPC channel, so the poll
        * below does not re-send a value the listener already reported.
@@ -237,9 +248,38 @@
           sendToMain('volumeDidChange', v);
         }
       }, 250);
+    }
+
+    /**
+     * Attach event listeners to a MusicKit instance and expose control
+     * methods on window.__sidra.
+     *
+     * Called on initial hook and whenever MusicKit replaces its singleton.
+     *
+     * @param {object} mk - The MusicKit.getInstance() singleton
+     * @returns {void}
+     */
+    function attachToInstance(mk) {
+      // The first statement, claimed before anything below can throw. The
+      // 5-second monitor re-attaches whenever this marker does not match the
+      // live instance, so a throw ahead of the assignment leaves it stale and
+      // the monitor adds a duplicate set of listeners on every cycle. A
+      // part-attached instance is the lesser fault, and attachSafely() logs it.
+      window.__sidraHookedMk = mk;
+
+      // Stopping the previous poll comes first, so a throw in either attach
+      // below cannot leave a second timer polling the replaced instance.
+      stopVolumePoll();
+      attachPlaybackListeners(mk);
+      attachVolume(mk);
 
       /**
        * Control methods exposed to the preload script via window.postMessage.
+       *
+       * The last assignment, so a throw in any call above leaves the hook
+       * object absent rather than half-built. The message listener indexes it
+       * defensively for that reason.
+       *
        * @type {SidraHook}
        * @see {SidraHook} in src/types/hook.d.ts
        */
