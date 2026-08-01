@@ -4,6 +4,7 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import log from 'electron-log/main';
 import { errorMessage } from './utils';
 
@@ -107,28 +108,11 @@ async function fetchArtwork(url: string): Promise<string | null> {
       return null;
     }
 
-    const file = fs.createWriteStream(tmpPath);
-
-    await new Promise<void>((resolve, reject) => {
-      file.on('error', (err) => {
-        reject(err);
-      });
-      const readable = Readable.fromWeb(response.body! as import('stream/web').ReadableStream);
-      readable.on('error', (err) => {
-        file.destroy();
-        reject(err);
-      });
-      readable.pipe(file);
-      file.on('finish', () => {
-        file.close((err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
-    });
+    // The cast is unavoidable: net.fetch types its body as the DOM ReadableStream
+    // and Readable.fromWeb takes the stream/web one, which differ on the reader's
+    // ArrayBuffer variance alone
+    const body = response.body as import('stream/web').ReadableStream<Uint8Array>;
+    await pipeline(Readable.fromWeb(body), fs.createWriteStream(tmpPath));
 
     await fsPromises.rename(tmpPath, filepath);
     artworkLog.debug('artwork cached: %s', filepath);
