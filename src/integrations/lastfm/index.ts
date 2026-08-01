@@ -177,6 +177,7 @@ let authInProgress = false;
 let authPollTimer: ReturnType<typeof setTimeout> | null = null;
 let authGeneration = 0;
 let draining = false;
+let trimmedWhileDraining = 0;
 let getWindow: () => BrowserWindow | null = () => null;
 
 /**
@@ -269,18 +270,28 @@ function handleInvalidSession(err: unknown, requestKey: string): boolean {
  * persisted, so it survives the restart that a dropped connection often ends
  * in, and the newest entries win once it is full: an old play is the one the
  * user is least likely to miss.
+ *
+ * A trim made while a drain is in flight is counted, because it takes an entry
+ * off the head that the drain has already submitted and is about to remove
+ * again.
  */
 function queueScrobble(entry: PendingScrobble): void {
-  setPendingScrobbles([...getPendingScrobbles(), entry].slice(-MAX_PENDING_SCROBBLES));
+  const queued = [...getPendingScrobbles(), entry];
+  const trimmed = Math.max(queued.length - MAX_PENDING_SCROBBLES, 0);
+  if (draining) trimmedWhileDraining += trimmed;
+  setPendingScrobbles(queued.slice(trimmed));
 }
 
 /**
- * Removes the batch just submitted. Entries are only ever appended, so the
- * leading `count` are exactly what went out, even when a live scrobble failed
- * and queued itself while the drain was in flight.
+ * Removes the batch just submitted. Entries are only ever appended and only
+ * ever trimmed from the head, so the leading `count` are exactly what went out,
+ * less anything the trim has already taken. Without that adjustment a full
+ * queue loses the play that failed and queued itself mid-drain: the trim drops
+ * an entry the drain had submitted, and removing `count` then reaches past the
+ * batch into the new play.
  */
 function dropSubmitted(count: number): void {
-  setPendingScrobbles(getPendingScrobbles().slice(count));
+  setPendingScrobbles(getPendingScrobbles().slice(Math.max(count - trimmedWhileDraining, 0)));
 }
 
 /**
@@ -298,6 +309,7 @@ function flushPendingScrobbles(sessionKey: string): void {
   if (batch.length === 0) return;
   if (getLastfmSessionKey() !== sessionKey) return;
   draining = true;
+  trimmedWhileDraining = 0;
 
   const params: Record<string, string> = { method: 'track.scrobble', api_key: API_KEY, sk: sessionKey };
   batch.forEach((entry, index) => {

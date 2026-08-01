@@ -656,6 +656,49 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(1);
   });
 
+  it('keeps a play queued while a full queue was draining', async () => {
+    // A previous run left the queue at its cap, so the drain covers every slot
+    // and a play queued while it is in flight has to displace one of them.
+    queue.pending = Array.from({ length: 50 }, (_, i) => ({
+      artist: 'New Order',
+      track: `Track ${i}`,
+      timestamp: 1_700_000_000 + i,
+    }));
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    // The drain is held open, and the live scrobble that lands during it fails
+    // before it reaches Last.fm, which is what puts a play on a full queue.
+    const held: Array<(response: Response) => void> = [];
+    vi.mocked(net.fetch).mockImplementation((_input, init) => {
+      const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
+      if (params.has('artist[0]')) return new Promise<Response>((resolve) => held.push(resolve));
+      if (params.get('method') === 'track.scrobble') return Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'));
+      return Promise.resolve(new Response('{}'));
+    });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+    expect(held).toHaveLength(1);
+
+    // The track reaches its own threshold while the drain is still out.
+    play(player, 210_000);
+    await flush();
+    expect(queue.pending).toHaveLength(50);
+    expect(queue.pending[49].track).toBe('Blue Monday');
+
+    held[0](new Response('{}'));
+    await flush();
+
+    // The drain removes the plays it submitted and nothing else. Last.fm never
+    // saw the one that failed mid-flight, so dropping it would cost a play.
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Blue Monday');
+  });
+
   it('sends no queued play to the account connected after a disconnect', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
