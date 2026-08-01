@@ -189,6 +189,9 @@ clear:
     rm -rf ~/.cache/sidra
     @echo "Sidra data cleared"
 
+# A fast local package, not a release build. The full release set is built by
+# .github/workflows/builder.yml, so a new target belongs there and in
+# package.json build.linux.target, not here.
 # Build a package for the current platform
 package: build
     #!/usr/bin/env bash

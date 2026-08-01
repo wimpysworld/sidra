@@ -158,6 +158,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The Linux list restates package.json build.linux.target minus snap,
+          # which needs the separate root invocation below. Without these flags
+          # this step would build a snap unprivileged and the snap step would
+          # build it again. A new Linux target goes in both places.
           - os: linux
             runner: ubuntu-24.04
             targets: "--linux AppImage deb rpm"
@@ -210,6 +214,8 @@ jobs:
         env:
           EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
           EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+      # Snapcraft host mode needs root, so this cannot join the step above:
+      # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
         if: matrix.os == 'linux'
         run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
