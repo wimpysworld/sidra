@@ -153,7 +153,7 @@ function resetTrayMocks(): void {
   vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   setGetMainWindowCallback(() => null);
   setSwitchServiceCallback(() => {});
-  updateNowPlayingState(null, null, false, 0);
+  updateNowPlayingState({ payload: null, artworkPath: null, isPlaying: false, volume: 0 });
 }
 
 beforeEach(resetTrayMocks);
@@ -467,7 +467,7 @@ describe('createTray - menu template inspection', () => {
     // the first ':' keeps the assertion independent of the toggle states.
     it('asserts the full top-level submenu order', () => {
       setPlatform('linux');
-      updateNowPlayingState(null, null, false, 0);
+      updateNowPlayingState({ payload: null, artworkPath: null, isPlaying: false, volume: 0 });
       vi.mocked(isLastfmConfigured).mockReturnValue(true);
       createTray();
       const parents = getLastTemplate()
@@ -1111,7 +1111,7 @@ describe('createTray - menu template inspection', () => {
     };
 
     function setupNowPlaying(artworkPath: string | null = '/tmp/artwork.png'): void {
-      updateNowPlayingState(nowPlayingPayload, artworkPath, true, 0.75);
+      updateNowPlayingState({ payload: nowPlayingPayload, artworkPath, isPlaying: true, volume: 0.75 });
     }
 
     function createTrayWithNowPlaying(artworkPath: string | null = '/tmp/artwork.png'): ReturnType<typeof createTray> {
@@ -1163,7 +1163,7 @@ describe('createTray - menu template inspection', () => {
       });
 
       it('attaches play icon when paused on Linux', () => {
-        updateNowPlayingState(nowPlayingPayload, '/tmp/artwork.png', false, 0.75);
+        updateNowPlayingState({ payload: nowPlayingPayload, artworkPath: '/tmp/artwork.png', isPlaying: false, volume: 0.75 });
         createTray();
         const template = getLastTemplate();
         const playItem = findItem(template, 'Play');
@@ -1309,7 +1309,7 @@ describe('createTray - menu template inspection', () => {
 
       it('uses record-vinyl icon when releaseDate year is 1981 or earlier', () => {
         const payload = { ...nowPlayingPayload, releaseDate: '1973-09-19' };
-        updateNowPlayingState(payload, '/tmp/artwork.png', true, 0.75);
+        updateNowPlayingState({ payload, artworkPath: '/tmp/artwork.png', isPlaying: true, volume: 0.75 });
         createTray();
         const template = getLastTemplate();
         const albumItem = findItem(template, 'Test Album');
@@ -1324,7 +1324,7 @@ describe('createTray - menu template inspection', () => {
 
       it('uses compact-disc icon when releaseDate year is after 1981', () => {
         const payload = { ...nowPlayingPayload, releaseDate: '1982-01-01' };
-        updateNowPlayingState(payload, '/tmp/artwork.png', true, 0.75);
+        updateNowPlayingState({ payload, artworkPath: '/tmp/artwork.png', isPlaying: true, volume: 0.75 });
         createTray();
         const template = getLastTemplate();
         const albumItem = findItem(template, 'Test Album');
@@ -1336,7 +1336,7 @@ describe('createTray - menu template inspection', () => {
       });
 
       it('uses compact-disc icon when releaseDate is not available', () => {
-        updateNowPlayingState(nowPlayingPayload, '/tmp/artwork.png', true, 0.75);
+        updateNowPlayingState({ payload: nowPlayingPayload, artworkPath: '/tmp/artwork.png', isPlaying: true, volume: 0.75 });
         createTray();
         const template = getLastTemplate();
         const albumItem = findItem(template, 'Test Album');

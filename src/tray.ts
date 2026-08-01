@@ -205,7 +205,11 @@ interface NowPlayingState {
   volume: number;
 }
 
-let nowPlayingState: NowPlayingState | null = null;
+// The single copy of what the Now Playing rows render. It is module scope
+// because the menu builders run outside initTrayStateManager, reached from
+// rebuildTrayMenu and from the tray's own click and theme handlers, so the
+// handlers there update these fields rather than keeping a second copy.
+const nowPlayingState: NowPlayingState = { payload: null, artworkPath: null, isPlaying: false, volume: 1 };
 let applyZoomCallback: ((factor: number) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 let switchServiceCallback: ((serviceId: MusicServiceId) => void) | null = null;
@@ -581,11 +585,10 @@ function buildShareItems(strings: TrayStrings, payload: NowPlayingPayload): Elec
 }
 
 function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Electron.MenuItemConstructorOptions[] {
-  if (!nowPlayingState || !nowPlayingState.payload) {
+  const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
+  if (!payload) {
     return [];
   }
-
-  const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
 
   return [
     ...buildMetadataItems(payload, buildArtworkIcon(artworkPath, isLinux), isLinux),
@@ -665,8 +668,13 @@ export function setSwitchServiceCallback(callback: (serviceId: MusicServiceId) =
   switchServiceCallback = callback;
 }
 
-export function updateNowPlayingState(payload: NowPlayingPayload | null, artworkPath: string | null, isPlaying: boolean, volume: number): void {
-  nowPlayingState = { payload, artworkPath, isPlaying, volume };
+/**
+ * Merges named fields into the rendered Now Playing state. A partial update is
+ * what lets a volume event leave the track and its artwork alone, and the field
+ * names are what stop a caller pairing a track with another one's artwork.
+ */
+export function updateNowPlayingState(update: Partial<NowPlayingState>): void {
+  Object.assign(nowPlayingState, update);
 }
 
 export function rebuildTrayMenu(tray: Tray): void {
@@ -766,45 +774,43 @@ export function createTray(applyZoom?: (factor: number) => void): Tray {
  */
 export function initTrayStateManager(player: Player, tray: Tray): () => void {
   const TRAY_PAUSE_TIMEOUT_MS = 30_000;
-  let currentVolume = 1;
-  let currentPayload: NowPlayingPayload | null = null;
-  let currentArtworkPath: string | null = null;
+  // The track whose artwork is in flight, held only to date the download. The
+  // rendered payload is not it: that one is committed with its own artwork once
+  // the download lands, so nothing can pair a track with another one's image.
+  let pendingPayload: NowPlayingPayload | null = null;
   let previousPlaying = false;
 
+  // Volume is left as it stands: it belongs to the player, not to the track
+  // that has just gone.
   const clearNowPlaying = (): void => {
-    trayLog.debug('tray pause timeout reached, clearing Now Playing');
+    pendingPayload = null;
     updateTrayTooltip(tray, null);
-    currentPayload = null;
-    currentArtworkPath = null;
-    updateNowPlayingState(null, null, false, currentVolume);
+    updateNowPlayingState({ payload: null, artworkPath: null, isPlaying: false });
     scheduleTrayRebuild(tray);
   };
 
-  const trayPauseTimer = createPauseTimer(TRAY_PAUSE_TIMEOUT_MS, clearNowPlaying);
+  const trayPauseTimer = createPauseTimer(TRAY_PAUSE_TIMEOUT_MS, () => {
+    trayLog.debug('tray pause timeout reached, clearing Now Playing');
+    clearNowPlaying();
+  });
 
   const onNowPlayingItemDidChange = async (payload: NowPlayingPayload | null): Promise<void> => {
     trayPauseTimer.cancel();
     if (!payload) {
       trayLog.debug('nowPlayingItemDidChange (tray handler): null payload, clearing state');
-      currentPayload = null;
-      currentArtworkPath = null;
-      updateTrayTooltip(tray, null);
-      updateNowPlayingState(null, null, false, currentVolume);
-      scheduleTrayRebuild(tray);
+      clearNowPlaying();
       return;
     }
     trayLog.debug('nowPlayingItemDidChange (tray handler):', `"${payload.name}"`);
-    currentPayload = payload;
+    pendingPayload = payload;
     updateTrayTooltip(tray, payload);
     let artworkPath: string | null = null;
     if (payload.artworkUrl) {
-      const expectedPayload = payload;
       artworkPath = await downloadArtwork(payload.artworkUrl);
-      if (currentPayload !== expectedPayload) return;
+      if (pendingPayload !== payload) return;
     }
-    currentArtworkPath = artworkPath;
     const { isPlaying } = player.playbackSnapshot();
-    updateNowPlayingState(payload, artworkPath, isPlaying, currentVolume);
+    updateNowPlayingState({ payload, artworkPath, isPlaying });
     scheduleTrayRebuild(tray);
   };
 
@@ -812,11 +818,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     const state = payload?.state ?? 0;
     if (isTerminalPlaybackState(state)) {
       trayPauseTimer.cancel();
-      updateTrayTooltip(tray, null);
-      currentPayload = null;
-      currentArtworkPath = null;
-      updateNowPlayingState(null, null, false, currentVolume);
-      scheduleTrayRebuild(tray);
+      clearNowPlaying();
       return;
     }
     const { isPlaying } = player.playbackSnapshot();
@@ -832,15 +834,14 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     }
     previousPlaying = isPlaying;
 
-    updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
+    updateNowPlayingState({ isPlaying });
     scheduleTrayRebuild(tray);
   };
 
   const onVolumeDidChange = (volume: number | null): void => {
     if (volume == null) return;
-    currentVolume = volume;
     const { isPlaying } = player.playbackSnapshot();
-    updateNowPlayingState(currentPayload, currentArtworkPath, isPlaying, currentVolume);
+    updateNowPlayingState({ volume, isPlaying });
     scheduleTrayRebuild(tray);
   };
 
