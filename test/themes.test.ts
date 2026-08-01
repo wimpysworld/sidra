@@ -1,10 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildThemeCss } from '../src/themeTemplate';
 import { BUNDLED_THEMES, themeLabel } from '../src/palettes';
-
-const styleFixCss = fs.readFileSync(path.join(__dirname, '..', 'assets', 'styleFix.css'), 'utf-8');
 
 function mediaBlock(css: string, query: string): string {
   const start = css.indexOf(`@media (${query})`);
@@ -340,21 +336,5 @@ describe('catppuccin regression against the retired static asset', () => {
     expect(lightCss).toContain('scrollbar-color: #bcc0cc #e6e9ef !important;');
     expect(lightCss).toContain('background: #dce0e8 !important;');
     expect(lightCss).toContain('background-color: #e6e9ef !important;');
-  });
-});
-
-describe('styleFix.css separation', () => {
-  it('keeps scrollbar styling out of styleFix.css', () => {
-    expect(styleFixCss).not.toContain('scrollbar-color');
-    expect(styleFixCss).not.toContain('::-webkit-scrollbar');
-  });
-
-  it('keeps theme footer and prompt styling out of styleFix.css', () => {
-    expect(styleFixCss).not.toContain('[class*="country-banner"]');
-    expect(styleFixCss).not.toContain('[class*="location-banner"]');
-    expect(styleFixCss).not.toContain('[class*="storefront-banner"]');
-    expect(styleFixCss).not.toContain('[class*="country-selector"]');
-    expect(styleFixCss).not.toContain('[data-testid*="country" i]');
-    expect(styleFixCss).not.toContain('[role="dialog"]:has(select):has(button)');
   });
 });

@@ -44,3 +44,19 @@ describe('styleFix.css', () => {
     expect(forbiddenBlocks).toEqual([]);
   });
 });
+
+describe('styleFix.css separation', () => {
+  it('keeps scrollbar styling out of styleFix.css', () => {
+    expect(styleFixCss).not.toContain('scrollbar-color');
+    expect(styleFixCss).not.toContain('::-webkit-scrollbar');
+  });
+
+  it('keeps theme footer and prompt styling out of styleFix.css', () => {
+    expect(styleFixCss).not.toContain('[class*="country-banner"]');
+    expect(styleFixCss).not.toContain('[class*="location-banner"]');
+    expect(styleFixCss).not.toContain('[class*="storefront-banner"]');
+    expect(styleFixCss).not.toContain('[class*="country-selector"]');
+    expect(styleFixCss).not.toContain('[data-testid*="country" i]');
+    expect(styleFixCss).not.toContain('[role="dialog"]:has(select):has(button)');
+  });
+});
