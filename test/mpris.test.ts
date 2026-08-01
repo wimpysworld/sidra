@@ -86,6 +86,14 @@ let emissions: Array<Record<string, unknown>> = [];
 let win: WindowStub;
 let player: FakePlayer;
 
+/** The context every init() call takes, reading the fixtures beforeEach rebuilt. */
+function makeContext(): IntegrationContext {
+  return {
+    player,
+    getMainWindow: () => win as unknown as BrowserWindow,
+  };
+}
+
 /**
  * init() exports the root interface first and the player interface second, so
  * the live MediaPlayer2Player instance is the second argument of the second
@@ -93,11 +101,7 @@ let player: FakePlayer;
  * change.
  */
 function initPlayerInterface(): PlayerInterface {
-  const ctx: IntegrationContext = {
-    player,
-    getMainWindow: () => win as unknown as BrowserWindow,
-  };
-  mpris.init(ctx);
+  mpris.init(makeContext());
   expect(busStub.export).toHaveBeenCalledTimes(2);
   return busStub.export.mock.calls[1][1] as PlayerInterface;
 }
@@ -198,17 +202,6 @@ describe('MPRIS PlaybackStatus mapping', () => {
   // falls through to 'Stopped' with nobody having decided that it should.
   it('covers every declared PlaybackState', () => {
     expect(STATUS_TABLE.map(([state]) => state).sort()).toEqual(Object.values(PlaybackState).sort());
-  });
-
-  // Called out because AGENTS.md names these four: they are momentary, and a
-  // guard that suppressed them would leave MPRIS reporting a state the player
-  // has already left.
-  it('reports the transient states as Stopped', () => {
-    const iface = initPlayerInterface();
-    for (const state of [PlaybackState.Loading, PlaybackState.Seeking, PlaybackState.Waiting, PlaybackState.Stalled]) {
-      player.emitPlaybackState(state);
-      expect(iface.PlaybackStatus).toBe('Stopped');
-    }
   });
 });
 
@@ -455,42 +448,31 @@ describe('MPRIS position', () => {
   });
 });
 
+// dbus-next throws synchronously from sessionBus() when
+// DBUS_SESSION_BUS_ADDRESS is unset and it cannot read the address from the
+// filesystem. init() is called bare inside the did-finish-load handler in
+// main.ts, so an escaping throw takes out every integration after it and the
+// splash screen never closes.
 describe('MPRIS without a session bus', () => {
-  // dbus-next throws synchronously from sessionBus() when
-  // DBUS_SESSION_BUS_ADDRESS is unset and it cannot read the address from the
-  // filesystem. init() is called bare inside the did-finish-load handler in
-  // main.ts, so an escaping throw takes out every integration after it and the
-  // splash screen never closes.
-  it('does not throw when the bus cannot be opened', () => {
+  beforeEach(() => {
     vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
       throw new Error('could not get DISPLAY environment variable');
     });
+  });
 
-    const ctx: IntegrationContext = {
-      player,
-      getMainWindow: () => win as unknown as BrowserWindow,
-    };
-
-    expect(() => mpris.init(ctx)).not.toThrow();
+  it('does not throw when the bus cannot be opened', () => {
+    expect(() => mpris.init(makeContext())).not.toThrow();
   });
 
   it('exports no interfaces when the bus cannot be opened', () => {
-    vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
-      throw new Error('could not get DISPLAY environment variable');
-    });
-
-    mpris.init({ player, getMainWindow: () => win as unknown as BrowserWindow });
+    mpris.init(makeContext());
 
     expect(busStub.export).not.toHaveBeenCalled();
     expect(busStub.requestName).not.toHaveBeenCalled();
   });
 
   it('subscribes to no player events when the bus cannot be opened', () => {
-    vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
-      throw new Error('could not get DISPLAY environment variable');
-    });
-
-    mpris.init({ player, getMainWindow: () => win as unknown as BrowserWindow });
+    mpris.init(makeContext());
 
     // The subscriptions sit after the bus is opened, so a bail-out leaves the
     // player untouched and nothing holds a reference to the dead integration.
