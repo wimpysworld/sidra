@@ -913,14 +913,7 @@ export function init(ctx: IntegrationContext): void {
     ctx.player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     ctx.player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     ctx.player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
-    artist = null;
-    track = null;
-    album = null;
-    durationMs = 0;
-    accumulatedMs = 0;
-    lastResumeAt = null;
-    scrobbled = false;
-    positionReported = false;
+    resetTrack(null);
     previousState = 0;
   });
 }
