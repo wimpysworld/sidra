@@ -3,7 +3,7 @@
  * read or written; nothing else touches the store directly. Each key gets a
  * getter/setter pair, and the schema carries no defaults: a default lives in
  * the getter that needs one, so keys such as storefront can still report
- * "never set" and drive the fallback chain in src/main.ts.
+ * "never set" and drive the fallback chain in src/storefront.ts.
  */
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
