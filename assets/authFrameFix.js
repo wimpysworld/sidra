@@ -10,14 +10,22 @@
   // script is injected with executeJavaScript() and cannot take the query
   // parameters the splash screen uses. AUTH_FIX_TOKEN in src/main.ts is the
   // shared spelling.
-  /** @type {{ css: string, logPrefix: string }} */
+  /** @type {{ css: string, containerSelectors: string[], logPrefix: string }} */
   var CONFIG = __SIDRA_AUTH_FIX__;
 
-  const css = CONFIG.css;
+  // PASSKEY_CONTAINER_SELECTORS in src/main.ts, shared by the two jobs below:
+  // the stylesheet hides a match on sight, and closest() walks up to one from a
+  // matched button. The extras are script-only. A broad class prefix or a bare
+  // [role="group"] is safe for the walk, which starts at a button whose text
+  // named passkey or iPhone, and would hide unrelated form groups in the sheet.
+  const sharedContainers = CONFIG.containerSelectors;
+  const SCRIPT_ONLY_CONTAINERS = ['[class*="passkey" i]', '[class*="iphone" i]', '[role="group"]', 'fieldset'];
+
+  const css = CONFIG.css + '\n' + sharedContainers.join(',\n') + ' {\n  display: none !important;\n}\n';
   const STYLE_ID = 'sidra-auth-fix';
   const TEXT_RE = /(sign in with )?iphone|passkey/i;
   const CAPTION_RE = /requires .{0,30}(ios|iphone|ipad)|(ios|ipados) ?\d+ or later/i;
-  const CONTAINER_SELECTOR = '[class*="passkey" i], [class*="iphone" i], [class*="cross-device" i], [role="group"], fieldset';
+  const CONTAINER_SELECTOR = sharedContainers.concat(SCRIPT_ONLY_CONTAINERS).join(', ');
   const CAPTION_TAGS = 'p, small, span, div';
   const CAPTION_MAX_LEN = 200;
 
