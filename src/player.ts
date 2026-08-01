@@ -157,10 +157,6 @@ export class Player extends TypedEmitter<PlayerEvents> {
   private _positionUs = 0;
   private _state = 0;
 
-  constructor() {
-    super();
-  }
-
   /**
    * Current playback state, for callers that must read it outside an event.
    * The Last.fm scrobble timer is wall-clock, so it re-reads this at submission
@@ -184,12 +180,10 @@ export class Player extends TypedEmitter<PlayerEvents> {
         playerLog.warn('playbackStateDidChange: invalid payload, expected state to be number');
         return;
       }
-    }
-    if (payload != null) {
       this._state = payload.state;
       this._isPlaying = payload.state === PlaybackState.Playing;
     } else {
-      this._state = 0;
+      this._state = PlaybackState.None;
       this._isPlaying = false;
     }
     const stateName = payload != null ? (PLAYBACK_STATES[payload.state] ?? String(payload.state)) : null;
