@@ -4,10 +4,16 @@ import { contextBridge, ipcRenderer } from 'electron';
  * Builds a channel allowlist from a record keyed by the channel union, so the
  * allowlist and the union cannot drift: a missing key and an unknown key are
  * both compile errors. Object.keys() is typed string[], so the cast lives here
- * rather than at the two call sites.
+ * rather than at the two call sites. allows() takes a string because the value
+ * it checks arrives from the main world, where nothing is typed; the predicate
+ * narrows it to C for the caller.
  */
-function channelSet<C extends string>(channels: Record<C, true>): ReadonlySet<C> {
-  return new Set(Object.keys(channels) as C[]);
+function channelSet<C extends string>(
+  channels: Record<C, true>,
+): { all: readonly C[]; allows(value: string): value is C } {
+  const all = Object.keys(channels) as C[];
+  const set = new Set<string>(all);
+  return { all, allows: (value: string): value is C => set.has(value) };
 }
 
 // Channels the renderer is allowed to send to the main process.
@@ -44,7 +50,7 @@ const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
 // access window.__sidra directly - that object lives in the main world, set up
 // by musicKitHook.js. window.postMessage() crosses the isolation boundary;
 // musicKitHook.js listens for these messages and dispatches to __sidra methods.
-for (const channel of RECEIVE_CHANNELS) {
+for (const channel of RECEIVE_CHANNELS.all) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
     window.postMessage({ type: 'sidra:command', channel, args }, window.location.origin);
   });
@@ -57,11 +63,11 @@ for (const channel of RECEIVE_CHANNELS) {
 contextBridge.exposeInMainWorld('AMWrapper', {
   ipcRenderer: {
     send: (channel: string, data: unknown) => {
-      if (!SEND_CHANNELS.has(channel as SendChannel)) {
+      if (!SEND_CHANNELS.allows(channel)) {
         console.warn(`AMWrapper: blocked send on unlisted channel "${channel}"`);
         return;
       }
       ipcRenderer.send(channel, data);
     },
   },
-});
+} satisfies AMWrapperBridge);

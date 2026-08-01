@@ -29,7 +29,7 @@ interface WindowStub {
   setProgressBar: ReturnType<typeof vi.fn<(progress: number) => void>>;
 }
 
-const sendCommand = vi.fn<(channel: string, ...args: unknown[]) => void>();
+const sendCommand = vi.fn<(channel: ReceiveChannel, ...args: unknown[]) => void>();
 
 let player: FakePlayer;
 let win: WindowStub;

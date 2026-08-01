@@ -19,9 +19,9 @@ const TRANSIENT_STATES: ReadonlySet<number> = new Set([
   PlaybackState.Stalled,
 ]);
 
-let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
+let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
 
-export function setTaskbarSendCommandCallback(callback: (channel: string, ...args: unknown[]) => void): void {
+export function setTaskbarSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
   sendCommandCallback = callback;
 }
 
@@ -44,7 +44,7 @@ function setThumbarButtons(win: BrowserWindow, isPlaying: boolean): void {
   const sendCommand = sendCommandCallback;
   const strings = getTrayStrings();
 
-  const entries = [
+  const entries: { tooltip: string; icon: Electron.NativeImage | null; channel: ReceiveChannel }[] = [
     { tooltip: strings.previous, icon: loadIcon('backward-step'), channel: 'player:previous' },
     {
       tooltip: isPlaying ? strings.pause : strings.play,

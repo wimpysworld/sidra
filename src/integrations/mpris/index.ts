@@ -216,7 +216,7 @@ class MediaPlayer2Player extends Interface {
     this._getMainWindow = getMainWindow;
   }
 
-  private _send(channel: string, ...args: unknown[]): void {
+  private _send(channel: ReceiveChannel, ...args: unknown[]): void {
     const win = this._getMainWindow();
     if (win) {
       win.webContents.send(channel, ...args);

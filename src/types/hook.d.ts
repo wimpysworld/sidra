@@ -51,7 +51,7 @@ interface SidraHook {
 /** IPC bridge exposed on window.AMWrapper via contextBridge. */
 interface AMWrapperBridge {
   ipcRenderer: {
-    send(channel: string, data?: unknown): void;
+    send(channel: SendChannel, data?: unknown): void;
   };
 }
 

@@ -39,7 +39,7 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
   lastAdvanceTime = Date.now();
   wedgeLog.warn(`playback stalled, skipping forward (attempt ${skipAttempts}/${MAX_SKIP_ATTEMPTS})`);
 
-  getWin()?.webContents.send('player:next');
+  getWin()?.webContents.send('player:next' satisfies ReceiveChannel);
 }
 
 export function reset(): void {

@@ -10,10 +10,10 @@ const dockLog = log.scope('dock');
 
 const DOCK_PAUSE_TIMEOUT_MS = 30_000;
 
-let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
+let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 
-export function setDockSendCommandCallback(callback: (channel: string, ...args: unknown[]) => void): void {
+export function setDockSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
   sendCommandCallback = callback;
 }
 

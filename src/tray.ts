@@ -156,7 +156,7 @@ interface NowPlayingState {
 }
 
 let nowPlayingState: NowPlayingState | null = null;
-let sendCommandCallback: ((channel: string, ...args: unknown[]) => void) | null = null;
+let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
 let applyZoomCallback: ((factor: number) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 let switchServiceCallback: ((serviceId: MusicServiceId) => void) | null = null;
@@ -669,7 +669,7 @@ export function setApplyZoomCallback(callback: (factor: number) => void): void {
   applyZoomCallback = callback;
 }
 
-export function setSendCommandCallback(callback: (channel: string, ...args: unknown[]) => void): void {
+export function setSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
   sendCommandCallback = callback;
 }
 
