@@ -118,6 +118,12 @@ describe('theme helpers', () => {
     };
   }
 
+  // applyTheme() returns void and the CSS queue is not exported, so draining
+  // the microtask queue is the only way to wait for work it enqueued.
+  async function flushCssQueue(): Promise<void> {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  }
+
   function throwEnoent(): void {
     const enoent: NodeJS.ErrnoException = new Error('ENOENT: no such file or directory');
     enoent.code = 'ENOENT';
@@ -224,12 +230,6 @@ describe('theme helpers', () => {
       const pending = new Promise<string>((resolve) => { release = resolve; });
       const insertCSS = vi.fn().mockReturnValue(pending);
       return { insertCSS, release: (key: string) => { release(key); }, contents: { insertCSS } as unknown as WebContents };
-    }
-
-    // applyTheme() returns void and the CSS queue is not exported, so draining
-    // the microtask queue is the only way to wait for work it enqueued.
-    async function flushCssQueue(): Promise<void> {
-      for (let i = 0; i < 8; i += 1) await Promise.resolve();
     }
 
     it('injects bundled theme CSS while classical is active', async () => {
@@ -344,6 +344,38 @@ describe('theme helpers', () => {
       await injectThemeCss(fresh.contents);
       expect(fresh.insertCSS).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('drops a live theme replacement when the document is replaced mid-removal', async () => {
+    // The removal and the insert are two awaits, so a navigation that commits
+    // between them lands after the pre-flight generation check has passed. The
+    // insert would then reach the new document beside that document's own
+    // injection, leaving a sheet nothing holds the key for.
+    const harness = watcherHarness();
+    harness.start();
+    setThemeCssKey('live-key');
+    let releaseRemoval: () => void = () => { /* replaced below */ };
+    harness.removeInsertedCSS.mockReturnValue(new Promise<void>((resolve) => { releaseRemoval = resolve; }));
+
+    applyTheme('catppuccin');
+    await flushCssQueue();
+    expect(harness.removeInsertedCSS).toHaveBeenCalledWith('live-key');
+    expect(harness.insertCSS).not.toHaveBeenCalled();
+
+    harness.navigate();
+    releaseRemoval();
+    await flushCssQueue();
+
+    expect(harness.insertCSS).not.toHaveBeenCalled();
+
+    // The key belonged to the replaced document, so the next theme change must
+    // reach its insert with no removal attempted.
+    harness.removeInsertedCSS.mockResolvedValue(undefined);
+    applyTheme('nord');
+    await flushCssQueue();
+
+    expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
+    expect(harness.insertCSS).toHaveBeenCalledTimes(1);
   });
 
   it('returns null for apple-music even with populated custom.css', () => {

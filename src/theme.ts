@@ -40,7 +40,18 @@ let themeCssOp: Promise<void> = Promise.resolve();
 // captured value that no longer matches means the document is gone.
 let documentGeneration = 0;
 
-function enqueueThemeCssOp(work: () => Promise<void>): Promise<void> {
+// Every await inside queued work is another point a navigation can commit at,
+// so the pre-flight check below covers only the wait for the queue. Work that
+// awaits must re-check its captured generation afterwards, before it touches
+// the document again or records a key the document no longer holds.
+function documentReplaced(generation: number): boolean {
+  if (generation === documentGeneration) return false;
+  themeCssKey = null;
+  themeLog.debug('Theme CSS operation abandoned: document replaced');
+  return true;
+}
+
+function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise<void> {
   const generation = documentGeneration;
   themeCssOp = themeCssOp
     // The catch sits ahead of the then so a failed operation cannot deadlock
@@ -56,7 +67,7 @@ function enqueueThemeCssOp(work: () => Promise<void>): Promise<void> {
         themeLog.debug('Theme CSS operation skipped: document replaced');
         return;
       }
-      return work();
+      return work(generation);
     });
   return themeCssOp;
 }
@@ -144,7 +155,7 @@ export function getThemeCss(name: ThemeName): string | null {
 // The load replaced the document, so nothing is removed here: any key held belongs
 // to the old document and removeInsertedCSS would reject on it.
 export function injectThemeCss(contents: WebContents): Promise<void> {
-  return enqueueThemeCssOp(async () => {
+  return enqueueThemeCssOp(async (generation) => {
     const theme = resolveTheme();
     if (theme === 'apple-music') {
       themeCssKey = null;
@@ -155,7 +166,11 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
       themeLog.warn(`Theme CSS unavailable: ${theme}`);
       return;
     }
-    themeCssKey = await contents.insertCSS(css);
+    const key = await contents.insertCSS(css);
+    // A key recorded here after the document went would be removed against the
+    // new one, which rejects and takes the theme change behind it down with it.
+    if (documentReplaced(generation)) return;
+    themeCssKey = key;
     themeLog.debug(`Theme CSS injected: ${theme}`);
   });
 }
@@ -167,14 +182,21 @@ export function initThemeCSS(win: BrowserWindow): void {
     documentGeneration += 1;
   });
 
-  applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async () => {
+  applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async (generation) => {
     const css = getThemeCss(name);
     if (css !== null && themeCssKey !== null) {
       await win.webContents.removeInsertedCSS(themeCssKey);
-      themeCssKey = await win.webContents.insertCSS(css);
+      // The removal is awaited, so the new document's own injection may already
+      // have run; inserting now would put a second sheet on it.
+      if (documentReplaced(generation)) return;
+      const key = await win.webContents.insertCSS(css);
+      if (documentReplaced(generation)) return;
+      themeCssKey = key;
       themeLog.debug(`Theme CSS re-injected: ${name}`);
     } else if (css !== null) {
-      themeCssKey = await win.webContents.insertCSS(css);
+      const key = await win.webContents.insertCSS(css);
+      if (documentReplaced(generation)) return;
+      themeCssKey = key;
       themeLog.debug(`Theme CSS injected: ${name}`);
     } else if (themeCssKey !== null) {
       await win.webContents.removeInsertedCSS(themeCssKey);
