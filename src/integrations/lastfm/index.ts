@@ -65,8 +65,10 @@ const SCROBBLE_CAP_MS = 240_000;
 const POSITION_TOLERANCE_MS = 2000;
 
 // 50 is the maximum number of tracks Last.fm accepts in one track.scrobble
-// request, so a single drain always empties the queue and no entry is left
-// behind by a partial submission. Past the cap the oldest play is dropped.
+// request, so it caps both what the queue holds and what one drain submits.
+// Past the cap the oldest play is dropped. A longer queue can still arrive from
+// a hand-edited or older config.json, which is why the drain caps the batch
+// again rather than trusting this one.
 const MAX_PENDING_SCROBBLES = 50;
 
 // Authentication poll: Last.fm has no callback, so poll auth.getSession until the
@@ -332,9 +334,12 @@ function dropSubmitted(count: number): void {
 }
 
 /**
- * Submits the queued plays in one batch. Nothing here is scheduled: the drain
- * rides on a request the user's own playback already triggered, so a failed
- * submission never re-fires on a timer.
+ * Submits the queued plays in one batch, capped at the 50 Last.fm accepts in a
+ * single track.scrobble request. Anything past that stays on the queue and goes
+ * out with the next drain: nothing here is scheduled, so a longer queue clears
+ * over as many requests as the user's own playback triggers. Sending it whole
+ * would be refused, losing the backlog to a final error and resending the same
+ * over-long batch forever when the request never reached Last.fm at all.
  *
  * The session key is passed in by the caller and checked against the stored one
  * for the same reason `handleInvalidSession()` takes it: a drain signed with a
@@ -350,7 +355,7 @@ function flushPendingScrobbles(sessionKey: string): void {
   // reaches `dropSubmitted()`, so it cannot collide with this one, and `null`
   // never matches a generation.
   if (drainGeneration === sessionGeneration) return;
-  const batch = getPendingScrobbles();
+  const batch = getPendingScrobbles().slice(0, MAX_PENDING_SCROBBLES);
   if (batch.length === 0) return;
   if (getLastfmSessionKey() !== sessionKey) return;
   const generation = sessionGeneration;

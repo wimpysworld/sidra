@@ -750,6 +750,45 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(0);
   });
 
+  it('sends at most 50 plays in one request and leaves the surplus queued', async () => {
+    // A hand-edited or older config.json is the only way past the cap, and
+    // Last.fm refuses a request carrying more than 50 tracks. Sending the whole
+    // queue would lose the backlog to a refusal, or resend the same over-long
+    // batch forever when the request never reached Last.fm at all.
+    queue.pending = Array.from({ length: 60 }, (_, i) => ({
+      artist: 'New Order',
+      track: `Track ${i}`,
+      timestamp: 1_700_000_000 + i,
+    }));
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    const submitted = batches();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('track[49]')).toBe('Track 49');
+    expect(submitted[0].has('artist[50]')).toBe(false);
+
+    // The 10 the batch left behind go out with the next request playback
+    // triggers. Nothing here schedules that: one batch per drain.
+    expect(queue.pending).toHaveLength(10);
+    expect(queue.pending[0].track).toBe('Track 50');
+    expect(queue.pending[9].track).toBe('Track 59');
+
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    await flush();
+
+    expect(batches()).toHaveLength(2);
+    expect(batches()[1].get('track[0]')).toBe('Track 50');
+    expect(queue.pending).toHaveLength(0);
+  });
+
   it('holds the newest 50 plays and submits none of them twice', async () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
