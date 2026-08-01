@@ -3,7 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
-import { Player, PlaybackState, getShareUrl, type NowPlayingPayload } from './player';
+import { Player, isTerminalPlaybackState, getShareUrl, type NowPlayingPayload } from './player';
 import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
@@ -810,8 +810,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
 
   const onPlaybackStateDidChange = (payload: { status: boolean; state: number } | null): void => {
     const state = payload?.state ?? 0;
-    if (state === PlaybackState.None || state === PlaybackState.Stopped ||
-        state === PlaybackState.Ended || state === PlaybackState.Completed) {
+    if (isTerminalPlaybackState(state)) {
       trayPauseTimer.cancel();
       updateTrayTooltip(tray, null);
       currentPayload = null;

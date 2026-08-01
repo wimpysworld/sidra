@@ -13,7 +13,7 @@ vi.mock('../src/config', () => ({
   getMusicService: vi.fn(() => state.service),
 }));
 
-import { PlaybackState, Player, getShareUrl, type PlayerEvents } from '../src/player';
+import { PlaybackState, Player, getShareUrl, isTerminalPlaybackState, type PlayerEvents } from '../src/player';
 
 /** The shipped hook, read so the command contract is checked against real source. */
 const HOOK_SOURCE = fs.readFileSync(
@@ -43,6 +43,35 @@ describe('PlaybackState', () => {
 
   it('has exactly 10 states', () => {
     expect(Object.keys(PlaybackState)).toHaveLength(10);
+  });
+});
+
+describe('isTerminalPlaybackState', () => {
+  // Typed against the table, so a state added to src/player.ts without a
+  // verdict here fails tsc rather than passing untested.
+  const TERMINAL_BY_STATE: Record<keyof typeof PlaybackState, boolean> = {
+    None: true,
+    Loading: false,
+    Playing: false,
+    Paused: false,
+    Stopped: true,
+    Ended: true,
+    Seeking: false,
+    Waiting: false,
+    Stalled: false,
+    Completed: true,
+  };
+
+  it.each(Object.entries(TERMINAL_BY_STATE))('%s is %s', (name, terminal) => {
+    expect(isTerminalPlaybackState(PlaybackState[name as keyof typeof PlaybackState])).toBe(terminal);
+  });
+
+  it('covers every declared state', () => {
+    expect(Object.keys(TERMINAL_BY_STATE).sort()).toEqual(Object.keys(PlaybackState).sort());
+  });
+
+  it('rejects a value outside the table', () => {
+    expect(isTerminalPlaybackState(99)).toBe(false);
   });
 });
 

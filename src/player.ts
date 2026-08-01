@@ -69,6 +69,23 @@ export const PlaybackState = {
   Completed: 9,
 } as const;
 
+/**
+ * States that mean nothing is playing. The tray, the macOS dock and the Windows
+ * taskbar all clear their Now Playing view on these, so a state added above must
+ * be classified here or those three views disagree about the same player.
+ * This is not the MPRIS mapping: src/integrations/mpris keeps its own table.
+ */
+const TERMINAL_PLAYBACK_STATES: ReadonlySet<number> = new Set([
+  PlaybackState.None,
+  PlaybackState.Stopped,
+  PlaybackState.Ended,
+  PlaybackState.Completed,
+]);
+
+export function isTerminalPlaybackState(state: number): boolean {
+  return TERMINAL_PLAYBACK_STATES.has(state);
+}
+
 export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
 export interface PlayerEvents {

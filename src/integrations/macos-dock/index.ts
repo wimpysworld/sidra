@@ -1,6 +1,6 @@
 import { app, Menu, ShareMenu } from 'electron';
 import log from 'electron-log/main';
-import { PlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
+import { isTerminalPlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getTrayStrings } from '../../i18n';
 import { truncateMenuLabel } from '../../tray';
 import { createPauseTimer } from '../../pauseTimer';
@@ -108,8 +108,7 @@ export function init(ctx: IntegrationContext): void {
 
   const onPlaybackStateDidChange = (statePayload: PlaybackStatePayload): void => {
     const state = statePayload?.state ?? 0;
-    if (state === PlaybackState.None || state === PlaybackState.Stopped ||
-        state === PlaybackState.Ended || state === PlaybackState.Completed) {
+    if (isTerminalPlaybackState(state)) {
       dockPauseTimer.cancel();
       currentPayload = null;
       clearDockProgressBar();

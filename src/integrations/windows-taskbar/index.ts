@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeImage, nativeTheme } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
-import { PlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
+import { PlaybackState, isTerminalPlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getAssetPath } from '../../paths';
 import { getTrayStrings } from '../../i18n';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
@@ -131,8 +131,7 @@ export function init(ctx: IntegrationContext): void {
     if (!win) return;
 
     const state = statePayload?.state ?? 0;
-    if (state === PlaybackState.None || state === PlaybackState.Stopped ||
-        state === PlaybackState.Ended || state === PlaybackState.Completed) {
+    if (isTerminalPlaybackState(state)) {
       currentPayload = null;
       win.setThumbarButtons([]);
       win.setOverlayIcon(null, '');
