@@ -5,11 +5,8 @@
   "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
   "scripts": {
-    "start": "npm run build && electron .",
     "prebuild": "node scripts/inject-lastfm-credentials.cjs",
     "build": "tsc",
-    "dist": "electron-builder",
-    "watch": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest"
   },
