@@ -92,11 +92,9 @@ async function fetchArtwork(url: string): Promise<string | null> {
   // Download to a temp file and rename, so a half-written file can never be
   // read back as a cache hit
   const tmpPath = filepath + '.' + Date.now() + '.tmp';
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ARTWORK_DOWNLOAD_TIMEOUT_MS);
 
   try {
-    const response = await net.fetch(url, { signal: controller.signal });
+    const response = await net.fetch(url, { signal: AbortSignal.timeout(ARTWORK_DOWNLOAD_TIMEOUT_MS) });
 
     if (!response.ok) {
       artworkLog.warn('download failed, status:', response.status);
@@ -120,8 +118,6 @@ async function fetchArtwork(url: string): Promise<string | null> {
     cleanupTmpFile(tmpPath);
     artworkLog.warn('download error:', errorMessage(error));
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

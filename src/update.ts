@@ -112,16 +112,13 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
   const localVersion = app.getVersion();
   updateLog.debug('checking for updates, current version:', localVersion);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
-
   try {
     const response = await net.fetch(GITHUB_API_URL, {
       headers: {
         'User-Agent': `Sidra/${localVersion}`,
         'Accept': 'application/vnd.github.v3+json',
       },
-      signal: controller.signal,
+      signal: AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -171,7 +168,5 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
     }
   } catch (error: unknown) {
     updateLog.debug('update check failed:', errorMessage(error));
-  } finally {
-    clearTimeout(timeout);
   }
 }

@@ -485,6 +485,10 @@ function flushPendingScrobbles(sessionKey: string): void {
     if (entry.durationSec) params[`duration[${index}]`] = String(entry.durationSec);
   });
 
+  // The timeout is an AbortController and a timer rather than
+  // AbortSignal.timeout(), which Node arms with an internal timer that no test
+  // clock can advance. The cut-off is what stops a hung drain stranding the
+  // queue, so it has to stay observable.
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(), DRAIN_TIMEOUT_MS);
 
