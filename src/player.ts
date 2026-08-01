@@ -79,6 +79,18 @@ export const PlaybackState = {
   Completed: 9,
 } as const;
 
+/**
+ * States where the UI clears its now-playing entry. The tray, the macOS dock
+ * and the Windows taskbar all read this, so a state added here reaches every
+ * one of them.
+ */
+export const STOPPED_STATES: ReadonlySet<number> = new Set([
+  PlaybackState.None,
+  PlaybackState.Stopped,
+  PlaybackState.Ended,
+  PlaybackState.Completed,
+]);
+
 export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
 export interface PlayerEvents {

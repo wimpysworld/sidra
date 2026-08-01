@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeImage, nativeTheme } from 'electron';
 import path from 'path';
 import log from 'electron-log/main';
-import { PlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
+import { PlaybackState, STOPPED_STATES, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getAssetPath } from '../../paths';
 import { getTrayStrings } from '../../i18n';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
@@ -142,8 +142,7 @@ export function init(ctx: IntegrationContext): void {
 
   const onPlaybackStateDidChange = withWindow((target, statePayload: PlaybackStatePayload) => {
     const state = statePayload?.state ?? 0;
-    if (state === PlaybackState.None || state === PlaybackState.Stopped ||
-        state === PlaybackState.Ended || state === PlaybackState.Completed) {
+    if (STOPPED_STATES.has(state)) {
       currentPayload = null;
       clearTaskbar(target);
       return;
