@@ -12,6 +12,18 @@ on:
 
 permissions: {}
 
+env:
+  # Shared by the build upload step and the release publish step, so a new
+  # target is added once instead of in two places.
+  RELEASE_ARTEFACTS: |
+    release/*.AppImage
+    release/*.deb
+    release/*.rpm
+    release/*.snap
+    release/*.dmg
+    release/*.exe
+    release/latest*.yml
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -207,14 +219,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: sidra-${{ matrix.os }}
-          path: |
-            release/*.AppImage
-            release/*.deb
-            release/*.rpm
-            release/*.snap
-            release/*.dmg
-            release/*.exe
-            release/latest*.yml
+          path: ${{ env.RELEASE_ARTEFACTS }}
           retention-days: 7
 
   release:
@@ -243,14 +248,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: |
-            release/*.AppImage
-            release/*.deb
-            release/*.rpm
-            release/*.snap
-            release/*.dmg
-            release/*.exe
-            release/latest*.yml
+          files: ${{ env.RELEASE_ARTEFACTS }}
 
   publish-snap:
     name: Publish Snap 📦
