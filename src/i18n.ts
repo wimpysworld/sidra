@@ -89,13 +89,6 @@ export const VERSION_PREFIX: Record<string, string> = aboutData.VERSION_PREFIX;
 export const COPYRIGHT_SUFFIX: Record<string, string> = aboutData.COPYRIGHT_SUFFIX;
 export const LICENSE_PREFIX: Record<string, string> = aboutData.LICENSE_PREFIX;
 
-// Zoom percentage labels are language-invariant (numeric + symbol)
-const ZOOM_100 = '100%';
-const ZOOM_125 = '125%';
-const ZOOM_150 = '150%';
-const ZOOM_175 = '175%';
-const ZOOM_200 = '200%';
-
 // --- Cached system language list ---
 // Cached because every tray rebuild resolves the whole string set. A system
 // language changed mid-session therefore takes effect on the next launch
@@ -199,54 +192,77 @@ export interface TrayStrings {
   closeToTray: string;
 }
 
+// Every tray label against the record it resolves from. Typed on keyof
+// TrayStrings, so a key added to the interface and left out here fails tsc.
+// The brand name and the zoom steps read the same in every language and are
+// written as en-only records: en is what getLocalizedString falls back to, so
+// one shape covers the whole table.
+const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
+  about: ABOUT_TEXT,
+  quit: QUIT_TEXT,
+  notifications: NOTIFICATIONS_TEXT,
+  discord: DISCORD_TEXT,
+  player: PLAYER_TEXT,
+  lastfmConnect: LASTFM_CONNECT_TEXT,
+  lastfmDisconnect: LASTFM_DISCONNECT_TEXT,
+  startPage: START_PAGE_TEXT,
+  startPageHome: START_PAGE_HOME_TEXT,
+  startPageNew: START_PAGE_NEW_TEXT,
+  startPageRadio: START_PAGE_RADIO_TEXT,
+  startPageAllPlaylists: START_PAGE_ALL_PLAYLISTS_TEXT,
+  startPageBrowse: START_PAGE_BROWSE_TEXT,
+  startPageLibrary: START_PAGE_LIBRARY_TEXT,
+  startPagePlaylists: START_PAGE_PLAYLISTS_TEXT,
+  startPageSearch: START_PAGE_SEARCH_TEXT,
+  startPageLast: START_PAGE_LAST_TEXT,
+  on: ON_TEXT,
+  off: OFF_TEXT,
+  style: STYLE_TEXT,
+  styleAppleMusic: { en: 'Apple Music' },
+  zoom: ZOOM_TEXT,
+  zoom100: { en: '100%' },
+  zoom125: { en: '125%' },
+  zoom150: { en: '150%' },
+  zoom175: { en: '175%' },
+  zoom200: { en: '200%' },
+  previous: PREVIOUS_TEXT,
+  play: PLAY_TEXT,
+  pause: PAUSE_TEXT,
+  notPlaying: NOT_PLAYING_TEXT,
+  next: NEXT_TEXT,
+  volume: VOLUME_TEXT,
+  mute: MUTE_TEXT,
+  share: SHARE_TEXT,
+  hideWindow: HIDE_WINDOW_TEXT,
+  showWindow: SHOW_WINDOW_TEXT,
+  closeToTray: CLOSE_TO_TRAY_TEXT,
+};
+
+// TRAY_TEXT is a Record literal, so excess property checking already rules out
+// a key outside the interface and this list is exactly keyof TrayStrings.
+const TRAY_KEYS = Object.keys(TRAY_TEXT) as (keyof TrayStrings)[];
+
+const NAMED_TRAY_KEYS: ReadonlySet<keyof TrayStrings> = new Set([
+  'about',
+  'hideWindow',
+  'showWindow',
+]);
+
 /**
  * Every tray label in one object, resolved once per menu rebuild. Labels that
  * name the app carry a {name} placeholder rather than the word "Sidra", so a
  * translation cannot hardcode it and the product name stays in package.json.
+ * NAMED_TRAY_KEYS lists them.
  */
 export function getTrayStrings(): TrayStrings {
   const langs = getSystemLanguages();
   const productName: string = getProductInfo().productName;
-  const aboutTemplate = getLocalizedString(ABOUT_TEXT, langs);
-  const about = aboutTemplate.replace('{name}', productName);
-  const quit = getLocalizedString(QUIT_TEXT, langs);
-  const notifications = getLocalizedString(NOTIFICATIONS_TEXT, langs);
-  const discord = getLocalizedString(DISCORD_TEXT, langs);
-  const player = getLocalizedString(PLAYER_TEXT, langs);
-  const lastfmConnect = getLocalizedString(LASTFM_CONNECT_TEXT, langs);
-  const lastfmDisconnect = getLocalizedString(LASTFM_DISCONNECT_TEXT, langs);
-  const startPage = getLocalizedString(START_PAGE_TEXT, langs);
-  const startPageHome = getLocalizedString(START_PAGE_HOME_TEXT, langs);
-  const startPageNew = getLocalizedString(START_PAGE_NEW_TEXT, langs);
-  const startPageRadio = getLocalizedString(START_PAGE_RADIO_TEXT, langs);
-  const startPageAllPlaylists = getLocalizedString(START_PAGE_ALL_PLAYLISTS_TEXT, langs);
-  const startPageBrowse = getLocalizedString(START_PAGE_BROWSE_TEXT, langs);
-  const startPageLibrary = getLocalizedString(START_PAGE_LIBRARY_TEXT, langs);
-  const startPagePlaylists = getLocalizedString(START_PAGE_PLAYLISTS_TEXT, langs);
-  const startPageSearch = getLocalizedString(START_PAGE_SEARCH_TEXT, langs);
-  const startPageLast = getLocalizedString(START_PAGE_LAST_TEXT, langs);
-  const on = getLocalizedString(ON_TEXT, langs);
-  const off = getLocalizedString(OFF_TEXT, langs);
-  const style = getLocalizedString(STYLE_TEXT, langs);
-  const styleAppleMusic = 'Apple Music'; // A brand name, so never translated
-  const zoom = getLocalizedString(ZOOM_TEXT, langs);
-  const zoom100 = ZOOM_100;
-  const zoom125 = ZOOM_125;
-  const zoom150 = ZOOM_150;
-  const zoom175 = ZOOM_175;
-  const zoom200 = ZOOM_200;
-  const previous = getLocalizedString(PREVIOUS_TEXT, langs);
-  const play = getLocalizedString(PLAY_TEXT, langs);
-  const pause = getLocalizedString(PAUSE_TEXT, langs);
-  const notPlaying = getLocalizedString(NOT_PLAYING_TEXT, langs);
-  const next = getLocalizedString(NEXT_TEXT, langs);
-  const volume = getLocalizedString(VOLUME_TEXT, langs);
-  const mute = getLocalizedString(MUTE_TEXT, langs);
-  const share = getLocalizedString(SHARE_TEXT, langs);
-  const hideWindow = getLocalizedString(HIDE_WINDOW_TEXT, langs).replace('{name}', productName);
-  const showWindow = getLocalizedString(SHOW_WINDOW_TEXT, langs).replace('{name}', productName);
-  const closeToTray = getLocalizedString(CLOSE_TO_TRAY_TEXT, langs);
-  return { about, quit, notifications, discord, player, lastfmConnect, lastfmDisconnect, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageBrowse, startPageLibrary, startPagePlaylists, startPageSearch, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, notPlaying, next, volume, mute, share, hideWindow, showWindow, closeToTray };
+  const strings = {} as TrayStrings;
+  for (const key of TRAY_KEYS) {
+    const value = getLocalizedString(TRAY_TEXT[key], langs);
+    strings[key] = NAMED_TRAY_KEYS.has(key) ? value.replace('{name}', productName) : value;
+  }
+  return strings;
 }
 
 export function getLastfmConnectedText(name: string): string {
