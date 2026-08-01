@@ -2,7 +2,6 @@
   /* "Open in Music" CTA — hide just the button and its container, not the wrapper */
   [data-testid="native-cta"],
   [data-testid="native-cta-button"],
-  .web-navigation__native-upsell,
   [class*="native-upsell"] {
     display: none !important;
   }
@@ -20,7 +19,6 @@
   }
 
   /* "Open in Music" upsell banner */
-  .upsell-banner,
   [class*="upsell-banner"] {
     display: none !important;
   }
