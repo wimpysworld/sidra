@@ -20,14 +20,16 @@ function cleanupTmpFile(tmpPath: string): void {
 }
 
 const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const SIZE_REGEX = /^\d+x\d+/;
 
 function artworkCachePath(url: string): string {
   let filename: string;
   try {
     const pathname = new URL(url).pathname;
     const match = pathname.match(UUID_REGEX);
+    const size = (pathname.split('/').pop() ?? '').match(SIZE_REGEX);
     filename = match
-      ? `${match[0]}.jpg`
+      ? `${match[0]}${size ? `-${size[0]}` : ''}.jpg`
       : `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
   } catch {
     filename = `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
@@ -35,11 +37,31 @@ function artworkCachePath(url: string): string {
   return path.join(ARTWORK_CACHE_DIR, filename);
 }
 
-export async function downloadArtwork(url: string): Promise<string | null> {
+const inFlight = new Map<string, Promise<string | null>>();
+
+export function downloadArtwork(url: string): Promise<string | null> {
+  const existing = inFlight.get(url);
+  if (existing) {
+    return existing;
+  }
+
+  // The .finally() is attached before any caller sees the promise, so the entry is
+  // deleted ahead of every continuation and a call made after an await refetches
+  // instead of reusing a settled promise
+  const pending = fetchArtwork(url).finally(() => {
+    inFlight.delete(url);
+  });
+  inFlight.set(url, pending);
+  return pending;
+}
+
+async function fetchArtwork(url: string): Promise<string | null> {
   const filepath = artworkCachePath(url);
 
   if (fs.existsSync(filepath)) {
     artworkLog.debug('cache hit: %s', filepath);
+    const now = new Date();
+    fsPromises.utimes(filepath, now, now).catch(() => {});
     return filepath;
   }
 
