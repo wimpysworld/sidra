@@ -86,12 +86,34 @@ interface LastfmResponse {
 // account's Applications settings looks like. No retry can recover it.
 const INVALID_SESSION_ERROR = 9;
 
+// The Last.fm codes that report the state of the service rather than a
+// judgement on the play: 8 "Operation failed - Most likely the backend service
+// failed. Please try again.", 11 "Service Offline - This service is temporarily
+// offline. Try again later.", 16 "The service is temporarily unavailable,
+// please try again." and 29 "Rate Limit Exceded". None of them means the play
+// was seen and refused, so the play is held exactly as one the network never
+// delivered is. Every other code answers about this play and is final.
+//
+// None of them can be provoked by the contents of a batch either, which is what
+// keeps a held batch from blocking the queue: the condition belongs to the
+// service, and it clears when the service does. See `flushPendingScrobbles()`.
+const RETRIABLE_ERRORS = new Set([8, 11, 16, 29]);
+
 /** An error the Last.fm API reported in its response body, with its code intact. */
 class LastfmApiError extends Error {
   constructor(readonly code: number, message: string) {
     super(message);
     this.name = 'LastfmApiError';
   }
+}
+
+/**
+ * True when the error is Last.fm's final word on the play it was sent. A
+ * temporary service error is not, and neither is a transport failure: callers
+ * hold the play in both cases, so only the API's own codes need separating.
+ */
+function isFinalRefusal(err: unknown): boolean {
+  return err instanceof LastfmApiError && !RETRIABLE_ERRORS.has(err.code);
 }
 
 /**
@@ -352,7 +374,7 @@ function flushPendingScrobbles(sessionKey: string): void {
       // A refusal is as final for a queued play as it is for a live one, so the
       // batch goes whether or not the session survived it. Keeping a batch the
       // API can only refuse would block every later drain behind it forever.
-      if (err instanceof LastfmApiError) {
+      if (isFinalRefusal(err)) {
         if (!handleInvalidSession(err, sessionKey)) {
           lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
         }
@@ -361,8 +383,12 @@ function flushPendingScrobbles(sessionKey: string): void {
         if (generation === sessionGeneration) dropSubmitted(batch.length);
         return;
       }
-      // The API never saw them, so the queue stands and the next successful
-      // request carries it out.
+      // A transport failure, or a service that answered about itself rather
+      // than about these plays. Nothing took them, so the queue stands and the
+      // next successful request carries it out. That cannot wedge: no code here
+      // can be provoked by the batch, so the condition is the service's and it
+      // clears when the service does. Nothing is scheduled either, so the next
+      // attempt waits on a request the user's own playback triggers.
       lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
     })
     .finally(() => {
@@ -464,13 +490,14 @@ function doScrobble(): void {
   // and the remaining time it would wait comes from `accumulatedMs`, which is
   // only folded at pause and so means nothing mid-play.
   //
-  // A transport failure says nothing about the track: Last.fm never saw it. The
-  // play goes on the queue instead, and leaves with the next request playback
-  // triggers. `scrobbled` still stays set, because a queued play counts as
-  // submitted and nothing here re-arms. It is only queued while the account
-  // that listened is still connected: the queue is drained under whichever key
-  // is stored when it goes out, so queuing past a disconnect would hand this
-  // play to the next account.
+  // A transport failure says nothing about the track: Last.fm never saw it. So
+  // does a temporary service error, which answers about the service and leaves
+  // the play unrecorded. The play goes on the queue instead, and leaves with the
+  // next request playback triggers. `scrobbled` still stays set, because a
+  // queued play counts as submitted and nothing here re-arms. It is only queued
+  // while the account that listened is still connected: the queue is drained
+  // under whichever key is stored when it goes out, so queuing past a
+  // disconnect would hand this play to the next account.
   apiCall(params, true)
     .then(() => {
       lastfmLog.info('scrobbled:', `${artist} - ${track}`);
@@ -478,7 +505,7 @@ function doScrobble(): void {
     })
     .catch((err: Error) => {
       if (handleInvalidSession(err, sessionKey)) return;
-      if (err instanceof LastfmApiError) {
+      if (isFinalRefusal(err)) {
         lastfmLog.warn('scrobble failed, not retried:', err.message);
         return;
       }

@@ -468,8 +468,9 @@ describe('revoked session', () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
     lastfm.init({ player });
-    // 16: a temporary error, the case a retry would exist for.
-    refuseScrobbles(16);
+    // 6: invalid parameters, a refusal of this play rather than a report on the
+    // service, so nothing queues it and only a re-arm could submit it again.
+    refuseScrobbles(6);
 
     playPastThreshold(player);
     await flush();
@@ -558,13 +559,100 @@ describe('queued scrobbles', () => {
     const lastfm = await loadLastfm();
     const player = new FakePlayer();
     lastfm.init({ player });
-    // 16: the service is temporarily unavailable, so the session survives, but
-    // Last.fm still answered and the track is spent.
+    // 6: invalid parameters. Last.fm judged this play and refused it, so no
+    // later request can make it land and the track is spent.
+    refuseScrobbles(6);
+
+    playPastThreshold(player);
+    await flush();
+
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('keeps a play a temporary service error never recorded', async () => {
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 16: the service is temporarily unavailable. It answered about itself, not
+    // about the play, so the play is as unrecorded as one the network dropped.
     refuseScrobbles(16);
 
     playPastThreshold(player);
     await flush();
 
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0]).toMatchObject({
+      artist: 'New Order',
+      track: 'Blue Monday',
+      timestamp: Number(START_UNIX),
+    });
+  });
+
+  it('keeps a batch a temporary service error never recorded, and submits it once the service answers', async () => {
+    // A previous run left this behind, so the first request out drains it.
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 11: service offline.
+    refuseScrobbles(11);
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    expect(batches()).toHaveLength(1);
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Ceremony');
+
+    // Nothing re-fires on the failure: the batch waits for the next request the
+    // user's own playback triggers, which is what stops it wedging the queue.
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(batches()).toHaveLength(1);
+
+    // The service comes back and the next now-playing update carries it out.
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    await flush();
+
+    expect(batches()).toHaveLength(2);
+    expect(batches()[1].get('track[0]')).toBe('Ceremony');
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('drops a batch the API refused', async () => {
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 6: invalid parameters. No later drain can make this batch land, so
+    // keeping it would block every play queued behind it forever.
+    refuseScrobbles(6);
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    expect(batches()).toHaveLength(1);
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('drops a batch and disconnects when the API rejects the session key', async () => {
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    refuseScrobbles(9);
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    expect(session.key).toBeNull();
     expect(queue.pending).toHaveLength(0);
   });
 
