@@ -1,43 +1,37 @@
 // test/artwork.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EventEmitter } from 'events';
-import { Readable } from 'stream';
+import { Readable, Writable } from 'stream';
 
-// Mock fs before importing the module under test
-vi.mock('fs', () => ({
-  default: {
-    existsSync: vi.fn(() => false),
-    mkdirSync: vi.fn(),
-    createWriteStream: vi.fn(),
-  },
+// One factory per module, used by the vi.mock below and again by the vi.doMock
+// that re-installs it after each vi.resetModules(). vi.mock is hoisted above the
+// imports, so the factories must be too: vi.hoisted() is the supported way.
+// Each call still builds fresh vi.fn()s, so the two sites stay independent.
+const { fsFactory, fsPromisesFactory } = vi.hoisted(() => ({
+  fsFactory: () => ({
+    default: {
+      existsSync: vi.fn(() => false),
+      mkdirSync: vi.fn(),
+      createWriteStream: vi.fn(),
+    },
+  }),
+  fsPromisesFactory: () => ({
+    default: {
+      rename: vi.fn(() => Promise.resolve()),
+      unlink: vi.fn(() => Promise.resolve()),
+      readdir: vi.fn(() => Promise.resolve([])),
+      stat: vi.fn(() => Promise.resolve({ mtimeMs: Date.now() })),
+      utimes: vi.fn(() => Promise.resolve()),
+    },
+  }),
 }));
 
-// Mock fs/promises before importing the module under test
-vi.mock('fs/promises', () => ({
-  default: {
-    rename: vi.fn(() => Promise.resolve()),
-    unlink: vi.fn(() => Promise.resolve()),
-    readdir: vi.fn(() => Promise.resolve([])),
-    stat: vi.fn(() => Promise.resolve({ mtimeMs: Date.now() })),
-    utimes: vi.fn(() => Promise.resolve()),
-  },
-}));
+// Mock fs and fs/promises before importing the module under test
+vi.mock('fs', fsFactory);
+vi.mock('fs/promises', fsPromisesFactory);
 
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { net } from 'electron';
-
-// Helper: create a mock writable stream (file) that behaves like fs.createWriteStream
-function createMockFile() {
-  const emitter = new EventEmitter();
-  const file = Object.assign(emitter, {
-    close: vi.fn((cb?: (err?: Error | null) => void) => {
-      if (cb) cb(null);
-    }),
-    destroy: vi.fn(),
-  });
-  return file;
-}
 
 // Helper: create a readable stream from a buffer for use as response.body
 function createReadableBody(data: Buffer = Buffer.from('image-data')): ReadableStream<Uint8Array> {
@@ -53,19 +47,25 @@ function createMockResponse(status: number, ok: boolean, body?: ReadableStream<U
   } as unknown as Response;
 }
 
-// Helper: install a write stream mock that emits 'finish' once pipe attaches its listener
-function mockFinishingWriteStream() {
-  const file = createMockFile();
-  const origOn = file.on.bind(file);
-  file.on = vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-    origOn(event, cb);
-    if (event === 'finish') {
-      process.nextTick(() => file.emit('finish'));
-    }
-    return file;
-  }) as typeof file.on;
-  vi.mocked(fs.createWriteStream).mockReturnValue(file as unknown as ReturnType<typeof fs.createWriteStream>);
-  return file;
+// Helper: install a write stream mock that collects the bytes written to it and
+// returns them. The module under test pipes the body with pipeline() from
+// stream/promises, which is left unmocked: it drives a real Writable, so the
+// download resolves only when the whole body has been written and the stream has
+// finished. A fresh Writable per call, because a download after a retry gets its
+// own stream and an already-ended one would reject.
+function mockWriteStream(): Buffer[][] {
+  const files: Buffer[][] = [];
+  vi.mocked(fs.createWriteStream).mockImplementation(() => {
+    const written: Buffer[] = [];
+    files.push(written);
+    return new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        written.push(Buffer.from(chunk));
+        callback();
+      },
+    }) as unknown as ReturnType<typeof fs.createWriteStream>;
+  });
+  return files;
 }
 
 // Helper: a successful fetch with a fresh body per call, so a second fetch cannot
@@ -81,23 +81,8 @@ describe('downloadArtwork', () => {
     vi.resetModules();
 
     // Re-mock fs and fs/promises after resetModules so the fresh import picks them up
-    vi.doMock('fs', () => ({
-      default: {
-        existsSync: vi.fn(() => false),
-        mkdirSync: vi.fn(),
-        createWriteStream: vi.fn(),
-      },
-    }));
-
-    vi.doMock('fs/promises', () => ({
-      default: {
-        rename: vi.fn(() => Promise.resolve()),
-        unlink: vi.fn(() => Promise.resolve()),
-        readdir: vi.fn(() => Promise.resolve([])),
-        stat: vi.fn(() => Promise.resolve({ mtimeMs: Date.now() })),
-        utimes: vi.fn(() => Promise.resolve()),
-      },
-    }));
+    vi.doMock('fs', fsFactory);
+    vi.doMock('fs/promises', fsPromisesFactory);
 
     const mod = await import('../src/artwork');
     downloadArtwork = mod.downloadArtwork;
@@ -112,7 +97,7 @@ describe('downloadArtwork', () => {
   it('returns cached path without downloading when URL matches and file exists', async () => {
     const url = 'https://example.com/art1.jpg';
 
-    mockFinishingWriteStream();
+    mockWriteStream();
     vi.mocked(net.fetch).mockResolvedValue(createMockResponse(200, true));
 
     const firstResult = await downloadArtwork(url);
@@ -132,13 +117,16 @@ describe('downloadArtwork', () => {
   it('resolves with filepath on successful download', async () => {
     const url = 'https://example.com/art2.jpg';
 
-    mockFinishingWriteStream();
-    vi.mocked(net.fetch).mockResolvedValue(createMockResponse(200, true));
+    const files = mockWriteStream();
+    vi.mocked(net.fetch).mockResolvedValue(createMockResponse(200, true, createReadableBody(Buffer.from('image-data'))));
 
     const result = await downloadArtwork(url);
     expect(result).toMatch(/\.jpg$/);
     expect(fs.mkdirSync).toHaveBeenCalled();
     expect(fs.createWriteStream).toHaveBeenCalled();
+    // The whole body reaches the file, so a pipe that resolved early or dropped
+    // the stream would leave truncated artwork renamed onto the cache path.
+    expect(Buffer.concat(files[0]).toString()).toBe('image-data');
     // The download lands on a .tmp path and is renamed onto the cache path, so
     // a half-written file can never be read back as a cache hit.
     const writeCall = vi.mocked(fs.createWriteStream).mock.calls[0][0] as string;
@@ -195,7 +183,7 @@ describe('downloadArtwork', () => {
   it('fetches once for three concurrent calls with the same URL', async () => {
     const url = 'https://example.com/concurrent.jpg';
 
-    mockFinishingWriteStream();
+    const files = mockWriteStream();
     vi.mocked(net.fetch).mockClear();
     mockSuccessfulFetch();
 
@@ -203,6 +191,8 @@ describe('downloadArtwork', () => {
 
     expect(net.fetch).toHaveBeenCalledTimes(1);
     expect(fsPromises.rename).toHaveBeenCalledTimes(1);
+    // One temp file, not three: three callers sharing one promise open one stream
+    expect(files).toHaveLength(1);
     expect(results[0]).toMatch(/\.jpg$/);
     expect(new Set(results).size).toBe(1);
   });
@@ -219,7 +209,7 @@ describe('downloadArtwork', () => {
     expect(net.fetch).toHaveBeenCalledTimes(1);
 
     // The failure is not cached: a later call downloads again
-    mockFinishingWriteStream();
+    mockWriteStream();
     mockSuccessfulFetch();
 
     const retry = await downloadArtwork(url);
