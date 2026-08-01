@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../src/config', () => ({
   getZoomFactor: vi.fn(() => 1.0),
@@ -57,16 +57,8 @@ function createMockBrowserWindow(): MockBrowserWindowInstance {
 // Track the latest mock instance so the constructor function can return it.
 let latestMockInstance: MockBrowserWindowInstance;
 
-// Previous instance used to trigger 'closed' between tests, resetting module state.
-let previousMockInstance: MockBrowserWindowInstance | null = null;
-
 describe('showAboutWindow', () => {
   beforeEach(() => {
-    // Close the previous window so the module-level aboutWindow resets to null
-    if (previousMockInstance?._listeners['closed']?.length) {
-      previousMockInstance._listeners['closed'][0]();
-    }
-
     latestMockInstance = createMockBrowserWindow();
     // BrowserWindow is called with `new`, so the mock must be a constructor function
     vi.mocked(BrowserWindow).mockImplementation(function (this: unknown) {
@@ -74,8 +66,14 @@ describe('showAboutWindow', () => {
     } as unknown as () => BrowserWindow);
     vi.mocked(getZoomFactor).mockReturnValue(1.0);
     vi.mocked(BrowserWindow).mockClear();
+  });
 
-    previousMockInstance = latestMockInstance;
+  // The module holds its window in a module-scoped variable that only the
+  // 'closed' handler clears, so firing that handler is the only reset it has.
+  // The handler closes over module scope, so the window the test finished with
+  // is the one to close.
+  afterEach(() => {
+    latestMockInstance._listeners['closed']?.[0]?.();
   });
 
   it('creates a BrowserWindow with correct options', () => {
@@ -161,8 +159,6 @@ describe('showAboutWindow', () => {
 
     showAboutWindow();
     expect(BrowserWindow).toHaveBeenCalledOnce();
-
-    previousMockInstance = newMockInstance;
   });
 
   it('shows window and sets zoom on ready-to-show', () => {
