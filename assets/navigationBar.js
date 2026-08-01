@@ -36,6 +36,24 @@
     'pointer-events: auto !important',
   ].join('; '));
 
+  /**
+   * Send to the main process, tolerating an absent bridge.
+   *
+   * window.AMWrapper is installed by the preload script. It is normally there
+   * before this runs, but the script is injected into a page it does not
+   * control and cannot assume it. sendToMain() in assets/musicKitHook.js guards
+   * the same bridge for the same reason; an unguarded send here would throw a
+   * TypeError out of a click listener with no catch above it.
+   *
+   * @param {string} channel - IPC channel name
+   * @returns {void}
+   */
+  function sendToMain(channel) {
+    const bridge = window.AMWrapper;
+    if (!bridge || !bridge.ipcRenderer) return;
+    bridge.ipcRenderer.send(channel);
+  }
+
   /** @type {string} */
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -126,7 +144,7 @@
     });
 
     btn.addEventListener('click', function () {
-      window.AMWrapper.ipcRenderer.send(channel);
+      sendToMain(channel);
     });
 
     return btn;
