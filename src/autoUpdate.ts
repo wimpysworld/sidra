@@ -1,9 +1,8 @@
 import { app, dialog, Tray } from 'electron';
 import log from 'electron-log/main';
-import { getAutoUpdateEnabled, getNotificationsEnabled } from './config';
-import { getAutoUpdateStrings, getUpdateStrings } from './i18n';
-import { createNotification } from './notify';
-import { setUpdateReady } from './update';
+import { getAutoUpdateEnabled } from './config';
+import { getAutoUpdateStrings } from './i18n';
+import { setUpdateReady, showUpdateNotification } from './update';
 
 const autoUpdateLog = log.scope('autoUpdate');
 
@@ -85,21 +84,9 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
     setUpdateReady(info.version);
     rebuildMenu(tray);
 
-    if (getNotificationsEnabled()) {
-      const strings = getUpdateStrings();
-      const notification = createNotification({
-        title: strings.updateAvailable.replace('{version}', info.version),
-        body: `Sidra ${info.version}`,
-        silent: true,
-      });
-      if (notification) {
-        notification.on('click', () => {
-          autoUpdater.quitAndInstall();
-        });
-        notification.show();
-        autoUpdateLog.debug('update-downloaded notification shown');
-      }
-    }
+    showUpdateNotification(info.version, 'update-downloaded', () => {
+      autoUpdater.quitAndInstall();
+    });
 
     const autoUpdateStrings = getAutoUpdateStrings();
     const result = await dialog.showMessageBox({

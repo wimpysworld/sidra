@@ -39,6 +39,30 @@ export function setUpdateReady(version: string): void {
   updateLog.info('update ready to install:', version);
 }
 
+/**
+ * Raise the "update available" notification both update paths share. The caller
+ * supplies the click action, because this module opens the release page while
+ * src/autoUpdate.ts installs the download it already has. The label names the
+ * calling path, so one log scope still tells the two apart. Does nothing when
+ * notifications are off or when createNotification() finds nothing to receive
+ * one.
+ */
+export function showUpdateNotification(version: string, label: string, onClick: () => void): void {
+  if (!getNotificationsEnabled()) return;
+
+  const strings = getUpdateStrings();
+  const notification = createNotification({
+    title: strings.updateAvailable.replace('{version}', version),
+    body: `Sidra ${version}`,
+    silent: true,
+  });
+  if (!notification) return;
+
+  notification.on('click', onClick);
+  notification.show();
+  updateLog.debug(`${label} notification shown`);
+}
+
 /** A version part is a run of decimal digits and nothing else. */
 const VERSION_PART = /^[0-9]+$/;
 
@@ -145,26 +169,14 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
       updateInfo = { version: cleanVersion, url: releaseUrl, ready: false };
       rebuildMenu(tray);
 
-      if (getNotificationsEnabled()) {
-        const strings = getUpdateStrings();
-        const notification = createNotification({
-          title: strings.updateAvailable.replace('{version}', cleanVersion),
-          body: `Sidra ${cleanVersion}`,
-          silent: true,
-        });
-        if (notification) {
-          notification.on('click', () => {
-            try {
-              const parsed = new URL(releaseUrl);
-              if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-                shell.openExternal(releaseUrl);
-              }
-            } catch { /* ignore malformed URL */ }
-          });
-          notification.show();
-          updateLog.debug('update notification shown');
-        }
-      }
+      showUpdateNotification(cleanVersion, 'update', () => {
+        try {
+          const parsed = new URL(releaseUrl);
+          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            shell.openExternal(releaseUrl);
+          }
+        } catch { /* ignore malformed URL */ }
+      });
     } else {
       updateLog.debug('up to date:', localVersion);
       rebuildMenu(tray);
