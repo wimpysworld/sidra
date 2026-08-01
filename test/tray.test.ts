@@ -132,6 +132,32 @@ import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type Mu
 
 afterEach(restorePlatform);
 
+/**
+ * Puts every mock and every piece of tray module state the menu reads back to
+ * the state this file builds a menu in. vitest.config.ts turns on neither
+ * `clearMocks` nor `mockReset`, so without a reset of its own a block that
+ * moves one of these values leaves it moved for every block that follows, and
+ * the order of the describes becomes part of the contract.
+ */
+function resetTrayMocks(): void {
+  vi.mocked(getMusicService).mockReturnValue('music');
+  vi.mocked(getClassicalStartPage).mockReturnValue('home');
+  vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
+  vi.mocked(getLastfmEnabled).mockReturnValue(false);
+  vi.mocked(getLastfmSessionKey).mockReturnValue(null);
+  vi.mocked(getLastfmUsername).mockReturnValue(null);
+  vi.mocked(isLastfmConfigured).mockReturnValue(false);
+  vi.mocked(resolveTheme).mockReturnValue('apple-music');
+  vi.mocked(hasCustomCss).mockReturnValue(false);
+  vi.mocked(getUpdateInfo).mockReturnValue(null);
+  vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
+  setGetMainWindowCallback(() => null);
+  setSwitchServiceCallback(() => {});
+  updateNowPlayingState(null, null, false, 0);
+}
+
+beforeEach(resetTrayMocks);
+
 // The last build is the one that reached the tray: several tests rebuild the
 // menu more than once and assert against the state the final rebuild saw.
 function getLastTemplate(): Electron.MenuItemConstructorOptions[] {
@@ -191,14 +217,8 @@ describe('sanitiseLinuxLabel', () => {
 });
 
 describe('createTray - menu template inspection', () => {
-  beforeEach(() => {
-    vi.mocked(resolveTheme).mockReturnValue('apple-music');
-    vi.mocked(hasCustomCss).mockReturnValue(false);
-  });
-
   afterEach(() => {
     vi.mocked(Menu.buildFromTemplate).mockClear();
-    vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   });
 
   it('calls Menu.buildFromTemplate and captures the template', () => {
@@ -410,10 +430,6 @@ describe('createTray - menu template inspection', () => {
   });
 
   describe('menu structure', () => {
-    afterEach(() => {
-      vi.mocked(isLastfmConfigured).mockReturnValue(false);
-    });
-
     it('includes separator before Quit', () => {
       setPlatform('linux');
       createTray();
@@ -473,9 +489,6 @@ describe('createTray - menu template inspection', () => {
   describe('Player submenu', () => {
     beforeEach(() => {
       setPlatform('linux');
-      vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
     });
 
     it('Player submenu parent is present in the template', () => {
@@ -546,19 +559,9 @@ describe('createTray - menu template inspection', () => {
 
     beforeEach(() => {
       setPlatform('linux');
-      vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
       vi.mocked(setMusicService).mockClear();
       onSwitch.mockClear();
       setSwitchServiceCallback(onSwitch);
-    });
-
-    // Mocks are not reset between tests, so hand back the state the rest of the
-    // file builds the menu in.
-    afterEach(() => {
-      setSwitchServiceCallback(() => {});
-      vi.mocked(getMusicService).mockReturnValue('music');
     });
 
     function playerSubmenu(): Electron.MenuItemConstructorOptions[] {
@@ -598,16 +601,6 @@ describe('createTray - menu template inspection', () => {
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue(UNREGISTERED_SERVICE_ID);
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
-    });
-
-    // Mocks are not reset between tests, so hand back the state the rest of the
-    // file builds the menu in.
-    afterEach(() => {
-      vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
     });
 
     it('builds a menu rather than leaving the tray without one', () => {
@@ -634,9 +627,6 @@ describe('createTray - menu template inspection', () => {
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue('classical');
-      vi.mocked(getClassicalStartPage).mockReturnValue('home');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
     });
 
     it('Start Page submenu shows classical pages when classical is active', () => {
@@ -668,15 +658,6 @@ describe('createTray - menu template inspection', () => {
   describe('Start Page submenu covers the registry', () => {
     beforeEach(() => {
       setPlatform('linux');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
-    });
-
-    // Mocks are not reset between tests, so hand back the state the rest of the
-    // file builds the menu in.
-    afterEach(() => {
-      vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(getClassicalStartPage).mockReturnValue('home');
     });
 
     function startPageSubmenu(): Electron.MenuItemConstructorOptions[] {
@@ -713,16 +694,8 @@ describe('createTray - menu template inspection', () => {
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue('classical');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
       vi.mocked(setTheme).mockClear();
       vi.mocked(applyTheme).mockClear();
-    });
-
-    // Mocks are not reset between tests, so hand back the state the rest of the
-    // file builds the menu in.
-    afterEach(() => {
-      vi.mocked(getMusicService).mockReturnValue('music');
     });
 
     function styleItemFor(service: MusicServiceId): Electron.MenuItemConstructorOptions {
@@ -765,15 +738,6 @@ describe('createTray - menu template inspection', () => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue('classical');
       vi.mocked(resolveTheme).mockReturnValue('dracula');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
-    });
-
-    // Mocks are not reset between tests, so hand back the state the rest of the
-    // file builds the menu in.
-    afterEach(() => {
-      vi.mocked(getMusicService).mockReturnValue('music');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
     });
 
     function tickedLabels(): (string | undefined)[] {
@@ -828,8 +792,6 @@ describe('createTray - menu template inspection', () => {
   describe('style submenu', () => {
     beforeEach(() => {
       setPlatform('linux');
-      vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
       vi.mocked(setTheme).mockClear();
       vi.mocked(applyTheme).mockClear();
     });
@@ -887,15 +849,6 @@ describe('createTray - menu template inspection', () => {
       vi.mocked(startLastfmAuth).mockClear();
       vi.mocked(disconnectLastfm).mockClear();
       vi.mocked(setLastfmEnabled).mockClear();
-    });
-
-    // The rest of the file runs with no credentials, which is the state the
-    // menu is built in everywhere else.
-    afterEach(() => {
-      vi.mocked(isLastfmConfigured).mockReturnValue(false);
-      vi.mocked(getLastfmSessionKey).mockReturnValue(null);
-      vi.mocked(getLastfmUsername).mockReturnValue(null);
-      vi.mocked(getLastfmEnabled).mockReturnValue(false);
     });
 
     /** Puts the config mocks in the state left by a completed auth flow. */
@@ -964,11 +917,6 @@ describe('createTray - menu template inspection', () => {
       mockWin = { isVisible: vi.fn(() => true), show: vi.fn(), hide: vi.fn(), focus: vi.fn() };
       setGetMainWindowCallback(() => mockWin as unknown as BrowserWindow);
       vi.mocked(getCloseToTrayEnabled).mockReturnValue(true);
-    });
-
-    afterEach(() => {
-      setGetMainWindowCallback(() => null);
-      vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
     });
 
     it('shows Hide Sidra when window is visible', () => {
@@ -1085,10 +1033,6 @@ describe('createTray - menu template inspection', () => {
   });
 
   describe('update menu item icons', () => {
-    afterEach(() => {
-      vi.mocked(getUpdateInfo).mockReturnValue(null);
-    });
-
     it('attaches update-ready icon on Linux when update is ready', () => {
       setPlatform('linux');
       Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
@@ -1175,10 +1119,6 @@ describe('createTray - menu template inspection', () => {
       const tray = createTray();
       return tray;
     }
-
-    afterEach(() => {
-      updateNowPlayingState(null, null, false, 0);
-    });
 
     describe('Linux Now Playing icons', () => {
       beforeEach(() => {
@@ -1658,8 +1598,6 @@ describe('initTrayStateManager', () => {
     vi.mocked(Menu.buildFromTemplate).mockClear();
     vi.mocked(downloadArtwork).mockReset();
     vi.mocked(downloadArtwork).mockResolvedValue('/tmp/downloaded-artwork.png');
-    vi.mocked(resolveTheme).mockReturnValue('apple-music');
-    vi.mocked(hasCustomCss).mockReturnValue(false);
   });
 
   afterEach(() => {
