@@ -1,10 +1,13 @@
 // Covers the storefront fallback chain buildAppleMusicURL() resolves against:
-// the persisted code first, then the one derived from the system locale.
-// test/storefront.test.ts covers the same builder with a storefront always set.
+// the persisted code first, then the one derived from the system locale. The
+// language cases here are the ones where the built URL carries no query of its
+// own, so ?l= is the first parameter.
+// test/storefront.test.ts covers every start page and every last-page path with
+// a storefront always set, and owns extractStorefrontFromURL.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import './mocks/storefront-deps';
 
-import { extractStorefrontFromURL, buildAppleMusicURL } from '../src/storefront';
+import { buildAppleMusicURL } from '../src/storefront';
 import { getStorefront, getLanguage, getStartPage, getLastPageUrl } from '../src/config';
 import { getStorefront as getLocaleStorefront } from '../src/i18n';
 
@@ -13,38 +16,6 @@ const mockedGetLanguage = vi.mocked(getLanguage);
 const mockedGetStartPage = vi.mocked(getStartPage);
 const mockedGetLastPageUrl = vi.mocked(getLastPageUrl);
 const mockedGetLocaleStorefront = vi.mocked(getLocaleStorefront);
-
-describe('extractStorefrontFromURL', () => {
-  it('extracts storefront and language from a valid URL', () => {
-    const result = extractStorefrontFromURL('https://music.apple.com/gb/album/foo?l=en-GB');
-    expect(result).toEqual({ storefront: 'gb', language: 'en-GB' });
-  });
-
-  it('returns null language when no ?l= parameter', () => {
-    const result = extractStorefrontFromURL('https://music.apple.com/us/new');
-    expect(result).toEqual({ storefront: 'us', language: null });
-  });
-
-  it('rejects non-Apple Music hostnames', () => {
-    expect(extractStorefrontFromURL('https://example.com/gb/new')).toBeNull();
-  });
-
-  it('rejects uppercase storefront codes', () => {
-    expect(extractStorefrontFromURL('https://music.apple.com/GB/new')).toBeNull();
-  });
-
-  it('rejects three-letter codes', () => {
-    expect(extractStorefrontFromURL('https://music.apple.com/gbr/new')).toBeNull();
-  });
-
-  it('rejects empty path', () => {
-    expect(extractStorefrontFromURL('https://music.apple.com/')).toBeNull();
-  });
-
-  it('returns null for malformed URLs', () => {
-    expect(extractStorefrontFromURL('not-a-url')).toBeNull();
-  });
-});
 
 describe('buildAppleMusicURL', () => {
   beforeEach(() => {
@@ -88,51 +59,5 @@ describe('buildAppleMusicURL', () => {
     mockedGetLanguage.mockReturnValue(null);
     const url = buildAppleMusicURL();
     expect(url).not.toContain('?l=');
-  });
-
-  it('constructs correct URL for home start page', () => {
-    mockedGetStorefront.mockReturnValue('us');
-    mockedGetStartPage.mockReturnValue('home');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/home');
-  });
-
-  it('constructs correct URL for radio start page', () => {
-    mockedGetStorefront.mockReturnValue('us');
-    mockedGetStartPage.mockReturnValue('radio');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/radio');
-  });
-
-  it('constructs correct URL for all-playlists start page', () => {
-    mockedGetStorefront.mockReturnValue('us');
-    mockedGetStartPage.mockReturnValue('all-playlists');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/library/all-playlists/');
-  });
-
-  it('uses last page URL when startPage is last and path exists', () => {
-    mockedGetStorefront.mockReturnValue('gb');
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue('album/some-album/12345');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/gb/album/some-album/12345');
-  });
-
-  it('uses last page URL with language parameter', () => {
-    mockedGetStorefront.mockReturnValue('gb');
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue('album/some-album/12345');
-    mockedGetLanguage.mockReturnValue('en-GB');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/gb/album/some-album/12345?l=en-GB');
-  });
-
-  it('falls back from last to new when no stored path exists', () => {
-    mockedGetStorefront.mockReturnValue('us');
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue(undefined);
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/new');
   });
 });

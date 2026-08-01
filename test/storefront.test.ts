@@ -3,6 +3,7 @@ import './mocks/storefront-deps';
 
 import { handleStorefrontNavigation, buildAppleMusicURL, buildItmsRouteURL, extractStorefrontFromURL, handleLastPageNavigation, type ItmsRouteToken } from '../src/storefront';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getMusicService, getStartPage, getLastPageUrl, getClassicalStartPage, getClassicalLastPageUrl, setLastPageUrl, setClassicalLastPageUrl } from '../src/config';
+import { getStorefront as getLocaleStorefront } from '../src/i18n';
 import { MUSIC_SERVICES, type ClassicalStartPageId } from '../src/musicService';
 
 const mockedGetStorefront = vi.mocked(getStorefront);
@@ -16,6 +17,7 @@ const mockedGetClassicalStartPage = vi.mocked(getClassicalStartPage);
 const mockedGetClassicalLastPageUrl = vi.mocked(getClassicalLastPageUrl);
 const mockedSetLastPageUrl = vi.mocked(setLastPageUrl);
 const mockedSetClassicalLastPageUrl = vi.mocked(setClassicalLastPageUrl);
+const mockedGetLocaleStorefront = vi.mocked(getLocaleStorefront);
 
 describe('handleStorefrontNavigation', () => {
   beforeEach(() => {
@@ -95,9 +97,18 @@ describe('extractStorefrontFromURL', () => {
     expect(result!.storefront).toBe('gb');
   });
 
-  it('returns null for classical URL with no path segments', () => {
+  it('returns null for a URL with no path segments', () => {
     expect(extractStorefrontFromURL('https://classical.music.apple.com/gb')).not.toBeNull();
     expect(extractStorefrontFromURL('https://classical.music.apple.com/')).toBeNull();
+    expect(extractStorefrontFromURL('https://music.apple.com/')).toBeNull();
+  });
+
+  it('returns null for an uppercase storefront code', () => {
+    expect(extractStorefrontFromURL('https://music.apple.com/GB/new')).toBeNull();
+  });
+
+  it('returns null for a three-letter first segment', () => {
+    expect(extractStorefrontFromURL('https://music.apple.com/gbr/new')).toBeNull();
   });
 
   it('returns null for an unknown host', () => {
@@ -187,18 +198,6 @@ describe('buildAppleMusicURL - classical service', () => {
     mockedGetLanguage.mockReturnValue(null);
   });
 
-  it('builds classical home URL', () => {
-    mockedGetClassicalStartPage.mockReturnValue('home');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb');
-  });
-
-  it('builds classical browse URL', () => {
-    mockedGetClassicalStartPage.mockReturnValue('browse');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb/browse/catalog');
-  });
-
   it('falls back to home when a removed library start page is still persisted', () => {
     // Classical has no library route on the web, so the type no longer admits the id.
     // A store written by an older build still holds it, and it must resolve to home
@@ -224,18 +223,6 @@ describe('buildAppleMusicURL - classical service', () => {
       expect(url).toBe(expected[id]);
       expect(new URL(url).pathname.split('/').filter(Boolean)).not.toContain('library');
     }
-  });
-
-  it('builds classical playlists URL', () => {
-    mockedGetClassicalStartPage.mockReturnValue('playlists');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb/browse/playlists');
-  });
-
-  it('builds classical search URL', () => {
-    mockedGetClassicalStartPage.mockReturnValue('search');
-    const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb/search');
   });
 
   it('builds classical last URL when stored path exists', () => {
@@ -299,6 +286,17 @@ describe('buildItmsRouteURL', () => {
     vi.clearAllMocks();
     mockedGetStorefront.mockReturnValue('gb');
     mockedGetLanguage.mockReturnValue(null);
+  });
+
+  it('appends ?l= when a language is set', () => {
+    mockedGetLanguage.mockReturnValue('en-GB');
+    expect(buildItmsRouteURL('library')).toBe('https://music.apple.com/gb/library?l=en-GB');
+  });
+
+  it('falls back to the locale storefront when none is persisted', () => {
+    mockedGetStorefront.mockReturnValue(undefined);
+    mockedGetLocaleStorefront.mockReturnValue('de');
+    expect(buildItmsRouteURL('browse')).toBe('https://music.apple.com/de/browse');
   });
 
   // itms:// is pinned to the music host and ITMS_ROUTE_PATHS holds music-only paths,

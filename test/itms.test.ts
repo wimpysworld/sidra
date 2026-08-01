@@ -1,15 +1,10 @@
 // test/itms.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import './mocks/storefront-deps';
+// Covers the pure itms:// parser only. buildItmsRouteURL, which turns a route
+// token into a URL, belongs to test/storefront.test.ts along with the rest of
+// that module.
+import { describe, it, expect } from 'vitest';
 
 import { transformItmsUrl, extractItmsUrlFromArgv, type ItmsRouteToken } from '../src/itms';
-import { buildItmsRouteURL } from '../src/storefront';
-import { getStorefront, getLanguage } from '../src/config';
-import { getStorefront as getLocaleStorefront } from '../src/i18n';
-
-const mockedGetStorefront = vi.mocked(getStorefront);
-const mockedGetLanguage = vi.mocked(getLanguage);
-const mockedGetLocaleStorefront = vi.mocked(getLocaleStorefront);
 
 describe('transformItmsUrl', () => {
   it('rebuilds catalogue album URL as https and strips app=music', () => {
@@ -118,35 +113,5 @@ describe('extractItmsUrlFromArgv', () => {
       'itms://music.apple.com/deeplink?p=browse',
     ];
     expect(extractItmsUrlFromArgv(argv)).toEqual({ kind: 'route', token: 'browse' });
-  });
-});
-
-describe('buildItmsRouteURL', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockedGetStorefront.mockReturnValue('gb');
-    mockedGetLanguage.mockReturnValue(undefined);
-    mockedGetLocaleStorefront.mockReturnValue('us');
-  });
-
-  it.each<[ItmsRouteToken, string]>([
-    ['library', 'https://music.apple.com/gb/library'],
-    ['browse', 'https://music.apple.com/gb/browse'],
-    ['radio', 'https://music.apple.com/gb/radio'],
-    ['listenNow', 'https://music.apple.com/gb/listen-now'],
-    ['subscribe', 'https://music.apple.com/gb/subscribe'],
-  ])('maps token %s to %s with persisted storefront gb', (token, expected) => {
-    expect(buildItmsRouteURL(token)).toBe(expected);
-  });
-
-  it('appends ?l= when language is set', () => {
-    mockedGetLanguage.mockReturnValue('en-GB');
-    expect(buildItmsRouteURL('library')).toBe('https://music.apple.com/gb/library?l=en-GB');
-  });
-
-  it('falls back to getLocaleStorefront when no persisted storefront', () => {
-    mockedGetStorefront.mockReturnValue(undefined);
-    mockedGetLocaleStorefront.mockReturnValue('de');
-    expect(buildItmsRouteURL('browse')).toBe('https://music.apple.com/de/browse');
   });
 });
