@@ -16,6 +16,7 @@ const {
 const { Variant } = require('@holusion/dbus-next');
 
 const VOLUME_ECHO_TOLERANCE = 0.01;
+const MAX_PENDING_VOLUMES = 8;
 const MS_TO_US = 1000;
 
 const mprisLog = log.scope('mpris');
@@ -133,8 +134,9 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
   };
 
   if (payload.durationInMillis != null) {
-    // Convert milliseconds to microseconds (int64)
-    metadata['mpris:length'] = new Variant('x', payload.durationInMillis * MS_TO_US);
+    // Convert milliseconds to microseconds (int64); truncated because the 'x'
+    // marshaller throws on a fractional value
+    metadata['mpris:length'] = new Variant('x', Math.trunc(payload.durationInMillis * MS_TO_US));
   }
 
   if (payload.name != null) {
@@ -201,7 +203,7 @@ class MediaPlayer2Player extends Interface {
 
   // Volume suppression state - prevents feedback loops when MPRIS sets volume
   private readonly _volumeSafetyMs = 2000; // safety timeout to prevent permanent suppression
-  private _pendingVolume: number | null = null;
+  private _pendingVolumes: number[] = [];
   private _volumeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Debounce timer for property change emissions
@@ -248,7 +250,7 @@ class MediaPlayer2Player extends Interface {
     let status: string;
     if (payload.state === PlaybackState.Playing) {
       status = 'Playing';
-    } else if (payload.state === PlaybackState.Paused || payload.state === PlaybackState.Stopped) {
+    } else if (payload.state === PlaybackState.Paused) {
       status = 'Paused';
     } else {
       status = 'Stopped';
@@ -330,9 +332,14 @@ class MediaPlayer2Player extends Interface {
   updateVolume(payload: number | null): void {
     if (payload == null) return;
 
-    if (this._pendingVolume !== null && Math.abs(payload - this._pendingVolume) < VOLUME_ECHO_TOLERANCE) {
-      this._pendingVolume = null;
-      if (this._volumeSafetyTimer) {
+    // A drag sets several values inside one echo round trip, so the echo is
+    // matched against every value still pending, not only the newest. Echoes
+    // arrive in order, so a match also discards the older entries: those sets
+    // were overtaken, and keeping them would suppress a later in-app change.
+    const matched = this._pendingVolumes.findIndex((pending) => Math.abs(payload - pending) < VOLUME_ECHO_TOLERANCE);
+    if (matched !== -1) {
+      this._pendingVolumes.splice(0, matched + 1);
+      if (this._pendingVolumes.length === 0 && this._volumeSafetyTimer) {
         clearTimeout(this._volumeSafetyTimer);
         this._volumeSafetyTimer = null;
       }
@@ -345,7 +352,10 @@ class MediaPlayer2Player extends Interface {
   }
 
   updatePosition(payload: number): void {
-    const newPositionUs = payload;
+    // dbus-next marshals an 'x' field with BigInt(data.toString()), which throws
+    // on a fractional value, so truncate once here and let every consumer of the
+    // position read the integer.
+    const newPositionUs = Math.trunc(payload);
     const now = Date.now();
     const elapsedMs = now - this._lastPositionTimestamp;
     const expectedPositionUs = this._lastPositionUs + elapsedMs * MS_TO_US;
@@ -364,7 +374,7 @@ class MediaPlayer2Player extends Interface {
       clearTimeout(this._volumeSafetyTimer);
       this._volumeSafetyTimer = null;
     }
-    this._pendingVolume = null;
+    this._pendingVolumes = [];
     this._lastPositionUs = 0;
     this._lastPositionTimestamp = Date.now();
     if (this._debounceTimer) {
@@ -389,7 +399,7 @@ class MediaPlayer2Player extends Interface {
   }
 
   get Position(): number {
-    return this._position;
+    return Math.trunc(this._position);
   }
 
   get MinimumRate(): number {
@@ -462,12 +472,16 @@ class MediaPlayer2Player extends Interface {
   set Volume(value: number) {
     const clamped = Math.round(Math.max(0.0, Math.min(1.0, value)) * 100) / 100;
     this._volume = clamped;
-    this._pendingVolume = clamped;
+    this._schedulePropertyEmission({ Volume: clamped });
+    this._pendingVolumes.push(clamped);
+    if (this._pendingVolumes.length > MAX_PENDING_VOLUMES) {
+      this._pendingVolumes.shift();
+    }
     if (this._volumeSafetyTimer) {
       clearTimeout(this._volumeSafetyTimer);
     }
     this._volumeSafetyTimer = setTimeout(() => {
-      this._pendingVolume = null;
+      this._pendingVolumes = [];
       this._volumeSafetyTimer = null;
     }, this._volumeSafetyMs);
     this._send('player:setVolume', clamped);
