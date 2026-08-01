@@ -151,7 +151,7 @@ function routeItmsTarget(target: ItmsTarget | null): void {
 
 export interface Assets {
   STYLE_FIX_CSS: string;
-  AUTH_STYLE_FIX_CSS: string;
+  authFrameScript: string;
   navBarScript: string;
   hookScript: string;
 }
@@ -267,14 +267,18 @@ function loadAssets(): Assets {
   const styleFixCssPath = getAssetPath('assets', 'styleFix.css');
   const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, 'utf-8');
   const authStyleFixCssPath = getAssetPath('assets', 'authStyleFix.css');
-  const AUTH_STYLE_FIX_CSS = fs.readFileSync(authStyleFixCssPath, 'utf-8');
+  const authCss = fs.readFileSync(authStyleFixCssPath, 'utf-8');
+  const authFramePath = getAssetPath('assets', 'authFrameFix.js');
+  const authFrameScript = fs
+    .readFileSync(authFramePath, 'utf-8')
+    .replace(AUTH_FIX_TOKEN, () => JSON.stringify({ css: authCss, logPrefix: AUTH_FRAME_LOG_PREFIX }));
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
   const navBarScript = fs
     .readFileSync(navBarPath, 'utf-8')
     .replace(NAV_LABELS_TOKEN, () => JSON.stringify(getNavigationStrings()));
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
   const hookScript = fs.readFileSync(hookPath, 'utf-8');
-  return { STYLE_FIX_CSS, AUTH_STYLE_FIX_CSS, navBarScript, hookScript };
+  return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript };
 }
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
@@ -398,125 +402,14 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
 
 const AUTH_FRAME_HOSTS = new Set<string>(allServices().flatMap(svc => [...svc.authFrameHosts]));
 const AUTH_FRAME_LOG_PREFIX = '[sidra] auth-frame hide:';
+// Substituted by loadAssets(); assets/authFrameFix.js carries the same spelling.
+const AUTH_FIX_TOKEN = '__SIDRA_AUTH_FIX__';
 
-function buildAuthFrameInjectionScript(authCss: string): string {
-  // The script runs in the iframe's main world via executeJavaScript. It must
-  // be self-contained - no closure on outer variables. The CSS payload is
-  // embedded as a JSON-stringified literal so it survives escaping safely.
-  const cssLiteral = JSON.stringify(authCss);
-  return `(() => {
-    const css = ${cssLiteral};
-    const STYLE_ID = 'sidra-auth-fix';
-    const TEXT_RE = /(sign in with )?iphone|passkey/i;
-    const CAPTION_RE = /requires .{0,30}(ios|iphone|ipad)|(ios|ipados) ?\\d+ or later/i;
-    const CONTAINER_SELECTOR = '[class*="passkey" i], [class*="iphone" i], [class*="cross-device" i], [role="group"], fieldset';
-    const CAPTION_TAGS = 'p, small, span, div';
-    const CAPTION_MAX_LEN = 200;
-
-    const root = document.head || document.documentElement;
-    if (root) {
-      const existing = document.getElementById(STYLE_ID);
-      if (existing) existing.remove();
-      const style = document.createElement('style');
-      style.id = STYLE_ID;
-      style.textContent = css;
-      root.appendChild(style);
-    }
-
-    function hideEl(el) {
-      el.style.setProperty('display', 'none', 'important');
-    }
-
-    function isHidden(el) {
-      return el.style && el.style.display === 'none';
-    }
-
-    function hideContainerFor(btn) {
-      // Prefer a structural container matched by class/role; fall back to a
-      // shallow parent walk (max 2 levels) whose textContent matches the
-      // caption regex. Strictly capped so we never collapse the whole form.
-      const container = btn.closest(CONTAINER_SELECTOR);
-      if (container && container !== document.body && container !== document.documentElement) {
-        hideEl(container);
-        return 1;
-      }
-      let parent = btn.parentElement;
-      for (let depth = 0; depth < 2 && parent; depth++) {
-        if (parent === document.body || parent === document.documentElement) break;
-        const text = (parent.textContent || '').trim();
-        if (text && CAPTION_RE.test(text)) {
-          hideEl(parent);
-          return 1;
-        }
-        parent = parent.parentElement;
-      }
-      return 0;
-    }
-
-    function hideMatchingButtons() {
-      let buttonsHidden = 0;
-      let containersHidden = 0;
-      const buttons = document.querySelectorAll('button');
-      for (const el of buttons) {
-        const text = (el.textContent || '').trim();
-        if (text && TEXT_RE.test(text)) {
-          hideEl(el);
-          buttonsHidden++;
-          containersHidden += hideContainerFor(el);
-        }
-      }
-      return { buttonsHidden, containersHidden };
-    }
-
-    function hideCaptionElements() {
-      // Standalone caption scan: the helper text may sit outside any passkey
-      // container. Skip elements that wrap interactive controls so legitimate
-      // form rows survive.
-      let count = 0;
-      const candidates = document.querySelectorAll(CAPTION_TAGS);
-      for (const el of candidates) {
-        if (isHidden(el)) continue;
-        const text = (el.textContent || '').trim();
-        if (!text || text.length > CAPTION_MAX_LEN) continue;
-        if (!CAPTION_RE.test(text)) continue;
-        if (el.querySelector('input, button, a[href]')) continue;
-        hideEl(el);
-        count++;
-      }
-      return count;
-    }
-
-    function runHidePasses() {
-      const { buttonsHidden, containersHidden } = hideMatchingButtons();
-      const captionsHidden = hideCaptionElements();
-      return { buttonsHidden, captionsHidden, containersHidden };
-    }
-
-    const result = runHidePasses();
-
-    if (!window.__sidraAuthFixInstalled) {
-      window.__sidraAuthFixInstalled = true;
-      const target = document.body || document.documentElement;
-      if (target && typeof MutationObserver !== 'undefined') {
-        const observer = new MutationObserver(() => { runHidePasses(); });
-        observer.observe(target, { childList: true, subtree: true });
-      }
-    }
-
-    const cssRuleCount = css.split('}').length - 1;
-    console.info('${AUTH_FRAME_LOG_PREFIX} ' + cssRuleCount + ' CSS rules injected, ' + result.buttonsHidden + ' buttons hidden, ' + result.captionsHidden + ' captions hidden, ' + result.containersHidden + ' containers hidden');
-  })();`;
-}
-
-// Apple's sign-in iframe offers passkey and "Sign in with iPhone" alongside
-// password sign-in, plus captions naming an iOS version requirement. Those are
-// hidden so password sign-in is the visible route. The script re-runs from a
-// MutationObserver because the frame re-renders as the user moves through the
-// flow, and the frame reports its results back over console-message, which is
-// the only channel out of a frame the main process has not preloaded.
-function setupAuthFrameInjection(win: BrowserWindow, authCss: string): void {
+// assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
+// Apple's sign-in iframe, and reports what it hid back over console-message,
+// which is the only channel out of a frame the main process has not preloaded.
+function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
   const authLog = log.scope('auth-frame');
-  const script = buildAuthFrameInjectionScript(authCss);
 
   win.webContents.on('did-frame-finish-load', (_event, isMainFrame, frameProcessId, frameRoutingId) => {
     if (isMainFrame) return;
@@ -731,7 +624,7 @@ if (gotLock) {
     setupContentHandlers(win, player, markCssReady, assets);
     setupWindowEvents(win, markCssReady);
     setupNavigationHandlers(win, assets.navBarScript, assets.hookScript);
-    setupAuthFrameInjection(win, assets.AUTH_STYLE_FIX_CSS);
+    setupAuthFrameInjection(win, assets.authFrameScript);
     if (process.env.SIDRA_DEVTOOLS === '1') {
       win.webContents.openDevTools();
       mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
