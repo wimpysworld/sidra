@@ -306,14 +306,22 @@ export function init(ctx: IntegrationContext): void {
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
 
   app.on('will-quit', () => {
-    if (debounceTimer) clearTimeout(debounceTimer);
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
     pauseTimeout.destroy();
-    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
 
-    try {
-      client?.destroy();
-    } catch {
-      // client.destroy() may throw if Discord is not connected
+    // Quitting removes the presence anyway, so the activity is not cleared: that
+    // is an RPC round trip the destroy would have to wait on, and the process is
+    // ending underneath it.
+    if (client) {
+      retireClient(client, false);
+      client = undefined;
     }
 
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
