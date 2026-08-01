@@ -110,6 +110,18 @@ function replaceClient(player: Player, clearActivity = false): Client {
   return client;
 }
 
+// One failure policy for every login attempt: warn with the site that made it,
+// then hand the retry to the backoff chain. The client is a parameter because
+// the reconnect path logs in on a fresh one while the other sites use the live
+// one, and logging in twice on the same instance is what replaceClient() exists
+// to prevent.
+function loginOrRetry(player: Player, target: Client, context: string): void {
+  target.login().catch((err: Error) => {
+    discordLog.warn(`${context} failed:`, err.message);
+    scheduleReconnect(player);
+  });
+}
+
 function scheduleUpdate(player: Player): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
@@ -148,10 +160,7 @@ function sendActivity(player: Player): void {
 
   if (!client.isConnected) {
     discordLog.debug('not connected, attempting login');
-    client.login().catch((err: Error) => {
-      discordLog.warn('login failed:', err.message);
-      scheduleReconnect(player);
-    });
+    loginOrRetry(player, client, 'login');
     return;
   }
 
@@ -219,10 +228,7 @@ function scheduleReconnect(player: Player): void {
     reconnectTimer = null;
     if (client?.isConnected) return;
     discordLog.info('attempting reconnect');
-    replaceClient(player).login().catch((err: Error) => {
-      discordLog.warn('reconnect failed:', err.message);
-      scheduleReconnect(player);
-    });
+    loginOrRetry(player, replaceClient(player), 'reconnect');
   }, delay);
 }
 
@@ -232,10 +238,7 @@ export function enable(): void {
   if (!player || !client) return;
   if (!client.isConnected) {
     discordLog.info('enabling Discord presence');
-    client.login().catch((err: Error) => {
-      discordLog.warn('login failed:', err.message);
-      scheduleReconnect(player);
-    });
+    loginOrRetry(player, client, 'enable login');
   }
 }
 
@@ -255,10 +258,7 @@ export function init(ctx: IntegrationContext): void {
   client = createClient(player);
 
   if (getDiscordEnabled()) {
-    client.login().catch((err: Error) => {
-      discordLog.warn('initial login failed:', err.message);
-      scheduleReconnect(player);
-    });
+    loginOrRetry(player, client, 'initial login');
   }
 
   // Named listener references for removeListener in will-quit
