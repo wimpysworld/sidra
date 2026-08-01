@@ -34,12 +34,7 @@ function padMin(s: string, min: number): string {
 }
 
 // Track metadata cache
-let trackName: string | null = null;
-let artistName: string | null = null;
-let albumName: string | null = null;
-let artworkUrl: string | undefined = undefined;
-let durationMs = 0;
-let trackUrl: string | undefined = undefined;
+let currentTrack: NowPlayingPayload | null = null;
 
 // Playback state. init() assigns playerRef before it builds the only client, so
 // nothing can reach the send path without one. Every call below enable()/disable()
@@ -141,27 +136,29 @@ function sendActivity(player: Player): void {
     return;
   }
 
-  if (!trackName) {
+  const track = currentTrack;
+  if (!track?.name) {
     discordLog.debug('no track metadata, skipping activity update');
     return;
   }
 
-  const details = padMin(truncate(trackName, MAX_STRING_LEN), MIN_STRING_LEN);
-  const state = padMin(truncate(`by ${artistName ?? 'Unknown Artist'}`, MAX_STRING_LEN), MIN_STRING_LEN);
+  const details = padMin(truncate(track.name, MAX_STRING_LEN), MIN_STRING_LEN);
+  const state = padMin(truncate(`by ${track.artistName ?? 'Unknown Artist'}`, MAX_STRING_LEN), MIN_STRING_LEN);
 
+  const artworkUrl = track.artworkUrl;
   const largeImageKey = (artworkUrl && artworkUrl.length <= MAX_IMAGE_URL_LEN)
     ? artworkUrl
     : 'sidra_logo';
-  const largeImageText = albumName
-    ? truncate(albumName, MAX_STRING_LEN)
+  const largeImageText = track.albumName
+    ? truncate(track.albumName, MAX_STRING_LEN)
     : undefined;
 
   const buttons: Array<{ label: string; url: string }> = [
     { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
   ];
-  if (trackUrl) {
+  if (track.url) {
     const displayName = getService(getMusicService()).displayName;
-    buttons.push({ label: `Play on ${displayName}`, url: trackUrl });
+    buttons.push({ label: `Play on ${displayName}`, url: track.url });
   }
 
   const activity: SetActivity = {
@@ -179,6 +176,7 @@ function sendActivity(player: Player): void {
   // Discord draws the progress bar from absolute timestamps, so the start is
   // back-dated by the current playhead and the end sits one duration past it.
   const snap = player.playbackSnapshot();
+  const durationMs = track.durationInMillis ?? 0;
   if (snap.isPlaying && durationMs > 0) {
     const currentPositionMs = snap.positionUs / 1000;
     const now = Date.now();
@@ -187,7 +185,7 @@ function sendActivity(player: Player): void {
   }
 
   client.user?.setActivity(activity).then(() => {
-    discordLog.debug('activity updated:', trackName);
+    discordLog.debug('activity updated:', currentTrack?.name);
   }).catch((err: Error) => {
     discordLog.warn('failed to set activity:', err.message);
   });
@@ -249,21 +247,7 @@ export function init(ctx: IntegrationContext): void {
 
   // Named listener references for removeListener in will-quit
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
-    if (!payload) {
-      trackName = null;
-      artistName = null;
-      albumName = null;
-      artworkUrl = undefined;
-      durationMs = 0;
-      trackUrl = undefined;
-    } else {
-      trackName = payload.name ?? null;
-      artistName = payload.artistName ?? null;
-      albumName = payload.albumName ?? null;
-      artworkUrl = payload.artworkUrl;
-      durationMs = payload.durationInMillis ?? 0;
-      trackUrl = payload.url;
-    }
+    currentTrack = payload;
 
     // A track change supersedes an earlier pause, so the pending clear-activity
     // timer must not fire over the new track
@@ -305,12 +289,7 @@ export function init(ctx: IntegrationContext): void {
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
 
-    trackName = null;
-    artistName = null;
-    albumName = null;
-    artworkUrl = undefined;
-    durationMs = 0;
-    trackUrl = undefined;
+    currentTrack = null;
     previousState = 0;
     retryCount = 0;
   });
