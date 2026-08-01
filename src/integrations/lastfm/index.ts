@@ -1,4 +1,4 @@
-import { app, net, shell, BrowserWindow } from 'electron';
+import { app, net, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
@@ -17,6 +17,7 @@ import {
 } from '../../config';
 import { getLastfmConnectedText, getLastfmConnectFailedText } from '../../i18n';
 import { errorMessage } from '../../utils';
+import { openExternalUrl } from '../../openExternal';
 import { createNotification } from '../../notify';
 
 const lastfmLog = log.scope('lastfm');
@@ -754,15 +755,11 @@ export function disable(): void {
 }
 
 /**
- * Hands a URL to the system browser, checking the protocol first as every other
- * `shell.openExternal` call in the app does.
+ * Hands a URL to the system browser through `openExternalUrl()`, the one place
+ * that decides what Sidra opens externally.
  */
 function openInBrowser(url: URL): void {
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    lastfmLog.warn('refusing to open a non-web URL:', url.protocol);
-    return;
-  }
-  shell.openExternal(url.toString()).catch((err: Error) => lastfmLog.warn('failed to open browser:', err.message));
+  openExternalUrl(url.toString(), (message, detail) => lastfmLog.warn(message, detail));
 }
 
 /**
