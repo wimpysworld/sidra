@@ -119,7 +119,7 @@ vi.mock('../src/paths', () => ({
 
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback, type MenuIconKey } from '../src/tray';
 import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
@@ -1558,7 +1558,8 @@ describe('getMenuIcon', () => {
     });
 
     it('returns undefined for an unknown action', () => {
-      expect(getMenuIcon('nonexistent')).toBeUndefined();
+      // MenuIconKey rules this argument out at every call site, so the cast is the only way to reach the runtime guard, which still fires on 'share', the one key with no PNG.
+      expect(getMenuIcon('nonexistent' as MenuIconKey)).toBeUndefined();
     });
 
     it('returns undefined when the image is empty', () => {
@@ -1598,7 +1599,8 @@ describe('getMenuIcon', () => {
     });
 
     it('returns undefined for an unknown action', () => {
-      expect(getMenuIcon('nonexistent')).toBeUndefined();
+      // MenuIconKey rules this argument out at every call site, so the cast is the only way to reach the runtime guard.
+      expect(getMenuIcon('nonexistent' as MenuIconKey)).toBeUndefined();
     });
 
     it('returns undefined when the SF Symbol image is empty', () => {
@@ -1609,7 +1611,7 @@ describe('getMenuIcon', () => {
     });
 
     it('resolves correct SF Symbol for each Now Playing, window and player action', () => {
-      const cases: [string, string][] = [
+      const cases: [MenuIconKey, string][] = [
         ['player', 'headphones'],
         ['artist', 'star'],
         ['album', 'opticaldisc'],

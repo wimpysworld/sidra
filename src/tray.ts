@@ -21,8 +21,39 @@ const trayLog = log.scope('tray');
 const iconsDir = getAssetPath('assets', 'icons');
 const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
 
+// Every action a menu item can carry an icon for. Both maps below are typed
+// against it, so a key in one and not the other is either declared as a gap or
+// fails tsc, and a misspelt call site fails at the call rather than rendering
+// an iconless row.
+export type MenuIconKey =
+  | 'about'
+  | 'player'
+  | 'start-page'
+  | 'notifications'
+  | 'discord'
+  | 'lastfm'
+  | 'style'
+  | 'zoom'
+  | 'update-ready'
+  | 'update-available'
+  | 'quit'
+  | 'share'
+  | 'artist'
+  | 'album'
+  | 'record-vinyl'
+  | 'previous'
+  | 'play'
+  | 'pause'
+  | 'next'
+  | 'volume'
+  | 'close-to-tray'
+  | 'show-window'
+  | 'hide-window';
+
 // Maps tray action keys to PNG basenames (without extension) in assets/icons/tray/menu/{light,dark}/
-const menuIconFileMap: Record<string, string> = {
+// Partial because 'share' ships no PNG: the Share item is macOS-only, so the
+// gap is unreachable and the map declares it rather than hiding it.
+const menuIconFileMap: Partial<Record<MenuIconKey, string>> = {
   'about': 'circle-info',
   'player': 'headphones',
   'start-page': 'music',
@@ -48,7 +79,7 @@ const menuIconFileMap: Record<string, string> = {
 };
 
 // Maps tray action keys to SF Symbol names for macOS Tahoe+
-const menuIconSFSymbolMap: Record<string, string> = {
+const menuIconSFSymbolMap: Record<MenuIconKey, string> = {
   'about': 'info.circle',
   'player': 'headphones',
   'start-page': 'music.note',
@@ -87,7 +118,7 @@ function isMacOSTahoeOrLater(): boolean {
  * blank gutter for an empty NativeImage. macOS draws SF Symbols and only from
  * Tahoe, where they are available; Linux and Windows use themed PNGs.
  */
-export function getMenuIcon(action: string): Electron.NativeImage | undefined {
+export function getMenuIcon(action: MenuIconKey): Electron.NativeImage | undefined {
   if (process.platform === 'darwin') {
     if (!isMacOSTahoeOrLater()) return undefined;
 
@@ -258,7 +289,7 @@ function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructo
 
 interface ToggleSubmenuOptions {
   label: string;
-  iconKey: string;
+  iconKey: MenuIconKey;
   get: () => boolean;
   set: (value: boolean) => void;
   onEnable?: () => void;
