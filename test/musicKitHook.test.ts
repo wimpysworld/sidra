@@ -84,7 +84,6 @@ function createHarness({
   volumeThrows?: boolean;
 } = {}) {
   const intervals: Array<{ callback: () => void; delay: number }> = [];
-  const intervalCallbacks: Array<() => void> = [];
   const messageListeners: Array<(event: unknown) => void> = [];
   const wheelListeners: Array<{
     listener: (event: unknown) => void;
@@ -128,8 +127,7 @@ function createHarness({
     navigator,
     setInterval: vi.fn((callback: () => void, delay: number) => {
       intervals.push({ callback, delay });
-      intervalCallbacks.push(callback);
-      return intervalCallbacks.length;
+      return intervals.length;
     }),
     window,
   });
@@ -159,7 +157,7 @@ function createHarness({
   getInstanceThrows = false;
   Object.assign(context, { MusicKit: musicKitApi });
   Object.assign(window, { MusicKit: musicKitApi });
-  for (const callback of intervalCallbacks.slice()) callback();
+  for (const { callback } of intervals.slice()) callback();
 
   return {
     // Non-optional handle on the bridge send mock. window.AMWrapper is optional
@@ -209,9 +207,9 @@ function createHarness({
     // the waitForMK callback rather than the script body, so a re-run that
     // slipped past the injection guard would go unnoticed without the drain.
     reinject: () => {
-      const alreadyRun = intervalCallbacks.length;
+      const alreadyRun = intervals.length;
       vm.runInContext(hookScript, context);
-      for (const callback of intervalCallbacks.slice(alreadyRun)) callback();
+      for (const { callback } of intervals.slice(alreadyRun)) callback();
     },
     wheelListeners,
     window,
@@ -356,39 +354,20 @@ describe('musicKitHook', () => {
     },
   );
 
-  it('still forwards playback events over IPC when navigator.mediaSession is unavailable', () => {
-    // Position state is a bonus for OS media controls; the IPC forwarding is
-    // the hook's actual job. A guard that swallowed the whole listener would
-    // leave MPRIS and every integration blind, so assert the sends, not that
-    // the listener merely survived.
+  // Position state is a bonus for OS media controls; the IPC forwarding is the
+  // hook's actual job. A guard that swallowed the whole listener would leave
+  // MPRIS and every integration blind, so assert the sends, not that the
+  // listener merely survived. The second case is the one an object-presence
+  // check alone would let through: Safari exposes navigator.mediaSession
+  // without setPositionState. Both calls sit in a try/catch, so an unguarded
+  // call would not surface as a throw - the IPC sends are the only observable
+  // proof the listeners ran to completion.
+  it.each<[string, Record<string, unknown>]>([
+    ['navigator.mediaSession is unavailable', {}],
+    ['setPositionState is missing', { mediaSession: {} }],
+  ])('still forwards playback events over IPC when %s', (_case, navigatorOverrides) => {
     const { bridgeSend, musicKitListeners } = createHarness({
-      navigatorOverrides: {},
-      musicKitOverrides: {
-        currentPlaybackDuration: 180,
-        currentPlaybackTime: 42,
-      },
-    });
-
-    musicKitListeners.get('playbackTimeDidChange')?.();
-    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
-
-    expect(bridgeSend).toHaveBeenCalledWith(
-      'playbackTimeDidChange',
-      42 * 1_000_000,
-    );
-    expect(bridgeSend).toHaveBeenCalledWith(
-      'nowPlayingItemDidChange',
-      null,
-    );
-  });
-
-  it('still forwards playback events over IPC when setPositionState is missing', () => {
-    // Safari exposes navigator.mediaSession without setPositionState, which is
-    // the arm the object-presence check alone would let through. Both calls sit
-    // in a try/catch, so an unguarded call would not surface as a throw - the
-    // IPC sends are the only observable proof the listeners ran to completion.
-    const { bridgeSend, musicKitListeners } = createHarness({
-      navigatorOverrides: { mediaSession: {} },
+      navigatorOverrides,
       musicKitOverrides: {
         currentPlaybackDuration: 180,
         currentPlaybackTime: 42,
