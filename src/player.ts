@@ -184,8 +184,6 @@ export class Player extends TypedEmitter<PlayerEvents> {
         playerLog.warn('playbackStateDidChange: invalid payload, expected state to be number');
         return;
       }
-    }
-    if (payload != null) {
       this._state = payload.state;
       this._isPlaying = payload.state === PlaybackState.Playing;
     } else {
