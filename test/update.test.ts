@@ -82,4 +82,39 @@ describe('isNewer', () => {
   it('ignores a non-numeric part beyond the third', () => {
     expect(isNewer('0.4.0.x', '0.3.0')).toBe(true);
   });
+
+  it('returns false for an empty part inside the version', () => {
+    // Number('') is 0, so 2..0 once read as 2.0.0 and offered an update. A part
+    // past the end of a short version still counts as 0; an empty one does not.
+    expect(isNewer('2..0', '1.0.0')).toBe(false);
+    expect(isNewer('1..0', '0.3.0')).toBe(false);
+    expect(isNewer('2.0.0', '1..0')).toBe(false);
+  });
+
+  it('returns false for a whitespace part', () => {
+    // Number(' ') is 0 as well.
+    expect(isNewer('1. .0', '0.9.0')).toBe(false);
+    expect(isNewer('2.0.0', '1. .0')).toBe(false);
+  });
+
+  it('returns false for a hexadecimal part', () => {
+    // Number('0x10') is 16.
+    expect(isNewer('0x10.0.0', '1.0.0')).toBe(false);
+    expect(isNewer('0.0x10.0', '0.3.0')).toBe(false);
+    expect(isNewer('2.0.0', '0x1.0.0')).toBe(false);
+  });
+
+  it('returns false for an exponent part', () => {
+    // Number('1e2') is 100.
+    expect(isNewer('1e2.0.0', '1.0.0')).toBe(false);
+    expect(isNewer('0.1e2.0', '0.3.0')).toBe(false);
+    expect(isNewer('2.0.0', '1e0.0.0')).toBe(false);
+  });
+
+  it('returns false for a signed part', () => {
+    // Deliberate: no Sidra release tag carries a sign, so a part spelling a
+    // number Number() would accept is refused along with the rest.
+    expect(isNewer('+2.0.0', '1.0.0')).toBe(false);
+    expect(isNewer('2.0.0', '-1.0.0')).toBe(false);
+  });
 });

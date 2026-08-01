@@ -39,19 +39,32 @@ export function setUpdateReady(version: string): void {
   updateLog.info('update ready to install:', version);
 }
 
+/** A version part is a run of decimal digits and nothing else. */
+const VERSION_PART = /^[0-9]+$/;
+
 /**
  * Read the first three parts of a version as numbers. A part past the end of the
  * version counts as 0, so 1.0 reads as 1.0.0, and parts beyond the third are
- * ignored. Returns null when any of the three is not a finite number, which is
- * how a malformed version is refused before anything is compared.
+ * ignored. Returns null when a part that is present is not a run of decimal
+ * digits, which is how a malformed version is refused before anything is
+ * compared. The two cases stay distinct: the padding happens because the index is
+ * past the end of the array, never because a part read as zero, so 2..0 is
+ * refused rather than filled in as 2.0.0.
+ *
+ * The test is the regular expression, not Number.isFinite(). Number() accepts far
+ * more than a decimal integer and reads 0x10 as 16, 1e2 as 100, and both an empty
+ * part and a whitespace one as 0, so every one of those parsed as a valid version.
  */
 function versionParts(version: string): number[] | null {
-  const split = version.split('.').map(Number);
+  const split = version.split('.');
   const parts: number[] = [];
   for (let i = 0; i < SEMVER_PARTS; i++) {
-    const part = i < split.length ? split[i] : 0;
-    if (!Number.isFinite(part)) return null;
-    parts.push(part);
+    if (i >= split.length) {
+      parts.push(0);
+      continue;
+    }
+    if (!VERSION_PART.test(split[i])) return null;
+    parts.push(Number(split[i]));
   }
   return parts;
 }
@@ -62,8 +75,13 @@ function versionParts(version: string): number[] | null {
  * numeric parts, but neither side is guaranteed to carry three: a missing part
  * counts as 0, so 1.0 beats 0.3.0 and equals 1.0.0.
  *
- * A version carrying a non-numeric part in the first three is refused outright
- * and the answer is "not newer", so a malformed tag never offers an update. Both
+ * A valid part is a run of decimal digits and nothing else. A version carrying
+ * anything else in the first three is refused outright and the answer is "not
+ * newer", so a malformed tag never offers an update. That refuses 0x10 and 1e2,
+ * which Number() reads happily, along with a leading + and a negative part; none
+ * is a valid Sidra release tag. A part with a decimal point is refused by the same
+ * rule but cannot be reached, because the dot is what splits the parts. A leading
+ * v is not this function's problem, because checkForUpdates() strips it. Both
  * sides are checked before any comparison runs: a remote Sidra cannot parse must
  * not be offered, and a local one leaves it unable to tell what is installed. The
  * whole version is refused rather than the single bad part, because a decision
