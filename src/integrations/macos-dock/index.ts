@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ShareMenu } from 'electron';
+import { app, Menu, ShareMenu } from 'electron';
 import log from 'electron-log/main';
 import { PlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getTrayStrings } from '../../i18n';
@@ -11,7 +11,6 @@ const dockLog = log.scope('dock');
 const DOCK_PAUSE_TIMEOUT_MS = 30_000;
 
 let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
-let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 
 /** Supplies the main-process sender the dock menu items use to reach the renderer. */
 export function setDockSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
@@ -67,27 +66,26 @@ function buildDockMenu(
   return Menu.buildFromTemplate(items);
 }
 
-function updateDockProgressBar(positionUs: number, durationMs: number | undefined): void {
-  const win = getMainWindowCallback?.();
-  if (!win) return;
-  updateProgressBar(win, positionUs, durationMs);
-}
-
-function clearDockProgressBar(): void {
-  const win = getMainWindowCallback?.();
-  if (!win) return;
-  clearProgressBar(win);
-}
-
 /** Installs the macOS dock menu and progress bar; no-op on every other platform. */
 export function init(ctx: IntegrationContext): void {
   if (process.platform !== 'darwin') return;
 
   const { player, getMainWindow } = ctx;
-  getMainWindowCallback = getMainWindow ?? null;
 
   let currentPayload: NowPlayingPayload | null = null;
   let previousPlaying = false;
+
+  const updateDockProgressBar = (positionUs: number, durationMs: number | undefined): void => {
+    const win = getMainWindow?.();
+    if (!win) return;
+    updateProgressBar(win, positionUs, durationMs);
+  };
+
+  const clearDockProgressBar = (): void => {
+    const win = getMainWindow?.();
+    if (!win) return;
+    clearProgressBar(win);
+  };
 
   const rebuildDock = (isPlaying: boolean): void => {
     if (app.dock) app.dock.setMenu(buildDockMenu(currentPayload, isPlaying));
@@ -154,9 +152,6 @@ export function init(ctx: IntegrationContext): void {
     // The 30 second timer outlives the listeners, and clearNowPlaying() calls
     // app.dock.setMenu(), so a pending one fires into a torn-down dock.
     dockPauseTimer.destroy();
-    // The callback closes over the main window, so the module holds it until
-    // this is cleared.
-    getMainWindowCallback = null;
   });
 
   // The menu must exist before playback starts, so the dock carries the
