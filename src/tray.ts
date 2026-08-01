@@ -494,6 +494,104 @@ function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
   ];
 }
 
+type SendCommand = (channel: ReceiveChannel, ...args: unknown[]) => void;
+
+/** Artwork icon for the track row, multi-representation for HiDPI. */
+function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electron.NativeImage | undefined {
+  if (!artworkPath) return undefined;
+  const src = nativeImage.createFromPath(artworkPath);
+  if (src.isEmpty()) return undefined;
+
+  if (isLinux) {
+    // libdbusmenu serialises a single image and the host shell rescales;
+    // preserve the on-disk path so libappindicator does not stage a
+    // temp-file copy unreachable to the host indicator daemon under snap.
+    return src.resize({ width: 24, height: 24 });
+  }
+
+  const img = nativeImage.createEmpty();
+  const sizes: [number, number][] = [[1.0, 18], [1.25, 23], [1.5, 27], [1.75, 32], [2.0, 36]];
+  for (const [scaleFactor, size] of sizes) {
+    img.addRepresentation({ scaleFactor, buffer: src.resize({ width: size, height: size }).toPNG() });
+  }
+  return img;
+}
+
+/**
+ * One disabled metadata row. The label is user content Apple supplies, so it
+ * goes through sanitiseLinuxLabel on Linux to keep Pango from reading it as markup.
+ */
+function buildMetadataItem(text: string, icon: Electron.NativeImage | undefined, isLinux: boolean): Electron.MenuItemConstructorOptions {
+  const label = truncateMenuLabel(text);
+  return {
+    label: isLinux ? sanitiseLinuxLabel(label) : label,
+    enabled: false,
+    ...(icon ? { icon } : {}),
+  };
+}
+
+// 1981 is the last year before the CD shipped, so 1981 and earlier shows the vinyl icon.
+function albumIconKey(releaseDate: string | undefined): MenuIconKey {
+  const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
+  return !isNaN(releaseYear) && releaseYear <= 1981 ? 'record-vinyl' : 'album';
+}
+
+function buildMetadataItems(payload: NowPlayingPayload, artworkIcon: Electron.NativeImage | undefined, isLinux: boolean): Electron.MenuItemConstructorOptions[] {
+  return [
+    buildMetadataItem(payload.name ?? '', artworkIcon, isLinux),
+    buildMetadataItem(payload.artistName ?? '', getMenuIcon('artist'), isLinux),
+    buildMetadataItem(payload.albumName ?? '', getMenuIcon(albumIconKey(payload.releaseDate)), isLinux),
+  ];
+}
+
+function buildTransportItems(strings: TrayStrings, isPlaying: boolean, sendCommand: SendCommand | null): Electron.MenuItemConstructorOptions[] {
+  const item = (label: string, iconKey: MenuIconKey, channel: ReceiveChannel): Electron.MenuItemConstructorOptions => {
+    const icon = getMenuIcon(iconKey);
+    return {
+      label,
+      ...(icon ? { icon } : {}),
+      click: () => { if (sendCommand) sendCommand(channel); },
+    };
+  };
+  return [
+    item(strings.previous, 'previous', 'player:previous'),
+    item(isPlaying ? strings.pause : strings.play, isPlaying ? 'pause' : 'play', 'player:playPause'),
+    item(strings.next, 'next', 'player:next'),
+  ];
+}
+
+// 0 is offered as Mute; the other four take their label from the value.
+const VOLUME_LEVELS = [0, 0.25, 0.5, 0.75, 1];
+
+function buildVolumeSubmenu(strings: TrayStrings, volume: number, sendCommand: SendCommand | null): Electron.MenuItemConstructorOptions {
+  const icon = getMenuIcon('volume');
+  return {
+    label: `${strings.volume}: ${Math.round(volume * 100)}%`,
+    ...(icon ? { icon } : {}),
+    submenu: VOLUME_LEVELS.map(level => ({
+      label: level === 0 ? strings.mute : `${Math.round(level * 100)}%`,
+      type: 'radio' as const,
+      checked: volume === level,
+      click: () => { if (sendCommand) sendCommand('player:setVolume', level); },
+    })),
+  };
+}
+
+// macOS only - uses the native share sheet via ShareMenu.
+function buildShareItems(strings: TrayStrings, payload: NowPlayingPayload): Electron.MenuItemConstructorOptions[] {
+  const shareUrl = getShareUrl(payload);
+  if (process.platform !== 'darwin' || !shareUrl) return [];
+  const icon = getMenuIcon('share');
+  return [{
+    label: strings.share,
+    ...(icon ? { icon } : {}),
+    click: () => {
+      const shareMenu = new ShareMenu({ urls: [shareUrl] });
+      shareMenu.popup();
+    },
+  }];
+}
+
 function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Electron.MenuItemConstructorOptions[] {
   if (!nowPlayingState || !nowPlayingState.payload) {
     return [];
@@ -502,140 +600,12 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
   const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
   const sendCommand = sendCommandCallback;
 
-  // Artwork icon for the track name item - multi-representation for HiDPI
-  let icon: Electron.NativeImage | undefined;
-  if (artworkPath) {
-    const src = nativeImage.createFromPath(artworkPath);
-    if (!src.isEmpty()) {
-      if (isLinux) {
-        // libdbusmenu serialises a single image and the host shell rescales;
-        // preserve the on-disk path so libappindicator does not stage a
-        // temp-file copy unreachable to the host indicator daemon under snap.
-        icon = src.resize({ width: 24, height: 24 });
-      } else {
-        const img = nativeImage.createEmpty();
-        img.addRepresentation({ scaleFactor: 1.0, buffer: src.resize({ width: 18, height: 18 }).toPNG() });
-        img.addRepresentation({ scaleFactor: 1.25, buffer: src.resize({ width: 23, height: 23 }).toPNG() });
-        img.addRepresentation({ scaleFactor: 1.5, buffer: src.resize({ width: 27, height: 27 }).toPNG() });
-        img.addRepresentation({ scaleFactor: 1.75, buffer: src.resize({ width: 32, height: 32 }).toPNG() });
-        img.addRepresentation({ scaleFactor: 2.0, buffer: src.resize({ width: 36, height: 36 }).toPNG() });
-        icon = img;
-      }
-    }
-  }
-
-  // Metadata items. Every label is user content Apple supplies, so each one
-  // goes through sanitiseLinuxLabel on Linux to keep Pango from reading it as markup.
-  const trackLabel = truncateMenuLabel(payload.name ?? '');
-  const trackItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? sanitiseLinuxLabel(trackLabel) : trackLabel,
-    enabled: false,
-    ...(icon ? { icon } : {}),
-  };
-  const artistLabel = truncateMenuLabel(payload.artistName ?? '');
-  const artistIcon = getMenuIcon('artist');
-  const artistItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? sanitiseLinuxLabel(artistLabel) : artistLabel,
-    enabled: false,
-    ...(artistIcon ? { icon: artistIcon } : {}),
-  };
-  const albumLabel = truncateMenuLabel(payload.albumName ?? '');
-  // 1981 is the last year before the CD shipped, so 1981 and earlier shows the vinyl icon.
-  const releaseYear = payload.releaseDate ? parseInt(payload.releaseDate.slice(0, 4), 10) : NaN;
-  const albumIconKey = !isNaN(releaseYear) && releaseYear <= 1981 ? 'record-vinyl' : 'album';
-  const albumIcon = getMenuIcon(albumIconKey);
-  const albumItem: Electron.MenuItemConstructorOptions = {
-    label: isLinux ? sanitiseLinuxLabel(albumLabel) : albumLabel,
-    enabled: false,
-    ...(albumIcon ? { icon: albumIcon } : {}),
-  };
-
-  // Playback controls
-  const playPauseLabel = isPlaying ? strings.pause : strings.play;
-  const playPauseAction = isPlaying ? 'pause' : 'play';
-  const previousIcon = getMenuIcon('previous');
-  const previousItem: Electron.MenuItemConstructorOptions = {
-    label: strings.previous,
-    ...(previousIcon ? { icon: previousIcon } : {}),
-    click: () => { if (sendCommand) sendCommand('player:previous'); },
-  };
-  const playPauseIcon = getMenuIcon(playPauseAction);
-  const playPauseItem: Electron.MenuItemConstructorOptions = {
-    label: playPauseLabel,
-    ...(playPauseIcon ? { icon: playPauseIcon } : {}),
-    click: () => { if (sendCommand) sendCommand('player:playPause'); },
-  };
-  const nextIcon = getMenuIcon('next');
-  const nextItem: Electron.MenuItemConstructorOptions = {
-    label: strings.next,
-    ...(nextIcon ? { icon: nextIcon } : {}),
-    click: () => { if (sendCommand) sendCommand('player:next'); },
-  };
-
-  const volumePct = Math.round(volume * 100);
-  const volumeIcon = getMenuIcon('volume');
-  const volumeParentLabel = `${strings.volume}: ${volumePct}%`;
-  const volumeItem: Electron.MenuItemConstructorOptions = {
-    label: volumeParentLabel,
-    ...(volumeIcon ? { icon: volumeIcon } : {}),
-    submenu: [
-      {
-        label: strings.mute,
-        type: 'radio',
-        checked: volume === 0,
-        click: () => { if (sendCommand) sendCommand('player:setVolume', 0); },
-      },
-      {
-        label: '25%',
-        type: 'radio',
-        checked: volume === 0.25,
-        click: () => { if (sendCommand) sendCommand('player:setVolume', 0.25); },
-      },
-      {
-        label: '50%',
-        type: 'radio',
-        checked: volume === 0.5,
-        click: () => { if (sendCommand) sendCommand('player:setVolume', 0.5); },
-      },
-      {
-        label: '75%',
-        type: 'radio',
-        checked: volume === 0.75,
-        click: () => { if (sendCommand) sendCommand('player:setVolume', 0.75); },
-      },
-      {
-        label: '100%',
-        type: 'radio',
-        checked: volume === 1.0,
-        click: () => { if (sendCommand) sendCommand('player:setVolume', 1.0); },
-      },
-    ],
-  };
-
-  // Share item (macOS only) - uses native share sheet via ShareMenu
-  const shareItems: Electron.MenuItemConstructorOptions[] = [];
-  const shareUrl = getShareUrl(payload);
-  if (process.platform === 'darwin' && shareUrl) {
-    shareItems.push({
-      label: strings.share,
-      ...(getMenuIcon('share') ? { icon: getMenuIcon('share') } : {}),
-      click: () => {
-        const shareMenu = new ShareMenu({ urls: [shareUrl] });
-        shareMenu.popup();
-      },
-    });
-  }
-
   return [
-    trackItem,
-    artistItem,
-    albumItem,
+    ...buildMetadataItems(payload, buildArtworkIcon(artworkPath, isLinux), isLinux),
     { type: 'separator' },
-    previousItem,
-    playPauseItem,
-    nextItem,
-    volumeItem,
-    ...shareItems,
+    ...buildTransportItems(strings, isPlaying, sendCommand),
+    buildVolumeSubmenu(strings, volume, sendCommand),
+    ...buildShareItems(strings, payload),
     { type: 'separator' },
   ];
 }
