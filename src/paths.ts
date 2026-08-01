@@ -4,8 +4,8 @@ import path from 'path';
 /**
  * Resolve a path to a bundled asset in both a checkout and a packaged build. A
  * packaged build reads from app.asar.unpacked, so anything resolved here must
- * also be listed individually under asarUnpack in package.json; asarUnpack takes
- * no globs, and a missing entry fails only at runtime.
+ * also be covered by an entry under asarUnpack in package.json. A file left
+ * uncovered builds cleanly and fails only at runtime.
  */
 export function getAssetPath(...parts: string[]): string {
   const base = app.isPackaged
