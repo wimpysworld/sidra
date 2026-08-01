@@ -11,7 +11,7 @@ import { rebuildTrayMenu } from './tray';
 import { reset as resetWedgeDetector } from './wedgeDetector';
 
 // main.ts owns the window and the tray but cannot be imported (it runs app.whenReady()
-// at import), so it supplies both here, as it does for setSendCommandCallback and friends.
+// at import), so it supplies both here, as it does for setGetMainWindowCallback and friends.
 let getTrayCallback: (() => Tray | null) | null = null;
 let loadURLCallback: ((url: string) => void) | null = null;
 
