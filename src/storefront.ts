@@ -17,10 +17,16 @@ const ITMS_ROUTE_PATHS: Record<ItmsRouteToken, string> = {
 };
 
 function appendLanguage(url: string, language: string | null | undefined): string {
-  if (language != null) {
-    return `${url}?l=${language}`;
+  // No language means the URL is returned untouched; a URL round trip would
+  // normalise it and the callers expect the string they passed in.
+  if (language == null) {
+    return url;
   }
-  return url;
+  // A stored last page can already carry a query, so set the parameter through
+  // URL rather than concatenating a second "?".
+  const parsed = new URL(url);
+  parsed.searchParams.set('l', language);
+  return parsed.toString();
 }
 
 export function buildAppleMusicURL(): string {
@@ -126,7 +132,9 @@ export function handleLastPageNavigation(url: string): void {
     const segments = parsed.pathname.split('/').filter(Boolean);
     const pageSegments = segments[0] && /^[a-z]{2}$/.test(segments[0]) ? segments.slice(1) : segments;
     if (pageSegments.length > 0) {
-      const path = pageSegments.join('/');
+      // Keep the query so a search or a filtered view resumes as it was left.
+      // The fragment is dropped: it is renderer state, not a page address.
+      const path = `${pageSegments.join('/')}${parsed.search}`;
       if (service.id === 'classical') {
         setClassicalLastPageUrl(path);
       } else {

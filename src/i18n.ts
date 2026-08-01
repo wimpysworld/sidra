@@ -9,9 +9,21 @@ const i18nLog = log.scope('i18n');
 
 type TranslationFile = Record<string, Record<string, string>>;
 
+// A missing or malformed file is fatal on purpose. Falling back to the English
+// records would hide the most common cause, a locale file left out of the
+// asarUnpack list, behind a UI that looks almost right.
 function loadLocaleFile(filename: string): TranslationFile {
   const filePath = getAssetPath('assets', 'locales', filename);
-  return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TranslationFile;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TranslationFile;
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    i18nLog.error(`failed to load locale file ${filePath}: ${reason}`);
+    throw new Error(
+      `Sidra could not load the locale file ${filePath}: ${reason}. ` +
+      'Every file in assets/locales/ must be listed individually under asarUnpack in package.json.',
+    );
+  }
 }
 
 // Module-level readFileSync calls are intentional here. The AGENTS.md guideline

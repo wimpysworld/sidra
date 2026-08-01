@@ -155,6 +155,29 @@ describe('buildAppleMusicURL - music service', () => {
     const url = buildAppleMusicURL();
     expect(url).toBe('https://music.apple.com/us/new');
   });
+
+  it('rebuilds last URL with its query intact', () => {
+    mockedGetStartPage.mockReturnValue('last');
+    mockedGetLastPageUrl.mockReturnValue('search?term=jazz');
+    const url = buildAppleMusicURL();
+    expect(url).toBe('https://music.apple.com/us/search?term=jazz');
+  });
+
+  it('adds the language beside an existing query', () => {
+    mockedGetStartPage.mockReturnValue('last');
+    mockedGetLastPageUrl.mockReturnValue('search?term=jazz');
+    mockedGetLanguage.mockReturnValue('en-GB');
+    const url = buildAppleMusicURL();
+    expect(url).toBe('https://music.apple.com/us/search?term=jazz&l=en-GB');
+  });
+
+  it('overwrites a stored language rather than duplicating it', () => {
+    mockedGetStartPage.mockReturnValue('last');
+    mockedGetLastPageUrl.mockReturnValue('search?term=jazz&l=fr');
+    mockedGetLanguage.mockReturnValue('en-GB');
+    const url = buildAppleMusicURL();
+    expect(url).toBe('https://music.apple.com/us/search?term=jazz&l=en-GB');
+  });
 });
 
 describe('buildAppleMusicURL - classical service', () => {
@@ -312,6 +335,26 @@ describe('handleLastPageNavigation', () => {
     handleLastPageNavigation('https://classical.music.apple.com/gb/browse/albums');
     expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('browse/albums');
     expect(mockedSetLastPageUrl).not.toHaveBeenCalled();
+  });
+
+  it('keeps the query when storing a music path', () => {
+    handleLastPageNavigation('https://music.apple.com/gb/search?term=jazz');
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('search?term=jazz');
+  });
+
+  it('keeps the query when storing a classical path', () => {
+    handleLastPageNavigation('https://classical.music.apple.com/gb/search?term=bach');
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('search?term=bach');
+  });
+
+  it('stores nothing extra for a URL with no query', () => {
+    handleLastPageNavigation('https://music.apple.com/gb/browse');
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('browse');
+  });
+
+  it('drops the fragment', () => {
+    handleLastPageNavigation('https://music.apple.com/gb/search?term=jazz#top');
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('search?term=jazz');
   });
 
   it('does nothing for an unknown host', () => {

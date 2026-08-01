@@ -604,7 +604,9 @@ Each service keeps its own start page and last page. `classical.startPage` and `
 
 `buildAppleMusicURL()` in `src/storefront.ts` branches on `getMusicService() === 'classical'` to pick the pair to read. The stored path is read only in the `'last'` branch. The Classical home entry has an empty path and must not gain a trailing slash, so the path segment is built as `pageEntry.path === '' ? '' : '/' + pageEntry.path`.
 
-`handleLastPageNavigation()` resolves the host of each navigation through `getServiceByHost()` and writes to `setClassicalLastPageUrl()` or `setLastPageUrl()` accordingly.
+`handleLastPageNavigation()` resolves the host of each navigation through `getServiceByHost()` and writes to `setClassicalLastPageUrl()` or `setLastPageUrl()` accordingly. It stores the path with its query string, so `/gb/search?term=jazz` resumes as the search it was, and drops the fragment, which is renderer state rather than a page address.
+
+`appendLanguage()` adds the `?l=` parameter through `URL` and `searchParams.set()`, so a stored path that already carries a query gets `&l=` rather than a second `?`, and a stored `l=` is replaced rather than duplicated. It returns the string untouched when no language is set, because a `URL` round trip would normalise it and the Classical home URL must keep its bare `/gb` form.
 
 `buildItmsRouteURL()` is pinned to `getService('music').origin`. `itms://` links always target Apple Music, and `transformItmsUrl()` in `src/itms.ts` pins the host on the parsing side.
 
