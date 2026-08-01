@@ -762,6 +762,21 @@ function openInBrowser(url: URL): void {
 }
 
 /**
+ * Closes a failed auth attempt: the flow is released, the feature switched back
+ * off and the user told. The notification is forced past `notifications.enabled`
+ * because it answers an action the user just took in the tray, and silence there
+ * leaves the menu back at Connect with no explanation.
+ */
+function failAuth(reason: string, onComplete?: () => void): void {
+  authInProgress = false;
+  authPollTimer = null;
+  lastfmLog.warn(reason);
+  setLastfmEnabled(false);
+  notify(getLastfmConnectFailedText(), true);
+  onComplete?.();
+}
+
+/**
  * Runs the Last.fm desktop auth flow: fetch a token, open the approval page in
  * the browser, then poll auth.getSession until the user approves or it times out.
  * `onComplete` is called once the flow settles so the caller can refresh UI.
@@ -769,10 +784,7 @@ function openInBrowser(url: URL): void {
 export function startAuth(onComplete?: () => void): void {
   if (authInProgress) return;
   if (!isConfigured()) {
-    lastfmLog.warn('cannot authenticate: no API credentials configured');
-    setLastfmEnabled(false);
-    notify(getLastfmConnectFailedText(), true);
-    onComplete?.();
+    failAuth('cannot authenticate: no API credentials configured', onComplete);
     return;
   }
   authInProgress = true;
@@ -794,11 +806,7 @@ export function startAuth(onComplete?: () => void): void {
     })
     .catch((err: Error) => {
       if (generation !== authGeneration) return;
-      authInProgress = false;
-      lastfmLog.warn('auth.getToken failed:', err.message);
-      setLastfmEnabled(false);
-      notify(getLastfmConnectFailedText(), true);
-      onComplete?.();
+      failAuth(`auth.getToken failed: ${err.message}`, onComplete);
     });
 }
 
@@ -831,12 +839,7 @@ function pollForSession(token: string, startedAt: number, generation: number, on
     .catch(() => {
       if (generation !== authGeneration) return;
       if (Date.now() - startedAt >= AUTH_POLL_TIMEOUT_MS) {
-        authInProgress = false;
-        authPollTimer = null;
-        lastfmLog.warn('authorisation timed out');
-        setLastfmEnabled(false);
-        notify(getLastfmConnectFailedText(), true);
-        onComplete?.();
+        failAuth('authorisation timed out', onComplete);
         return;
       }
       authPollTimer = setTimeout(() => pollForSession(token, startedAt, generation, onComplete), AUTH_POLL_INTERVAL_MS);
