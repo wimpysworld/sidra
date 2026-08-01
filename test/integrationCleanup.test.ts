@@ -128,8 +128,18 @@ function findCleanupFaults(source: string): string[] {
 
   // Only a named reference can be removed later, so an inline listener is a
   // failure whatever else the file does.
-  const named = [...source.matchAll(/player\.on\(\s*'([^']+)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g)];
-  const total = [...source.matchAll(/player\.on\(/g)].length;
+  //
+  // `once` is held to the same rule as `on`: it detaches itself only after it
+  // fires, so until then it is a live listener and quitting has to remove it.
+  // Node stores the wrapper with `.listener` set to the original function, so
+  // `removeListener` takes the same reference the registration used, and it is
+  // a harmless no-op when the listener has already fired.
+  const named = [
+    ...source.matchAll(
+      /player\.(?:on|once|addListener)\(\s*'([^']+)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
+    ),
+  ];
+  const total = [...source.matchAll(/player\.(?:on|once|addListener)\(/g)].length;
   if (named.length !== total) {
     faults.push('registers a player listener with an inline function, which cannot be removed');
   }
@@ -255,6 +265,82 @@ describe('player listener cleanup', () => {
       const source = `
         export function init(): void {
           player.on('playbackStateDidChange', (state) => {
+            update(state);
+          });
+
+          app.on('will-quit', () => {
+            teardown();
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining('inline function, which cannot be removed'),
+      ]);
+    });
+
+    // The sweep once read `player.on(` only, so any other registration spelling
+    // was invisible to it and slipped past a file that reads as coverage.
+    it('rejects an addListener registration with no removal', () => {
+      const source = `
+        export function init(): void {
+          player.addListener('playbackStateDidChange', onPlaybackStateDidChange);
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining("registers 'playbackStateDidChange'"),
+      ]);
+    });
+
+    it('rejects a once registration with no removal', () => {
+      const source = `
+        export function init(): void {
+          player.once('playbackStateDidChange', onPlaybackStateDidChange);
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining("registers 'playbackStateDidChange'"),
+      ]);
+    });
+
+    it('accepts a once registration removed inside the will-quit handler', () => {
+      const source = `
+        export function init(): void {
+          player.once('playbackStateDidChange', onPlaybackStateDidChange);
+
+          app.on('will-quit', () => {
+            ${REMOVE}
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('rejects an inline once listener', () => {
+      const source = `
+        export function init(): void {
+          player.once('playbackStateDidChange', (state) => {
+            update(state);
+          });
+
+          app.on('will-quit', () => {
+            teardown();
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining('inline function, which cannot be removed'),
+      ]);
+    });
+
+    it('rejects an inline addListener listener', () => {
+      const source = `
+        export function init(): void {
+          player.addListener('playbackStateDidChange', (state) => {
             update(state);
           });
 
