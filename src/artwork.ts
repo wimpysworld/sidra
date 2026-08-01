@@ -27,17 +27,19 @@ function cleanupTmpFile(tmpPath: string): void {
 const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const SIZE_REGEX = /^\d+x\d+/;
 
+function hashedFilename(url: string): string {
+  return `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
+}
+
 function artworkCachePath(url: string): string {
   let filename: string;
   try {
     const pathname = new URL(url).pathname;
     const match = pathname.match(UUID_REGEX);
     const size = (pathname.split('/').pop() ?? '').match(SIZE_REGEX);
-    filename = match
-      ? `${match[0]}${size ? `-${size[0]}` : ''}.jpg`
-      : `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
+    filename = match ? `${match[0]}${size ? `-${size[0]}` : ''}.jpg` : hashedFilename(url);
   } catch {
-    filename = `${createHash('sha256').update(url).digest('hex').slice(0, 16)}.jpg`;
+    filename = hashedFilename(url);
   }
   return path.join(ARTWORK_CACHE_DIR, filename);
 }
