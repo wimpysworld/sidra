@@ -170,27 +170,17 @@
           artworkUrl: item.attributes?.artwork?.url
             ?.replace('{w}', '512').replace('{h}', '512'),
           trackId: item.id,
-          audioTraits: item.attributes?.audioTraits,
           trackNumber: item.attributes?.trackNumber,
-          targetBitrate: mk.bitrate,
           url: item.attributes?.url,
           discNumber: item.attributes?.discNumber,
           composerName: item.attributes?.composerName,
           releaseDate: item.attributes?.releaseDate,
-          contentRating: item.attributes?.contentRating,
-          itemType: item.attributes?.playParams?.kind,
-          containerId: item.container?.id,
-          containerType: item.container?.type,
-          containerName: item.container?.attributes?.name,
           playParams: pp ? {
             catalogId: pp.catalogId,
             globalId: pp.globalId,
             kind: pp.kind,
             isLibrary: pp.isLibrary,
           } : undefined,
-          isrc: item.attributes?.isrc,
-          queueLength: mk.queue?.length,
-          queueIndex: mk.nowPlayingItemIndex,
           // The document this item came from. The main process persists the
           // active service separately and the two can disagree, so a share URL
           // built from config can name a host the track was never on.

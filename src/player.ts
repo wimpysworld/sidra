@@ -23,20 +23,10 @@ export interface NowPlayingPayload {
   genreNames?: string[];
   trackId?: string;
   trackNumber?: number;
-  audioTraits?: string[];
-  targetBitrate?: number;
   discNumber?: number;
   composerName?: string;
   releaseDate?: string;
-  contentRating?: string;
-  itemType?: string;
-  containerId?: string;
-  containerType?: string;
-  containerName?: string;
   playParams?: PlayParams;
-  isrc?: string;
-  queueLength?: number;
-  queueIndex?: number;
   /** Hostname of the document that produced this payload, set by assets/musicKitHook.js. */
   sourceHost?: string;
 }
