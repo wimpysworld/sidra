@@ -5,6 +5,7 @@ import { PlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type 
 import { getAssetPath } from '../../paths';
 import { getTrayStrings } from '../../i18n';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
+import { sendCommand } from '../../commandBridge';
 
 const taskbarLog = log.scope('taskbar');
 
@@ -19,13 +20,6 @@ const TRANSIENT_STATES: ReadonlySet<number> = new Set([
   PlaybackState.Waiting,
   PlaybackState.Stalled,
 ]);
-
-let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
-
-/** Supplies the main-process sender the thumbar buttons use to reach the renderer. */
-export function setTaskbarSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
-  sendCommandCallback = callback;
-}
 
 function loadIcon(baseName: string): Electron.NativeImage | null {
   // The thumbar and the overlay badge are painted on the taskbar, which follows
@@ -43,7 +37,6 @@ function loadIcon(baseName: string): Electron.NativeImage | null {
 }
 
 function setThumbarButtons(win: BrowserWindow, isPlaying: boolean): void {
-  const sendCommand = sendCommandCallback;
   const strings = getTrayStrings();
 
   const entries: { tooltip: string; icon: Electron.NativeImage | null; channel: ReceiveChannel }[] = [
@@ -62,7 +55,7 @@ function setThumbarButtons(win: BrowserWindow, isPlaying: boolean): void {
     buttons.push({
       tooltip,
       icon,
-      click: () => { if (sendCommand) sendCommand(channel); },
+      click: () => sendCommand(channel),
     });
   }
 

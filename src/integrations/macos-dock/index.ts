@@ -4,25 +4,18 @@ import { PlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStateP
 import { getTrayStrings } from '../../i18n';
 import { truncateMenuLabel } from '../../tray';
 import { createPauseTimer } from '../../pauseTimer';
+import { sendCommand } from '../../commandBridge';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
 
 const dockLog = log.scope('dock');
 
 const DOCK_PAUSE_TIMEOUT_MS = 30_000;
 
-let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
-
-/** Supplies the main-process sender the dock menu items use to reach the renderer. */
-export function setDockSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
-  sendCommandCallback = callback;
-}
-
 function buildDockMenu(
   payload: NowPlayingPayload | null,
   isPlaying: boolean,
 ): Menu {
   const strings = getTrayStrings();
-  const sendCommand = sendCommandCallback;
 
   const items: Electron.MenuItemConstructorOptions[] = [];
 
@@ -52,15 +45,15 @@ function buildDockMenu(
   const playPauseLabel = isPlaying ? strings.pause : strings.play;
   items.push({
     label: playPauseLabel,
-    click: () => { if (sendCommand) sendCommand('player:playPause'); },
+    click: () => sendCommand('player:playPause'),
   });
   items.push({
     label: strings.next,
-    click: () => { if (sendCommand) sendCommand('player:next'); },
+    click: () => sendCommand('player:next'),
   });
   items.push({
     label: strings.previous,
-    click: () => { if (sendCommand) sendCommand('player:previous'); },
+    click: () => sendCommand('player:previous'),
   });
 
   return Menu.buildFromTemplate(items);

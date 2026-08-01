@@ -6,7 +6,8 @@ import log from 'electron-log/main';
 import { getTrayStrings } from '../src/i18n';
 import { PlaybackState } from '../src/player';
 import type { IntegrationContext, NowPlayingPayload } from '../src/player';
-import { init, setTaskbarSendCommandCallback } from '../src/integrations/windows-taskbar';
+import { init } from '../src/integrations/windows-taskbar';
+import { initCommandBridge } from '../src/commandBridge';
 import { FakePlayer } from './mocks/player';
 import { setPlatform, restorePlatform } from './mocks/platform';
 
@@ -88,7 +89,7 @@ beforeEach(() => {
     setOverlayIcon: vi.fn(),
     setProgressBar: vi.fn(),
   };
-  setTaskbarSendCommandCallback(sendCommand);
+  initCommandBridge(sendCommand);
 });
 
 afterEach(restorePlatform);

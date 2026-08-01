@@ -10,7 +10,8 @@ import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, hand
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
-import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setSendCommandCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
+import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
+import { initCommandBridge } from './commandBridge';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -18,8 +19,8 @@ import { getService, allServices, isAllowedNavigationUrl } from './musicService'
 import { init as initNotifications } from './integrations/notifications';
 import { init as initDiscordPresence } from './integrations/discord-presence';
 import { init as initLastfm } from './integrations/lastfm';
-import { init as initDock, setDockSendCommandCallback } from './integrations/macos-dock';
-import { init as initWindowsTaskbar, setTaskbarSendCommandCallback } from './integrations/windows-taskbar';
+import { init as initDock } from './integrations/macos-dock';
+import { init as initWindowsTaskbar } from './integrations/windows-taskbar';
 import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 import { contentReadyProbeScript } from './contentReady';
@@ -613,10 +614,8 @@ if (gotLock) {
     const created = createMainWindow(ses);
     win = created.win;
     const winReady = created.winReady;
-    setSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
+    initCommandBridge((channel, ...args) => win!.webContents.send(channel, ...args));
     setGetMainWindowCallback(() => win);
-    setDockSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
-    setTaskbarSendCommandCallback((channel, ...args) => win!.webContents.send(channel, ...args));
     initServiceSwitch({
       getTray: () => appTray,
       loadURL: url => {

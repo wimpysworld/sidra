@@ -13,6 +13,7 @@ import { applyTheme, hasCustomCss, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
+import { sendCommand } from './commandBridge';
 import { createPauseTimer } from './pauseTimer';
 import { openExternalUrl } from './utils/openExternal';
 import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
@@ -205,7 +206,6 @@ interface NowPlayingState {
 }
 
 let nowPlayingState: NowPlayingState | null = null;
-let sendCommandCallback: ((channel: ReceiveChannel, ...args: unknown[]) => void) | null = null;
 let applyZoomCallback: ((factor: number) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 let switchServiceCallback: ((serviceId: MusicServiceId) => void) | null = null;
@@ -484,8 +484,6 @@ function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
   ];
 }
 
-type SendCommand = (channel: ReceiveChannel, ...args: unknown[]) => void;
-
 /** Artwork icon for the track row, multi-representation for HiDPI. */
 function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electron.NativeImage | undefined {
   if (!artworkPath) return undefined;
@@ -534,13 +532,13 @@ function buildMetadataItems(payload: NowPlayingPayload, artworkIcon: Electron.Na
   ];
 }
 
-function buildTransportItems(strings: TrayStrings, isPlaying: boolean, sendCommand: SendCommand | null): Electron.MenuItemConstructorOptions[] {
+function buildTransportItems(strings: TrayStrings, isPlaying: boolean): Electron.MenuItemConstructorOptions[] {
   const item = (label: string, iconKey: MenuIconKey, channel: ReceiveChannel): Electron.MenuItemConstructorOptions => {
     const icon = getMenuIcon(iconKey);
     return {
       label,
       ...(icon ? { icon } : {}),
-      click: () => { if (sendCommand) sendCommand(channel); },
+      click: () => sendCommand(channel),
     };
   };
   return [
@@ -553,7 +551,7 @@ function buildTransportItems(strings: TrayStrings, isPlaying: boolean, sendComma
 // 0 is offered as Mute; the other four take their label from the value.
 const VOLUME_LEVELS = [0, 0.25, 0.5, 0.75, 1];
 
-function buildVolumeSubmenu(strings: TrayStrings, volume: number, sendCommand: SendCommand | null): Electron.MenuItemConstructorOptions {
+function buildVolumeSubmenu(strings: TrayStrings, volume: number): Electron.MenuItemConstructorOptions {
   const icon = getMenuIcon('volume');
   return {
     label: `${strings.volume}: ${Math.round(volume * 100)}%`,
@@ -562,7 +560,7 @@ function buildVolumeSubmenu(strings: TrayStrings, volume: number, sendCommand: S
       label: level === 0 ? strings.mute : `${Math.round(level * 100)}%`,
       type: 'radio' as const,
       checked: volume === level,
-      click: () => { if (sendCommand) sendCommand('player:setVolume', level); },
+      click: () => sendCommand('player:setVolume', level),
     })),
   };
 }
@@ -588,13 +586,12 @@ function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Elect
   }
 
   const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
-  const sendCommand = sendCommandCallback;
 
   return [
     ...buildMetadataItems(payload, buildArtworkIcon(artworkPath, isLinux), isLinux),
     { type: 'separator' },
-    ...buildTransportItems(strings, isPlaying, sendCommand),
-    buildVolumeSubmenu(strings, volume, sendCommand),
+    ...buildTransportItems(strings, isPlaying),
+    buildVolumeSubmenu(strings, volume),
     ...buildShareItems(strings, payload),
     { type: 'separator' },
   ];
@@ -658,10 +655,6 @@ function buildContextMenu(tray: Tray): Menu {
 
 export function setApplyZoomCallback(callback: (factor: number) => void): void {
   applyZoomCallback = callback;
-}
-
-export function setSendCommandCallback(callback: (channel: ReceiveChannel, ...args: unknown[]) => void): void {
-  sendCommandCallback = callback;
 }
 
 export function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
