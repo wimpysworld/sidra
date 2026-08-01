@@ -366,7 +366,7 @@ function setupNavigationHandlers(win: BrowserWindow, navBarScript: string, hookS
       mainLog.warn('blocked navigation to disallowed host:', url);
     }
   });
-  win.webContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+  win.webContents.on('did-start-navigation', (_event, url, _isInPlace, isMainFrame) => {
     if (isMainFrame) {
       mainLog.debug('did-start-navigation:', url);
     }

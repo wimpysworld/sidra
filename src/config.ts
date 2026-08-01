@@ -5,6 +5,7 @@
  * the getter that needs one, so keys such as storefront can still report
  * "never set" and drive the fallback chain in src/storefront.ts.
  */
+import { Conf } from 'electron-conf/main';
 import log from 'electron-log/main';
 import type { ThemeName } from './theme';
 import {
@@ -44,8 +45,6 @@ interface StoreSchema {
   zoomFactor: number;
   musicService: MusicServiceId;
 }
-
-import { Conf } from 'electron-conf/main';
 
 const store = new Conf<StoreSchema>();
 

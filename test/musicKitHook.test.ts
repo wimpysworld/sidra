@@ -221,7 +221,7 @@ function createHarness({
 describe('musicKitHook', () => {
   it('handles one player command after repeated injection before MusicKit loads', () => {
     const skipToNextItem = vi.fn();
-    const { messageListeners, musicKit, window } = createHarness({
+    const { messageListeners, window } = createHarness({
       musicKitOverrides: { skipToNextItem },
       repeatInjection: true,
     });
