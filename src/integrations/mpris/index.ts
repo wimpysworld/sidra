@@ -473,9 +473,14 @@ class MediaPlayer2Player extends Interface {
     const clamped = Math.round(Math.max(0.0, Math.min(1.0, value)) * 100) / 100;
     this._volume = clamped;
     this._schedulePropertyEmission({ Volume: clamped });
-    this._pendingVolumes.push(clamped);
-    if (this._pendingVolumes.length > MAX_PENDING_VOLUMES) {
-      this._pendingVolumes.shift();
+    // The queue is bounded, and a full one drops the value being added rather
+    // than the oldest entry. Echoes arrive in order, so the oldest entry is the
+    // one the next echo matches; discarding it makes that echo read as an
+    // in-app change and drag the cached volume back to a value the drag left
+    // behind. An untracked newest value costs nothing instead: its echo matches
+    // nothing and writes the level the player has actually reached.
+    if (this._pendingVolumes.length < MAX_PENDING_VOLUMES) {
+      this._pendingVolumes.push(clamped);
     }
     if (this._volumeSafetyTimer) {
       clearTimeout(this._volumeSafetyTimer);

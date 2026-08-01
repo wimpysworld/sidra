@@ -310,6 +310,26 @@ describe('MPRIS volume', () => {
     expect(emissions).toEqual([{ Volume: 0.7 }]);
   });
 
+  // A long drag can put more sets in flight than the queue holds. Dropping the
+  // oldest entry made its echo look like an in-app change, and the later
+  // matched echoes never put the cached value back, so the volume finished at
+  // the fourth value of the drag and stayed there.
+  it('reports the final value of a burst longer than the pending queue', () => {
+    const iface = initPlayerInterface();
+    const values = Array.from({ length: 12 }, (_, index) => (index + 1) * 0.05);
+
+    for (const value of values) {
+      iface.Volume = value;
+    }
+    for (const value of values) {
+      player.emit('volumeDidChange', value);
+    }
+
+    vi.advanceTimersByTime(1000);
+    expect(iface.Volume).toBe(0.6);
+    expect(emissions).toEqual([{ Volume: 0.6 }]);
+  });
+
   // Suppression is what stops the feedback loop, so it must stay narrow. A
   // change made in the Apple Music player bar reaches here through the same
   // event as an echo and has to survive the widened match.
