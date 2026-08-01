@@ -63,4 +63,23 @@ describe('isNewer', () => {
   it('returns false for a non-numeric part', () => {
     expect(isNewer('0.x.0', '0.3.0')).toBe(false);
   });
+
+  it('returns false when a non-numeric part precedes a larger later part', () => {
+    expect(isNewer('0.x.99', '0.3.0')).toBe(false);
+  });
+
+  it('returns false when a non-numeric part follows a deciding part', () => {
+    // The minor part alone says 0.4.x is newer, but a tag Sidra cannot parse
+    // must not drive an update prompt, so the whole version is refused.
+    expect(isNewer('0.4.x', '0.3.0')).toBe(false);
+  });
+
+  it('returns false for a non-numeric part in the local version', () => {
+    expect(isNewer('0.4.0', '0.x.0')).toBe(false);
+    expect(isNewer('0.4.0', '0.3.x')).toBe(false);
+  });
+
+  it('ignores a non-numeric part beyond the third', () => {
+    expect(isNewer('0.4.0.x', '0.3.0')).toBe(true);
+  });
 });

@@ -40,22 +40,46 @@ export function setUpdateReady(version: string): void {
 }
 
 /**
+ * Read the first three parts of a version as numbers. A part past the end of the
+ * version counts as 0, so 1.0 reads as 1.0.0, and parts beyond the third are
+ * ignored. Returns null when any of the three is not a finite number, which is
+ * how a malformed version is refused before anything is compared.
+ */
+function versionParts(version: string): number[] | null {
+  const split = version.split('.').map(Number);
+  const parts: number[] = [];
+  for (let i = 0; i < SEMVER_PARTS; i++) {
+    const part = i < split.length ? split[i] : 0;
+    if (!Number.isFinite(part)) return null;
+    parts.push(part);
+  }
+  return parts;
+}
+
+/**
  * Compare two major.minor.patch versions numerically, so 0.10.0 beats 0.9.0
  * where a string compare would not. Sidra tags releases with exactly three
- * numeric parts, but neither side is guaranteed to carry three: a part past the
- * end of either version counts as 0, so 1.0 beats 0.3.0 and equals 1.0.0. Parts
- * beyond the third are ignored. A non-numeric part still yields NaN, every
- * comparison is then false and the result is "not newer", so a malformed tag
- * never offers an update.
+ * numeric parts, but neither side is guaranteed to carry three: a missing part
+ * counts as 0, so 1.0 beats 0.3.0 and equals 1.0.0.
+ *
+ * A version carrying a non-numeric part in the first three is refused outright
+ * and the answer is "not newer", so a malformed tag never offers an update. Both
+ * sides are checked before any comparison runs: a remote Sidra cannot parse must
+ * not be offered, and a local one leaves it unable to tell what is installed. The
+ * whole version is refused rather than the single bad part, because a decision
+ * reached before that part is read is no more trustworthy than one reached after
+ * it; 0.4.x is therefore not newer than 0.3.0 even though the minor part alone
+ * would say so. Testing NaN in the comparisons instead is not enough: NaN > x and
+ * NaN < x are both false, so 0.x.99 fell through to the third part and offered an
+ * update over 0.3.0.
  */
 export function isNewer(remote: string, local: string): boolean {
-  const r = remote.split('.').map(Number);
-  const l = local.split('.').map(Number);
+  const r = versionParts(remote);
+  const l = versionParts(local);
+  if (!r || !l) return false;
   for (let i = 0; i < SEMVER_PARTS; i++) {
-    const remotePart = i < r.length ? r[i] : 0;
-    const localPart = i < l.length ? l[i] : 0;
-    if (remotePart > localPart) return true;
-    if (remotePart < localPart) return false;
+    if (r[i] > l[i]) return true;
+    if (r[i] < l[i]) return false;
   }
   return false;
 }
