@@ -3,10 +3,19 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 
-const navBarScript = fs.readFileSync(
+import { NAV_LABELS_TOKEN } from '../src/i18n';
+
+const navBarSource = fs.readFileSync(
   path.join(__dirname, '..', 'assets', 'navigationBar.js'),
   'utf-8',
 );
+
+// The asset is not standalone-executable: src/main.ts substitutes the token when
+// it reads the file. These labels are deliberately not English, so a label that
+// reaches a button proves it came from here and not from a default in the asset.
+const LABELS = { back: 'Zurück', forward: 'Vorwärts', reload: 'Neu laden' };
+
+const navBarScript = navBarSource.replace(NAV_LABELS_TOKEN, () => JSON.stringify(LABELS));
 
 const ANCHOR_SELECTOR = '.navigation__header .logo';
 
@@ -99,6 +108,10 @@ function labelsOf(elements: StubElement[]): Array<string | null> {
 }
 
 describe('navigationBar', () => {
+  it('carries the label token that src/main.ts substitutes', () => {
+    expect(navBarSource).toContain(NAV_LABELS_TOKEN);
+  });
+
   it('appends the button container to the matched anchor', () => {
     const { anchor, bar, run } = createHarness();
 
@@ -108,12 +121,12 @@ describe('navigationBar', () => {
     expect(anchor?.children).toContain(bar());
   });
 
-  it('builds Back, Forward and Reload buttons inside the container', () => {
+  it('builds the back, forward and reload buttons from the substituted labels', () => {
     const { bar, run } = createHarness();
 
     run();
 
-    expect(labelsOf(bar()?.children ?? [])).toEqual(['Back', 'Forward', 'Reload']);
+    expect(labelsOf(bar()?.children ?? [])).toEqual([LABELS.back, LABELS.forward, LABELS.reload]);
   });
 
   it('appends nothing and throws nothing when the anchor is missing', () => {
@@ -147,9 +160,9 @@ describe('navigationBar', () => {
   });
 
   it.each([
-    ['Back', 'nav:back'],
-    ['Forward', 'nav:forward'],
-    ['Reload', 'nav:reload'],
+    [LABELS.back, 'nav:back'],
+    [LABELS.forward, 'nav:forward'],
+    [LABELS.reload, 'nav:reload'],
   ])('sends %s clicks on the %s channel', (label, channel) => {
     const { buttons, run, send } = createHarness();
 

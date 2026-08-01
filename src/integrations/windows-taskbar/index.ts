@@ -3,6 +3,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { PlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getAssetPath } from '../../paths';
+import { getTrayStrings } from '../../i18n';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
 
 const taskbarLog = log.scope('taskbar');
@@ -24,44 +25,59 @@ export function setTaskbarSendCommandCallback(callback: (channel: string, ...arg
   sendCommandCallback = callback;
 }
 
-function loadIcon(baseName: string): Electron.NativeImage {
-  const variant = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+function loadIcon(baseName: string): Electron.NativeImage | null {
+  // The thumbar and the overlay badge are painted on the taskbar, which follows
+  // the Windows system colour mode. shouldUseDarkColors reports the app colour
+  // mode, a separate setting, and a light app with a dark taskbar is the
+  // default on a fresh install.
+  const variant = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
   const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
-  return nativeImage.createFromPath(iconPath);
+  const img = nativeImage.createFromPath(iconPath);
+  if (img.isEmpty()) {
+    taskbarLog.warn(`Taskbar icon unreadable: ${iconPath}`);
+    return null;
+  }
+  return img;
 }
 
 function setThumbarButtons(win: BrowserWindow, isPlaying: boolean): void {
   const sendCommand = sendCommandCallback;
-  const previousIcon = loadIcon('backward-step');
-  const playPauseIcon = isPlaying ? loadIcon('pause') : loadIcon('play');
-  const nextIcon = loadIcon('forward-step');
+  const strings = getTrayStrings();
 
-  win.setThumbarButtons([
+  const entries = [
+    { tooltip: strings.previous, icon: loadIcon('backward-step'), channel: 'player:previous' },
     {
-      tooltip: 'Previous',
-      icon: previousIcon,
-      click: () => { if (sendCommand) sendCommand('player:previous'); },
+      tooltip: isPlaying ? strings.pause : strings.play,
+      icon: isPlaying ? loadIcon('pause') : loadIcon('play'),
+      channel: 'player:playPause',
     },
-    {
-      tooltip: isPlaying ? 'Pause' : 'Play',
-      icon: playPauseIcon,
-      click: () => { if (sendCommand) sendCommand('player:playPause'); },
-    },
-    {
-      tooltip: 'Next',
-      icon: nextIcon,
-      click: () => { if (sendCommand) sendCommand('player:next'); },
-    },
-  ]);
+    { tooltip: strings.next, icon: loadIcon('forward-step'), channel: 'player:next' },
+  ];
+
+  const buttons: Electron.ThumbarButton[] = [];
+  for (const { tooltip, icon, channel } of entries) {
+    if (!icon) continue;
+    buttons.push({
+      tooltip,
+      icon,
+      click: () => { if (sendCommand) sendCommand(channel); },
+    });
+  }
+
+  win.setThumbarButtons(buttons);
 }
 
 function setOverlayIcon(win: BrowserWindow, state: number): void {
-  if (state === PlaybackState.Playing) {
-    const icon = loadIcon('play');
-    win.setOverlayIcon(icon, 'Playing');
-  } else if (state === PlaybackState.Paused) {
-    const icon = loadIcon('pause');
-    win.setOverlayIcon(icon, 'Paused');
+  const strings = getTrayStrings();
+  const overlay =
+    state === PlaybackState.Playing
+      ? { icon: loadIcon('play'), description: strings.play }
+      : state === PlaybackState.Paused
+        ? { icon: loadIcon('pause'), description: strings.pause }
+        : null;
+
+  if (overlay?.icon) {
+    win.setOverlayIcon(overlay.icon, overlay.description);
   } else {
     win.setOverlayIcon(null, '');
   }

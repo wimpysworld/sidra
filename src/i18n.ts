@@ -61,6 +61,10 @@ export const START_PAGE_BROWSE_TEXT: Record<string, string> = trayData.START_PAG
 export const START_PAGE_LIBRARY_TEXT: Record<string, string> = trayData.START_PAGE_LIBRARY_TEXT;
 export const START_PAGE_PLAYLISTS_TEXT: Record<string, string> = trayData.START_PAGE_PLAYLISTS_TEXT;
 export const START_PAGE_SEARCH_TEXT: Record<string, string> = trayData.START_PAGE_SEARCH_TEXT;
+export const NOT_PLAYING_TEXT: Record<string, string> = trayData.NOT_PLAYING_TEXT;
+export const BACK_TEXT: Record<string, string> = trayData.BACK_TEXT;
+export const FORWARD_TEXT: Record<string, string> = trayData.FORWARD_TEXT;
+export const RELOAD_TEXT: Record<string, string> = trayData.RELOAD_TEXT;
 
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
@@ -157,6 +161,7 @@ export interface TrayStrings {
   previous: string;
   play: string;
   pause: string;
+  notPlaying: string;
   next: string;
   volume: string;
   mute: string;
@@ -200,6 +205,7 @@ export function getTrayStrings(): TrayStrings {
   const previous = getLocalizedString(PREVIOUS_TEXT, langs);
   const play = getLocalizedString(PLAY_TEXT, langs);
   const pause = getLocalizedString(PAUSE_TEXT, langs);
+  const notPlaying = getLocalizedString(NOT_PLAYING_TEXT, langs);
   const next = getLocalizedString(NEXT_TEXT, langs);
   const volume = getLocalizedString(VOLUME_TEXT, langs);
   const mute = getLocalizedString(MUTE_TEXT, langs);
@@ -207,7 +213,7 @@ export function getTrayStrings(): TrayStrings {
   const hideWindow = getLocalizedString(HIDE_WINDOW_TEXT, langs).replace('{name}', productName);
   const showWindow = getLocalizedString(SHOW_WINDOW_TEXT, langs).replace('{name}', productName);
   const closeToTray = getLocalizedString(CLOSE_TO_TRAY_TEXT, langs);
-  return { about, quit, notifications, discord, player, lastfmConnect, lastfmDisconnect, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageBrowse, startPageLibrary, startPagePlaylists, startPageSearch, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, next, volume, mute, share, hideWindow, showWindow, closeToTray };
+  return { about, quit, notifications, discord, player, lastfmConnect, lastfmDisconnect, startPage, startPageHome, startPageNew, startPageRadio, startPageAllPlaylists, startPageBrowse, startPageLibrary, startPagePlaylists, startPageSearch, startPageLast, on, off, style, styleAppleMusic, zoom, zoom100, zoom125, zoom150, zoom175, zoom200, previous, play, pause, notPlaying, next, volume, mute, share, hideWindow, showWindow, closeToTray };
 }
 
 export function getLastfmConnectedText(name: string): string {
@@ -217,6 +223,24 @@ export function getLastfmConnectedText(name: string): string {
 
 export function getLastfmConnectFailedText(): string {
   return getLocalizedString(LASTFM_CONNECT_FAILED_TEXT, getSystemLanguages());
+}
+
+// Replaced with a JSON label object when assets/navigationBar.js is read in
+// src/main.ts. That script is injected with executeJavaScript(), so the
+// loadFile() query parameters the splash screen uses are not available.
+export const NAV_LABELS_TOKEN = '__SIDRA_NAV_LABELS__';
+
+export function getNavigationStrings(): {
+  back: string;
+  forward: string;
+  reload: string;
+} {
+  const langs = getSystemLanguages();
+  return {
+    back: getLocalizedString(BACK_TEXT, langs),
+    forward: getLocalizedString(FORWARD_TEXT, langs),
+    reload: getLocalizedString(RELOAD_TEXT, langs),
+  };
 }
 
 export function getAboutStrings(): {

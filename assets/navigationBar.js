@@ -1,6 +1,11 @@
 (function () {
   if (document.getElementById('sidra-nav-buttons')) return;
 
+  // Replaced with a JSON object when src/main.ts reads this file. The script is
+  // injected with executeJavaScript(), so it cannot take query parameters.
+  /** @type {{ back: string, forward: string, reload: string }} */
+  var LABELS = __SIDRA_NAV_LABELS__;
+
   const logoEl = document.querySelector('.navigation__header .logo');
   if (!logoEl) {
     console.warn('Sidra: .navigation__header .logo not found');
@@ -119,9 +124,9 @@
     return btn;
   }
 
-  container.appendChild(createButton('Back', createBackSvg(), 'nav:back'));
-  container.appendChild(createButton('Forward', createForwardSvg(), 'nav:forward'));
-  container.appendChild(createButton('Reload', createReloadSvg(), 'nav:reload'));
+  container.appendChild(createButton(LABELS.back, createBackSvg(), 'nav:back'));
+  container.appendChild(createButton(LABELS.forward, createForwardSvg(), 'nav:forward'));
+  container.appendChild(createButton(LABELS.reload, createReloadSvg(), 'nav:reload'));
 
   logoEl.appendChild(container);
 

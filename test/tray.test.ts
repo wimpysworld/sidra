@@ -57,6 +57,7 @@ const mockTrayStrings: TrayStrings = {
   previous: 'Previous',
   play: 'Play',
   pause: 'Pause',
+  notPlaying: 'Not Playing',
   next: 'Next',
   volume: 'Volume',
   mute: 'Mute',

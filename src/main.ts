@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
 import { getZoomFactor, getCloseToTrayEnabled, getMusicService } from './config';
-import { getLoadingText } from './i18n';
+import { getLoadingText, getNavigationStrings, NAV_LABELS_TOKEN } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
@@ -262,7 +262,9 @@ function loadAssets(): Assets {
   const authStyleFixCssPath = getAssetPath('assets', 'authStyleFix.css');
   const AUTH_STYLE_FIX_CSS = fs.readFileSync(authStyleFixCssPath, 'utf-8');
   const navBarPath = getAssetPath('assets', 'navigationBar.js');
-  const navBarScript = fs.readFileSync(navBarPath, 'utf-8');
+  const navBarScript = fs
+    .readFileSync(navBarPath, 'utf-8')
+    .replace(NAV_LABELS_TOKEN, () => JSON.stringify(getNavigationStrings()));
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
   const hookScript = fs.readFileSync(hookPath, 'utf-8');
   return { STYLE_FIX_CSS, AUTH_STYLE_FIX_CSS, navBarScript, hookScript };

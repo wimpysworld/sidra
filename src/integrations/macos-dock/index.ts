@@ -46,7 +46,7 @@ function buildDockMenu(
       items.push({ type: 'separator' });
     }
   } else {
-    items.push({ label: strings.pause, enabled: false });
+    items.push({ label: strings.notPlaying, enabled: false });
     items.push({ type: 'separator' });
   }
 

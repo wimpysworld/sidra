@@ -146,13 +146,16 @@ sidra/
 │   │                                 electron-builder's `asarUnpack`: it is read with
 │   │                                 readFileSync at runtime and will crash AppImage
 │   │                                 builds if packed inside the asar archive
-│   ├── navigationBar.js           - Injected post-load; adds back/forward/reload buttons to sidebar
+│   ├── navigationBar.js           - Injected post-load; adds back/forward/reload buttons to sidebar.
+│   │                                 Its `__SIDRA_NAV_LABELS__` placeholder is replaced with the
+│   │                                 localised aria-labels when src/main.ts reads the file
 │   ├── about.html                 - About window content, receives product info via query params
 │   ├── splash.html                - Splash screen shown during startup
 │   ├── sidra-logo.png             - Product logo used in About window
 │   ├── locales/
 │   │   ├── loading.json           - 1 translation record: LOADING_TEXT
-│   │   ├── tray.json              - 33 translation records: tray menu labels
+│   │   ├── tray.json              - 37 translation records: tray menu, dock, Windows taskbar
+│   │   │                             and navigation bar labels
 │   │   ├── about.json             - 4 translation records: about window labels
 │   │   └── update.json            - 5 translation records: auto-update labels
 │   ├── styleFix.css               - CSS overrides injected via webContents.insertCSS()
@@ -390,7 +393,7 @@ Chromium maps `navigator.mediaSession` to `MPNowPlayingInfoCenter` automatically
 
 ### macOS: Dock Menu and Progress Bar
 
-`src/integrations/macos-dock/index.ts` adds a right-click dock icon menu via `app.dock.setMenu()`. When a track is playing the menu shows the track and artist name (display-only), a Share item (if a URL is available), and play/pause, next, previous controls. The menu clears to a stub after 30 seconds of pause (matching the tray timeout). The dock progress bar uses `win.setProgressBar()` via `src/utils/progressBar.ts`, updated on every `playbackTimeDidChange` event and cleared on stop, idle, or pause timeout.
+`src/integrations/macos-dock/index.ts` adds a right-click dock icon menu via `app.dock.setMenu()`. When a track is playing the menu shows the track and artist name (display-only), a Share item (if a URL is available), and play/pause, next, previous controls. With no track the header is the localised "Not Playing" label. The menu clears to that idle form after 30 seconds of pause (matching the tray timeout). The dock progress bar uses `win.setProgressBar()` via `src/utils/progressBar.ts`, updated on every `playbackTimeDidChange` event and cleared on stop, idle, or pause timeout.
 
 Guarded with `process.platform === 'darwin'`.
 
@@ -411,9 +414,9 @@ The GSMTC overlay (media flyout on Windows 11) will show "Sidra" as the controll
 
 `src/integrations/windows-taskbar/index.ts` provides three integrations via the Windows taskbar thumbnail preview:
 
-**Thumbnail toolbar** (`win.setThumbarButtons()`): previous, play/pause, and next buttons. Icons are loaded from the 18px tray PNGs via `nativeImage.createFromPath()`, switching dark/light variants on `nativeTheme.updated`. Button registration is deferred until `win.once('show', ...)` - Windows silently drops `setThumbarButtons()` calls on hidden windows.
+**Thumbnail toolbar** (`win.setThumbarButtons()`): previous, play/pause, and next buttons, tooltipped from `getTrayStrings()`. Icons are loaded from the 18px tray PNGs via `nativeImage.createFromPath()`, picking the dark or light variant from `nativeTheme.shouldUseDarkColorsForSystemIntegratedUI` and reloading on `nativeTheme.updated`. Button registration is deferred until `win.once('show', ...)` - Windows silently drops `setThumbarButtons()` calls on hidden windows.
 
-**Overlay icon** (`win.setOverlayIcon()`): displays a play or pause badge on the taskbar button. Cleared on stop or idle. Skipped during transient states (Loading, Seeking, Waiting, Stalled) to prevent flicker.
+**Overlay icon** (`win.setOverlayIcon()`): displays a play or pause badge on the taskbar button, with the matching localised label as its accessibility description. Cleared on stop or idle. Skipped during transient states (Loading, Seeking, Waiting, Stalled) to prevent flicker.
 
 **Progress bar** (`win.setProgressBar()`): uses the shared `src/utils/progressBar.ts` utility.
 
@@ -886,7 +889,7 @@ On earlier macOS versions, and on Linux and Windows, `getMenuIcon()` loads theme
 4. Separator
 5. Play/Pause, Next, Previous controls
 
-When nothing is playing the menu shows a stub placeholder. The menu reverts to the stub after 30 seconds of pause.
+When nothing is playing the menu shows the localised "Not Playing" label (`NOT_PLAYING_TEXT` via `getTrayStrings().notPlaying`) as a disabled header, followed by the controls. The menu reverts to that idle form after 30 seconds of pause.
 
 ### Dock progress bar
 
@@ -900,7 +903,7 @@ When nothing is playing the menu shows a stub placeholder. The menu reverts to t
 
 ### Thumbnail toolbar
 
-`win.setThumbarButtons()` adds previous, play/pause, and next buttons to the thumbnail preview that appears when hovering the taskbar button. Icons are 18px PNGs loaded from `assets/icons/tray/menu/{dark,light}/` via `nativeImage.createFromPath()`. The icon set reloads on `nativeTheme.updated` to track system theme changes.
+`win.setThumbarButtons()` adds previous, play/pause, and next buttons to the thumbnail preview that appears when hovering the taskbar button. Tooltips come from `getTrayStrings()`, so they follow the system language. Icons are 18px PNGs loaded from `assets/icons/tray/menu/{dark,light}/` via `nativeImage.createFromPath()`. `loadIcon()` chooses the variant from `nativeTheme.shouldUseDarkColorsForSystemIntegratedUI`, not `shouldUseDarkColors`: the thumbar and the overlay badge are painted on the taskbar, which follows the Windows system colour mode, while `shouldUseDarkColors` reports the app colour mode, and a light app with a dark taskbar is the default on a fresh install. The icon set reloads on `nativeTheme.updated` to track theme changes. An unreadable PNG makes `loadIcon()` log a warning and return `null`, and a button with no icon is dropped from the set.
 
 Registration is deferred until `win.once('show', ...)`. Windows silently drops `setThumbarButtons()` calls made before the window is visible; deferring avoids this failure mode.
 
@@ -914,6 +917,8 @@ Registration is deferred until `win.once('show', ...)`. Windows silently drops `
 | Paused | pause icon |
 | Stopped / None / Ended / Completed | cleared |
 | Loading, Seeking, Waiting, Stalled (transient) | unchanged (previous value kept to prevent flicker) |
+
+The badge description passed to `win.setOverlayIcon()` is the localised play or pause label from `getTrayStrings()`, which is what a screen reader announces.
 
 ### Taskbar progress bar
 
@@ -1050,7 +1055,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Splash screen | `assets/splash.html` | Localised loading text via `loading.json` |
 | Content readiness polling | `CONTENT_READY_SELECTOR` in `src/contentReady.ts`: `[data-testid="app-container"] amp-playback-controls-play[hydrated]` | Waits for the UI to hydrate before removing splash; both services share the selector |
 | About window | Frameless `BrowserWindow` + `assets/about.html` | Localised labels via `about.json` |
-| Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar |
+| Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar; localised aria-labels substituted for `__SIDRA_NAV_LABELS__` at read time |
 | Auth iframe filtering | `authStyleFix.css` + `webFrameMain.executeJavaScript()` | Hides unsupported passkey and "Sign in with iPhone" desktop flows |
 | Zoom factor preference | `zoom` in `electron-conf` | 1.0x to 2.0x via tray submenu |
 | Wedge detector | `src/wedgeDetector.ts` | Auto-skip on playback stall |

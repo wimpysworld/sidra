@@ -37,7 +37,7 @@ vi.mock('electron', () => ({
   // Returns a promise, as the real shell.openExternal does: callers attach a
   // .catch() to it, so a bare vi.fn() throws inside them.
   shell: { openExternal: vi.fn(() => Promise.resolve()) },
-  nativeTheme: { shouldUseDarkColors: true, on: vi.fn() },
+  nativeTheme: { shouldUseDarkColors: true, shouldUseDarkColorsForSystemIntegratedUI: false, on: vi.fn() },
   nativeImage: {
     createFromPath: vi.fn(() => ({
       isEmpty: () => false,
