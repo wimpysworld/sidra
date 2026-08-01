@@ -64,13 +64,21 @@ function getConfigValueOptional<K extends keyof StoreSchema>(key: K): StoreSchem
   return store.get(key);
 }
 
+/**
+ * Writes a key and logs it. The message is derived from the typed key, so a
+ * rename cannot leave a stale key name in the log text.
+ */
+function setConfigValue<K extends keyof StoreSchema>(key: K, value: StoreSchema[K]): void {
+  store.set(key, value);
+  configLog.info(`${key} set:`, value);
+}
+
 export function getStorefront(): string | undefined {
   return getConfigValueOptional('storefront');
 }
 
 export function setStorefront(code: string): void {
-  store.set('storefront', code);
-  configLog.info('storefront set:', code);
+  setConfigValue('storefront', code);
 }
 
 export function getLanguage(): string | null | undefined {
@@ -78,8 +86,7 @@ export function getLanguage(): string | null | undefined {
 }
 
 export function setLanguage(lang: string | null): void {
-  store.set('language', lang);
-  configLog.info('language set:', lang);
+  setConfigValue('language', lang);
 }
 
 export function getNotificationsEnabled(): boolean {
@@ -87,8 +94,7 @@ export function getNotificationsEnabled(): boolean {
 }
 
 export function setNotificationsEnabled(enabled: boolean): void {
-  store.set('notifications.enabled', enabled);
-  configLog.info('notifications.enabled set:', enabled);
+  setConfigValue('notifications.enabled', enabled);
 }
 
 export function getCloseToTrayEnabled(): boolean {
@@ -96,8 +102,7 @@ export function getCloseToTrayEnabled(): boolean {
 }
 
 export function setCloseToTrayEnabled(enabled: boolean): void {
-  store.set('closeToTray.enabled', enabled);
-  configLog.info('closeToTray.enabled set:', enabled);
+  setConfigValue('closeToTray.enabled', enabled);
 }
 
 export function getDiscordEnabled(): boolean {
@@ -105,8 +110,7 @@ export function getDiscordEnabled(): boolean {
 }
 
 export function setDiscordEnabled(enabled: boolean): void {
-  store.set('discord.enabled', enabled);
-  configLog.info('discord.enabled set:', enabled);
+  setConfigValue('discord.enabled', enabled);
 }
 
 export function getLastfmEnabled(): boolean {
@@ -114,8 +118,7 @@ export function getLastfmEnabled(): boolean {
 }
 
 export function setLastfmEnabled(enabled: boolean): void {
-  store.set('lastfm.enabled', enabled);
-  configLog.info('lastfm.enabled set:', enabled);
+  setConfigValue('lastfm.enabled', enabled);
 }
 
 export function getLastfmSessionKey(): string | null | undefined {
@@ -185,8 +188,7 @@ export function getTheme(): ThemeName {
 }
 
 export function setTheme(name: ThemeName): void {
-  store.set('theme', name);
-  configLog.info('theme set:', name);
+  setConfigValue('theme', name);
 }
 
 export function getAutoUpdateEnabled(): boolean {
@@ -194,8 +196,7 @@ export function getAutoUpdateEnabled(): boolean {
 }
 
 export function setAutoUpdateEnabled(enabled: boolean): void {
-  store.set('autoUpdate.enabled', enabled);
-  configLog.info('autoUpdate.enabled set:', enabled);
+  setConfigValue('autoUpdate.enabled', enabled);
 }
 
 export function getLastPageUrl(): string | undefined {
@@ -203,8 +204,7 @@ export function getLastPageUrl(): string | undefined {
 }
 
 export function setLastPageUrl(url: string): void {
-  store.set('lastPageUrl', url);
-  configLog.info('lastPageUrl set:', url);
+  setConfigValue('lastPageUrl', url);
 }
 
 export function getStartPage(): MusicStartPageId | 'last' {
@@ -212,8 +212,7 @@ export function getStartPage(): MusicStartPageId | 'last' {
 }
 
 export function setStartPage(page: MusicStartPageId | 'last'): void {
-  store.set('startPage', page);
-  configLog.info('startPage set:', page);
+  setConfigValue('startPage', page);
 }
 
 export function getZoomFactor(): number {
@@ -221,8 +220,7 @@ export function getZoomFactor(): number {
 }
 
 export function setZoomFactor(factor: number): void {
-  store.set('zoomFactor', factor);
-  configLog.info('zoomFactor set:', factor);
+  setConfigValue('zoomFactor', factor);
 }
 
 export function getMusicService(): MusicServiceId {
@@ -235,8 +233,7 @@ export function getMusicService(): MusicServiceId {
 }
 
 export function setMusicService(id: MusicServiceId): void {
-  store.set('musicService', id);
-  configLog.info('musicService set:', id);
+  setConfigValue('musicService', id);
 }
 
 export function getClassicalStartPage(): ClassicalStartPageId | 'last' {
@@ -244,8 +241,7 @@ export function getClassicalStartPage(): ClassicalStartPageId | 'last' {
 }
 
 export function setClassicalStartPage(page: ClassicalStartPageId | 'last'): void {
-  store.set('classical.startPage', page);
-  configLog.info('classical.startPage set:', page);
+  setConfigValue('classical.startPage', page);
 }
 
 export function getClassicalLastPageUrl(): string | undefined {
@@ -253,7 +249,6 @@ export function getClassicalLastPageUrl(): string | undefined {
 }
 
 export function setClassicalLastPageUrl(url: string): void {
-  store.set('classical.lastPageUrl', url);
-  configLog.info('classical.lastPageUrl set:', url);
+  setConfigValue('classical.lastPageUrl', url);
 }
 
