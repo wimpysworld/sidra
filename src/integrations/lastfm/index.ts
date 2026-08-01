@@ -369,13 +369,30 @@ function cancelAuth(): void {
   authInProgress = false;
 }
 
+/** The session and the track a request path may use, once `active()` has passed. */
+interface ActiveTrack {
+  sessionKey: string;
+  artist: string;
+  track: string;
+  album: string | null;
+  durationMs: number;
+}
+
 /**
  * The single gate every request path checks: credentials in the build, the
  * feature on, an account connected, and a track worth naming. A build without
  * credentials therefore never reaches Last.fm at all.
+ *
+ * The session key and the track fields are handed back rather than left for the
+ * caller to read again, because tsc cannot see through a boolean gate: every
+ * call site carried a non-null assertion on the very values this had just
+ * checked. Returning them makes the check and the narrowing one thing.
  */
-function active(): boolean {
-  return isConfigured() && getLastfmEnabled() && !!getLastfmSessionKey() && !!artist && !!track;
+function active(): ActiveTrack | null {
+  if (!isConfigured() || !getLastfmEnabled()) return null;
+  const sessionKey = getLastfmSessionKey();
+  if (!sessionKey || !artist || !track) return null;
+  return { sessionKey, artist, track, album, durationMs };
 }
 
 /**
@@ -477,16 +494,30 @@ function drainGuard(sessionKey: string): PendingScrobble[] | null {
   return batch;
 }
 
+/**
+ * Encodes one play as the fields track.scrobble names it by. `suffix` carries
+ * the `[index]` a batch needs and is empty for a single play, which is the only
+ * difference between the two requests.
+ *
+ * `track.updateNowPlaying` does not use this: it takes no timestamp, and it
+ * reports a duration for any track with one rather than only where the rounded
+ * seconds are non-zero.
+ */
+function trackParams(entry: PendingScrobble, suffix = ''): Record<string, string> {
+  const params: Record<string, string> = {
+    [`artist${suffix}`]: entry.artist,
+    [`track${suffix}`]: entry.track,
+    [`timestamp${suffix}`]: String(entry.timestamp),
+  };
+  if (entry.album) params[`album${suffix}`] = entry.album;
+  if (entry.durationSec) params[`duration${suffix}`] = String(entry.durationSec);
+  return params;
+}
+
 /** Encodes a batch as the indexed parameters one track.scrobble request takes. */
 function buildBatchParams(batch: PendingScrobble[], sessionKey: string): Record<string, string> {
   const params: Record<string, string> = { method: 'track.scrobble', api_key: API_KEY, sk: sessionKey };
-  batch.forEach((entry, index) => {
-    params[`artist[${index}]`] = entry.artist;
-    params[`track[${index}]`] = entry.track;
-    params[`timestamp[${index}]`] = String(entry.timestamp);
-    if (entry.album) params[`album[${index}]`] = entry.album;
-    if (entry.durationSec) params[`duration[${index}]`] = String(entry.durationSec);
-  });
+  batch.forEach((entry, index) => Object.assign(params, trackParams(entry, `[${index}]`)));
   return params;
 }
 
@@ -579,22 +610,23 @@ function flushPendingScrobbles(sessionKey: string): void {
  * request the user's own playback triggered is the only thing that drains it.
  */
 function sendNowPlaying(): void {
-  if (!active()) return;
-  const sessionKey = getLastfmSessionKey()!;
+  const current = active();
+  if (!current) return;
+  const sessionKey = current.sessionKey;
   const params: Record<string, string> = {
     method: 'track.updateNowPlaying',
-    artist: artist!,
-    track: track!,
+    artist: current.artist,
+    track: current.track,
     api_key: API_KEY,
     sk: sessionKey,
   };
-  if (album) params.album = album;
-  if (durationMs > 0) params.duration = String(Math.round(durationMs / 1000));
+  if (current.album) params.album = current.album;
+  if (current.durationMs > 0) params.duration = String(Math.round(current.durationMs / 1000));
 
   const generation = sessionGeneration;
   apiCall(params, true)
     .then(() => {
-      lastfmLog.debug('now playing:', `${artist} - ${track}`);
+      lastfmLog.debug('now playing:', `${current.artist} - ${current.track}`);
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
@@ -644,31 +676,29 @@ function playbackReachedThreshold(): boolean {
  */
 function doScrobble(): void {
   clearScrobbleTimer();
-  if (scrobbled || !active()) return;
+  if (scrobbled) return;
+  const current = active();
+  if (!current) return;
   if (!playbackReachedThreshold()) {
-    lastfmLog.debug('scrobble skipped, playback did not reach the threshold:', `${artist} - ${track}`);
+    lastfmLog.debug('scrobble skipped, playback did not reach the threshold:', `${current.artist} - ${current.track}`);
     return;
   }
   scrobbled = true;
 
-  const sessionKey = getLastfmSessionKey()!;
+  const sessionKey = current.sessionKey;
   const generation = sessionGeneration;
   // The queued entry and the live request are built from one object so the play
   // that goes on the queue cannot drift from the play that was submitted.
-  const entry: PendingScrobble = { artist: artist!, track: track!, timestamp: trackStartUnix };
-  if (album) entry.album = album;
-  if (durationMs > 0) entry.durationSec = Math.round(durationMs / 1000);
+  const entry: PendingScrobble = { artist: current.artist, track: current.track, timestamp: trackStartUnix };
+  if (current.album) entry.album = current.album;
+  if (current.durationMs > 0) entry.durationSec = Math.round(current.durationMs / 1000);
 
   const params: Record<string, string> = {
     method: 'track.scrobble',
-    artist: entry.artist,
-    track: entry.track,
-    timestamp: String(entry.timestamp),
+    ...trackParams(entry),
     api_key: API_KEY,
     sk: sessionKey,
   };
-  if (entry.album) params.album = entry.album;
-  if (entry.durationSec) params.duration = String(entry.durationSec);
 
   // A refusal is final for this track. `scrobbled` stays set, so the track is
   // submitted once and once only. Clearing it re-opened the submission without
@@ -687,7 +717,7 @@ function doScrobble(): void {
   // disconnect would hand this play to the next account.
   apiCall(params, true)
     .then(() => {
-      lastfmLog.info('scrobbled:', `${artist} - ${track}`);
+      lastfmLog.info('scrobbled:', `${entry.artist} - ${entry.track}`);
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
