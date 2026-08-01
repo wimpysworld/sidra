@@ -3,7 +3,7 @@ import log from 'electron-log/main';
 import { isTerminalPlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
 import { getTrayStrings } from '../../i18n';
 import { truncateMenuLabel } from '../../tray';
-import { createPauseTimer } from '../../pauseTimer';
+import { createPauseEdgeTimer } from '../../pauseTimer';
 import { sendCommand } from '../../commandBridge';
 import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
 
@@ -66,7 +66,6 @@ export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;
 
   let currentPayload: NowPlayingPayload | null = null;
-  let previousPlaying = false;
 
   const updateDockProgressBar = (positionUs: number, durationMs: number | undefined): void => {
     const win = getMainWindow?.();
@@ -91,7 +90,7 @@ export function init(ctx: IntegrationContext): void {
     rebuildDock(false);
   };
 
-  const dockPauseTimer = createPauseTimer(DOCK_PAUSE_TIMEOUT_MS, clearNowPlaying);
+  const dockPauseTimer = createPauseEdgeTimer(DOCK_PAUSE_TIMEOUT_MS, clearNowPlaying);
 
   // Named listener references for removeListener in will-quit
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
@@ -118,13 +117,7 @@ export function init(ctx: IntegrationContext): void {
 
     const { isPlaying } = player.playbackSnapshot();
 
-    if (isPlaying) {
-      dockPauseTimer.cancel();
-    }
-    if (!isPlaying && previousPlaying) {
-      dockPauseTimer.start();
-    }
-    previousPlaying = isPlaying;
+    dockPauseTimer.report(isPlaying);
 
     rebuildDock(isPlaying);
   };

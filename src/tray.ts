@@ -14,7 +14,7 @@ import { enable as enableDiscord, disable as disableDiscord } from './integratio
 import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
 import { downloadArtwork } from './artwork';
 import { sendCommand } from './commandBridge';
-import { createPauseTimer } from './pauseTimer';
+import { createPauseEdgeTimer } from './pauseTimer';
 import { openExternalUrl } from './utils/openExternal';
 import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
 
@@ -776,7 +776,6 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
   // rendered payload is not it: that one is committed with its own artwork once
   // the download lands, so nothing can pair a track with another one's image.
   let pendingPayload: NowPlayingPayload | null = null;
-  let previousPlaying = false;
 
   // Volume is left as it stands: it belongs to the player, not to the track
   // that has just gone.
@@ -787,7 +786,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     scheduleTrayRebuild(tray);
   };
 
-  const trayPauseTimer = createPauseTimer(TRAY_PAUSE_TIMEOUT_MS, () => {
+  const trayPauseTimer = createPauseEdgeTimer(TRAY_PAUSE_TIMEOUT_MS, () => {
     trayLog.debug('tray pause timeout reached, clearing Now Playing');
     clearNowPlaying();
   });
@@ -821,16 +820,7 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     }
     const { isPlaying } = player.playbackSnapshot();
 
-    // The timer is armed on the playing-to-paused edge only. Paused states
-    // repeat, and starting it on each one would push the clear-down further
-    // away every time, so a paused player would keep its Now Playing rows.
-    if (isPlaying) {
-      trayPauseTimer.cancel();
-    }
-    if (!isPlaying && previousPlaying) {
-      trayPauseTimer.start();
-    }
-    previousPlaying = isPlaying;
+    trayPauseTimer.report(isPlaying);
 
     updateNowPlayingState({ isPlaying });
     scheduleTrayRebuild(tray);

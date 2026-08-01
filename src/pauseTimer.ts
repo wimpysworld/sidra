@@ -36,3 +36,37 @@ export function createPauseTimer(timeoutMs: number, onExpiry: () => void): Pause
 
   return { start, cancel, destroy: cancel };
 }
+
+/** A pause timer that arms itself from the playback state the player reports. */
+export interface PauseEdgeTimer extends PauseTimer {
+  /**
+   * Take one playback report: cancel while playing, arm on the move to paused.
+   */
+  report(isPlaying: boolean): void;
+}
+
+/**
+ * Build a timer that arms on the playing-to-paused edge only. Paused states
+ * repeat, and start() discards the run in progress, so arming on each report
+ * would push the clear-down further away every time and a paused player would
+ * keep its Now Playing entries for ever.
+ *
+ * Every caller builds its own, because the retained previous value belongs to
+ * that surface. One value shared between the tray and the dock would let a
+ * report to either consume the edge the other was waiting for.
+ */
+export function createPauseEdgeTimer(timeoutMs: number, onExpiry: () => void): PauseEdgeTimer {
+  const timer = createPauseTimer(timeoutMs, onExpiry);
+  let previousPlaying = false;
+
+  function report(isPlaying: boolean): void {
+    if (isPlaying) {
+      timer.cancel();
+    } else if (previousPlaying) {
+      timer.start();
+    }
+    previousPlaying = isPlaying;
+  }
+
+  return { ...timer, report };
+}
