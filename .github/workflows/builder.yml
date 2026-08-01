@@ -342,9 +342,8 @@ jobs:
           # Update Linux hash
           sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"${linux_hash}\"|" nix/linux.nix
 
-          # Update Darwin hash (handles both "sha256-..." and lib.fakeHash)
+          # Update Darwin hash
           sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"${darwin_hash}\"|" nix/darwin.nix
-          sed -i "s|hash = lib.fakeHash|hash = \"${darwin_hash}\"|" nix/darwin.nix
 
           echo "✅ Updated nix/linux.nix and nix/darwin.nix"
           git diff nix/linux.nix nix/darwin.nix
