@@ -261,10 +261,18 @@ describe('player listener cleanup', () => {
       expect(findCleanupFaults(source)).toEqual([]);
     });
 
-    it('rejects an inline listener even when a cleanup block exists', () => {
-      const source = `
+    // Every registration verb is held to the same rule. `once` and
+    // `addListener` are the same registration under other names, so a sweep
+    // matching `player.on(` alone passes a module that registers either way
+    // while reading as coverage.
+    const REGISTRATION_VERBS = ['on', 'once', 'addListener'] as const;
+
+    it.each(REGISTRATION_VERBS)(
+      'rejects an inline %s listener even when a cleanup block exists',
+      (verb) => {
+        const source = `
         export function init(): void {
-          player.on('playbackStateDidChange', (state) => {
+          player.${verb}('playbackStateDidChange', (state) => {
             update(state);
           });
 
@@ -274,37 +282,26 @@ describe('player listener cleanup', () => {
         }
       `;
 
-      expect(findCleanupFaults(source)).toEqual([
-        expect.stringContaining('inline function, which cannot be removed'),
-      ]);
-    });
+        expect(findCleanupFaults(source)).toEqual([
+          expect.stringContaining('inline function, which cannot be removed'),
+        ]);
+      },
+    );
 
-    // `addListener` is the same registration under another name, so a sweep
-    // matching `player.on(` alone passes a module that registers this way
-    // while reading as coverage.
-    it('rejects an addListener registration with no removal', () => {
-      const source = `
+    it.each(['once', 'addListener'] as const)(
+      'rejects a %s registration with no removal',
+      (verb) => {
+        const source = `
         export function init(): void {
-          player.addListener('playbackStateDidChange', onPlaybackStateDidChange);
+          player.${verb}('playbackStateDidChange', onPlaybackStateDidChange);
         }
       `;
 
-      expect(findCleanupFaults(source)).toEqual([
-        expect.stringContaining("registers 'playbackStateDidChange'"),
-      ]);
-    });
-
-    it('rejects a once registration with no removal', () => {
-      const source = `
-        export function init(): void {
-          player.once('playbackStateDidChange', onPlaybackStateDidChange);
-        }
-      `;
-
-      expect(findCleanupFaults(source)).toEqual([
-        expect.stringContaining("registers 'playbackStateDidChange'"),
-      ]);
-    });
+        expect(findCleanupFaults(source)).toEqual([
+          expect.stringContaining("registers 'playbackStateDidChange'"),
+        ]);
+      },
+    );
 
     it('accepts a once registration removed inside the will-quit handler', () => {
       const source = `
@@ -318,42 +315,6 @@ describe('player listener cleanup', () => {
       `;
 
       expect(findCleanupFaults(source)).toEqual([]);
-    });
-
-    it('rejects an inline once listener', () => {
-      const source = `
-        export function init(): void {
-          player.once('playbackStateDidChange', (state) => {
-            update(state);
-          });
-
-          app.on('will-quit', () => {
-            teardown();
-          });
-        }
-      `;
-
-      expect(findCleanupFaults(source)).toEqual([
-        expect.stringContaining('inline function, which cannot be removed'),
-      ]);
-    });
-
-    it('rejects an inline addListener listener', () => {
-      const source = `
-        export function init(): void {
-          player.addListener('playbackStateDidChange', (state) => {
-            update(state);
-          });
-
-          app.on('will-quit', () => {
-            teardown();
-          });
-        }
-      `;
-
-      expect(findCleanupFaults(source)).toEqual([
-        expect.stringContaining('inline function, which cannot be removed'),
-      ]);
     });
   });
 
