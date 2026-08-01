@@ -99,18 +99,32 @@ interface LastfmResponse {
 // account's Applications settings looks like. No retry can recover it.
 const INVALID_SESSION_ERROR = 9;
 
-// The Last.fm codes that report the state of the service rather than a
-// judgement on the play: 8 "Operation failed - Most likely the backend service
-// failed. Please try again.", 11 "Service Offline - This service is temporarily
-// offline. Try again later.", 16 "The service is temporarily unavailable,
-// please try again." and 29 "Rate Limit Exceded". None of them means the play
-// was seen and refused, so the play is held exactly as one the network never
-// delivered is. Every other code answers about this play and is final.
+// The Last.fm codes that answer about something other than the play. Two
+// classes sit here. The state of the service: 8 "Operation failed - Most likely
+// the backend service failed. Please try again.", 11 "Service Offline - This
+// service is temporarily offline. Try again later.", 16 "The service is
+// temporarily unavailable, please try again." and 29 "Rate Limit Exceded". The
+// state of Sidra's own application credential: 10 "Invalid API key - You must
+// be granted a valid key by last.fm" and 26 "API Key Suspended - This
+// application is not allowed to make requests to the web services", which the
+// track.scrobble page words as "Suspended API key - Access for your account has
+// been suspended, please contact Last.fm". Neither is anything the user can
+// fix, and Last.fm can restore a rejected key server-side exactly as it can
+// lift a suspension: `active()` gates every request on `isConfigured()`, so a
+// build shipped without credentials never makes a request at all and code 10
+// can only mean a key that is present was rejected. None of the six means the
+// play was seen and refused, so the play is held exactly as one the network
+// never delivered is. Every other code answers about this play and is final.
 //
 // None of them can be provoked by the contents of a batch either, which is what
 // keeps a held batch from blocking the queue: the condition belongs to the
-// service, and it clears when the service does. See `flushPendingScrobbles()`.
-const RETRIABLE_ERRORS = new Set([8, 11, 16, 29]);
+// service or to the credential, and it clears when that does. While the
+// credential is rejected no request can succeed, so the queue neither drains
+// nor blocks anything; `queueScrobble()` evicts oldest-first, so it stays a
+// rolling window of the newest 50 plays. No timer retries either: a drain only
+// rides on the success path of a request the user's playback triggered. See
+// `flushPendingScrobbles()`.
+const RETRIABLE_ERRORS = new Set([8, 10, 11, 16, 26, 29]);
 
 /** An error the Last.fm API reported in its response body, with its code intact. */
 class LastfmApiError extends Error {

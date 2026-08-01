@@ -740,6 +740,69 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(0);
   });
 
+  it('keeps a batch the API key was rejected on, and submits it once the key works again', async () => {
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 10: invalid API key. That is Sidra's own credential, not a judgement on
+    // these plays, and Last.fm can restore it server-side.
+    refuseScrobbles(10);
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    expect(batches()).toHaveLength(1);
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Ceremony');
+    // The user's account is untouched: the fault is in the application key.
+    expect(session.key).toBe('session-key');
+    expect(session.enabled).toBe(true);
+
+    // Nothing re-fires on the failure: the batch waits for the next request the
+    // user's own playback triggers.
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(batches()).toHaveLength(1);
+
+    // The key is accepted again and the next now-playing update carries it out.
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    player.setPositionUs(0);
+    player.emitNowPlaying(SHORT_TRACK);
+    await flush();
+
+    expect(batches()).toHaveLength(2);
+    expect(batches()[1].get('track[0]')).toBe('Ceremony');
+    expect(queue.pending).toHaveLength(0);
+  });
+
+  it('keeps a batch the API key was suspended on', async () => {
+    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+
+    const lastfm = await loadLastfm();
+    const player = new FakePlayer();
+    lastfm.init({ player });
+    // 26: suspended API key. A suspension is lifted server-side, so these plays
+    // are as unrecorded as ones the network dropped, and none of them provoked
+    // it.
+    refuseScrobbles(26);
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await flush();
+
+    expect(batches()).toHaveLength(1);
+    expect(queue.pending).toHaveLength(1);
+    expect(queue.pending[0].track).toBe('Ceremony');
+    expect(session.key).toBe('session-key');
+    expect(session.enabled).toBe(true);
+
+    // Nothing re-fires while the suspension stands.
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(batches()).toHaveLength(1);
+  });
+
   it('drops a batch the API refused', async () => {
     queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
 
