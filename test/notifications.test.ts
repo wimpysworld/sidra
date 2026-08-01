@@ -1,4 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// The notify stand-in mirrors the D-Bus daemon gate; 'record' mode is what this
+// file needs, because the integration attaches listeners and calls show() on
+// the object it gets back, and the tests read both.
+import { FakeNotification, notifyFake, resetNotifyFake } from './mocks/notify';
+
 import { downloadArtwork } from '../src/artwork';
 import { createNotification } from '../src/notify';
 import { setNotificationsEnabled } from '../src/config';
@@ -11,44 +16,11 @@ import { quit } from './mocks/appLifecycle';
 // which the module keeps private.
 const DEBOUNCE_MS = 1500;
 
-// createNotification() gates every construction on a D-Bus daemon probe that
-// never runs under test, and the gate starts closed on Linux. The stand-in
-// mirrors that gate so a test can open or close it. It records what it built,
-// because the integration attaches listeners and calls show() on the object it
-// gets back. test/notify.test.ts covers the real gate.
-const daemon = vi.hoisted(() => ({ available: true, created: [] as FakeNotification[] }));
-
-vi.mock('../src/notify', () => ({
-  notificationsAvailable: vi.fn(() => daemon.available),
-  createNotification: vi.fn((options: Electron.NotificationConstructorOptions) => {
-    if (!daemon.available) return null;
-    const handlers: Record<string, (...args: unknown[]) => void> = {};
-    const notification: FakeNotification = {
-      options,
-      handlers,
-      on(event, listener) {
-        handlers[event] = listener;
-        return notification;
-      },
-      show: vi.fn(),
-    };
-    daemon.created.push(notification);
-    return notification;
-  }),
-}));
-
 // The artwork download is the expensive half of a notification: a network fetch
 // and a disk write per track. The gate must sit in front of it.
 vi.mock('../src/artwork', () => ({
   downloadArtwork: vi.fn(() => Promise.resolve('/tmp/sidra-test/artwork.jpg')),
 }));
-
-interface FakeNotification {
-  options: Electron.NotificationConstructorOptions;
-  handlers: Record<string, (...args: unknown[]) => void>;
-  on(event: string, listener: (...args: unknown[]) => void): FakeNotification;
-  show: ReturnType<typeof vi.fn>;
-}
 
 const TRACK: NowPlayingPayload = {
   name: 'Blue Monday',
@@ -58,7 +30,7 @@ const TRACK: NowPlayingPayload = {
 
 /** The notification the integration asked for, or undefined if it asked for none. */
 function shown(): FakeNotification | undefined {
-  return daemon.created[0];
+  return notifyFake.built[0];
 }
 
 describe('notifications integration', () => {
@@ -67,8 +39,7 @@ describe('notifications integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    daemon.available = true;
-    daemon.created = [];
+    resetNotifyFake('record');
     setNotificationsEnabled(true);
     player = new FakePlayer();
     init({ player, getMainWindow: () => null });
@@ -79,7 +50,7 @@ describe('notifications integration', () => {
   });
 
   it('builds no notification and downloads no artwork while the gate is closed', async () => {
-    daemon.available = false;
+    notifyFake.available = false;
 
     player.emitNowPlaying({ ...TRACK, artworkUrl: 'https://example.com/art.jpg' });
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);

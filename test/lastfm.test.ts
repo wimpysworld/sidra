@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+// The notify stand-in mirrors the D-Bus daemon gate; 'construct' mode is what
+// this file needs, because every assertion here counts the notifications that
+// reached the user, and the electron constructor mock is where the freeze this
+// gate exists to prevent would begin.
+import { resetNotifyFake, notifyFake } from './mocks/notify';
+
 import { createHash } from 'crypto';
 import { net, shell, Notification } from 'electron';
 import log from 'electron-log/main';
@@ -34,20 +40,6 @@ vi.mock('../src/i18n', () => ({
   getLastfmConnectedText: vi.fn(() => 'Connected'),
   getLastfmConnectFailedText: vi.fn(() => 'Could not connect'),
 }));
-
-// createNotification() gates every construction on a D-Bus daemon probe that
-// never runs under test, and the gate starts closed on Linux. The stand-in
-// mirrors that gate so a test can open or close it, and constructs the same
-// electron Notification the real helper does.
-const daemon = vi.hoisted(() => ({ available: true }));
-
-vi.mock('../src/notify', async () => {
-  const { Notification } = await import('electron');
-  return {
-    createNotification: vi.fn((options: Electron.NotificationConstructorOptions) =>
-      daemon.available ? new Notification(options) : null),
-  };
-});
 
 describe('signParams', () => {
   it('sorts params by name, concatenates name+value, appends secret, then MD5', () => {
@@ -157,7 +149,7 @@ function play(player: FakePlayer, ms: number): void {
 /** A connected account, an accepting API and a clock under test control. */
 function startFromConnected(): void {
   vi.clearAllMocks();
-  daemon.available = true;
+  resetNotifyFake('construct');
   session.key = 'session-key';
   session.enabled = true;
   queue.pending = [];
@@ -373,7 +365,7 @@ describe('revoked session', () => {
 
   it('constructs no notification for the forced failure when no daemon is available', async () => {
     const { player } = await startIntegration();
-    daemon.available = false;
+    notifyFake.available = false;
     refuseScrobbles(9);
 
     playPastThreshold(player);
