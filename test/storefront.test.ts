@@ -376,6 +376,17 @@ describe('buildItmsRouteURL', () => {
       }
     });
   }
+
+  it('appends ?l= when language is set', () => {
+    mockedGetLanguage.mockReturnValue('en-GB');
+    expect(buildItmsRouteURL('library')).toBe(`${MUSIC_SERVICES.music.origin}/gb/library?l=en-GB`);
+  });
+
+  it('falls back to getLocaleStorefront when no persisted storefront', () => {
+    mockedGetStorefront.mockReturnValue(undefined);
+    mockedGetLocaleStorefront.mockReturnValue('de');
+    expect(buildItmsRouteURL('browse')).toBe(`${MUSIC_SERVICES.music.origin}/de/browse`);
+  });
 });
 
 describe('handleLastPageNavigation', () => {
