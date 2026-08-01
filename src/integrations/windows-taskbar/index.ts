@@ -106,60 +106,60 @@ export function init(ctx: IntegrationContext): void {
     });
   }
 
-  // Named listener references for removeListener in will-quit
-  const onThemeUpdated = (): void => {
-    const win = getMainWindow?.();
-    if (!win) return;
-    const { isPlaying, state } = player.playbackSnapshot();
-    if (currentPayload) {
-      setThumbarButtons(win, isPlaying);
-    }
-    // Always update overlay to reflect current theme, even with no track loaded
-    setOverlayIcon(win, state);
+  // Resolves the window once per event, keeping the listener's own arguments
+  const withWindow =
+    <A extends unknown[]>(fn: (win: BrowserWindow, ...args: A) => void) =>
+      (...args: A): void => {
+        const target = getMainWindow?.();
+        if (target) fn(target, ...args);
+      };
+
+  const clearTaskbar = (target: BrowserWindow): void => {
+    target.setThumbarButtons([]);
+    target.setOverlayIcon(null, '');
+    clearProgressBar(target);
   };
 
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
-    const win = getMainWindow?.();
-    if (!win) return;
+  // Named listener references for removeListener in will-quit
+  const onThemeUpdated = withWindow((target) => {
+    const { isPlaying, state } = player.playbackSnapshot();
+    if (currentPayload) {
+      setThumbarButtons(target, isPlaying);
+    }
+    // Always update overlay to reflect current theme, even with no track loaded
+    setOverlayIcon(target, state);
+  });
 
+  const onNowPlayingItemDidChange = withWindow((target, payload: NowPlayingPayload | null) => {
     currentPayload = payload;
     if (!payload) {
-      win.setThumbarButtons([]);
-      win.setOverlayIcon(null, '');
-      clearProgressBar(win);
+      clearTaskbar(target);
       return;
     }
     const { isPlaying } = player.playbackSnapshot();
-    setThumbarButtons(win, isPlaying);
-  };
+    setThumbarButtons(target, isPlaying);
+  });
 
-  const onPlaybackStateDidChange = (statePayload: PlaybackStatePayload): void => {
-    const win = getMainWindow?.();
-    if (!win) return;
-
+  const onPlaybackStateDidChange = withWindow((target, statePayload: PlaybackStatePayload) => {
     const state = statePayload?.state ?? 0;
     if (state === PlaybackState.None || state === PlaybackState.Stopped ||
         state === PlaybackState.Ended || state === PlaybackState.Completed) {
       currentPayload = null;
-      win.setThumbarButtons([]);
-      win.setOverlayIcon(null, '');
-      clearProgressBar(win);
+      clearTaskbar(target);
       return;
     }
 
     const { isPlaying } = player.playbackSnapshot();
-    setThumbarButtons(win, isPlaying);
+    setThumbarButtons(target, isPlaying);
 
     if (!TRANSIENT_STATES.has(state)) {
-      setOverlayIcon(win, state);
+      setOverlayIcon(target, state);
     }
-  };
+  });
 
-  const onPlaybackTimeDidChange = (positionUs: number): void => {
-    const win = getMainWindow?.();
-    if (!win) return;
-    updateProgressBar(win, positionUs, currentPayload?.durationInMillis);
-  };
+  const onPlaybackTimeDidChange = withWindow((target, positionUs: number) => {
+    updateProgressBar(target, positionUs, currentPayload?.durationInMillis);
+  });
 
   nativeTheme.on('updated', onThemeUpdated);
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
