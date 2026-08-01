@@ -80,16 +80,31 @@ function createClient(player: Player): Client {
   return created;
 }
 
+// Ends a client that is being discarded. removeAllListeners() must run before
+// destroy(): destroy() closes the transport, whose close handler emits
+// 'disconnected' on the old client, and that stray event would arm a second
+// backoff chain.
+//
+// clearActivity() is an RPC round trip on the transport destroy() closes, and
+// destroy() neither flushes the socket nor waits for Discord's reply, so the
+// destroy is chained onto the clear rather than called beside it. A dead
+// Discord still reaches the destroy: the transport close handler rejects every
+// pending request.
+function retireClient(retiring: Client, clearActivity: boolean): void {
+  retiring.removeAllListeners();
+  const cleared = clearActivity && retiring.user
+    ? retiring.user.clearActivity().catch(() => {})
+    : Promise.resolve();
+  cleared.then(() => retiring.destroy().catch(() => {}));
+}
+
 // Client.connect() leaks a 'connected' listener on both failure paths, and a
 // transport rejection leaves connectionPromise set to a rejected promise, so a
 // reused instance never retries. Discarding the instance is the only remedy
-// available to a consumer. removeAllListeners() must run before destroy():
-// destroy() closes the transport, whose close handler emits 'disconnected' on
-// the old client, and that stray event would arm a second backoff chain.
-function replaceClient(player: Player): Client {
+// available to a consumer.
+function replaceClient(player: Player, clearActivity = false): Client {
   if (client) {
-    client.removeAllListeners();
-    client.destroy().catch(() => {});
+    retireClient(client, clearActivity);
   }
   client = createClient(player);
   return client;
@@ -117,8 +132,7 @@ function disconnectClient(player: Player): void {
   }
   retryCount = 0;
 
-  client?.user?.clearActivity().catch(() => {});
-  replaceClient(player);
+  replaceClient(player, true);
   discordLog.info('disconnected from Discord (disabled via toggle)');
 }
 
