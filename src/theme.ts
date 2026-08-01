@@ -250,6 +250,17 @@ export function initThemeCSS(win: BrowserWindow): void {
     }
   });
 
+  // Last, because the debounced callback below calls applyThemeCSSInternal and
+  // resolveTheme against the window this function has just wired up.
+  initCustomCssWatcher(win);
+}
+
+/**
+ * Watch the userData directory for custom.css changes, re-apply the CSS when the
+ * stored theme needs it, and rebuild the tray. Owns its debounce timer and closes
+ * both on will-quit.
+ */
+function initCustomCssWatcher(win: BrowserWindow): void {
   let customCssTimer: NodeJS.Timeout | null = null;
   const userDataPath = app.getPath('userData');
   let watcher: fs.FSWatcher | null = null;
