@@ -71,37 +71,56 @@
     return el;
   }
 
+  /** @type {string} */
+  var IDLE_COLOR = 'var(--systemPrimary, #ffffff)';
+  /** @type {string} */
+  var HOVER_COLOR = 'var(--keyColor, #fa586a)';
+
   var sharedAttrs = {
     width: '20',
     height: '20',
     viewBox: '0 0 24 24',
     fill: 'none',
-    stroke: 'var(--systemPrimary, #ffffff)',
+    stroke: IDLE_COLOR,
     'stroke-width': '1.5',
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
   };
 
-  /** @returns {SVGSVGElement} Back chevron icon */
-  function createBackSvg() {
-    var svg = createSvgElement('svg', sharedAttrs);
-    svg.appendChild(createSvgElement('polyline', { points: '15 18 9 12 15 6' }));
-    return svg;
-  }
+  // Icon geometry only; the wrapping svg carries sharedAttrs.
+  /** @type {Array<{ label: string, channel: string, icon: Array<[string, Record<string, string>]> }>} */
+  var BUTTONS = [
+    { label: LABELS.back, channel: 'nav:back', icon: [['polyline', { points: '15 18 9 12 15 6' }]] },
+    {
+      label: LABELS.forward,
+      channel: 'nav:forward',
+      icon: [['polyline', { points: '9 6 15 12 9 18' }]],
+    },
+    {
+      label: LABELS.reload,
+      channel: 'nav:reload',
+      icon: [
+        ['polyline', { points: '23 4 23 10 17 10' }],
+        ['path', { d: 'M20.49 15a9 9 0 1 1-2.12-9.36L23 10' }],
+      ],
+    },
+  ];
 
-  /** @returns {SVGSVGElement} Forward chevron icon */
-  function createForwardSvg() {
-    var svg = createSvgElement('svg', sharedAttrs);
-    svg.appendChild(createSvgElement('polyline', { points: '9 6 15 12 9 18' }));
-    return svg;
-  }
-
-  /** @returns {SVGSVGElement} Reload/refresh icon */
-  function createReloadSvg() {
-    var svg = createSvgElement('svg', sharedAttrs);
-    svg.appendChild(createSvgElement('polyline', { points: '23 4 23 10 17 10' }));
-    svg.appendChild(createSvgElement('path', { d: 'M20.49 15a9 9 0 1 1-2.12-9.36L23 10' }));
-    return svg;
+  /**
+   * Paint a button and its icon. The base styles are inline and !important, so a
+   * :hover rule in an injected stylesheet could never beat them; hover has to be
+   * written from JavaScript.
+   *
+   * @param {HTMLButtonElement} button - Button to paint
+   * @param {string} color - Colour for the button and the icon stroke
+   * @param {string} opacity - Button opacity
+   * @returns {void}
+   */
+  function paintButton(button, color, opacity) {
+    button.style.setProperty('opacity', opacity, 'important');
+    button.style.setProperty('color', color, 'important');
+    var svg = button.querySelector('svg');
+    if (svg) svg.style.setProperty('stroke', color, 'important');
   }
 
   /**
@@ -123,7 +142,7 @@
       'display: flex !important',
       'align-items: center !important',
       'justify-content: center !important',
-      'color: var(--systemPrimary, #ffffff) !important',
+      'color: ' + IDLE_COLOR + ' !important',
       'opacity: 0.7 !important',
       'transition: opacity 0.15s ease, color 0.15s ease !important',
     ].join('; '));
@@ -131,16 +150,10 @@
     btn.appendChild(svgElement);
 
     btn.addEventListener('mouseenter', function () {
-      this.style.setProperty('opacity', '1', 'important');
-      this.style.setProperty('color', 'var(--keyColor, #fa586a)', 'important');
-      var svg = this.querySelector('svg');
-      if (svg) svg.style.setProperty('stroke', 'var(--keyColor, #fa586a)', 'important');
+      paintButton(this, HOVER_COLOR, '1');
     });
     btn.addEventListener('mouseleave', function () {
-      this.style.setProperty('opacity', '0.7', 'important');
-      this.style.setProperty('color', 'var(--systemPrimary, #ffffff)', 'important');
-      var svg = this.querySelector('svg');
-      if (svg) svg.style.setProperty('stroke', 'var(--systemPrimary, #ffffff)', 'important');
+      paintButton(this, IDLE_COLOR, '0.7');
     });
 
     btn.addEventListener('click', function () {
@@ -150,9 +163,13 @@
     return btn;
   }
 
-  container.appendChild(createButton(LABELS.back, createBackSvg(), 'nav:back'));
-  container.appendChild(createButton(LABELS.forward, createForwardSvg(), 'nav:forward'));
-  container.appendChild(createButton(LABELS.reload, createReloadSvg(), 'nav:reload'));
+  BUTTONS.forEach(function (spec) {
+    var svg = createSvgElement('svg', sharedAttrs);
+    spec.icon.forEach(function (child) {
+      svg.appendChild(createSvgElement(child[0], child[1]));
+    });
+    container.appendChild(createButton(spec.label, svg, spec.channel));
+  });
 
   logoEl.appendChild(container);
 
