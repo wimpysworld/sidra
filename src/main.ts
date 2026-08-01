@@ -222,14 +222,33 @@ function setupApplicationMenu(): void {
   mainLog.info('application menu set');
 }
 
+// The renderer→main channels split by owner: the nav: prefix is the navigation
+// bar's namespace, and every other channel is a MusicKit event for the Player.
+// Each table below is a total record over its half, so a channel renamed in
+// src/types/hook.d.ts and a channel added there with no listener both fail tsc
+// here rather than compiling on and never firing.
+type NavSendChannel = Extract<SendChannel, `nav:${string}`>;
+type PlayerSendChannel = Exclude<SendChannel, NavSendChannel>;
+type SendListener = Parameters<typeof ipcMain.on>[1];
+
+// Object.keys() preserves insertion order, so listeners register in the order
+// the table lists them.
+function onSendChannels<C extends SendChannel>(listeners: Record<C, SendListener>): void {
+  for (const channel of Object.keys(listeners) as C[]) {
+    ipcMain.on(channel, listeners[channel]);
+  }
+}
+
 function initPlayerIPC(): Player {
   const player = new Player();
-  ipcMain.on('playbackStateDidChange', (_event, data) => player.handlePlaybackStateDidChange(data));
-  ipcMain.on('nowPlayingItemDidChange', (_event, data) => player.handleNowPlayingItemDidChange(data));
-  ipcMain.on('playbackTimeDidChange', (_event, data) => player.handlePlaybackTimeDidChange(data));
-  ipcMain.on('repeatModeDidChange', (_event, data) => player.handleRepeatModeDidChange(data));
-  ipcMain.on('shuffleModeDidChange', (_event, data) => player.handleShuffleModeDidChange(data));
-  ipcMain.on('volumeDidChange', (_event, data) => player.handleVolumeDidChange(data));
+  onSendChannels<PlayerSendChannel>({
+    playbackStateDidChange: (_event, data) => player.handlePlaybackStateDidChange(data),
+    nowPlayingItemDidChange: (_event, data) => player.handleNowPlayingItemDidChange(data),
+    playbackTimeDidChange: (_event, data) => player.handlePlaybackTimeDidChange(data),
+    repeatModeDidChange: (_event, data) => player.handleRepeatModeDidChange(data),
+    shuffleModeDidChange: (_event, data) => player.handleShuffleModeDidChange(data),
+    volumeDidChange: (_event, data) => player.handleVolumeDidChange(data),
+  });
   return player;
 }
 
@@ -352,11 +371,13 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
   win.webContents.setZoomFactor(getZoomFactor());
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
 
-  ipcMain.on('nav:back', () => win.webContents.navigationHistory.goBack());
-  ipcMain.on('nav:forward', () => win.webContents.navigationHistory.goForward());
-  ipcMain.on('nav:reload', () => {
-    resetWedgeDetector();
-    win.webContents.reload();
+  onSendChannels<NavSendChannel>({
+    'nav:back': () => win.webContents.navigationHistory.goBack(),
+    'nav:forward': () => win.webContents.navigationHistory.goForward(),
+    'nav:reload': () => {
+      resetWedgeDetector();
+      win.webContents.reload();
+    },
   });
 }
 
