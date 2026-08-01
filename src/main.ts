@@ -758,8 +758,5 @@ app.on('window-all-closed', () => {
 // macOS: clicking the dock icon when the window is hidden (close-to-tray)
 // should restore it rather than doing nothing.
 app.on('activate', () => {
-  if (win && !win.isVisible()) {
-    win.show();
-    if (appTray) rebuildTrayMenu(appTray);
-  }
+  focusMainWindow();
 });
