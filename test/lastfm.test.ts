@@ -308,11 +308,9 @@ describe('scrobble submission', () => {
     player.emitNowPlaying(TRACK);
     player.emitPlaybackState(PlaybackState.Playing);
     play(player, 100_000);
-    player.emitPlaybackState(PlaybackState.Paused);
 
     session.enabled = true;
     lastfm.enable();
-    player.emitPlaybackState(PlaybackState.Playing);
     play(player, 100_000);
 
     expect(scrobbles()).toHaveLength(0);
