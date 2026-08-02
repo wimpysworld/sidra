@@ -301,6 +301,29 @@ describe('scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
+  it('counts playback from opt-in when the track started while scrobbling was off', async () => {
+    session.enabled = false;
+    const { lastfm, player } = await startIntegration();
+
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 100_000);
+    player.emitPlaybackState(PlaybackState.Paused);
+
+    session.enabled = true;
+    lastfm.enable();
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 100_000);
+
+    expect(scrobbles()).toHaveLength(0);
+
+    play(player, 100_000);
+
+    const submitted = scrobbles();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('timestamp')).toBe(String(Number(START_UNIX) + 100));
+  });
+
   it('scrobbles each pass of a repeated track with its own timestamp', async () => {
     const { player } = await startIntegration();
 

@@ -779,6 +779,7 @@ function resetTrack(payload: NowPlayingPayload | null): void {
  * when a track is selected while paused and played later.
  */
 function markPlaybackStarted(): void {
+  if (!getLastfmEnabled()) return;
   if (trackStartUnix === 0) trackStartUnix = nowUnix();
   lastResumeAt = Date.now();
   sendNowPlaying();
