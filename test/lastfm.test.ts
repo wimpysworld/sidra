@@ -320,6 +320,68 @@ describe('scrobble submission', () => {
   });
 });
 
+/** The parameters of every track.updateNowPlaying request sent so far. */
+function nowPlayingRequests(): URLSearchParams[] {
+  return vi
+    .mocked(net.fetch)
+    .mock.calls.map(([, init]) => new URLSearchParams(typeof init?.body === 'string' ? init.body : ''))
+    .filter((params) => params.get('method') === 'track.updateNowPlaying');
+}
+
+/** Starts playing `payload` and returns the one now-playing request it sends. */
+async function nowPlayingFor(payload: NowPlayingPayload): Promise<URLSearchParams> {
+  const { player } = await startIntegration();
+
+  player.emitNowPlaying(payload);
+  player.emitPlaybackState(PlaybackState.Playing);
+
+  const sent = nowPlayingRequests();
+  expect(sent).toHaveLength(1);
+  return sent[0];
+}
+
+describe('now playing request', () => {
+  beforeEach(startFromConnected);
+  afterEach(restoreRealTime);
+
+  it('names the track, the album, the duration and the session', async () => {
+    const params = await nowPlayingFor(TRACK);
+
+    expect(params.get('method')).toBe('track.updateNowPlaying');
+    expect(params.get('artist')).toBe('New Order');
+    expect(params.get('track')).toBe('Blue Monday');
+    expect(params.get('album')).toBe('Power, Corruption & Lies');
+    expect(params.get('duration')).toBe('400');
+    expect(params.get('api_key')).toBe('test-key');
+    expect(params.get('sk')).toBe('session-key');
+    // This request says what is playing now, not what was played, so Last.fm
+    // takes no timestamp on it.
+    expect(params.has('timestamp')).toBe(false);
+  });
+
+  it('omits the album when the track has none', async () => {
+    const params = await nowPlayingFor(SHORT_TRACK);
+
+    expect(params.has('album')).toBe(false);
+  });
+
+  it('omits the duration when the track reports none', async () => {
+    const params = await nowPlayingFor({ ...TRACK, durationInMillis: 0 });
+
+    expect(params.has('duration')).toBe(false);
+  });
+
+  it('sends a duration of 0 for a track under half a second', async () => {
+    // This request reports a duration for any track that has one, while
+    // trackParams() omits it once the rounded seconds are 0. That difference is
+    // the whole reason the two build their bodies apart, and 400ms is the only
+    // input that shows it: applying the helper here would drop the parameter.
+    const params = await nowPlayingFor({ ...TRACK, durationInMillis: 400 });
+
+    expect(params.get('duration')).toBe('0');
+  });
+});
+
 /** A Last.fm API refusal: HTTP 200 with an error code in the body. */
 function apiError(code: number): Response {
   return new Response(JSON.stringify({ error: code, message: 'refused' }));
