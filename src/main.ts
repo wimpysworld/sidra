@@ -2,6 +2,7 @@ import { app, BrowserWindow, components, ipcMain, Menu, session, Tray, webFrameM
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
+import { AUTH_FIX_TOKEN, PASSKEY_CONTAINER_SELECTORS } from './authFrame';
 import { getZoomFactor, getCloseToTrayEnabled, getMusicService } from './config';
 import { getLoadingText, getNavigationStrings, NAV_LABELS_TOKEN } from './i18n';
 import { getAssetPath } from './paths';
@@ -443,25 +444,6 @@ function setupNavigationHandlers(win: BrowserWindow, assets: Assets): void {
 
 const AUTH_FRAME_HOSTS = new Set<string>(allServices().flatMap(svc => [...svc.authFrameHosts]));
 const AUTH_FRAME_LOG_PREFIX = '[sidra] auth-frame hide:';
-// Substituted by loadAssets(); assets/authFrameFix.js carries the same spelling.
-const AUTH_FIX_TOKEN = '__SIDRA_AUTH_FIX__';
-
-// Containers that name the passkey or "Sign in with iPhone" option. Both jobs
-// in assets/authFrameFix.js need them: the injected stylesheet hides a match on
-// sight, and closest() walks up to one from a button it has already matched.
-// Only selectors that name the feature belong here. The broad class prefixes
-// and the structural [role="group"] and fieldset entries stay in the script,
-// where the walk starts at a matched button; in the stylesheet they would hide
-// unrelated form groups.
-const PASSKEY_CONTAINER_SELECTORS = [
-  '[class*="passkey-option" i]',
-  '[class*="passkey-section" i]',
-  '[class*="passkey-container" i]',
-  '[class*="iphone-signin" i]',
-  '[class*="cross-device" i]',
-  '[data-component-name*="passkey" i]',
-  '[data-testid*="passkey" i][role="group"]',
-];
 
 // assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
 // Apple's sign-in iframe, and reports what it hid back over console-message,

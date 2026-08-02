@@ -8,12 +8,12 @@
   // Not standalone-executable JavaScript: loadAssets() in src/main.ts replaces
   // this bare token with the stylesheet and the log prefix as JSON, because the
   // script is injected with executeJavaScript() and cannot take the query
-  // parameters the splash screen uses. AUTH_FIX_TOKEN in src/main.ts is the
-  // shared spelling.
+  // parameters the splash screen uses. AUTH_FIX_TOKEN in src/authFrame.ts is
+  // the shared spelling, and test/authFrameFix.test.ts holds the two together.
   /** @type {{ css: string, containerSelectors: string[], logPrefix: string }} */
   var CONFIG = __SIDRA_AUTH_FIX__;
 
-  // PASSKEY_CONTAINER_SELECTORS in src/main.ts, shared by the two jobs below:
+  // PASSKEY_CONTAINER_SELECTORS in src/authFrame.ts, shared by the two jobs below:
   // the stylesheet hides a match on sight, and closest() walks up to one from a
   // matched button. The extras are script-only. A broad class prefix or a bare
   // [role="group"] is safe for the walk, which starts at a button whose text
