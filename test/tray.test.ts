@@ -134,10 +134,12 @@ afterEach(restorePlatform);
 
 /**
  * Puts every mock and every piece of tray module state the menu reads back to
- * the state this file builds a menu in. vitest.config.ts turns on neither
- * `clearMocks` nor `mockReset`, so without a reset of its own a block that
- * moves one of these values leaves it moved for every block that follows, and
- * the order of the describes becomes part of the contract.
+ * the state this file builds a menu in, and drops the recorded calls on the
+ * `nativeImage` factories that several tests assert were never called.
+ * vitest.config.ts turns on neither `clearMocks` nor `mockReset`, so without a
+ * reset of its own a block that moves one of these values, or that paints an
+ * icon, leaves that behind for every block that follows, and the order of the
+ * describes becomes part of the contract.
  */
 function resetTrayMocks(): void {
   vi.mocked(getMusicService).mockReturnValue('music');
@@ -151,6 +153,8 @@ function resetTrayMocks(): void {
   vi.mocked(hasCustomCss).mockReturnValue(false);
   vi.mocked(getUpdateInfo).mockReturnValue(null);
   vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
+  vi.mocked(nativeImage.createFromPath).mockClear();
+  vi.mocked(nativeImage.createFromNamedImage).mockClear();
   setGetMainWindowCallback(() => null);
   setSwitchServiceCallback(() => {});
   updateNowPlayingState({ payload: null, artworkPath: null, isPlaying: false, volume: 0 });
@@ -1436,11 +1440,6 @@ describe('theme change menu refresh', () => {
 });
 
 describe('getMenuIcon', () => {
-  afterEach(() => {
-    vi.mocked(nativeImage.createFromPath).mockClear();
-    vi.mocked(nativeImage.createFromNamedImage).mockClear();
-  });
-
   describe('Linux - themed PNG icons', () => {
     beforeEach(() => {
       setPlatform('linux');
