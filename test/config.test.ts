@@ -24,11 +24,12 @@ import {
   getMusicService, setMusicService,
   getClassicalStartPage, setClassicalStartPage,
   getClassicalLastPageUrl, setClassicalLastPageUrl,
+  getStartPageFor, getLastPageUrlFor, setLastPageUrlFor,
 } from '../src/config';
 import type { PendingScrobble } from '../src/config';
 import { Conf } from 'electron-conf/main';
 import { DEFAULT_SERVICE_ID } from '../src/musicService';
-import type { ClassicalStartPageId, MusicServiceId } from '../src/musicService';
+import type { AnyStartPageId, ClassicalStartPageId, MusicServiceId } from '../src/musicService';
 
 // Each assertion pins a getter return type or a setter parameter type against
 // its StoreSchema key type, so a key whose type drifts fails at the boundary
@@ -131,6 +132,21 @@ describe('Config store type assertions', () => {
 
   it('setClassicalLastPageUrl accepts string', () => {
     expectTypeOf(setClassicalLastPageUrl).parameter(0).toEqualTypeOf<string>();
+  });
+
+  it('getStartPageFor takes a MusicServiceId and returns the wide start page union', () => {
+    expectTypeOf(getStartPageFor).parameter(0).toEqualTypeOf<MusicServiceId>();
+    expectTypeOf(getStartPageFor).returns.toEqualTypeOf<AnyStartPageId | 'last'>();
+  });
+
+  it('getLastPageUrlFor takes a MusicServiceId and returns string | undefined', () => {
+    expectTypeOf(getLastPageUrlFor).parameter(0).toEqualTypeOf<MusicServiceId>();
+    expectTypeOf(getLastPageUrlFor).returns.toEqualTypeOf<string | undefined>();
+  });
+
+  it('setLastPageUrlFor takes a MusicServiceId and a string', () => {
+    expectTypeOf(setLastPageUrlFor).parameter(0).toEqualTypeOf<MusicServiceId>();
+    expectTypeOf(setLastPageUrlFor).parameter(1).toEqualTypeOf<string>();
   });
 
   it('getPendingScrobbles returns PendingScrobble[]', () => {
@@ -427,5 +443,77 @@ describe('Config store runtime behaviour', () => {
     setZoomFactor(1.25);
     expect(getZoomFactor()).toBe(1.25);
     expect(getStartPage()).toBe('new');
+  });
+
+  // SERVICE_PAGE_ACCESSORS is the only place a service id maps to its stored keys,
+  // so every case below asserts on both ids at once. A test that named one service
+  // would still pass with the two rows of that table swapped.
+
+  it('getStartPageFor returns each service default when nothing is persisted', () => {
+    // The two defaults differ, so swapping the rows of the table inverts both answers.
+    expect(getStartPageFor('music')).toBe('new');
+    expect(getStartPageFor('classical')).toBe('home');
+  });
+
+  it('getStartPageFor reads each service its own start page key', () => {
+    // Ids from different services on purpose: with one id stored under both keys,
+    // a reader pointed at the wrong key still returns the right answer.
+    store.set('startPage', 'radio');
+    store.set('classical.startPage', 'search');
+    expect(getStartPageFor('music')).toBe('radio');
+    expect(getStartPageFor('classical')).toBe('search');
+  });
+
+  it('getStartPageFor returns an unregistered stored id unchanged', () => {
+    // Config reports what is stored and validates nothing. A store written by an
+    // older build still holds the removed Classical 'library' id, and the fallback
+    // to the service default happens in buildAppleMusicURL, which matches the id
+    // against the service's own startPages. test/storefront.test.ts covers that.
+    store.set('classical.startPage', 'library');
+    store.set('startPage', 'browse');
+    expect(getStartPageFor('classical')).toBe('library');
+    expect(getStartPageFor('music')).toBe('browse');
+  });
+
+  it('getStartPageFor returns the stored last marker for either service', () => {
+    store.set('startPage', 'last');
+    store.set('classical.startPage', 'last');
+    expect(getStartPageFor('music')).toBe('last');
+    expect(getStartPageFor('classical')).toBe('last');
+  });
+
+  it('getLastPageUrlFor returns undefined for either service when nothing is persisted', () => {
+    // Absence is a state of its own: buildAppleMusicURL falls through to the
+    // service default only because the getter reports undefined rather than ''.
+    expect(getLastPageUrlFor('music')).toBeUndefined();
+    expect(getLastPageUrlFor('classical')).toBeUndefined();
+  });
+
+  it('getLastPageUrlFor reads each service its own last page key', () => {
+    store.set('lastPageUrl', 'new');
+    store.set('classical.lastPageUrl', 'browse/albums');
+    expect(getLastPageUrlFor('music')).toBe('new');
+    expect(getLastPageUrlFor('classical')).toBe('browse/albums');
+  });
+
+  it('setLastPageUrlFor writes the music key and leaves the Classical one unset', () => {
+    // Asserts on the raw keys, so the stored key name is pinned here and not
+    // merely round-tripped through a getter that could be crossed the same way.
+    setLastPageUrlFor('music', 'library/all-playlists/');
+    expect(store.get('lastPageUrl')).toBe('library/all-playlists/');
+    expect(store.has('classical.lastPageUrl')).toBe(false);
+  });
+
+  it('setLastPageUrlFor writes the Classical key and leaves the music one unset', () => {
+    setLastPageUrlFor('classical', 'browse/playlists');
+    expect(store.get('classical.lastPageUrl')).toBe('browse/playlists');
+    expect(store.has('lastPageUrl')).toBe(false);
+  });
+
+  it('setLastPageUrlFor round-trips through the matching reader for both services', () => {
+    setLastPageUrlFor('music', 'new');
+    setLastPageUrlFor('classical', 'search?term=elgar');
+    expect(getLastPageUrlFor('music')).toBe('new');
+    expect(getLastPageUrlFor('classical')).toBe('search?term=elgar');
   });
 });
