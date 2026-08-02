@@ -173,10 +173,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The Linux list restates package.json build.linux.target minus snap,
-          # which needs the separate root invocation below. Without these flags
-          # this step would build a snap unprivileged and the snap step would
-          # build it again. A new Linux target goes in both places.
+          # These flags decide the Linux targets, because a command-line target
+          # overrides the config. The list omits snap, which needs the separate
+          # root invocation below. Without these flags this step would build a
+          # snap unprivileged and the snap step would build it again.
+          # package.json build.linux.target is the fallback for a bare
+          # electron-builder run, which nothing here performs.
           - os: linux
             runner: ubuntu-24.04
             targets: "--linux AppImage deb rpm"
