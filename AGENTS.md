@@ -20,7 +20,7 @@ Run `just --list` to see all available recipes. Key entry points: `just install`
 
 ## User-Agent
 
-All platforms send a platform-accurate Chrome UA (`chromeUA()` in `src/main.ts`), stripping Electron identifiers that Apple Music detects and blocks. Chrome version is pinned to `144.0.0.0` to match the CastLabs ECS Chromium build.
+All platforms send a platform-accurate Chrome UA (`chromeUA()` in `src/main.ts`), stripping Electron identifiers that Apple Music detects and blocks. The Chrome version is derived from `process.versions.chrome`, so a CastLabs ECS bump carries it and no edit is needed. Do not write the version back as a literal: the previous one sat at `144.0.0.0` while the pinned build had moved to Chromium 148, and nothing failed to report it. Only the major is taken, with the other three components always `0`, which is the form Chrome's reduced UA sends.
 
 | Platform | UA platform token |
 |----------|------------------|

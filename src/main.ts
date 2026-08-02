@@ -88,9 +88,13 @@ if (process.platform === 'darwin') process.env.TMPDIR = app.getPath('temp');
 // Use a platform-accurate Chrome UA, stripping Electron identifiers that
 // Apple Music detects and blocks. The platform component must be truthful
 // to match Sec-CH-UA-Platform Client Hints sent on every request.
-// Chrome version 144.0.0.0 matches the Chromium build in CastLabs ECS v40.7.0+wvcus.
+// The Chrome version is read from process.versions.chrome, so a CastLabs ECS bump
+// carries the UA with it and the two cannot drift; a hardcoded version stayed on
+// 144 while the pinned build moved to Chromium 148. Only the major is used, and
+// the other three components are always 0: Chrome's reduced UA freezes them there,
+// so this is the form real Chrome sends rather than a truncation of it.
 function chromeUA(): string {
-  const version = '144.0.0.0';
+  const version = `${process.versions.chrome.split('.')[0]}.0.0.0`;
   const webkit = 'AppleWebKit/537.36 (KHTML, like Gecko)';
   const safari = 'Safari/537.36';
   if (process.platform === 'darwin') {
