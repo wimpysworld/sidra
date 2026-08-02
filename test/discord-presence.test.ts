@@ -9,6 +9,7 @@ import { FakePlayer } from './mocks/player';
 const DEBOUNCE_MS = 1000;
 const RECONNECT_BASE_MS = 2000;
 const RECONNECT_CAP_MS = 60_000;
+const CLEAR_ACTIVITY_TIMEOUT_MS = 2000;
 
 // How a scripted connect attempt ends. 'timeout' clears the cached connection
 // promise, 'transport' leaves it set; the two failures differ in the library
@@ -22,6 +23,7 @@ type ConnectOutcome = 'connected' | 'timeout' | 'transport';
 interface ClientHandle {
   isConnected: boolean;
   connectAttempts: number;
+  destroyCalls: number;
   listenerCount(event: string): number;
 }
 
@@ -59,6 +61,7 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
   class FakeClient {
     isConnected = false;
     connectAttempts = 0;
+    destroyCalls = 0;
     user = { setActivity: rpc.setActivity, clearActivity: rpc.clearActivity };
 
     private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -145,6 +148,7 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
     }
 
     async destroy(): Promise<void> {
+      this.destroyCalls++;
       this.isConnected = false;
       if (this.closeArmed) {
         this.closeArmed = false;
@@ -387,6 +391,36 @@ describe('discord presence reconnect', () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 
     expect(rpc.setActivity).toHaveBeenCalledTimes(2);
+  });
+
+  // clearActivity() settles only when Discord answers the nonce, so a live
+  // socket behind a Discord that answers no RPC never settles it. The destroy
+  // has to run anyway, or the socket leaks and the stale activity stays on the
+  // user's profile.
+  it('destroys a retired client whose activity clear never answers, and destroys it once', async () => {
+    const discord = await loadDiscord();
+    discord.init({ player, getMainWindow: () => null });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const retired = rpc.instances[0];
+    expect(retired.isConnected).toBe(true);
+
+    let answer: (() => void) | undefined;
+    rpc.clearActivity.mockReturnValueOnce(new Promise<void>((resolve) => {
+      answer = resolve;
+    }));
+
+    discord.disable();
+    expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
+    expect(retired.destroyCalls).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(CLEAR_ACTIVITY_TIMEOUT_MS);
+    expect(retired.destroyCalls).toBe(1);
+
+    // The loser of the race settles late and must not destroy a second time.
+    answer?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(retired.destroyCalls).toBe(1);
   });
 });
 

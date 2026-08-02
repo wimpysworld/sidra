@@ -14,6 +14,7 @@ const DEBOUNCE_MS = 1000;
 const PAUSE_TIMEOUT_MS = 30_000;
 const RECONNECT_BASE_MS = 2000;
 const RECONNECT_CAP_MS = 60_000;
+const CLEAR_ACTIVITY_TIMEOUT_MS = 2000;
 const MAX_STRING_LEN = 128;
 const MIN_STRING_LEN = 2;
 const MAX_IMAGE_URL_LEN = 256;
@@ -96,23 +97,44 @@ function createClient(player: Player): Client {
 //
 // clearActivity() is an RPC round trip on the transport destroy() closes, and
 // destroy() neither flushes the socket nor waits for Discord's reply, so the
-// destroy is chained onto the clear rather than called beside it. A dead
-// Discord still reaches the destroy: the transport close handler rejects every
-// pending request.
+// destroy waits on the clear rather than running beside it. That wait is
+// bounded, because the clear can hang for good: it settles only when Discord
+// answers the SET_ACTIVITY nonce, IPCTransport.send() is a silent no-op once
+// the socket has gone, and the library's rejection path is a one-shot 'close'
+// listener that has already fired and been removed by the time a toggle-off
+// reaches here. A socket that is open while Discord answers no RPC hangs the
+// same way, and that is the case that costs something: the socket leaks and
+// the stale activity outlives Discord's own recovery. So the clear races
+// CLEAR_ACTIVITY_TIMEOUT_MS and whichever settles first destroys. The flag
+// keeps that to one destroy, whether or not the loser settles later.
 //
-// The catch sits outside the then(), not on destroy() itself. cleared handles
-// its own rejection, so this one only ever answers for the destroy, and there
-// it covers a synchronous throw as well as a rejected promise. destroy() is
-// async in @xhayper/discord-rpc 1.3.4 and cannot throw synchronously today, so
-// the outer position is a guard against a later non-async destroy(); it costs
-// nothing, and a catch chained onto destroy() would miss that throw and leave
-// the then() rejecting with nothing behind it.
+// The try/catch covers a synchronous throw from destroy(). It is async in
+// @xhayper/discord-rpc 1.3.4 and cannot throw synchronously today, so this
+// guards a later non-async destroy(); it costs nothing, and a bare .catch()
+// on the call would miss that throw.
 function retireClient(retiring: Client, clearActivity: boolean): void {
   retiring.removeAllListeners();
-  const cleared = clearActivity && retiring.user
-    ? retiring.user.clearActivity().catch(() => {})
-    : Promise.resolve();
-  cleared.then(() => retiring.destroy()).catch(() => {});
+
+  let destroyed = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const destroyOnce = (): void => {
+    if (destroyed) return;
+    destroyed = true;
+    if (timer) clearTimeout(timer);
+    try {
+      retiring.destroy().catch(() => {});
+    } catch {
+      // A destroy that fails has nothing left to clean up.
+    }
+  };
+
+  if (!clearActivity || !retiring.user) {
+    destroyOnce();
+    return;
+  }
+
+  timer = setTimeout(destroyOnce, CLEAR_ACTIVITY_TIMEOUT_MS);
+  void retiring.user.clearActivity().catch(() => {}).then(destroyOnce);
 }
 
 // Client.connect() leaks a 'connected' listener on both failure paths, and a
