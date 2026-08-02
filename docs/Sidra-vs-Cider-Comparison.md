@@ -1,6 +1,6 @@
 # Sidra vs Cider: Apple Music desktop client comparison
 
-**Last updated:** 2026-05-23
+**Last updated:** 2026-08-02
 **Confidence note:** Cider v1 (open-source, AGPL-3.0) analysis is based on source code inspection of `ciderapp/Cider` on GitHub. Cider 2+ (proprietary) analysis is based on public issue trackers, devlogs, changelogs, and community reports - no source code review was possible. Sidra analysis is based on full source code review.
 
 ---
@@ -25,10 +25,10 @@
 
 ### Sidra
 
-Sidra loads `music.apple.com` directly inside CastLabs Electron (a Chromium fork with Widevine CDM support). A lightweight hook script (`musicKitHook.js`, injected after page load) taps MusicKit.js events and forwards them over Electron IPC to the main process. The main process distributes events to platform integrations (MPRIS, Discord, notifications, macOS Dock, Windows taskbar).
+Sidra loads `music.apple.com` and `classical.music.apple.com` directly inside CastLabs Electron (a Chromium fork with Widevine CDM support). A lightweight hook script (`musicKitHook.js`, injected after page load) taps MusicKit.js events and forwards them over Electron IPC to the main process. The main process distributes events to platform integrations (MPRIS, Discord, notifications, macOS Dock, Windows taskbar).
 
 ```
-music.apple.com (Apple's UI, unmodified)
+music.apple.com / classical.music.apple.com (Apple's UI, unmodified)
   -> MusicKit.js events
     -> musicKitHook.js (injected, read-only observer)
       -> IPC -> player.ts (EventEmitter)
@@ -37,7 +37,7 @@ music.apple.com (Apple's UI, unmodified)
 
 Audio flows from MusicKit.js through the HTMLMediaElement into Chromium's native media stack. Sidra never intercepts, re-routes, or processes the audio stream. Controls flow in reverse via `webContents.send()` through the preload bridge to `window.__sidra` methods.
 
-**Key architectural property:** Sidra is a thin shell around Apple's own web application. When Apple updates `music.apple.com`, Sidra inherits the changes automatically - no patch cycle required.
+**Key architectural property:** Sidra is a thin shell around Apple's own web applications. When Apple updates either service, Sidra inherits the changes automatically - no patch cycle required.
 
 ### Cider v1 (open source, archived)
 
@@ -251,8 +251,8 @@ Sidra's security posture, verified by a full security audit (Semgrep, Gitleaks, 
 | Spatial audio effect | No | Yes (custom convolution, not Dolby Atmos) |
 | Lossless (macOS/Windows) | Yes (EVS production VMP) | Claimed |
 | **Interface** | | |
-| UI | Apple's `music.apple.com` (maintained by Apple) | Custom Vue.js UI |
-| Themes | Catppuccin; Apple Music default | Extensive theming system |
+| UI | Apple's `music.apple.com` and `classical.music.apple.com` (maintained by Apple) | Custom Vue.js UI |
+| Themes | Apple Music default; Catppuccin; Dracula; Gruvbox; Nord; Rosé Pine; Solarized; custom CSS. Applies to both services | Extensive theming system |
 | Immersive/fullscreen mode | No | Yes (album art visualisation) |
 | Mini player | No | Yes |
 | Lyrics display | Via Apple's web UI | Custom lyrics view |
@@ -283,7 +283,7 @@ Sidra's security posture, verified by a full security audit (Semgrep, Gitleaks, 
 
 ### How each handles Apple Music updates
 
-**Sidra:** Loads `music.apple.com` directly. When Apple updates the web player - new features, UI changes, bug fixes, API changes - Sidra inherits them automatically with zero developer intervention. The only maintenance surface is the MusicKit.js event API that the hook script observes, which has been stable.
+**Sidra:** Loads `music.apple.com` and `classical.music.apple.com` directly. When Apple updates either web player - new features, UI changes, bug fixes, API changes - Sidra inherits them automatically with zero developer intervention. The only maintenance surface is the MusicKit.js event API that the hook script observes, which has been stable.
 
 Sidra also keeps Apple's authentication UI, but filters impossible desktop choices. Apple's passkey and "Sign in with iPhone" buttons rely on WebAuthn cross-device transport and Chromium's `//chrome` product UI for the QR-code modal. Electron only ships `//content`, so Sidra hides those options in the auth iframe and leaves the password flow visible.
 
