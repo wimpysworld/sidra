@@ -134,7 +134,7 @@ let
   ];
 
   fhs = buildFHSEnv {
-    name = pname;
+    inherit pname version;
     targetPkgs = _: libs;
 
     runScript = "${unpacked}/opt/sidra";
