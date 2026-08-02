@@ -111,8 +111,8 @@ lint:
 test:
     npm test
 
-# The audit gate covers shipped dependencies. A dev-only advisory never reaches
-# a user, so it does not block a release.
+# The audit gate covers registry dependencies that ship. A package that ships
+# from devDependencies, as electron does, falls outside it.
 # Validate electron-builder configuration
 validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
