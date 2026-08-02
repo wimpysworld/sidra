@@ -632,7 +632,7 @@ Themes are service-agnostic. `resolveTheme()` does not branch on the active serv
 1. `resetWedgeDetector()` clears `skipAttempts` and stops the timer. Stopping the timer suppresses a spurious skip-forward after the page re-initialises
 2. `setMusicService(id)` persists the new service
 3. `rebuildTrayMenu(tray)` runs when a tray exists
-4. `setThemeCssKey(null)` drops the tracked inserted-CSS key. The navigation below replaces the document, so the next injection must not call `removeInsertedCSS()` with a key from the old one
+4. `notifyDocumentReplacing()` queues a clear of the tracked inserted-CSS key. The queue orders it after any in-flight insert and before the next document's injection, so the next injection does not call `removeInsertedCSS()` with a key from the old document
 5. `loadURL(targetUrl ?? buildAppleMusicURL())`. The default resolves after step 2, so it reads the service just persisted
 
 `routeToMusicService(url)` handles `itms://` links. When the active service is not `music` it calls `switchService('music', url)`, otherwise it navigates directly. Passing the link into `switchService()` rather than navigating after it keeps the switch to one navigation.
@@ -690,11 +690,13 @@ Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-m
 
 ### Implementation
 
-`theme.ts` exposes `applyTheme(name: ThemeName)` and keeps the existing promise queue inside `initThemeCSS()` to serialise `removeInsertedCSS()/insertCSS()` operations. CSS sourcing now comes from `getThemeCss(name)`:
+`theme.ts` exposes `applyTheme(name: ThemeName)`. Both theme changes and page-load injections use the module-scope `themeCssOp` queue, so every `themeCssKey` mutation and every `removeInsertedCSS()` or `insertCSS()` call runs in order. `applyTheme()` removes the live sheet before inserting its replacement. `injectThemeCss()` does not remove a sheet, because a page load has replaced the document and invalidated the old key. CSS comes from `getThemeCss(name)`:
 
 - `'apple-music'` → `null` (remove any injected override)
 - bundled themes → lazily rendered via `buildThemeCss(...)` and cached in memory
 - `'custom'` → `userData/custom.css`, cached in memory; missing, unreadable, or whitespace-only files are treated as absent
+
+Each queued operation captures `documentGeneration`. A main-frame `did-navigate` event advances the generation, while `did-navigate-in-page` does not. Work for a replaced document is dropped and its tracked key is cleared. Inserts and removals check the generation again after each `await`, so a navigation cannot leave an untracked sheet on the new document.
 
 `custom.css` lifecycle:
 
@@ -777,7 +779,9 @@ The desktop token flow, because Last.fm offers no callback for a desktop app:
 - `scrobbleThresholdMs()` returns `null` for a track of 30 seconds or less; those never scrobble.
 - Anything longer scrobbles at half its duration or 4 minutes, whichever comes first, measured against accumulated play time rather than wall time since the track began.
 - `trackStartUnix` is captured at the first real play transition, so a track queued while paused carries an honest timestamp.
-- A track scrobbles once. A failed submission is dropped, never retried.
+- Each track makes one live scrobble request. A final API refusal is dropped. A transport failure or temporary Last.fm error persists the play in `lastfm.pendingScrobbles` instead.
+- The queue keeps the newest 50 plays and survives restarts. A successful now-playing or live scrobble request drains up to 50 queued plays as one indexed batch. No timer retries the queue.
+- Disconnecting clears the queue, so a later account cannot receive another account's plays.
 
 ### Error handling
 
@@ -1020,7 +1024,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 
 ### Configuration
 
-- `verifyUpdateCodeSignature: false` is required on Windows because the app is unsigned.
+- Windows builds are unsigned. `configureAutoUpdate()` detects `NsisUpdater` and replaces `verifyUpdateCodeSignature` with a verifier that resolves to `null`. Assigning `false` would not work because the electron-updater setter ignores falsy values. Remove this override when Windows builds are signed.
 - AppImage `artifactName` must omit the version component - use `${productName}-${os}-${arch}.${ext}`. Including the version causes filename changes that break desktop shortcuts after update.
 - Future package managers (Scoop, Chocolatey) must set `SIDRA_DISABLE_AUTO_UPDATE=1` in their install manifests to suppress the updater.
 
@@ -1070,7 +1074,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | About window | Frameless `BrowserWindow` + `assets/about.html` | Localised labels via `about.json` |
 | Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar; localised aria-labels substituted for `__SIDRA_NAV_LABELS__` at read time |
 | Auth iframe filtering | `authStyleFix.css` + `webFrameMain.executeJavaScript()` | Hides unsupported passkey and "Sign in with iPhone" desktop flows |
-| Zoom factor preference | `zoom` in `electron-conf` | 1.0x to 2.0x via tray submenu |
+| Zoom factor preference | `zoomFactor` in `electron-conf` | 1.0x to 2.0x via tray submenu |
 | Wedge detector | `src/wedgeDetector.ts` | Auto-skip on playback stall |
 | Artwork cache | `src/artwork.ts` | UUID-based filenames, 7-day expiry, atomic writes |
 | Pause timer utility | `src/pauseTimer.ts` | `createPauseTimer()` shared by tray, dock, Discord |
@@ -1104,7 +1108,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Apple blocks Electron user agent | High | Low | Spoof Chrome UA on all requests |
 | Apple changes MusicKit.js API | Medium | Low | MusicKit.js is a public developer API with versioning |
 | Apple renames the `chrome-volume` class | Low | Medium | Scroll-to-change-volume stops responding; every other volume path is unaffected. The token is the only DOM detail the hook depends on, and no Svelte scope hash is matched, so an Apple rebuild alone does not break it |
-| CastLabs Electron lags Electron releases | Low | Medium | Only affects security patching cadence; v40.7.0+wvcus, tracking close to mainline |
+| CastLabs Electron lags Electron releases | Low | Medium | Only affects security patching cadence; v43.0.0+wvcus, tracking close to mainline |
 | Live radio stations crash | Medium | Confirmed | Known issue in apple-music-wrapper; investigate `did-crash` handler |
 | CSP blocks script injection | Low | Very low | `executeJavaScript()` bypasses page CSP in Electron |
 | Apple legal action | Medium | Very low | Multiple similar apps exist and have for years; requires Apple Music subscription |
