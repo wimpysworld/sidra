@@ -81,6 +81,10 @@ export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => vo
   // that always passes rather than by assigning false. The instanceof narrows
   // to the only updater that carries the property, and electron-updater builds
   // an NsisUpdater on win32 and nowhere else.
+  // This is only correct while the builds stay unsigned. Signing Windows makes
+  // electron-builder write publisherName into app-update.yml, and the default
+  // verifier then runs instead of returning early. Remove this override at that
+  // point, or the signature check never returns a rejection.
   if (autoUpdater instanceof NsisUpdater) {
     autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
   }
