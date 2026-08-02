@@ -99,12 +99,20 @@ function createClient(player: Player): Client {
 // destroy is chained onto the clear rather than called beside it. A dead
 // Discord still reaches the destroy: the transport close handler rejects every
 // pending request.
+//
+// The catch sits outside the then(), not on destroy() itself. cleared handles
+// its own rejection, so this one only ever answers for the destroy, and there
+// it covers a synchronous throw as well as a rejected promise. destroy() is
+// async in @xhayper/discord-rpc 1.3.4 and cannot throw synchronously today, so
+// the outer position is a guard against a later non-async destroy(); it costs
+// nothing, and a catch chained onto destroy() would miss that throw and leave
+// the then() rejecting with nothing behind it.
 function retireClient(retiring: Client, clearActivity: boolean): void {
   retiring.removeAllListeners();
   const cleared = clearActivity && retiring.user
     ? retiring.user.clearActivity().catch(() => {})
     : Promise.resolve();
-  cleared.then(() => retiring.destroy().catch(() => {}));
+  cleared.then(() => retiring.destroy()).catch(() => {});
 }
 
 // Client.connect() leaks a 'connected' listener on both failure paths, and a
