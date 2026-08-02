@@ -149,8 +149,17 @@ sidra/
 │   ├── navigationBar.js           - Injected post-load; adds back/forward/reload buttons to sidebar.
 │   │                                 Its `__SIDRA_NAV_LABELS__` placeholder is replaced with the
 │   │                                 localised aria-labels when src/main.ts reads the file
+│   ├── authFrameFix.js            - Injected into Apple's sign-in iframe; hides the passkey and
+│   │                                 "Sign in with iPhone" options. Its `__SIDRA_AUTH_FIX__`
+│   │                                 placeholder is replaced with the stylesheet and container
+│   │                                 selectors when src/main.ts reads the file. Must be listed
+│   │                                 in electron-builder's `asarUnpack`
 │   ├── about.html                 - About window content, receives product info via query params
 │   ├── splash.html                - Splash screen shown during startup
+│   ├── windowChrome.css           - Chrome shared by splash.html and about.html: the reset, the
+│   │                                 background, the body layout and the icon rule. Both pages
+│   │                                 load it with a <link>, so both carry `style-src 'self'` in
+│   │                                 their CSP. Must be listed in `asarUnpack`
 │   ├── sidra-logo.png             - Product logo used in About window
 │   ├── locales/
 │   │   ├── loading.json           - 1 translation record: LOADING_TEXT
