@@ -69,6 +69,9 @@ if (process.platform === 'win32') {
 // --- Platform switches: must run before app.whenReady() ---
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations');
+  // Prefer native Wayland when available, else fall back to X11/XWayland.
+  // UseOzonePlatform alone often still lands on XWayland.
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   // MediaSessionService off: Sidra registers its own MPRIS service, and
   // Chromium's would be a second, conflicting registration on the same bus.
   // AudioServiceOutOfProcess off: it moves audio back in-process, which is
@@ -265,8 +268,10 @@ async function initSession(): Promise<Electron.Session> {
   const ses = session.fromPartition('persist:sidra');
   await Promise.all([
     components.whenReady(),
+    // Clear stale service workers only. Dropping the HTTP cache on every
+    // launch forced a cold Apple Music load; SWs are the half that goes stale.
     ses.clearData({
-      dataTypes: ['serviceWorkers', 'cache'],
+      dataTypes: ['serviceWorkers'],
       origins: allServices().map(svc => svc.origin),
     }),
   ]);
@@ -326,6 +331,10 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
       contextIsolation: true,
       plugins: true,
       sandbox: true,
+      // Keep MusicKit timers alive when the window is hidden (close-to-tray).
+      backgroundThrottling: false,
+      // No editable surface outside Apple's page; saves a little renderer cost.
+      spellcheck: false,
     },
   });
 

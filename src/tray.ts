@@ -114,6 +114,18 @@ function isMacOSTahoeOrLater(): boolean {
   return !isNaN(major) && major >= 26;
 }
 
+// Linux/Windows menu PNGs are loaded and resized on every tray rebuild.
+// Volume-drag rebuilds reuse the same icons, so cache by theme + basename.
+const menuIconCache = new Map<string, Electron.NativeImage | undefined>();
+// Artwork is rebuilt with the same local path across coalesced menu updates.
+const artworkIconCache = new Map<string, Electron.NativeImage | undefined>();
+
+/** Clears cached menu/artwork NativeImages (theme change, or tests). */
+export function invalidateTrayImageCaches(): void {
+  menuIconCache.clear();
+  artworkIconCache.clear();
+}
+
 /**
  * Icon for a menu action, or undefined when the platform or the action has
  * none. Callers spread the result conditionally, because Electron renders a
@@ -145,9 +157,16 @@ export function getMenuIcon(action: MenuIconKey): Electron.NativeImage | undefin
   if (!baseName) return undefined;
 
   const variant = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  const cacheKey = `${variant}:${baseName}`;
+  if (menuIconCache.has(cacheKey)) {
+    return menuIconCache.get(cacheKey);
+  }
+
   const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
   const img = nativeImage.createFromPath(iconPath);
-  return img.isEmpty() ? undefined : img;
+  const resolved = img.isEmpty() ? undefined : img;
+  menuIconCache.set(cacheKey, resolved);
+  return resolved;
 }
 
 function getLinuxTrayIconPath(): string {
@@ -490,22 +509,35 @@ function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
 /** Artwork icon for the track row, multi-representation for HiDPI. */
 function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electron.NativeImage | undefined {
   if (!artworkPath) return undefined;
-  const src = nativeImage.createFromPath(artworkPath);
-  if (src.isEmpty()) return undefined;
 
+  const cacheKey = `${isLinux ? 'linux' : 'other'}:${artworkPath}`;
+  if (artworkIconCache.has(cacheKey)) {
+    return artworkIconCache.get(cacheKey);
+  }
+
+  const src = nativeImage.createFromPath(artworkPath);
+  if (src.isEmpty()) {
+    artworkIconCache.set(cacheKey, undefined);
+    return undefined;
+  }
+
+  let resolved: Electron.NativeImage;
   if (isLinux) {
     // libdbusmenu serialises a single image and the host shell rescales;
     // preserve the on-disk path so libappindicator does not stage a
     // temp-file copy unreachable to the host indicator daemon under snap.
-    return src.resize({ width: 24, height: 24 });
+    resolved = src.resize({ width: 24, height: 24 });
+  } else {
+    const img = nativeImage.createEmpty();
+    const sizes: [number, number][] = [[1.0, 18], [1.25, 23], [1.5, 27], [1.75, 32], [2.0, 36]];
+    for (const [scaleFactor, size] of sizes) {
+      img.addRepresentation({ scaleFactor, buffer: src.resize({ width: size, height: size }).toPNG() });
+    }
+    resolved = img;
   }
 
-  const img = nativeImage.createEmpty();
-  const sizes: [number, number][] = [[1.0, 18], [1.25, 23], [1.5, 27], [1.75, 32], [2.0, 36]];
-  for (const [scaleFactor, size] of sizes) {
-    img.addRepresentation({ scaleFactor, buffer: src.resize({ width: size, height: size }).toPNG() });
-  }
-  return img;
+  artworkIconCache.set(cacheKey, resolved);
+  return resolved;
 }
 
 /**
@@ -745,6 +777,7 @@ export function createTray(): Tray {
 
   if (process.platform === 'linux') {
     nativeTheme.on('updated', () => {
+      invalidateTrayImageCaches();
       const newIconPath = getLinuxTrayIconPath();
       trayLog.info('theme changed, switching tray icon:', newIconPath);
       tray.setImage(newIconPath);
@@ -753,6 +786,7 @@ export function createTray(): Tray {
     });
   } else if (process.platform === 'win32') {
     nativeTheme.on('updated', () => {
+      invalidateTrayImageCaches();
       trayLog.info('theme changed, rebuilding context menu');
       tray.setContextMenu(buildContextMenu(tray));
     });

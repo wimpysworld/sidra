@@ -78,6 +78,11 @@ const bootstrap = vi.hoisted(() => {
       silly: vi.fn(),
     },
     tray: {},
+    session: {
+      clearData: vi.fn(() => Promise.resolve()),
+      setUserAgent: vi.fn(),
+      webRequest: { onBeforeSendHeaders: vi.fn() },
+    },
   };
 });
 
@@ -110,11 +115,7 @@ vi.mock('electron', () => ({
   },
   session: {
     defaultSession: { setUserAgent: vi.fn() },
-    fromPartition: vi.fn(() => ({
-      clearData: vi.fn(() => Promise.resolve()),
-      setUserAgent: vi.fn(),
-      webRequest: { onBeforeSendHeaders: vi.fn() },
-    })),
+    fromPartition: vi.fn(() => bootstrap.session),
   },
   Tray: class {},
   webFrameMain: { fromId: vi.fn() },
@@ -274,6 +275,8 @@ describe('main bootstrap', () => {
         contextIsolation: true,
         plugins: true,
         sandbox: true,
+        backgroundThrottling: false,
+        spellcheck: false,
       }),
     }));
     expect(bootstrap.mainWindow.loadURL).toHaveBeenCalledWith(
@@ -281,6 +284,11 @@ describe('main bootstrap', () => {
       { userAgent: expect.stringContaining('Chrome/148.0.0.0') },
     );
     expect(bootstrap.log.warn).toHaveBeenCalledWith('initial navigation loadURL failed:', 'offline');
+
+    expect(bootstrap.session.clearData).toHaveBeenCalledWith({
+      dataTypes: ['serviceWorkers'],
+      origins: ['https://music.apple.com'],
+    });
 
     const didFinishLoad = bootstrap.mainWebListeners.get('did-finish-load');
     expect(didFinishLoad).toBeDefined();
@@ -294,5 +302,21 @@ describe('main bootstrap', () => {
     expect(bootstrap.integrations.wedgeDetector).toHaveBeenCalledOnce();
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
     expect(bootstrap.appOn).toHaveBeenCalledWith('will-quit', expect.any(Function));
+  });
+
+  it('applies Linux Wayland ozone switches before ready', async () => {
+    setPlatform('linux');
+    const { app } = await import('electron');
+    await import('../src/main');
+
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith(
+      'enable-features',
+      'UseOzonePlatform,WaylandWindowDecorations',
+    );
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith('ozone-platform-hint', 'auto');
+    expect(app.commandLine.appendSwitch).toHaveBeenCalledWith(
+      'disable-features',
+      'MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess',
+    );
   });
 });

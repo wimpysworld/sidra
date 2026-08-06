@@ -388,6 +388,7 @@ Chromium has a built-in MPRIS bridge (via `navigator.mediaSession`) that must be
 // In main.ts, before app.whenReady()
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations');
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
   app.commandLine.appendSwitch('disable-features', 'MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess');
   app.setDesktopName('sidra.desktop');
 }

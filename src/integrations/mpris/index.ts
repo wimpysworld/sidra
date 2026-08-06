@@ -251,12 +251,42 @@ class MediaPlayer2Player extends Interface {
   }
 
   /**
-   * Coalesces property changes into one `PropertiesChanged` signal. dbus-next
-   * emits nothing of its own accord, so a cached property that changes without
-   * passing through here is one no client ever learns about.
+   * Flushes every pending `PropertiesChanged` property at once. Cleared of its
+   * debounce timer first so a later Metadata/Volume coalesce cannot sit on top
+   * of a PlaybackStatus that already went out.
+   */
+  private _flushPendingChanges(): void {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (Object.keys(this._pendingChanges).length === 0) return;
+    try {
+      Interface.emitPropertiesChanged(this, this._pendingChanges, []);
+    } catch (err: unknown) {
+      mprisLog.warn('failed to emit PropertiesChanged:', errorMessage(err));
+    }
+    this._pendingChanges = {};
+  }
+
+  /**
+   * Emits control-plane properties immediately (PlaybackStatus, LoopStatus,
+   * Shuffle). Play/pause latency on the desktop shell matters more than
+   * coalescing those with Metadata.
+   */
+  private _emitPropertiesNow(properties: Record<string, unknown>): void {
+    Object.assign(this._pendingChanges, properties);
+    this._flushPendingChanges();
+  }
+
+  /**
+   * Coalesces noisy property changes into one `PropertiesChanged` signal.
+   * dbus-next emits nothing of its own accord, so a cached property that
+   * changes without passing through here is one no client ever learns about.
    *
-   * `Position` must never be among the properties: the MPRIS spec excludes it,
-   * and clients read the property or follow `Seeked` instead.
+   * Used for Metadata and Volume. `Position` must never be among the
+   * properties: the MPRIS spec excludes it, and clients read the property or
+   * follow `Seeked` instead.
    */
   private _schedulePropertyEmission(properties: Record<string, unknown>): void {
     Object.assign(this._pendingChanges, properties);
@@ -265,14 +295,7 @@ class MediaPlayer2Player extends Interface {
     }
     this._debounceTimer = setTimeout(() => {
       this._debounceTimer = null;
-      if (Object.keys(this._pendingChanges).length > 0) {
-        try {
-          Interface.emitPropertiesChanged(this, this._pendingChanges, []);
-        } catch (err: unknown) {
-          mprisLog.warn('failed to emit PropertiesChanged:', errorMessage(err));
-        }
-        this._pendingChanges = {};
-      }
+      this._flushPendingChanges();
     }, this._debounceMs);
   }
 
@@ -296,11 +319,15 @@ class MediaPlayer2Player extends Interface {
       status = 'Stopped';
     }
 
-    if (status !== this._playbackStatus) {
-      this._lastPositionTimestamp = Date.now();
-    }
+    // Skip a no-op emission when MusicKit walks through several transient
+    // states that all map to the same MPRIS value (e.g. Loading → Seeking →
+    // Waiting → Stopped). The mapping still runs for every state; only the
+    // D-Bus signal is suppressed when nothing a client can see has changed.
+    if (status === this._playbackStatus) return;
+
+    this._lastPositionTimestamp = Date.now();
     this._playbackStatus = status;
-    this._schedulePropertyEmission({ PlaybackStatus: status });
+    this._emitPropertiesNow({ PlaybackStatus: status });
   }
 
   /**
@@ -326,6 +353,13 @@ class MediaPlayer2Player extends Interface {
 
     const metadata = buildMetadata(payload);
     const trackId = buildTrackId(payload.trackId ?? 'unknown');
+    // Defer https artwork until the cache attempt finishes so clients do not
+    // see HTTPS then file:// in two PropertiesChanged signals a moment apart.
+    // Local or other schemes stay on the first emission.
+    const httpsArtwork = payload.artworkUrl?.startsWith('https://') ? payload.artworkUrl : null;
+    if (httpsArtwork) {
+      delete metadata['mpris:artUrl'];
+    }
 
     this._metadata = metadata;
     this._currentTrackId = trackId;
@@ -336,19 +370,22 @@ class MediaPlayer2Player extends Interface {
     this._position = 0;
     this.Seeked(0);
 
-    if (payload.artworkUrl && payload.artworkUrl.startsWith('https://')) {
-      downloadArtwork(payload.artworkUrl).then((localPath) => {
-        if (!localPath) return;
+    if (httpsArtwork) {
+      downloadArtwork(httpsArtwork).then((localPath) => {
         // The download outlives a fast track change, and a late one would
         // otherwise put the previous cover on the track now playing.
         if (this._currentTrackId !== trackId) return;
-        const fileUri = `file://${localPath}`;
-        metadata['mpris:artUrl'] = new Variant('s', fileUri);
+        const artUrl = localPath ? `file://${localPath}` : httpsArtwork;
+        metadata['mpris:artUrl'] = new Variant('s', artUrl);
         this._metadata = metadata;
         this._schedulePropertyEmission({ Metadata: metadata });
-        mprisLog.debug('mpris:artUrl updated to local file:', fileUri);
+        mprisLog.debug('mpris:artUrl updated:', artUrl);
       }).catch((err: unknown) => {
         mprisLog.warn('artwork caching failed:', errorMessage(err));
+        if (this._currentTrackId !== trackId) return;
+        metadata['mpris:artUrl'] = new Variant('s', httpsArtwork);
+        this._metadata = metadata;
+        this._schedulePropertyEmission({ Metadata: metadata });
       });
     }
   }
@@ -367,16 +404,18 @@ class MediaPlayer2Player extends Interface {
       return;
     }
 
+    if (loopStatus === this._loopStatus) return;
     this._loopStatus = loopStatus;
-    this._schedulePropertyEmission({ LoopStatus: loopStatus });
+    this._emitPropertiesNow({ LoopStatus: loopStatus });
   }
 
   updateShuffleMode(payload: number | null): void {
     if (payload == null) return;
 
     const shuffle = payload === 1;
+    if (shuffle === this._shuffle) return;
     this._shuffle = shuffle;
-    this._schedulePropertyEmission({ Shuffle: shuffle });
+    this._emitPropertiesNow({ Shuffle: shuffle });
   }
 
   updateVolume(payload: number | null): void {
@@ -397,6 +436,7 @@ class MediaPlayer2Player extends Interface {
     }
 
     const rounded = Math.round(payload * 100) / 100;
+    if (rounded === this._volume) return;
     this._volume = rounded;
     this._schedulePropertyEmission({ Volume: rounded });
   }

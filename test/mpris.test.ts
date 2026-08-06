@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BrowserWindow } from 'electron';
 
 import { setMusicService } from '../src/config';
+import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
 import type { IntegrationContext, NowPlayingPayload } from '../src/player';
 import * as mpris from '../src/integrations/mpris';
 import { FakePlayer } from './mocks/player';
 
-// updateNowPlaying() hands every https:// artwork URL to downloadArtwork(),
-// which fetches over the network and writes to the cache directory. Resolving
-// null leaves mpris:artUrl at the value buildMetadata() produced, so the
-// metadata assertions read what the builder wrote and nothing else.
+// updateNowPlaying() hands every https:// artwork URL to downloadArtwork().
+// Resolving null falls back to the remote URL after the first Metadata
+// emission (which omits mpris:artUrl until the cache attempt finishes).
 vi.mock('../src/artwork', () => ({
   downloadArtwork: vi.fn(() => Promise.resolve(null)),
 }));
@@ -216,6 +216,32 @@ describe('MPRIS PlaybackStatus mapping', () => {
       expect(iface.PlaybackStatus).toBe('Stopped');
     }
   });
+
+  it('emits PlaybackStatus immediately without waiting for the Metadata debounce', () => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+    player.emitPlaybackState(PlaybackState.Playing);
+    expect(iface.PlaybackStatus).toBe('Playing');
+    expect(emissions).toEqual([{ PlaybackStatus: 'Playing' }]);
+    // Still before the 1s Metadata/Volume coalesce window.
+    vi.advanceTimersByTime(999);
+    expect(emissions).toEqual([{ PlaybackStatus: 'Playing' }]);
+  });
+
+  it('does not re-emit when transient states map to the same PlaybackStatus', () => {
+    const iface = initPlayerInterface();
+    // Leave the default Stopped so the next Stopped mapping is a real change.
+    player.emitPlaybackState(PlaybackState.Playing);
+    emissions = [];
+
+    player.emitPlaybackState(PlaybackState.Loading);
+    player.emitPlaybackState(PlaybackState.Seeking);
+    player.emitPlaybackState(PlaybackState.Waiting);
+    player.emitPlaybackState(PlaybackState.Stopped);
+    expect(iface.PlaybackStatus).toBe('Stopped');
+    // One PropertiesChanged for the Playing → Stopped edge; the rest are no-ops.
+    expect(emissions).toEqual([{ PlaybackStatus: 'Stopped' }]);
+  });
 });
 
 describe('MPRIS metadata', () => {
@@ -243,9 +269,14 @@ describe('MPRIS metadata', () => {
   // cosmetic fault: a client reading xesam:artist expects an array of strings
   // and mpris:length an int64. The exact key set is asserted too, because an
   // extra key with a made-up name is as wrong as a missing one.
-  it('builds every field of a full payload with the right signatures', () => {
+  it('builds every field of a full payload with the right signatures', async () => {
     const iface = initPlayerInterface();
     player.emitNowPlaying(FULL_TRACK);
+
+    // https artwork is omitted until downloadArtwork settles (here: null → remote).
+    expect(iface.Metadata['mpris:artUrl']).toBeUndefined();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(flatten(iface.Metadata)).toEqual({
       'mpris:trackid': ['o', '/org/sidra/track/1440857781'],
@@ -261,6 +292,31 @@ describe('MPRIS metadata', () => {
       'xesam:composer': ['as', ['Bernard Sumner']],
       'xesam:contentCreated': ['s', '1983-03-07'],
     });
+  });
+
+  it('publishes file:// artwork once after download, without an HTTPS first pass', async () => {
+    vi.useFakeTimers();
+    let resolveDownload!: (value: string | null) => void;
+    vi.mocked(downloadArtwork).mockReturnValueOnce(
+      new Promise((resolve) => { resolveDownload = resolve; }),
+    );
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(FULL_TRACK);
+
+    expect(iface.Metadata['mpris:artUrl']).toBeUndefined();
+    vi.advanceTimersByTime(1000);
+    expect(emissions).toHaveLength(1);
+    expect((emissions[0].Metadata as Record<string, VariantValue>)['mpris:artUrl']).toBeUndefined();
+
+    resolveDownload('/tmp/sidra-art.jpg');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(iface.Metadata['mpris:artUrl'].value).toBe('file:///tmp/sidra-art.jpg');
+
+    vi.advanceTimersByTime(1000);
+    expect(emissions).toHaveLength(2);
+    expect((emissions[1].Metadata as Record<string, VariantValue>)['mpris:artUrl'].value)
+      .toBe('file:///tmp/sidra-art.jpg');
   });
 
   // mpris:length is an 'x' field, and the marshaller turns one into a BigInt.
@@ -410,9 +466,15 @@ describe('MPRIS volume', () => {
     vi.advanceTimersByTime(2000);
     expect(emissions).toEqual([{ Volume: 0.5 }]);
 
+    // Same value as the cache is a no-op; a different in-app change must emit.
     player.emit('volumeDidChange', 0.5);
     vi.advanceTimersByTime(1000);
-    expect(emissions).toEqual([{ Volume: 0.5 }, { Volume: 0.5 }]);
+    expect(emissions).toEqual([{ Volume: 0.5 }]);
+
+    player.emit('volumeDidChange', 0.3);
+    vi.advanceTimersByTime(1000);
+    expect(emissions).toEqual([{ Volume: 0.5 }, { Volume: 0.3 }]);
+    expect(iface.Volume).toBe(0.3);
   });
 });
 

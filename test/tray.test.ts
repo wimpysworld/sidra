@@ -119,7 +119,7 @@ vi.mock('../src/paths', () => ({
 
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback, type MenuIconKey } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, invalidateTrayImageCaches, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback, type MenuIconKey } from '../src/tray';
 import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
@@ -155,6 +155,7 @@ function resetTrayMocks(): void {
   vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   vi.mocked(nativeImage.createFromPath).mockClear();
   vi.mocked(nativeImage.createFromNamedImage).mockClear();
+  invalidateTrayImageCaches();
   setGetMainWindowCallback(() => null);
   setSwitchServiceCallback(() => {});
   updateNowPlayingState({ payload: null, artworkPath: null, isPlaying: false, volume: 0 });
@@ -1486,6 +1487,32 @@ describe('getMenuIcon', () => {
         resize: vi.fn(function (this: { isEmpty: () => boolean }) { return this; }),
       } as unknown as Electron.NativeImage);
       expect(getMenuIcon('about')).toBeUndefined();
+    });
+
+    it('loads each themed PNG from disk only once across repeated lookups', () => {
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      getMenuIcon('about');
+      getMenuIcon('about');
+      getMenuIcon('about');
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads themed PNGs after a theme update invalidates the cache', () => {
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+      createTray();
+      // Warm the cache, then clear the spy so only a post-invalidate reload counts.
+      getMenuIcon('about');
+      vi.mocked(nativeImage.createFromPath).mockClear();
+
+      const themeHandler = vi.mocked(nativeTheme.on).mock.calls.find(
+        (call) => call[0] === 'updated',
+      )?.[1] as (() => void) | undefined;
+      expect(themeHandler).toBeDefined();
+      themeHandler!();
+
+      // Without invalidation the rebuild would reuse cached NativeImages and
+      // createFromPath would stay at zero.
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalled();
     });
   });
 

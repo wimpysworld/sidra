@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hookScript = fs.readFileSync(
   path.join(__dirname, '..', 'assets', 'musicKitHook.js'),
@@ -124,13 +124,16 @@ function createHarness({
   }
   const context = vm.createContext({
     clearInterval: vi.fn(),
+    clearTimeout,
     console,
+    Date,
     navigator,
     setInterval: vi.fn((callback: () => void, delay: number) => {
       intervals.push({ callback, delay });
       intervalCallbacks.push(callback);
       return intervalCallbacks.length;
     }),
+    setTimeout,
     window,
   });
 
@@ -146,7 +149,18 @@ function createHarness({
       if (getInstanceThrows) throw new Error('MusicKit is re-initialising');
       return liveInstance;
     },
-    PlaybackStates: { playing: 2 },
+    PlaybackStates: {
+      none: 0,
+      loading: 1,
+      playing: 2,
+      paused: 3,
+      stopped: 4,
+      ended: 5,
+      seeking: 6,
+      waiting: 7,
+      stalled: 8,
+      completed: 9,
+    },
   };
   if (musicKitThrowsAtInjection) {
     Object.assign(context, { MusicKit: musicKitApi });
@@ -329,6 +343,77 @@ describe('musicKitHook', () => {
       duration: 180,
       playbackRate: 1,
       position: 42,
+    });
+  });
+
+  describe('position IPC throttle', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('throttles playbackTimeDidChange IPC while updating MediaSession every tick', () => {
+      const { bridgeSend, mediaSession, musicKit, musicKitListeners } = createHarness({
+        musicKitOverrides: {
+          currentPlaybackDuration: 180,
+          currentPlaybackTime: 1,
+        },
+      });
+
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      musicKit.currentPlaybackTime = 2;
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      musicKit.currentPlaybackTime = 3;
+      musicKitListeners.get('playbackTimeDidChange')?.();
+
+      expect(mediaSession.setPositionState).toHaveBeenCalledTimes(3);
+      expect(bridgeSend.mock.calls.filter((call) => call[0] === 'playbackTimeDidChange')).toHaveLength(1);
+      expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 1_000_000);
+
+      vi.advanceTimersByTime(250);
+      expect(bridgeSend.mock.calls.filter((call) => call[0] === 'playbackTimeDidChange')).toHaveLength(2);
+      expect(bridgeSend).toHaveBeenLastCalledWith('playbackTimeDidChange', 3_000_000);
+    });
+
+    it('flushes a pending position IPC on pause', () => {
+      const { bridgeSend, musicKit, musicKitListeners } = createHarness({
+        musicKitOverrides: {
+          currentPlaybackDuration: 180,
+          currentPlaybackTime: 1,
+        },
+      });
+
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      musicKit.currentPlaybackTime = 5;
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      expect(bridgeSend.mock.calls.filter((call) => call[0] === 'playbackTimeDidChange')).toHaveLength(1);
+
+      musicKitListeners.get('playbackStateDidChange')?.({ state: 3 });
+      expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 5_000_000);
+      expect(bridgeSend).toHaveBeenCalledWith('playbackStateDidChange', {
+        status: false,
+        state: 3,
+      });
+    });
+
+    it('flushes a pending position IPC on track change', () => {
+      const { bridgeSend, musicKit, musicKitListeners } = createHarness({
+        musicKitOverrides: {
+          currentPlaybackDuration: 180,
+          currentPlaybackTime: 1,
+        },
+      });
+
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      musicKit.currentPlaybackTime = 8;
+      musicKitListeners.get('playbackTimeDidChange')?.();
+
+      musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
+      expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 8_000_000);
+      expect(bridgeSend).toHaveBeenCalledWith('nowPlayingItemDidChange', null);
     });
   });
 

@@ -13,6 +13,53 @@
     /** @type {number | null} Timer ID for the volume polling fallback. */
     let volumePollTimer = null;
 
+    /** Minimum gap between position IPC sends (MediaSession is not throttled). */
+    const POSITION_IPC_THROTTLE_MS = 250;
+    /** @type {number} Last time a playbackTimeDidChange IPC was sent. */
+    let lastPositionIpcAt = 0;
+    /** @type {number | null} Pending position (µs) waiting for the throttle window. */
+    let pendingPositionUs = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let positionIpcTimer = null;
+
+    /**
+     * Send the latest playback position to main, clearing any pending throttle.
+     * @param {number} positionUs - Position in microseconds
+     * @returns {void}
+     */
+    function flushPositionIpc(positionUs) {
+      if (positionIpcTimer !== null) {
+        clearTimeout(positionIpcTimer);
+        positionIpcTimer = null;
+      }
+      pendingPositionUs = null;
+      lastPositionIpcAt = Date.now();
+      sendToMain('playbackTimeDidChange', positionUs);
+    }
+
+    /**
+     * Throttle position IPC so main/MPRIS are not flooded every MusicKit tick.
+     * MediaSession reporting stays on every tick (see reportPositionState).
+     * @param {number} positionUs - Position in microseconds
+     * @returns {void}
+     */
+    function sendPositionIpcThrottled(positionUs) {
+      const now = Date.now();
+      const elapsed = now - lastPositionIpcAt;
+      if (elapsed >= POSITION_IPC_THROTTLE_MS) {
+        flushPositionIpc(positionUs);
+        return;
+      }
+
+      pendingPositionUs = positionUs;
+      if (positionIpcTimer !== null) return;
+      positionIpcTimer = setTimeout(() => {
+        positionIpcTimer = null;
+        if (pendingPositionUs === null) return;
+        flushPositionIpc(pendingPositionUs);
+      }, POSITION_IPC_THROTTLE_MS - elapsed);
+    }
+
     /**
      * Send to the main process, tolerating an absent bridge.
      *
@@ -131,6 +178,19 @@
        * @param {{ state: number }} event - MusicKit playbackStateDidChange event
        */
       mk.addEventListener('playbackStateDidChange', ({ state }) => {
+        // Flush a pending position so pause/stop edges stay accurate for
+        // wedge detection and MPRIS Seeked. Transient states (loading,
+        // seeking, …) keep the throttle so they do not flood main.
+        const ps = MusicKit.PlaybackStates;
+        if (
+          state === ps.paused ||
+          state === ps.stopped ||
+          state === ps.ended ||
+          state === ps.completed ||
+          state === ps.none
+        ) {
+          flushPositionIpc(mk.currentPlaybackTime * 1_000_000);
+        }
         sendToMain('playbackStateDidChange', {
           status: state === MusicKit.PlaybackStates.playing,
           state,
@@ -143,6 +203,7 @@
        * @param {{ item: object | null }} event - MusicKit nowPlayingItemDidChange event
        */
       mk.addEventListener('nowPlayingItemDidChange', ({ item }) => {
+        flushPositionIpc(mk.currentPlaybackTime * 1_000_000);
         if (!item) {
           sendToMain('nowPlayingItemDidChange', null);
           clearPositionState();
@@ -179,12 +240,14 @@
       /**
        * Forward playback position (in microseconds) to the main process and
        * refresh the media session position state.
+       *
+       * MediaSession is updated every tick; IPC is throttled (~250ms) with a
+       * flush on pause/stop/track change so Seeked and wedge detection stay
+       * correct without flooding the main process.
        */
       mk.addEventListener('playbackTimeDidChange', () => {
-        sendToMain('playbackTimeDidChange',
-          mk.currentPlaybackTime * 1_000_000
-        );
         reportPositionState(mk);
+        sendPositionIpcThrottled(mk.currentPlaybackTime * 1_000_000);
       });
 
       /** Forward repeat mode changes to the main process. */
