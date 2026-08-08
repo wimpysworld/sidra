@@ -63,6 +63,8 @@ interface PlayerInterface {
   OpenUri(uri: string): void;
   Seeked(position: number): number;
   Volume: number;
+  LoopStatus: string;
+  Shuffle: boolean;
   readonly PlaybackStatus: string;
   readonly Metadata: Record<string, VariantValue>;
   readonly Position: number;
@@ -241,6 +243,31 @@ describe('MPRIS PlaybackStatus mapping', () => {
     expect(iface.PlaybackStatus).toBe('Stopped');
     // One PropertiesChanged for the Playing → Stopped edge; the rest are no-ops.
     expect(emissions).toEqual([{ PlaybackStatus: 'Stopped' }]);
+  });
+});
+
+describe('MPRIS LoopStatus and Shuffle setters', () => {
+  it('emits LoopStatus from the setter so clients do not wait on a no-op echo', () => {
+    const iface = initPlayerInterface();
+    iface.LoopStatus = 'Track';
+    expect(iface.LoopStatus).toBe('Track');
+    expect(emissions).toEqual([{ LoopStatus: 'Track' }]);
+    expect(win.webContents.send).toHaveBeenCalledWith('player:setRepeat', 1);
+
+    // Echo of the same value must not emit again.
+    player.emit('repeatModeDidChange', 1);
+    expect(emissions).toEqual([{ LoopStatus: 'Track' }]);
+  });
+
+  it('emits Shuffle from the setter so clients do not wait on a no-op echo', () => {
+    const iface = initPlayerInterface();
+    iface.Shuffle = true;
+    expect(iface.Shuffle).toBe(true);
+    expect(emissions).toEqual([{ Shuffle: true }]);
+    expect(win.webContents.send).toHaveBeenCalledWith('player:setShuffle', 1);
+
+    player.emit('shuffleModeDidChange', 1);
+    expect(emissions).toEqual([{ Shuffle: true }]);
   });
 });
 

@@ -118,12 +118,27 @@ function isMacOSTahoeOrLater(): boolean {
 // Volume-drag rebuilds reuse the same icons, so cache by theme + basename.
 const menuIconCache = new Map<string, Electron.NativeImage | undefined>();
 // Artwork is rebuilt with the same local path across coalesced menu updates.
+// Bounded: a long listening session would otherwise retain every cover ever shown.
+const ARTWORK_ICON_CACHE_MAX = 4;
 const artworkIconCache = new Map<string, Electron.NativeImage | undefined>();
 
 /** Clears cached menu/artwork NativeImages (theme change, or tests). */
 export function invalidateTrayImageCaches(): void {
   menuIconCache.clear();
   artworkIconCache.clear();
+}
+
+function rememberArtworkIcon(cacheKey: string, value: Electron.NativeImage | undefined): void {
+  // Refresh insertion order so a reused cover is treated as newest.
+  if (artworkIconCache.has(cacheKey)) {
+    artworkIconCache.delete(cacheKey);
+  }
+  artworkIconCache.set(cacheKey, value);
+  while (artworkIconCache.size > ARTWORK_ICON_CACHE_MAX) {
+    const oldest = artworkIconCache.keys().next().value;
+    if (oldest === undefined) break;
+    artworkIconCache.delete(oldest);
+  }
 }
 
 /**
@@ -517,7 +532,7 @@ function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electro
 
   const src = nativeImage.createFromPath(artworkPath);
   if (src.isEmpty()) {
-    artworkIconCache.set(cacheKey, undefined);
+    rememberArtworkIcon(cacheKey, undefined);
     return undefined;
   }
 
@@ -536,7 +551,7 @@ function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electro
     resolved = img;
   }
 
-  artworkIconCache.set(cacheKey, resolved);
+  rememberArtworkIcon(cacheKey, resolved);
   return resolved;
 }
 

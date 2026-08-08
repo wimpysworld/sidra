@@ -399,7 +399,7 @@ describe('musicKitHook', () => {
       });
     });
 
-    it('flushes a pending position IPC on track change', () => {
+    it('flushes a pending position IPC on track change after metadata', () => {
       const { bridgeSend, musicKit, musicKitListeners } = createHarness({
         musicKitOverrides: {
           currentPlaybackDuration: 180,
@@ -414,6 +414,33 @@ describe('musicKitHook', () => {
       musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
       expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 8_000_000);
       expect(bridgeSend).toHaveBeenCalledWith('nowPlayingItemDidChange', null);
+
+      // Metadata before position so MPRIS Seeked is not attributed to the old track.
+      const channels = bridgeSend.mock.calls.map((call) => call[0] as string);
+      expect(channels.lastIndexOf('nowPlayingItemDidChange'))
+        .toBeLessThan(channels.lastIndexOf('playbackTimeDidChange'));
+    });
+
+    it('drops a pending position IPC when MusicKit is replaced', () => {
+      const { bridgeSend, musicKit, musicKitListeners, replaceInstance, runMonitorCycles } = createHarness({
+        musicKitOverrides: {
+          currentPlaybackDuration: 180,
+          currentPlaybackTime: 1,
+        },
+      });
+
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      musicKit.currentPlaybackTime = 9;
+      musicKitListeners.get('playbackTimeDidChange')?.();
+      expect(bridgeSend.mock.calls.filter((call) => call[0] === 'playbackTimeDidChange')).toHaveLength(1);
+
+      replaceInstance();
+      runMonitorCycles(1);
+      vi.advanceTimersByTime(250);
+
+      // The throttled 9s tick belonged to the previous singleton and must not send.
+      expect(bridgeSend.mock.calls.filter((call) => call[0] === 'playbackTimeDidChange')).toHaveLength(1);
+      expect(bridgeSend).not.toHaveBeenCalledWith('playbackTimeDidChange', 9_000_000);
     });
   });
 

@@ -545,7 +545,12 @@ class MediaPlayer2Player extends Interface {
       mprisLog.warn('invalid LoopStatus value:', value);
       return;
     }
-    this._loopStatus = value;
+    // Emit here: the MusicKit echo hits updateRepeatMode with the same value
+    // and early-returns, so clients would never see PropertiesChanged otherwise.
+    if (value !== this._loopStatus) {
+      this._loopStatus = value;
+      this._emitPropertiesNow({ LoopStatus: value });
+    }
     this._send('player:setRepeat', mode);
   }
 
@@ -554,7 +559,11 @@ class MediaPlayer2Player extends Interface {
   }
 
   set Shuffle(value: boolean) {
-    this._shuffle = value;
+    // Same as LoopStatus: cache + emit on the setter; the echo is a no-op.
+    if (value !== this._shuffle) {
+      this._shuffle = value;
+      this._emitPropertiesNow({ Shuffle: value });
+    }
     const mode = value ? 1 : 0;
     this._send('player:setShuffle', mode);
   }

@@ -27,6 +27,21 @@
      * @param {number} positionUs - Position in microseconds
      * @returns {void}
      */
+    /**
+     * Drop a pending throttled position without sending. Used when re-hooking
+     * MusicKit so a timer from the previous instance cannot publish a stale
+     * playhead after attach.
+     * @returns {void}
+     */
+    function resetPositionIpcThrottle() {
+      if (positionIpcTimer !== null) {
+        clearTimeout(positionIpcTimer);
+        positionIpcTimer = null;
+      }
+      pendingPositionUs = null;
+      lastPositionIpcAt = 0;
+    }
+
     function flushPositionIpc(positionUs) {
       if (positionIpcTimer !== null) {
         clearTimeout(positionIpcTimer);
@@ -203,9 +218,13 @@
        * @param {{ item: object | null }} event - MusicKit nowPlayingItemDidChange event
        */
       mk.addEventListener('nowPlayingItemDidChange', ({ item }) => {
-        flushPositionIpc(mk.currentPlaybackTime * 1_000_000);
+        // Drop a throttled tick first so it cannot race after metadata and look
+        // like a seek on the previous track. Metadata then position keeps MPRIS
+        // Seeked associated with the new trackid.
+        resetPositionIpcThrottle();
         if (!item) {
           sendToMain('nowPlayingItemDidChange', null);
+          flushPositionIpc(mk.currentPlaybackTime * 1_000_000);
           clearPositionState();
           return;
         }
@@ -235,6 +254,7 @@
           // built from config can name a host the track was never on.
           sourceHost: window.location.hostname,
         });
+        flushPositionIpc(mk.currentPlaybackTime * 1_000_000);
       });
 
       /**
@@ -333,6 +353,9 @@
       // Stopping the previous poll comes first, so a throw in either attach
       // below cannot leave a second timer polling the replaced instance.
       stopVolumePoll();
+      // Drop a throttled position from the previous singleton before listening
+      // on the replacement; otherwise the timer can publish a stale playhead.
+      resetPositionIpcThrottle();
       attachPlaybackListeners(mk);
       attachVolume(mk);
 
