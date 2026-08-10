@@ -15,7 +15,7 @@
   "license": "BlueOak-1.0.0",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "github:castlabs/electron-releases#v43.0.0+wvcus",
+    "electron": "github:castlabs/electron-releases#v43.2.0+wvcus",
     "electron-builder": "^26.15.7",
     "typescript": "^7.x",
     "vitest": "^4.1.10"
