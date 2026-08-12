@@ -322,7 +322,7 @@ describe('MPRIS xesam:url fallback', () => {
 
 describe('MPRIS volume', () => {
   beforeEach(() => {
-    // 1000 ms property debounce, 2000 ms volume safety timeout.
+    // 250 ms property debounce, 2000 ms volume safety timeout.
     vi.useFakeTimers();
   });
 
@@ -334,14 +334,14 @@ describe('MPRIS volume', () => {
     iface.Volume = 0.4;
 
     expect(win.webContents.send).toHaveBeenCalledWith('player:setVolume', 0.4);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(emissions).toEqual([{ Volume: 0.4 }]);
 
     // The renderer echoes the value straight back. Emitting again would tell
     // every client what it already knows, and the echo is the near half of a
     // feedback loop.
     player.emit('volumeDidChange', 0.4);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(emissions).toEqual([{ Volume: 0.4 }]);
   });
 
@@ -359,7 +359,7 @@ describe('MPRIS volume', () => {
     player.emit('volumeDidChange', 0.6);
     player.emit('volumeDidChange', 0.7);
 
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(iface.Volume).toBe(0.7);
     expect(emissions).toEqual([{ Volume: 0.7 }]);
   });
@@ -380,7 +380,7 @@ describe('MPRIS volume', () => {
       player.emit('volumeDidChange', value);
     }
 
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(iface.Volume).toBe(0.6);
     expect(emissions).toEqual([{ Volume: 0.6 }]);
   });
@@ -392,11 +392,11 @@ describe('MPRIS volume', () => {
     const iface = initPlayerInterface();
     iface.Volume = 0.5;
     player.emit('volumeDidChange', 0.5);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(emissions).toEqual([{ Volume: 0.5 }]);
 
     player.emit('volumeDidChange', 0.2);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(emissions).toEqual([{ Volume: 0.5 }, { Volume: 0.2 }]);
     expect(iface.Volume).toBe(0.2);
   });
@@ -411,7 +411,7 @@ describe('MPRIS volume', () => {
     expect(emissions).toEqual([{ Volume: 0.5 }]);
 
     player.emit('volumeDidChange', 0.5);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(250);
     expect(emissions).toEqual([{ Volume: 0.5 }, { Volume: 0.5 }]);
   });
 });

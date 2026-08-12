@@ -234,7 +234,7 @@ class MediaPlayer2Player extends Interface {
   private _volumeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Debounce timer for property change emissions
-  private readonly _debounceMs = 1000;
+  private readonly _debounceMs = 250;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingChanges: Record<string, unknown> = {};
 
