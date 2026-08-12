@@ -324,6 +324,7 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      spellcheck: false,
       plugins: true,
       sandbox: true,
     },

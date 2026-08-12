@@ -272,6 +272,7 @@ describe('main bootstrap', () => {
         partition: 'persist:sidra',
         nodeIntegration: false,
         contextIsolation: true,
+        spellcheck: false,
         plugins: true,
         sandbox: true,
       }),
