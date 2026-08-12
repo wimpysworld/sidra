@@ -15,7 +15,7 @@ stdenvNoCC.mkDerivation {
   # reads the filename off the published release. Do not edit them by hand.
   src = fetchurl {
     url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-mac-arm64.dmg";
-    hash = "sha256-vv6cG3aGjHhXuLUmeMFzDMpGiOqFjKs6lJWihIfEfiU=";
+    hash = "sha256-n57dyDrQmV7jqKeadx/2DnGYE8VxXUhKHh2Fosf3+3o=";
   };
 
   dontPatch = true;

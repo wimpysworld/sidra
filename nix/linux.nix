@@ -53,7 +53,7 @@ let
   # reads the filename off the published release. Do not edit them by hand.
   src = fetchurl {
     url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
-    hash = "sha256-H8K0wlu8w+KD36wTXJUJypV8iO/GjU72Icb34B1vUzI=";
+    hash = "sha256-7ViRvbc087+JWxwKu481fI3eHLzi6XdRrJcLFm0jwYQ=";
   };
 
   # Unpack the deb into a plain derivation. No patching - the CastLabs
