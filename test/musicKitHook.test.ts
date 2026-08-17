@@ -8,30 +8,92 @@ const hookScript = fs.readFileSync(
   'utf-8',
 );
 
-/** An event target in a composed path, carrying the classes given. */
-function element(classes: string) {
-  const tokens = classes.split(' ');
-  return { classList: { contains: (token: string) => tokens.includes(token) } };
+/** A listener registration made on a fake element. */
+interface Registration {
+  type: string;
+  listener: (event: unknown) => void;
+  options?: unknown;
 }
 
 /**
- * A composed path built from the outermost-first class lists, ordered as the
- * DOM delivers it and terminated by the window, which carries no classList.
+ * An element in a fake ancestor chain. It carries only what the hook uses:
+ * class tokens, addEventListener/removeEventListener, and closest(), which is
+ * how the hook finds the volume control from the pointer's target.
  */
-function composedPath(...classes: string[]) {
-  return [...classes.map(element), {}];
+interface FakeElement {
+  tokens: string[];
+  parent: FakeElement | null;
+  registrations: Registration[];
+  classList: { contains(token: string): boolean };
+  addEventListener(type: string, listener: (event: unknown) => void, options?: unknown): void;
+  removeEventListener(type: string, listener: (event: unknown) => void): void;
+  closest(selector: string): FakeElement | null;
+}
+
+function element(classes: string, parent: FakeElement | null): FakeElement {
+  const tokens = classes.split(' ');
+  const node: FakeElement = {
+    tokens,
+    parent,
+    registrations: [],
+    classList: { contains: (token: string) => tokens.includes(token) },
+    addEventListener(type, listener, options) {
+      node.registrations.push({ type, listener, options });
+    },
+    removeEventListener(type, listener) {
+      const index = node.registrations.findIndex(
+        (entry) => entry.type === type && entry.listener === listener,
+      );
+      if (index !== -1) node.registrations.splice(index, 1);
+    },
+    // Only class selectors are supported, which is all the hook asks for.
+    closest(selector) {
+      const wanted = selector.replace(/^\./, '');
+      for (let current: FakeElement | null = node; current; current = current.parent) {
+        if (current.tokens.includes(wanted)) return current;
+      }
+      return null;
+    },
+  };
+  return node;
+}
+
+/**
+ * Builds an ancestor chain from the outermost-first class lists and hands back
+ * the innermost element, which is what a pointer or wheel event targets.
+ */
+function chain(outermost: string, ...rest: string[]): FakeElement {
+  let node = element(outermost, null);
+  for (const entry of rest) node = element(entry, node);
+  return node;
+}
+
+/** The volume control in a chain, for a test that asserts against it directly. */
+function volumeControl(target: FakeElement): FakeElement {
+  const control = target.closest('.chrome-volume');
+  if (!control) throw new Error('this chain carries no chrome-volume element');
+  return control;
+}
+
+/** Every wheel registration on a chain, innermost first, as bubbling sees them. */
+function wheelRegistrations(target: FakeElement): Registration[] {
+  const found: Registration[] = [];
+  for (let node: FakeElement | null = target; node; node = node.parent) {
+    found.push(...node.registrations.filter((entry) => entry.type === 'wheel'));
+  }
+  return found;
 }
 
 // The two services differ in the element that carries the chrome-volume token:
 // a div on music.apple.com, an amp-chrome-volume element on classical.
-const MUSIC_VOLUME_PATH = composedPath(
-  'chrome-volume__slider', 'chrome-volume', 'chrome-player',
+const musicVolumeTarget = () => chain(
+  'chrome-player', 'chrome-volume', 'chrome-volume__slider',
 );
-const CLASSICAL_VOLUME_PATH = composedPath(
-  'chrome-volume__indicator', 'amp-volume-control', 'chrome-volume',
-  'chrome-player__volume',
+const classicalVolumeTarget = () => chain(
+  'chrome-player__volume', 'chrome-volume', 'amp-volume-control',
+  'chrome-volume__indicator',
 );
-const NON_VOLUME_PATH = composedPath('chrome-player__button', 'chrome-player');
+const nonVolumeTarget = () => chain('chrome-player', 'chrome-player__button');
 
 /** A MusicKit stand-in, optionally with a volume getter that throws. */
 function createMusicKit(
@@ -86,10 +148,12 @@ function createHarness({
   const intervals: Array<{ callback: () => void; delay: number }> = [];
   const intervalCallbacks: Array<() => void> = [];
   const messageListeners: Array<(event: unknown) => void> = [];
-  const wheelListeners: Array<{
-    listener: (event: unknown) => void;
-    options: unknown;
-  }> = [];
+  const pointerOverListeners: Array<(event: unknown) => void> = [];
+  // Registrations the hook made on window. The wheel listener must never appear
+  // here: see the non-fast-scrollable region note in the hook. A registration on
+  // document is caught differently - document is not in the vm context, so
+  // reaching for it throws where the hook runs.
+  const globalRegistrations: Registration[] = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
   const navigator = navigatorOverrides ?? { mediaSession };
@@ -114,8 +178,9 @@ function createHarness({
       listener: (event: unknown) => void,
       options?: unknown,
     ) => {
+      globalRegistrations.push({ type: event, listener, options });
       if (event === 'message') messageListeners.push(listener);
-      if (event === 'wheel') wheelListeners.push({ listener, options });
+      if (event === 'pointerover') pointerOverListeners.push(listener);
     }),
     navigator,
   };
@@ -169,21 +234,24 @@ function createHarness({
       if (!window.AMWrapper) throw new Error('this harness was built without an AMWrapper bridge');
       return window.AMWrapper.ipcRenderer.send;
     },
-    // Sends one wheel event to every registered listener and hands the event
-    // back, so a test can read the preventDefault mock off it.
+    // Moves the pointer onto `target`, as the browser does before any wheel
+    // event reaches it. This is what resolves the hook's lazy binding.
+    hoverOver: (target: FakeElement) => {
+      for (const listener of pointerOverListeners) listener({ target });
+    },
+    // Moves the pointer onto `target`, then sends one wheel event up its
+    // ancestor chain, as bubbling delivers it. The event is handed back so a
+    // test can read the preventDefault mock off it.
     dispatchWheel: (
-      { ctrlKey = false, deltaY, path }:
-        { ctrlKey?: boolean; deltaY: number; path: unknown[] },
+      { ctrlKey = false, deltaY, target }:
+        { ctrlKey?: boolean; deltaY: number; target: FakeElement },
     ) => {
-      const event = {
-        composedPath: () => path,
-        ctrlKey,
-        deltaY,
-        preventDefault: vi.fn(),
-      };
-      for (const { listener } of wheelListeners) listener(event);
+      for (const listener of pointerOverListeners) listener({ target });
+      const event = { ctrlKey, deltaY, preventDefault: vi.fn(), target };
+      for (const { listener } of wheelRegistrations(target)) listener(event);
       return event;
     },
+    globalRegistrations,
     mediaSession,
     messageListeners,
     musicKit,
@@ -213,7 +281,7 @@ function createHarness({
       vm.runInContext(hookScript, context);
       for (const callback of intervalCallbacks.slice(alreadyRun)) callback();
     },
-    wheelListeners,
+    pointerOverListeners,
     window,
   };
 }
@@ -491,17 +559,17 @@ describe('musicKitHook', () => {
   });
 
   it.each([
-    ['music', MUSIC_VOLUME_PATH],
-    ['classical', CLASSICAL_VOLUME_PATH],
+    ['music', musicVolumeTarget],
+    ['classical', classicalVolumeTarget],
   ])('lowers the volume a step when the wheel turns down over the %s volume control', (
     _service,
-    path,
+    makeTarget,
   ) => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
 
-    const event = dispatchWheel({ deltaY: 100, path });
+    const event = dispatchWheel({ deltaY: 100, target: makeTarget() });
 
     expect(musicKit.volume).toBe(0.45);
     expect(event.preventDefault).toHaveBeenCalled();
@@ -512,7 +580,7 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.5 },
     });
 
-    dispatchWheel({ deltaY: -100, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: -100, target: musicVolumeTarget() });
 
     expect(musicKit.volume).toBe(0.55);
   });
@@ -522,7 +590,7 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.5 },
     });
 
-    const event = dispatchWheel({ deltaY: 100, path: NON_VOLUME_PATH });
+    const event = dispatchWheel({ deltaY: 100, target: nonVolumeTarget() });
 
     expect(musicKit.volume).toBe(0.5);
     expect(event.preventDefault).not.toHaveBeenCalled();
@@ -533,7 +601,7 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.5 },
     });
 
-    const event = dispatchWheel({ ctrlKey: true, deltaY: 100, path: MUSIC_VOLUME_PATH });
+    const event = dispatchWheel({ ctrlKey: true, deltaY: 100, target: musicVolumeTarget() });
 
     expect(musicKit.volume).toBe(0.5);
     expect(event.preventDefault).not.toHaveBeenCalled();
@@ -544,7 +612,7 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.02 },
     });
 
-    dispatchWheel({ deltaY: 100, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: 100, target: musicVolumeTarget() });
 
     expect(musicKit.volume).toBe(0);
   });
@@ -554,7 +622,7 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.98 },
     });
 
-    dispatchWheel({ deltaY: -100, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: -100, target: musicVolumeTarget() });
 
     expect(musicKit.volume).toBe(1);
   });
@@ -566,7 +634,7 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.7 },
     });
 
-    dispatchWheel({ deltaY: 100, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: 100, target: musicVolumeTarget() });
 
     expect(musicKit.volume).toBe(0.65);
   });
@@ -575,12 +643,13 @@ describe('musicKitHook', () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
+    const target = musicVolumeTarget();
 
-    dispatchWheel({ deltaY: 50, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: 50, target });
 
     expect(musicKit.volume).toBe(0.5);
 
-    dispatchWheel({ deltaY: 50, path: MUSIC_VOLUME_PATH });
+    dispatchWheel({ deltaY: 50, target });
 
     expect(musicKit.volume).toBe(0.45);
   });
@@ -590,25 +659,95 @@ describe('musicKitHook', () => {
       musicKitOverrides: { volume: 0.5 },
     });
 
-    dispatchWheel({ deltaY: -50, path: MUSIC_VOLUME_PATH });
-    dispatchWheel({ deltaY: 100, path: MUSIC_VOLUME_PATH });
+    const target = musicVolumeTarget();
+
+    dispatchWheel({ deltaY: -50, target });
+    dispatchWheel({ deltaY: 100, target });
 
     expect(musicKit.volume).toBe(0.45);
   });
 
-  it('registers the wheel listener as non-passive so preventDefault works', () => {
-    const { wheelListeners } = createHarness();
+  // The listener has to be non-passive to call preventDefault, and that is
+  // exactly why it must sit on the control. A non-passive wheel listener on
+  // window or document marks the whole document a non-fast-scrollable region,
+  // so Chromium stops scrolling on the compositor thread and every wheel tick
+  // waits behind Apple Music's main thread. Nothing else in the suite notices
+  // that, because the handler still behaves correctly while doing it.
+  it('registers no wheel listener on window', () => {
+    const { globalRegistrations } = createHarness();
 
-    expect(wheelListeners).toHaveLength(1);
-    expect(wheelListeners[0].options).toEqual({ passive: false });
+    expect(globalRegistrations.filter((entry) => entry.type === 'wheel')).toEqual([]);
   });
 
-  it('installs no second wheel listener when the script is injected again', () => {
-    const { reinject, wheelListeners } = createHarness();
+  it('registers the wheel listener on the volume control, non-passive', () => {
+    const { hoverOver } = createHarness();
+    const target = musicVolumeTarget();
+
+    hoverOver(target);
+
+    const registrations = wheelRegistrations(target);
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0].options).toEqual({ passive: false });
+    // On the control itself, so the non-fast-scrollable region is its own box.
+    expect(volumeControl(target).registrations).toHaveLength(1);
+  });
+
+  it('registers the pointerover listener as passive so scrolling is unaffected', () => {
+    const { globalRegistrations } = createHarness();
+
+    const pointerOver = globalRegistrations.filter((entry) => entry.type === 'pointerover');
+    expect(pointerOver).toHaveLength(1);
+    expect(pointerOver[0].options).toEqual({ passive: true });
+  });
+
+  it('binds nothing until the pointer reaches the control', () => {
+    const { globalRegistrations } = createHarness();
+    const target = musicVolumeTarget();
+
+    expect(wheelRegistrations(target)).toEqual([]);
+    expect(globalRegistrations.some((entry) => entry.type === 'pointerover')).toBe(true);
+  });
+
+  it('leaves the pointer over a non-volume element unbound', () => {
+    const { hoverOver } = createHarness();
+    const target = nonVolumeTarget();
+
+    hoverOver(target);
+
+    expect(wheelRegistrations(target)).toEqual([]);
+  });
+
+  it('binds once however often the pointer re-enters the same control', () => {
+    const { hoverOver } = createHarness();
+    const target = musicVolumeTarget();
+
+    hoverOver(target);
+    hoverOver(target);
+    hoverOver(target);
+
+    expect(wheelRegistrations(target)).toHaveLength(1);
+  });
+
+  // Apple Music replaces the player bar on navigation and on a service switch,
+  // so the binding has to move rather than accumulate on dead elements.
+  it('moves the listener to a replacement control and releases the old one', () => {
+    const { hoverOver } = createHarness();
+    const first = musicVolumeTarget();
+    const second = musicVolumeTarget();
+
+    hoverOver(first);
+    hoverOver(second);
+
+    expect(wheelRegistrations(first)).toEqual([]);
+    expect(wheelRegistrations(second)).toHaveLength(1);
+  });
+
+  it('installs no second pointerover listener when the script is injected again', () => {
+    const { reinject, pointerOverListeners } = createHarness();
 
     reinject();
 
-    expect(wheelListeners).toHaveLength(1);
+    expect(pointerOverListeners).toHaveLength(1);
   });
 
   it('clears media session position state for a radio stream with no duration', () => {

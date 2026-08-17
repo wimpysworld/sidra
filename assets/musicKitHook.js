@@ -2,7 +2,7 @@
   // This flag persists for the page lifetime and is never cleared. Re-injection
   // must not re-run the IIFE: the 5-second monitor inside the hook already
   // handles MusicKit instance replacement, and re-running would install a
-  // duplicate set of message and wheel listeners.
+  // duplicate set of message and pointerover listeners.
   if (window.__sidraHookInjected) return;
   window.__sidraHookInjected = true;
 
@@ -303,7 +303,7 @@
      * the monitor will not retry a part-attached instance. Reporting the error
      * is all that is left to do, and it must not propagate: the monitor's own
      * catch would swallow it, and on the first call it would abort the rest of
-     * the hook, including the message and wheel listeners below.
+     * the hook, including the message and pointerover listeners below.
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
      * @returns {void}
@@ -372,28 +372,32 @@
     let wheelDelta = 0;
 
     /**
-     * Change the volume when the pointer is over the player bar volume control.
-     *
-     * Both services put the `chrome-volume` class token on the control, on a
-     * `div` for music.apple.com and on an `amp-chrome-volume` element for
-     * classical.music.apple.com, so the gate matches that token anywhere in the
-     * composed path and never the element name, which would work on Classical
-     * and silently do nothing on Apple Music. Never write a Svelte scope hash
-     * into the selector; those change on any Apple rebuild. Writing mk.volume
-     * reaches the main process by the existing playbackVolumeDidChange route.
-     *
-     * The listener is on window rather than on the control itself, because the
-     * control does not exist when the hook runs and is replaced on navigation
-     * and service switches.
+     * Matches the player bar volume control by the class token both services
+     * put on it: a `div` on music.apple.com, an `amp-chrome-volume` element on
+     * classical.music.apple.com. It must stay a class-token selector and never
+     * an element name, which would work on Classical and silently do nothing on
+     * Apple Music. Never write a Svelte scope hash into it; those change on any
+     * Apple rebuild.
+     */
+    const VOLUME_SELECTOR = '.chrome-volume';
+
+    /**
+     * The control the wheel listener is currently bound to, or null.
+     * @type {Element | null}
+     */
+    let boundVolumeControl = null;
+
+    /**
+     * Change the volume when the wheel turns over the player bar volume
+     * control. Writing mk.volume reaches the main process by the existing
+     * playbackVolumeDidChange route, so nothing outside the hook changes.
      *
      * @param {WheelEvent} event - The wheel event
+     * @returns {void}
      */
-    window.addEventListener('wheel', (event) => {
+    function onVolumeWheel(event) {
       // Ctrl+scroll and pinch are zoom gestures, not volume ones.
       if (event.ctrlKey) return;
-      const overVolume = event.composedPath()
-        .some((target) => target.classList?.contains('chrome-volume'));
-      if (!overVolume) return;
       // Stop the page scrolling under the control, even when this event only
       // accumulates and moves the volume nowhere.
       event.preventDefault();
@@ -416,7 +420,55 @@
       // and the result is clamped because MusicKit throws outside 0 to 1.
       const volume = hookedMk.volume - steps * VOLUME_STEP;
       hookedMk.volume = Math.min(1, Math.max(0, Math.round(volume * 100) / 100));
-    }, { passive: false });
+    }
+
+    /**
+     * Point the wheel listener at the volume control, moving it off whichever
+     * control it was on before.
+     *
+     * The listener must never go on `window` or `document`: a non-passive wheel
+     * listener there marks the whole document a non-fast-scrollable region, so
+     * Chromium stops scrolling on the compositor thread and every wheel tick
+     * waits on a main thread Apple Music keeps busy. The cost comes from the
+     * listener existing, not from what it does, which is why it survived review
+     * while the handler itself stayed correct. On the control the region is
+     * that control's own box.
+     *
+     * @param {Element} control - The volume control to bind
+     * @returns {void}
+     */
+    function bindVolumeWheel(control) {
+      if (control === boundVolumeControl) return;
+      if (boundVolumeControl) {
+        boundVolumeControl.removeEventListener('wheel', onVolumeWheel);
+      }
+      boundVolumeControl = control;
+      control.addEventListener('wheel', onVolumeWheel, { passive: false });
+    }
+
+    /**
+     * Find the volume control and bind to it when the pointer reaches it.
+     *
+     * The control does not exist when the hook runs and is replaced on
+     * navigation and service switches, so the binding is resolved lazily rather
+     * than once. `pointerover` is what resolves it: a wheel event over the
+     * control is always preceded by the pointer arriving there, and this
+     * listener is passive, so it costs scrolling nothing.
+     *
+     * A MutationObserver would answer the same question and is deliberately not
+     * used: one in this file previously cost 180 MiB/s.
+     *
+     * @param {PointerEvent} event - The pointerover event
+     * @returns {void}
+     */
+    function onPointerOver(event) {
+      const target = event.target;
+      if (typeof target?.closest !== 'function') return;
+      const control = target.closest(VOLUME_SELECTOR);
+      if (control) bindVolumeWheel(control);
+    }
+
+    window.addEventListener('pointerover', onPointerOver, { passive: true });
 
     console.log('[Sidra] MusicKit hooked successfully');
 
