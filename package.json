@@ -18,7 +18,7 @@
     "electron": "github:castlabs/electron-releases#v43.2.0+wvcus",
     "electron-builder": "^26.15.7",
     "typescript": "^7.x",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@holusion/dbus-next": "^0.11.2",
