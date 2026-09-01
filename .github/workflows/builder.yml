@@ -217,7 +217,7 @@ jobs:
         run: npm ci
       - name: Install uv
         if: matrix.os == 'macos' || matrix.os == 'windows'
-        uses: astral-sh/setup-uv@v9.0.0
+        uses: astral-sh/setup-uv@v10.0.1
       - name: Install snap tooling
         if: matrix.os == 'linux'
         run: |
@@ -346,7 +346,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: DeterminateSystems/determinate-nix-action@v3.21.8
+      - uses: DeterminateSystems/determinate-nix-action@v3.22.2
         with:
           extra-conf: |
             eval-cores = 0
