@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BrowserWindow } from 'electron';
+import type electronLog from 'electron-log/main';
 
 import { Player, PlaybackState } from '../src/player';
 import type { IntegrationContext } from '../src/player';
 
 type WedgeDetector = typeof import('../src/wedgeDetector');
+type ScopedLog = ReturnType<typeof electronLog.scope>;
 
 // Every listener and counter in the module is module-scoped, and init() now
 // refuses a second call, so a shared instance cannot be re-initialised between
@@ -17,8 +19,10 @@ async function loadWedgeDetector(): Promise<WedgeDetector> {
 describe('wedgeDetector', () => {
   let player: Player;
   let mockWin: { webContents: { send: ReturnType<typeof vi.fn> } };
+  let mainWindow: BrowserWindow | null;
   let getMainWindow: () => BrowserWindow | null;
   let wedgeDetector: WedgeDetector;
+  let wedgeLog: ScopedLog;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -28,11 +32,14 @@ describe('wedgeDetector', () => {
         send: vi.fn(),
       },
     };
-    getMainWindow = () => mockWin as unknown as BrowserWindow;
+    mainWindow = mockWin as unknown as BrowserWindow;
+    getMainWindow = () => mainWindow;
 
     wedgeDetector = await loadWedgeDetector();
+    wedgeLog = (await import('electron-log/main')).default.scope('wedge');
     const ctx: IntegrationContext = { player, getMainWindow };
     wedgeDetector.init(ctx);
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -60,6 +67,28 @@ describe('wedgeDetector', () => {
     vi.advanceTimersByTime(4000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
+  });
+
+  it('logs sent command provenance when stalled playback is skipped', () => {
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+
+    vi.advanceTimersByTime(6000);
+
+    expect(wedgeLog.warn).toHaveBeenCalledWith(
+      'source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=sent',
+    );
+  });
+
+  it('logs dropped command provenance when the main window is missing', () => {
+    mainWindow = null;
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+
+    vi.advanceTimersByTime(6000);
+
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    expect(wedgeLog.warn).toHaveBeenCalledWith(
+      'source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=dropped',
+    );
   });
 
   it('does not fire skip when position advances', () => {

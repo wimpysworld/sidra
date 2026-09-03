@@ -70,6 +70,7 @@ const bootstrap = vi.hoisted(() => {
     resetForDocumentReplacement,
     browserWindow: vi.fn(),
     ipcOn: vi.fn(),
+    appQuit: vi.fn(),
     appOn: vi.fn((event: string, listener: Listener) => {
       appListeners.set(event, listener);
     }),
@@ -93,7 +94,7 @@ vi.mock('electron', () => ({
     getPath: vi.fn((name: string) => `/tmp/sidra-test/${name}`),
     whenReady: vi.fn(() => Promise.resolve()),
     on: bootstrap.appOn,
-    quit: vi.fn(),
+    quit: bootstrap.appQuit,
     requestSingleInstanceLock: vi.fn(() => true),
     setAppUserModelId: vi.fn(),
     setAsDefaultProtocolClient: vi.fn(() => true),
@@ -376,5 +377,144 @@ describe('main bootstrap', () => {
     expect(bootstrap.resetForDocumentReplacement).toHaveBeenCalledOnce();
     expect(bootstrap.resetForDocumentReplacement.mock.invocationCallOrder[0])
       .toBeLessThan(vi.mocked(handleStorefrontNavigation).mock.invocationCallOrder.at(-1)!);
+  });
+
+  it('logs process lifecycle events without private event data', async () => {
+    const privatePath = '/home/alice/.config/sidra/access-token-secret/preload.js';
+    const privateUrl = 'https://music.apple.com/gb/album/private?token=secret-token';
+    const privateStack = `Error: secret-token\n    at ${privatePath}:1:1`;
+    const privateMetadata = { title: 'Private Track', url: privateUrl };
+
+    await startMain();
+
+    const childProcessGoneCall = bootstrap.appOn.mock.calls
+      .findIndex(([event]) => event === 'child-process-gone');
+    expect(bootstrap.appOn.mock.invocationCallOrder[childProcessGoneCall])
+      .toBeLessThan(bootstrap.browserWindow.mock.invocationCallOrder[0]);
+
+    bootstrap.log.info.mockClear();
+    bootstrap.log.warn.mockClear();
+    bootstrap.log.error.mockClear();
+
+    const unresponsive = bootstrap.mainWebListeners.get('unresponsive');
+    const responsive = bootstrap.mainWebListeners.get('responsive');
+    const renderProcessGone = bootstrap.mainWebListeners.get('render-process-gone');
+    const preloadError = bootstrap.mainWebListeners.get('preload-error');
+    const childProcessGone = bootstrap.appListeners.get('child-process-gone');
+
+    expect(unresponsive).toBeDefined();
+    expect(responsive).toBeDefined();
+    expect(renderProcessGone).toBeDefined();
+    expect(preloadError).toBeDefined();
+    expect(childProcessGone).toBeDefined();
+
+    unresponsive?.({ url: privateUrl, token: 'secret-token' });
+    responsive?.({ url: privateUrl, metadata: privateMetadata });
+    renderProcessGone?.({}, {
+      reason: 'crashed',
+      exitCode: 133,
+      url: privateUrl,
+      token: 'secret-token',
+      metadata: privateMetadata,
+      arguments: ['--secret-token'],
+    });
+
+    const error = new Error(`failed for ${privateUrl}`);
+    error.name = 'TypeError';
+    error.stack = privateStack;
+    preloadError?.({}, privatePath, error);
+
+    childProcessGone?.({}, {
+      type: 'Utility',
+      reason: 'crashed',
+      exitCode: 9,
+      serviceName: 'Audio Service',
+      name: privateUrl,
+      token: 'secret-token',
+      metadata: privateMetadata,
+      arguments: ['--secret-token'],
+    });
+    childProcessGone?.({}, {
+      type: 'GPU',
+      reason: 'oom',
+      exitCode: 137,
+      name: privateUrl,
+    });
+
+    expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
+      1,
+      'event=unresponsive processType=renderer',
+    );
+    expect(bootstrap.log.info).toHaveBeenCalledOnce();
+    expect(bootstrap.log.info).toHaveBeenCalledWith('event=responsive processType=renderer');
+    expect(bootstrap.log.error).toHaveBeenCalledOnce();
+    expect(bootstrap.log.error).toHaveBeenCalledWith(
+      'event=render-process-gone processType=renderer reason=crashed exitCode=133',
+    );
+    expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
+      2,
+      'event=preload-error processType=renderer preloadPath=preload.js errorName=TypeError',
+    );
+    expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
+      3,
+      'event=child-process-gone processType=Utility reason=crashed exitCode=9 serviceName="Audio Service"',
+    );
+    expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
+      4,
+      'event=child-process-gone processType=GPU reason=oom exitCode=137',
+    );
+
+    const logCalls = JSON.stringify([
+      ...bootstrap.log.info.mock.calls,
+      ...bootstrap.log.warn.mock.calls,
+      ...bootstrap.log.error.mock.calls,
+    ]);
+    expect(logCalls).not.toContain(privatePath);
+    expect(logCalls).not.toContain(privateUrl);
+    expect(logCalls).not.toContain('secret-token');
+    expect(logCalls).not.toContain(privateStack);
+    expect(logCalls).not.toContain('Private Track');
+    expect(logCalls).not.toContain('--secret-token');
+    expect(bootstrap.webContents.reload).not.toHaveBeenCalled();
+    expect(bootstrap.mainWindow.close).not.toHaveBeenCalled();
+    expect(bootstrap.appQuit).not.toHaveBeenCalled();
+    expect(bootstrap.mainWindow.loadURL).toHaveBeenCalledOnce();
+  });
+
+  it('replaces an unsafe preload error name with a fixed fallback', async () => {
+    const privateUrl = 'https://music.apple.com/private?token=preload-secret';
+    const privateName = `CustomError\r\n${privateUrl}\0token=preload-secret`;
+    const privateMessage = `failed to load ${privateUrl}\tpreload-secret`;
+    const privateStack = `${privateName}: ${privateMessage}\n    at /private/preload.js:1:1`;
+
+    await startMain();
+
+    bootstrap.log.info.mockClear();
+    bootstrap.log.warn.mockClear();
+    bootstrap.log.error.mockClear();
+
+    const preloadError = bootstrap.mainWebListeners.get('preload-error');
+    expect(preloadError).toBeDefined();
+
+    const error = new Error(privateMessage);
+    error.name = privateName;
+    error.stack = privateStack;
+    preloadError?.({}, '/private/preload.js', error);
+
+    expect(bootstrap.log.warn).toHaveBeenCalledOnce();
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      'event=preload-error processType=renderer preloadPath=preload.js errorName=UnknownError',
+    );
+    expect(bootstrap.log.info).not.toHaveBeenCalled();
+    expect(bootstrap.log.error).not.toHaveBeenCalled();
+
+    const loggedValues = [
+      ...bootstrap.log.info.mock.calls,
+      ...bootstrap.log.warn.mock.calls,
+      ...bootstrap.log.error.mock.calls,
+    ].flat().map(String);
+    for (const privateValue of [privateName, privateMessage, privateStack, privateUrl, 'preload-secret']) {
+      expect(loggedValues.every(value => !value.includes(privateValue))).toBe(true);
+    }
   });
 });

@@ -215,10 +215,24 @@ Current dependency roles:
 
 `electron-log` handles all application logging. Use structured log levels consistently:
 
-- `log.info` - startup, integration lifecycle (enabled/disabled), MusicKit hook confirmation
-- `log.warn` - recoverable issues (Discord RPC disconnection, notification artwork fetch failure)
-- `log.error` - unrecoverable issues (D-Bus connection failure, Widevine CDM unavailable)
-- `log.debug` - IPC event flow, state transitions (noisy, off by default)
+- `log.info` - startup, integration lifecycle (enabled/disabled), MusicKit hook confirmation, and MPRIS command provenance except successful `Volume` commands
+- `log.warn` - recoverable issues, process health warnings, and wedge command provenance
+- `log.error` - failures that end a required process, including a renderer process loss
+- `log.debug` - IPC event flow, state transitions, and successful MPRIS `Volume` command provenance (noisy, off by default)
+
+The `main` scope records these process events with fixed, allow-listed fields:
+
+| Event | Level | Message |
+|---|---|---|
+| `unresponsive` | `warn` | `event=unresponsive processType=renderer` |
+| `responsive` | `info` | `event=responsive processType=renderer` |
+| `render-process-gone` | `error` | `event=render-process-gone processType=renderer reason=<reason> exitCode=<exitCode>` |
+| `preload-error` | `warn` | `event=preload-error processType=renderer preloadPath=<basename> errorName=<standard name\|UnknownError>` |
+| `child-process-gone` | `warn` | `event=child-process-gone processType=<type> reason=<reason> exitCode=<exitCode> [serviceName=<JSON string>]` |
+
+`preloadPath` contains only the basename. The fixed `errorName` allowlist contains `AggregateError`, `Error`, `EvalError`, `RangeError`, `ReferenceError`, `SyntaxError`, `TypeError`, and `URIError`. Every other value becomes `UnknownError`. Diagnostic logs exclude user-supplied arguments, full URLs, other paths, metadata, messages, stacks, titles, artists, playlist names, usernames, tokens, and credentials.
+
+Diagnostic logging only records existing outcomes. It leaves recovery, dependencies, feature flags, process switches, timers, queues, coalescing, notification gates, and playback behaviour unchanged.
 
 ---
 
@@ -290,6 +304,8 @@ Integrations send commands to the renderer via a two-stage bridge:
 The `window.location.origin` target keeps the bridge service-agnostic: it passes the sandbox same-origin check on both `music.apple.com` and `classical.music.apple.com` without a hardcoded origin.
 
 The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and the `COMMANDS` allowlist in `assets/musicKitHook.js`, which must stay in sync. `src/types/hook.d.ts` declares `SendChannel` and `ReceiveChannel` union types used by `src/preload.ts` (`Set<SendChannel>`, `Set<ReceiveChannel>`), enforcing channel sync at compile time. Contract tests in `test/player.test.ts` verify alignment via `expectTypeOf`.
+
+The MPRIS and wedge dispatch sites log command provenance without command arguments. `result=sent` means that Sidra invoked the local action. `result=dropped` means that the required main window was unavailable. The result does not confirm that the renderer completed the command.
 
 | Control | Method | Triggered by |
 |---|---|---|
@@ -515,6 +531,8 @@ Full `org.mpris.MediaPlayer2.Player` property and method checklist. All must wor
 | `Stop()` | `window.__sidra.pause()` (not `mk.stop()`, which clears the queue and violates MPRIS spec) |
 | `Seek(Offset)` | `mk.seekToTime(currentTime + offsetMicros / 1e6)` |
 | `SetPosition(id, pos)` | `mk.seekToTime(posMicros / 1e6)` |
+
+MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] result=sent|dropped`. A successful `Volume` command logs at `debug`. A dropped `Volume` command and all other results log at `info`. `LoopStatus`, `Shuffle`, `Volume`, `Next`, `Previous`, `Pause`, `PlayPause`, `Stop`, `Play`, `Seek`, and `SetPosition` include their renderer channel. `Raise` and `OpenUri` can report either result. `Quit` reports `sent`. All three omit `channel`. Rejected values and URIs use generic warnings without request data.
 
 ### Signals
 
@@ -1124,7 +1142,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Navigation bar | `assets/navigationBar.js` injected post-load | Back/forward/reload buttons in sidebar; localised aria-labels substituted for `__SIDRA_NAV_LABELS__` at read time |
 | Auth iframe filtering | `authStyleFix.css` + `webFrameMain.executeJavaScript()` | Hides unsupported passkey and "Sign in with iPhone" desktop flows |
 | Zoom factor preference | `zoomFactor` in `electron-conf` | 1.0x to 2.0x via tray submenu |
-| Wedge detector | `src/wedgeDetector.ts` | Auto-skip on playback stall |
+| Wedge detector | `src/wedgeDetector.ts` | Auto-skip on playback stall. Each attempt logs at `warn` with `source=wedge channel=player:next reason=playback-stalled attempt=<current>/3 result=sent|dropped` |
 | Artwork cache | `src/artwork.ts` | UUID-based filenames, 7-day expiry, atomic writes |
 | Pause timer utility | `src/pauseTimer.ts` | `createPauseTimer()` shared by tray, dock, Discord |
 | Update checking (non-auto-update) | `src/update.ts` | GitHub API check for deb/rpm/Nix/DMG platforms |
