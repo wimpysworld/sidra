@@ -11,6 +11,7 @@ import log from 'electron-log/main';
 import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
 import type { PendingScrobble } from '../src/config';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
+import type { TimedMetadataPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
 import { quit } from './mocks/appLifecycle';
 
@@ -97,6 +98,30 @@ const SHORT_TRACK: NowPlayingPayload = {
   durationInMillis: 60_000,
 };
 
+const RADIO_STATION: NowPlayingPayload = {
+  name: 'Apple Music 1',
+  playParams: { kind: 'radioStation' },
+};
+
+const RADIO_A: TimedMetadataPayload = {
+  name: 'Radio Song A',
+  artistName: 'Radio Artist A',
+  transition: 'initial',
+};
+
+const RADIO_B: TimedMetadataPayload = {
+  name: 'Radio Song B',
+  artistName: 'Radio Artist B',
+  albumName: 'Radio Album',
+  transition: 'clean',
+};
+
+const RADIO_C: TimedMetadataPayload = {
+  name: 'Radio Song C',
+  artistName: 'Radio Artist C',
+  transition: 'clean',
+};
+
 const START = new Date('2026-01-01T00:00:00Z');
 const START_UNIX = String(Math.floor(START.getTime() / 1000));
 
@@ -143,6 +168,15 @@ function play(player: FakePlayer, ms: number): void {
   for (let elapsed = 0; elapsed < ms; elapsed += 1000) {
     player.advancePositionMs(1000);
     vi.advanceTimersByTime(1000);
+  }
+}
+
+function playExact(player: FakePlayer, ms: number): void {
+  for (let remaining = ms; remaining > 0;) {
+    const step = Math.min(remaining, 1000);
+    vi.advanceTimersByTime(step);
+    player.advancePositionMs(step);
+    remaining -= step;
   }
 }
 
@@ -232,6 +266,7 @@ describe('scrobble submission', () => {
     expect(submitted[0].get('artist')).toBe('New Order');
     expect(submitted[0].get('track')).toBe('Blue Monday');
     expect(submitted[0].get('timestamp')).toBe(START_UNIX);
+    expect(submitted[0].has('chosenByUser')).toBe(false);
   });
 
   it('scrobbles once across a pause and a long gap', async () => {
@@ -337,6 +372,252 @@ describe('scrobble submission', () => {
     expect(submitted).toHaveLength(2);
     expect(submitted[0].get('timestamp')).toBe(START_UNIX);
     expect(submitted[1].get('timestamp')).toBe(String(Number(START_UNIX) + 400));
+  });
+});
+
+describe('radio scrobble submission', () => {
+  beforeEach(startFromConnected);
+  afterEach(restoreRealTime);
+
+  async function startRadio(): Promise<FakePlayer> {
+    const { player } = await startIntegration();
+    player.emitNowPlaying(RADIO_STATION);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitTimedMetadata(RADIO_A);
+    return player;
+  }
+
+  function reachCleanSong(player: FakePlayer): void {
+    play(player, 10_000);
+    player.emitTimedMetadata(RADIO_B);
+    play(player, 1_000);
+  }
+
+  it('sends Now Playing and uses the four-minute fallback for the initial radio song', async () => {
+    const player = await startRadio();
+
+    play(player, 300_000);
+
+    expect(nowPlayingRequests().at(-1)?.get('track')).toBe('Radio Song A');
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song A');
+  });
+
+  it('scrobbles an observed radio song at the next confirmed clean boundary', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+    play(player, 31_000);
+
+    player.emitTimedMetadata(RADIO_C);
+    play(player, 1_000);
+
+    const submitted = scrobbles();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('artist')).toBe('Radio Artist B');
+    expect(submitted[0].get('track')).toBe('Radio Song B');
+    expect(submitted[0].get('album')).toBe('Radio Album');
+    expect(submitted[0].get('chosenByUser')).toBe('0');
+    expect(submitted[0].has('duration')).toBe(false);
+    expect(submitted[0].has('streamId')).toBe(false);
+  });
+
+  it('scrobbles an observed radio song after four minutes of active playback', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+
+    play(player, 240_000);
+
+    const submitted = scrobbles();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].get('track')).toBe('Radio Song B');
+    expect(submitted[0].get('chosenByUser')).toBe('0');
+  });
+
+  it('requires a current advancing position report for the four-minute fallback', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+
+    vi.advanceTimersByTime(300_000);
+    expect(scrobbles()).toHaveLength(0);
+
+    player.advancePositionMs(1_000);
+    expect(scrobbles()).toHaveLength(0);
+
+    play(player, 240_000);
+    expect(scrobbles()).toHaveLength(1);
+  });
+
+  it('does not confirm a pending fallback until the position increases', async () => {
+    const player = await startRadio();
+    play(player, 10_000);
+    player.emitTimedMetadata(RADIO_B);
+    const unchangedPosition = player.playbackSnapshot().positionUs;
+
+    player.setPositionUs(unchangedPosition);
+    vi.advanceTimersByTime(240_000);
+    expect(scrobbles()).toHaveLength(0);
+
+    player.advancePositionMs(1);
+    expect(scrobbles()).toHaveLength(0);
+
+    playExact(player, 240_000);
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+  });
+
+  it('uses only the four-minute fallback for an ambiguous radio candidate', async () => {
+    const player = await startRadio();
+    play(player, 10_000);
+
+    player.emitTimedMetadata({ ...RADIO_B, transition: 'ambiguous' });
+    play(player, 300_000);
+
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+  });
+
+  it('invalidates boundary eligibility when Last.fm is enabled mid-song', async () => {
+    const { lastfm, player } = await startIntegration();
+    player.emitNowPlaying(RADIO_STATION);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitTimedMetadata(RADIO_A);
+    reachCleanSong(player);
+    play(player, 31_000);
+
+    session.enabled = false;
+    lastfm.disable();
+    session.enabled = true;
+    lastfm.enable();
+    player.emitTimedMetadata(RADIO_C);
+    play(player, 1_000);
+
+    expect(scrobbles()).toHaveLength(0);
+  });
+
+  it('excludes a pause from the four-minute radio threshold', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+    play(player, 120_000);
+
+    player.emitPlaybackState(PlaybackState.Paused);
+    vi.advanceTimersByTime(600_000);
+    expect(scrobbles()).toHaveLength(0);
+
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 120_000);
+
+    expect(scrobbles()).toHaveLength(1);
+  });
+
+  it('invalidates a pending boundary when seeking follows its metadata', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+    play(player, 31_000);
+
+    player.emitTimedMetadata(RADIO_C);
+    player.emitPlaybackState(PlaybackState.Seeking);
+    player.setPositionUs(3_600_000_000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 300_000);
+
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song C');
+  });
+
+  it.each([
+    ['backwards', 0],
+    ['too far forwards', 3_600_000_000],
+  ])('rejects a pending boundary when the position jumps %s', async (_description, positionUs) => {
+    const player = await startRadio();
+    reachCleanSong(player);
+    play(player, 31_000);
+
+    player.emitTimedMetadata(RADIO_C);
+    player.setPositionUs(positionUs);
+    play(player, 300_000);
+
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song C');
+  });
+
+  it.each([
+    [30_000, 0],
+    [30_001, 1],
+  ])('submits %i ms at a clean boundary %i time(s)', async (playedMs, expected) => {
+    const player = await startRadio();
+    play(player, 10_000);
+    player.emitTimedMetadata(RADIO_B);
+    playExact(player, 1);
+    playExact(player, playedMs - 1);
+
+    player.emitTimedMetadata(RADIO_C);
+    playExact(player, 1);
+
+    expect(scrobbles()).toHaveLength(expected);
+  });
+
+  it('submits at 240,000 ms but not at 239,999 ms', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+
+    playExact(player, 238_999);
+    expect(scrobbles()).toHaveLength(0);
+
+    playExact(player, 1);
+    expect(scrobbles()).toHaveLength(1);
+  });
+
+  it('treats the first metadata after a seek as a partial song', async () => {
+    const player = await startRadio();
+
+    player.emitPlaybackState(PlaybackState.Seeking);
+    player.setPositionUs(3_600_000_000);
+    player.emitTimedMetadata(RADIO_B);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 300_000);
+
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+  });
+
+  it('retains chosenByUser in a queued radio scrobble', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+    vi.mocked(net.fetch).mockImplementation((_input, init) => {
+      const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
+      return method === 'track.scrobble'
+        ? Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'))
+        : Promise.resolve(new Response('{}'));
+    });
+
+    play(player, 240_000);
+    await flush();
+
+    expect(queue.pending).toEqual([
+      expect.objectContaining({ track: 'Radio Song B', chosenByUser: 0 }),
+    ]);
+
+    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    player.emitNowPlaying(TRACK);
+    await flush();
+
+    const batch = scrobbles().find((params) => params.has('track[0]'));
+    expect(batch?.get('chosenByUser[0]')).toBe('0');
+  });
+
+  it('clears radio state and listeners on document replacement and quit', async () => {
+    const player = await startRadio();
+    reachCleanSong(player);
+
+    player.resetForDocumentReplacement();
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 300_000);
+    expect(scrobbles()).toHaveLength(0);
+
+    quit();
+    expect(player.listenerCount('timedMetadataDidChange')).toBe(0);
+    player.emitTimedMetadata(RADIO_C);
+    expect(nowPlayingRequests().at(-1)?.get('track')).toBe('Radio Song B');
   });
 });
 

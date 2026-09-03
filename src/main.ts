@@ -272,6 +272,7 @@ function initPlayerIPC(): Player {
   onSendChannels<PlayerSendChannel>({
     playbackStateDidChange: (_event, data) => player.handlePlaybackStateDidChange(data),
     nowPlayingItemDidChange: (_event, data) => player.handleNowPlayingItemDidChange(data),
+    timedMetadataDidChange: (_event, data) => player.handleTimedMetadataDidChange(data),
     playbackTimeDidChange: (_event, data) => player.handlePlaybackTimeDidChange(data),
     repeatModeDidChange: (_event, data) => player.handleRepeatModeDidChange(data),
     shuffleModeDidChange: (_event, data) => player.handleShuffleModeDidChange(data),

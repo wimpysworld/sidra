@@ -3,7 +3,14 @@ import log from 'electron-log/main';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { getAssetPath } from '../../paths';
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
+import {
+  Player,
+  NowPlayingPayload,
+  PlaybackState,
+  PlaybackStatePayload,
+  IntegrationContext,
+  type TimedMetadataPayload,
+} from '../../player';
 import {
   getLastfmEnabled,
   getLastfmSessionKey,
@@ -291,6 +298,13 @@ let accumulatedMs = 0;
 let lastResumeAt: number | null = null;
 let scrobbled = false;
 let positionReported = false;
+let isRadioSong = false;
+let radioObservedFromStart = false;
+let radioPositionAdvanced = false;
+let lastRadioAdvanceAt: number | null = null;
+let radioSeekPending = false;
+let lastPositionUs: number | null = null;
+let lastPositionAt: number | null = null;
 let scrobbleTimer: ReturnType<typeof setTimeout> | null = null;
 let previousState = 0;
 let authInProgress = false;
@@ -312,6 +326,13 @@ let sessionGeneration = 0;
 let drainGeneration: number | null = null;
 let trimmedWhileDraining = 0;
 let getWindow: () => BrowserWindow | null = () => null;
+
+interface RadioBoundaryTrack extends ActiveTrack {
+  timestamp: number;
+  generation: number;
+}
+
+let pendingRadioBoundary: RadioBoundaryTrack | null | undefined;
 
 /**
  * Shows a Last.fm notification. `force` sends it even when the user has turned
@@ -353,6 +374,10 @@ function clearScrobbleTimer(): void {
  */
 function foldPlayTime(): void {
   if (lastResumeAt === null) return;
+  if (isRadioSong) {
+    lastResumeAt = null;
+    return;
+  }
   accumulatedMs += Date.now() - lastResumeAt;
   lastResumeAt = null;
 }
@@ -514,6 +539,7 @@ function trackParams(entry: PendingScrobble, suffix = ''): Record<string, string
   };
   if (entry.album) params[`album${suffix}`] = entry.album;
   if (entry.durationSec) params[`duration${suffix}`] = String(entry.durationSec);
+  if (entry.chosenByUser !== undefined) params[`chosenByUser${suffix}`] = String(entry.chosenByUser);
   return params;
 }
 
@@ -625,7 +651,7 @@ function sendNowPlaying(): void {
   const generation = sessionGeneration;
   apiCall(params, true)
     .then(() => {
-      lastfmLog.debug('now playing:', `${current.artist} - ${current.track}`);
+      lastfmLog.debug('event=now-playing status=submitted');
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
@@ -660,37 +686,20 @@ function sendNowPlaying(): void {
  * baseline would be the end of the previous loop.
  */
 function playbackReachedThreshold(): boolean {
-  if (!positionReported) return false;
   const snapshot = playerRef?.playbackSnapshot();
   if (!snapshot?.isPlaying) return false;
   const threshold = scrobbleThresholdMs(durationMs);
   if (threshold === null) return false;
+  if (isRadioSong) {
+    return radioPositionAdvanced && lastRadioAdvanceAt !== null &&
+      Date.now() - lastRadioAdvanceAt <= POSITION_TOLERANCE_MS &&
+      accumulatedMs >= threshold;
+  }
+  if (!positionReported) return false;
   return snapshot.positionUs / 1000 + POSITION_TOLERANCE_MS >= threshold;
 }
 
-/**
- * Submits the current track as a play. Reached from the armed timer and from
- * `armScrobbleTimer()` when the threshold is already behind the playhead.
- */
-function doScrobble(): void {
-  clearScrobbleTimer();
-  if (scrobbled) return;
-  const current = active();
-  if (!current) return;
-  if (!playbackReachedThreshold()) {
-    lastfmLog.debug('scrobble skipped, playback did not reach the threshold:', `${current.artist} - ${current.track}`);
-    return;
-  }
-  scrobbled = true;
-
-  const sessionKey = current.sessionKey;
-  const generation = sessionGeneration;
-  // The queued entry and the live request are built from one object so the play
-  // that goes on the queue cannot drift from the play that was submitted.
-  const entry: PendingScrobble = { artist: current.artist, track: current.track, timestamp: trackStartUnix };
-  if (current.album) entry.album = current.album;
-  if (current.durationMs > 0) entry.durationSec = Math.round(current.durationMs / 1000);
-
+function submitScrobble(entry: PendingScrobble, sessionKey: string, generation: number): void {
   const params: Record<string, string> = {
     method: 'track.scrobble',
     ...trackParams(entry),
@@ -698,24 +707,9 @@ function doScrobble(): void {
     sk: sessionKey,
   };
 
-  // A refusal is final for this track. `scrobbled` stays set, so the track is
-  // submitted once and once only. Clearing it re-opened the submission without
-  // re-arming anything, so the only way back to a request was the user pausing
-  // and resuming; a retry that fires on a failed submission is a retry loop,
-  // and the remaining time it would wait comes from `accumulatedMs`, which is
-  // only folded at pause and so means nothing mid-play.
-  //
-  // A transport failure says nothing about the track: Last.fm never saw it. So
-  // does a temporary service error, which answers about the service and leaves
-  // the play unrecorded. The play goes on the queue instead, and leaves with the
-  // next request playback triggers. `scrobbled` still stays set, because a
-  // queued play counts as submitted and nothing here re-arms. It is only queued
-  // while the account that listened is still connected: the queue is drained
-  // under whichever key is stored when it goes out, so queuing past a
-  // disconnect would hand this play to the next account.
   apiCall(params, true)
     .then(() => {
-      lastfmLog.info('scrobbled:', `${entry.artist} - ${entry.track}`);
+      lastfmLog.info('event=scrobble status=submitted');
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
@@ -734,6 +728,48 @@ function doScrobble(): void {
 }
 
 /**
+ * Submits the current track as a play. Reached from the armed timer and from
+ * `armScrobbleTimer()` when the threshold is already behind the playhead.
+ */
+function doScrobble(): void {
+  clearScrobbleTimer();
+  if (scrobbled) return;
+  const current = active();
+  if (!current) return;
+  if (!playbackReachedThreshold()) {
+    lastfmLog.debug('event=scrobble status=skipped reason=threshold-not-reached');
+    return;
+  }
+  scrobbled = true;
+
+  const sessionKey = current.sessionKey;
+  const generation = sessionGeneration;
+  // The queued entry and the live request are built from one object so the play
+  // that goes on the queue cannot drift from the play that was submitted.
+  const entry: PendingScrobble = { artist: current.artist, track: current.track, timestamp: trackStartUnix };
+  if (current.album) entry.album = current.album;
+  if (current.durationMs > 0) entry.durationSec = Math.round(current.durationMs / 1000);
+  if (isRadioSong) entry.chosenByUser = 0;
+
+  // A refusal is final for this track. `scrobbled` stays set, so the track is
+  // submitted once and once only. Clearing it re-opened the submission without
+  // re-arming anything, so the only way back to a request was the user pausing
+  // and resuming; a retry that fires on a failed submission is a retry loop,
+  // and the remaining time it would wait comes from `accumulatedMs`, which is
+  // only folded at pause and so means nothing mid-play.
+  //
+  // A transport failure says nothing about the track: Last.fm never saw it. So
+  // does a temporary service error, which answers about the service and leaves
+  // the play unrecorded. The play goes on the queue instead, and leaves with the
+  // next request playback triggers. `scrobbled` still stays set, because a
+  // queued play counts as submitted and nothing here re-arms. It is only queued
+  // while the account that listened is still connected: the queue is drained
+  // under whichever key is stored when it goes out, so queuing past a
+  // disconnect would hand this play to the next account.
+  submitScrobble(entry, sessionKey, generation);
+}
+
+/**
  * Waits out the play time the track still owes before it can be scrobbled.
  * `accumulatedMs` already holds the time banked before the last pause, so a
  * resume waits only for the remainder, and a threshold met while paused
@@ -741,7 +777,7 @@ function doScrobble(): void {
  */
 function armScrobbleTimer(): void {
   clearScrobbleTimer();
-  if (scrobbled || !active()) return;
+  if (scrobbled || !active() || (isRadioSong && pendingRadioBoundary !== undefined)) return;
   const threshold = scrobbleThresholdMs(durationMs);
   if (threshold === null) return;
   const remaining = threshold - accumulatedMs;
@@ -750,6 +786,76 @@ function armScrobbleTimer(): void {
     return;
   }
   scrobbleTimer = setTimeout(doScrobble, remaining);
+}
+
+function radioBoundaryTrack(): RadioBoundaryTrack | null {
+  foldPlayTime();
+  const current = active();
+  if (!current || !isRadioSong || !radioObservedFromStart || !radioPositionAdvanced || scrobbled ||
+      accumulatedMs <= MIN_TRACK_LENGTH_MS || trackStartUnix === 0) {
+    return null;
+  }
+  return {
+    ...current,
+    timestamp: trackStartUnix,
+    generation: sessionGeneration,
+  };
+}
+
+function adoptRadioTrack(payload: TimedMetadataPayload): void {
+  const cleanBoundary = payload.transition === 'clean' && !radioSeekPending;
+  const observedAtMs = payload.observedAtMs ?? Date.now();
+  if (cleanBoundary && isRadioSong) {
+    accumulatedMs = Math.max(0, accumulatedMs - Math.max(0, Date.now() - observedAtMs));
+  }
+  const outgoing = cleanBoundary ? radioBoundaryTrack() : null;
+  const observedFromStart = cleanBoundary;
+
+  resetTrack(payload);
+  isRadioSong = true;
+  radioObservedFromStart = observedFromStart;
+  pendingRadioBoundary = cleanBoundary ? outgoing : undefined;
+  radioSeekPending = false;
+
+  if (playerRef?.playbackSnapshot().isPlaying) {
+    markPlaybackStarted();
+    if (trackStartUnix !== 0) trackStartUnix = Math.floor(observedAtMs / 1000);
+  }
+}
+
+function invalidateRadioContinuity(): void {
+  if (!isRadioSong && pendingRadioBoundary === undefined) return;
+  pendingRadioBoundary = undefined;
+  radioObservedFromStart = false;
+  radioPositionAdvanced = false;
+  lastRadioAdvanceAt = null;
+  accumulatedMs = 0;
+  trackStartUnix = 0;
+  lastResumeAt = null;
+  clearScrobbleTimer();
+  if (playerRef?.playbackSnapshot().isPlaying && getLastfmEnabled()) {
+    trackStartUnix = nowUnix();
+    lastResumeAt = Date.now();
+    armScrobbleTimer();
+  }
+}
+
+function confirmRadioBoundary(): void {
+  if (pendingRadioBoundary === undefined) return;
+  const outgoing = pendingRadioBoundary;
+  pendingRadioBoundary = undefined;
+  if (outgoing && getLastfmEnabled() && outgoing.generation === sessionGeneration &&
+      getLastfmSessionKey() === outgoing.sessionKey) {
+    const entry: PendingScrobble = {
+      artist: outgoing.artist,
+      track: outgoing.track,
+      timestamp: outgoing.timestamp,
+      chosenByUser: 0,
+    };
+    if (outgoing.album) entry.album = outgoing.album;
+    submitScrobble(entry, outgoing.sessionKey, outgoing.generation);
+  }
+  armScrobbleTimer();
 }
 
 /**
@@ -769,6 +875,11 @@ function resetTrack(payload: NowPlayingPayload | null): void {
   lastResumeAt = null;
   scrobbled = false;
   positionReported = false;
+  isRadioSong = false;
+  radioObservedFromStart = false;
+  radioPositionAdvanced = false;
+  lastRadioAdvanceAt = null;
+  pendingRadioBoundary = undefined;
 }
 
 /**
@@ -794,6 +905,7 @@ export function enable(): void {
     lastfmLog.warn('enabled but no API credentials configured; scrobbling is inert');
     return;
   }
+  if (isRadioSong) radioObservedFromStart = false;
   if (playerRef?.playbackSnapshot().isPlaying) {
     markPlaybackStarted();
   }
@@ -808,6 +920,7 @@ export function enable(): void {
 export function disable(): void {
   clearScrobbleTimer();
   foldPlayTime();
+  pendingRadioBoundary = undefined;
   lastfmLog.info('scrobbling disabled');
 }
 
@@ -951,10 +1064,17 @@ export function init(ctx: IntegrationContext): void {
   }
 
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
-    resetTrack(payload);
+    resetTrack(payload?.playParams?.kind === 'radioStation' ? null : payload);
+    lastPositionUs = null;
+    lastPositionAt = null;
+    radioSeekPending = false;
     if (playerRef?.playbackSnapshot().isPlaying) {
       markPlaybackStarted();
     }
+  };
+
+  const onTimedMetadataDidChange = (payload: TimedMetadataPayload): void => {
+    adoptRadioTrack(payload);
   };
 
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
@@ -962,21 +1082,55 @@ export function init(ctx: IntegrationContext): void {
     const nowPlaying = payload?.state === PlaybackState.Playing;
     previousState = payload?.state ?? 0;
 
+    if (payload?.state === PlaybackState.Seeking) {
+      invalidateRadioContinuity();
+      radioSeekPending = true;
+      lastPositionUs = null;
+      lastPositionAt = null;
+    }
+
     if (nowPlaying && !wasPlaying) {
       markPlaybackStarted();
     } else if (!nowPlaying && wasPlaying) {
       foldPlayTime();
       clearScrobbleTimer();
+      if (payload?.state !== PlaybackState.Seeking) {
+        lastPositionUs = null;
+        lastPositionAt = null;
+      }
     }
   };
 
   // Stores a flag only, and starts nothing: a debounced send from this event
   // would reset its own timer on every position report and never expire.
-  const onPlaybackTimeDidChange = (): void => {
+  const onPlaybackTimeDidChange = (positionUs: number): void => {
     positionReported = true;
+    const now = Date.now();
+    if (isRadioSong && lastPositionUs !== null && lastPositionAt !== null) {
+      const advanceUs = positionUs - lastPositionUs;
+      const reportGapMs = now - lastPositionAt;
+      const maximumAdvanceUs = (reportGapMs + POSITION_TOLERANCE_MS) * 1000;
+      if (reportGapMs > POSITION_TOLERANCE_MS || advanceUs < 0 || advanceUs > maximumAdvanceUs) {
+        invalidateRadioContinuity();
+        radioSeekPending = true;
+      } else if (advanceUs > 0 && playerRef?.playbackSnapshot().isPlaying) {
+        if (lastResumeAt !== null) {
+          accumulatedMs += advanceUs / 1000;
+        }
+        radioPositionAdvanced = true;
+        lastRadioAdvanceAt = now;
+        confirmRadioBoundary();
+        if (pendingRadioBoundary === undefined && !scrobbleTimer && playbackReachedThreshold()) {
+          doScrobble();
+        }
+      }
+    }
+    lastPositionUs = positionUs;
+    lastPositionAt = now;
   };
 
   ctx.player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  ctx.player.on('timedMetadataDidChange', onTimedMetadataDidChange);
   ctx.player.on('playbackStateDidChange', onPlaybackStateDidChange);
   ctx.player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
 
@@ -984,9 +1138,13 @@ export function init(ctx: IntegrationContext): void {
     clearScrobbleTimer();
     cancelAuth();
     ctx.player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    ctx.player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
     ctx.player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     ctx.player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
     resetTrack(null);
     previousState = 0;
+    lastPositionUs = null;
+    lastPositionAt = null;
+    radioSeekPending = false;
   });
 }

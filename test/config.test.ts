@@ -360,7 +360,7 @@ describe('Config store runtime behaviour', () => {
     expect(getPendingScrobbles()).toEqual([{ artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 }]);
   });
 
-  it('getPendingScrobbles keeps a valid entry with both optional fields absent', () => {
+  it('getPendingScrobbles keeps a valid entry with optional fields absent', () => {
     // The guard must not be so strict that it discards the user's real history:
     // album and duration are optional and a play without either is normal.
     const entry = { artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 };
@@ -368,13 +368,14 @@ describe('Config store runtime behaviour', () => {
     expect(getPendingScrobbles()).toEqual([entry]);
   });
 
-  it('getPendingScrobbles keeps a valid entry with both optional fields present', () => {
+  it('getPendingScrobbles keeps a valid radio entry with optional fields present', () => {
     const entry = {
       artist: 'Underworld',
       track: 'Born Slippy',
       timestamp: 1700000000,
       album: 'Second Toughest',
       durationSec: 566,
+      chosenByUser: 0 as const,
     };
     store.set('lastfm.pendingScrobbles', [entry]);
     expect(getPendingScrobbles()).toEqual([entry]);
@@ -400,6 +401,13 @@ describe('Config store runtime behaviour', () => {
     store.set('lastfm.pendingScrobbles', [
       { artist: 'Orbital', track: 'Chime', timestamp: 1700000600, durationSec: 0 },
       { artist: 'Orbital', track: 'Chime', timestamp: 1700000601, durationSec: -312 },
+    ]);
+    expect(getPendingScrobbles()).toEqual([]);
+  });
+
+  it('getPendingScrobbles drops an invalid chosenByUser value', () => {
+    store.set('lastfm.pendingScrobbles', [
+      { artist: 'Orbital', track: 'Chime', timestamp: 1700000600, chosenByUser: 1 },
     ]);
     expect(getPendingScrobbles()).toEqual([]);
   });
