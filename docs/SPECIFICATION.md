@@ -333,15 +333,6 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     //   play, pause, playPause, next, previous, seek,
     //   setVolume, setRepeat, setShuffle
 
-    // sidra:command message listener for preload bridge:
-    //   window.addEventListener('message', ...) dispatches
-    //   incoming { type: 'sidra:command', channel, args } messages
-    //   to the matching window.__sidra method via a COMMANDS allowlist
-
-    // Non-passive wheel listener on window, installed beside the message
-    // listener so the injection guard covers it. Steps mk.volume by 5% when
-    // the composed path carries the chrome-volume class token.
-
     // Per-instance marker, read by the 5-second monitor below.
     // This is not an injection guard: __sidraHookInjected is.
     window.__sidraHookedMk = mk;
@@ -351,6 +342,16 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     if (!window.MusicKit) return;
     clearInterval(waitForMK);
     attachToInstance(MusicKit.getInstance());
+
+    // sidra:command message listener for preload bridge:
+    //   window.addEventListener('message', ...) dispatches
+    //   incoming { type: 'sidra:command', channel, args } messages
+    //   to the matching window.__sidra method via a COMMANDS allowlist
+
+    // A passive pointerover listener on window resolves the current volume
+    // control with target.closest('.chrome-volume'). bindVolumeWheel() removes
+    // the old control's wheel listener, then adds a non-passive wheel listener
+    // to the current control. The handler steps the live instance volume by 5%.
 
     // 5-second monitor: compares MusicKit.getInstance() against
     // window.__sidraHookedMk and re-attaches when the singleton is replaced.
@@ -518,9 +519,9 @@ The IPC channel is still named `volumeDidChange`. That is Sidra's own channel na
 
 ### Scroll to Change Volume
 
-Pointing at the player bar volume control and scrolling changes the volume in 5% steps, up on wheel-up. One non-passive `wheel` listener on `window` in `assets/musicKitHook.js` does it, installed beside the `message` listener in the `waitForMK` callback so the `__sidraHookInjected` guard covers it and it installs once. Nothing outside the hook changed: the handler writes `mk.volume`, so the value reaches the tray and MPRIS by the existing `volumeDidChange` route, and no `sidra:command` channel was added.
+Pointing at the player bar volume control and scrolling changes the volume in 5% steps, up on wheel-up. A passive `pointerover` listener on `window` finds the current control with `event.target.closest('.chrome-volume')`. `bindVolumeWheel()` removes the `wheel` listener from the previous control, then adds a non-passive listener to the current control. The handler writes `window.__sidraHookedMk.volume`, so the value reaches the tray and MPRIS through the existing `volumeDidChange` route. No `sidra:command` channel was added.
 
-The gate is `event.composedPath()`, matched on the `chrome-volume` class token. The two services differ in the element that carries it:
+The selector matches the `chrome-volume` class token. The two services differ in the element that carries it:
 
 | Service | Volume control | Carries `chrome-volume` |
 |---|---|---|
@@ -532,12 +533,12 @@ Matching the element name alone would work on Classical and do nothing on Apple 
 Handler behaviour:
 
 - `event.ctrlKey` returns early, so Ctrl+scroll and pinch still zoom.
-- `preventDefault()` fires whenever the gate matches, so the page never scrolls under the control. It fires nowhere else, and nothing calls `stopPropagation()`, so Apple's own handlers still see the event.
+- `preventDefault()` fires for each non-zoom event that reaches the bound control, so the page never scrolls under the control. Nothing calls `stopPropagation()`, so Apple's own handlers still see the event.
 - `deltaY` accumulates and each 100 pixels applies one step, carrying the remainder. 100 is Chromium's default `deltaY` for one wheel notch, so a mouse gets exactly one step per notch and a touchpad accumulates smoothly. A direction reversal resets the accumulator. The step is never scaled by `deltaY` magnitude: Chromium reports a wheel and a touchpad identically as `DOM_DELTA_PIXEL`, so magnitude would give a wheel a full-range jump and a touchpad an invisible nudge.
 - The value is clamped to 0 and 1 and rounded to two decimal places, because MusicKit throws on an out-of-range value and `0.7 - 0.05` is `0.6499999999999999` in binary floating point.
-- The base value is read from `mk.volume` on every event, never from a cached local, so a write MusicKit drops (`capabilities.canSetVolume` false) self-corrects on the next notch.
+- The base value is read from `window.__sidraHookedMk.volume` on every event, never from a cached local or captured instance, so a dropped MusicKit write self-corrects on the next notch and a replaced instance is used at once.
 
-The listener is on `window`, not on the volume element. That element does not exist when the hook runs and is replaced on navigation and service switches, so binding to it would need a `MutationObserver` in the file whose duplicate listeners once cost 180 MiB/s (#153).
+The non-passive listener stays on the volume control. Putting it on `window` or `document` marks the whole document as a non-fast-scrollable region and makes every wheel event wait for the main thread. The volume control does not exist when the hook runs and is replaced on navigation and service switches, so the passive `pointerover` listener resolves it lazily. It is installed beside the `message` listener in the `waitForMK` callback, where the `__sidraHookInjected` guard covers it once. A `MutationObserver` is not used because one in this file previously cost 180 MiB/s (#153).
 
 ---
 
