@@ -43,6 +43,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 - All main-world renderer→main IPC flows through the `SEND_CHANNELS` allowlist in `src/preload.ts`. Blocked channels log a warning. Private isolated-preload channels do not use `AMWrapper`
 - No Node.js APIs exposed to the renderer
 - External URLs validated for `http:`/`https:` protocol before opening. `openExternalUrl()` in `src/utils/openExternal.ts` is the one guard, used by `setWindowOpenHandler`, the tray update link and the update notification, so a hardening change is made once. It hands `shell.openExternal()` the parsed `URL`, never the string that came in: Chromium re-parses the argument with its own parser, so passing the raw string would open a URL nothing checked. Both refusals are logged; a silent one leaves a dead menu item with no record of why. Last.fm's `openInBrowser()` is the one caller outside it, and it takes a `URL` the integration built itself
+- Keep process-health and command-provenance diagnostics observational. Log only fixed, allow-listed `key=value` fields. Reduce `preloadPath` to its basename. Exclude user-supplied values, full URLs, other paths, media metadata, error messages, stacks, titles, artists, playlist names, usernames, tokens, credentials, request data, and command arguments. Process-health listeners must never reload, retry, close, quit, or take any other recovery action
 
 **TypeScript**
 - `strict: true` in `tsconfig.json`; zero `any` annotations, `@ts-ignore`, or `@ts-expect-error` in `src/`

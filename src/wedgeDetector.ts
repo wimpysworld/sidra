@@ -43,9 +43,13 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
 
   skipAttempts++;
   lastAdvanceTime = Date.now();
-  wedgeLog.warn(`playback stalled, skipping forward (attempt ${skipAttempts}/${MAX_SKIP_ATTEMPTS})`);
+  const win = getWin();
+  const result = win ? 'sent' : 'dropped';
+  wedgeLog.warn(
+    `source=wedge channel=player:next reason=playback-stalled attempt=${skipAttempts}/${MAX_SKIP_ATTEMPTS} result=${result}`,
+  );
 
-  getWin()?.webContents.send('player:next' satisfies ReceiveChannel);
+  win?.webContents.send('player:next' satisfies ReceiveChannel);
 }
 
 /**

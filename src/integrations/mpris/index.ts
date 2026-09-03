@@ -29,6 +29,32 @@ const mprisLog = log.scope('mpris');
 
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 
+type MprisMethod =
+  | 'LoopStatus'
+  | 'Shuffle'
+  | 'Volume'
+  | 'Next'
+  | 'Previous'
+  | 'Pause'
+  | 'PlayPause'
+  | 'Stop'
+  | 'Play'
+  | 'Seek'
+  | 'SetPosition'
+  | 'OpenUri'
+  | 'Raise'
+  | 'Quit';
+
+function logCommand(method: MprisMethod, result: 'sent' | 'dropped', channel?: ReceiveChannel): void {
+  const channelField = channel === undefined ? '' : ` channel=${channel}`;
+  const message = `source=mpris method=${method}${channelField} result=${result}`;
+  if (method === 'Volume' && result === 'sent') {
+    mprisLog.debug(message);
+    return;
+  }
+  mprisLog.info(message);
+}
+
 /**
  * The `org.mpris.MediaPlayer2` root interface: how Sidra identifies itself to
  * media clients, and the two window actions the spec puts here.
@@ -74,11 +100,15 @@ class MediaPlayer2 extends Interface {
     if (win) {
       win.show();
       win.focus();
+      logCommand('Raise', 'sent');
+    } else {
+      logCommand('Raise', 'dropped');
     }
   }
 
   Quit(): void {
     app.quit();
+    logCommand('Quit', 'sent');
   }
 }
 
@@ -243,10 +273,13 @@ class MediaPlayer2Player extends Interface {
     this._getMainWindow = getMainWindow;
   }
 
-  private _send(channel: ReceiveChannel, ...args: unknown[]): void {
+  private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): void {
     const win = this._getMainWindow();
     if (win) {
       win.webContents.send(channel, ...args);
+      logCommand(method, 'sent', channel);
+    } else {
+      logCommand(method, 'dropped', channel);
     }
   }
 
@@ -502,11 +535,11 @@ class MediaPlayer2Player extends Interface {
     };
     const mode = loopToMusicKit[value];
     if (mode === undefined) {
-      mprisLog.warn('invalid LoopStatus value:', value);
+      mprisLog.warn('invalid LoopStatus value');
       return;
     }
     this._loopStatus = value;
-    this._send('player:setRepeat', mode);
+    this._send('LoopStatus', 'player:setRepeat', mode);
   }
 
   get Shuffle(): boolean {
@@ -516,7 +549,7 @@ class MediaPlayer2Player extends Interface {
   set Shuffle(value: boolean) {
     this._shuffle = value;
     const mode = value ? 1 : 0;
-    this._send('player:setShuffle', mode);
+    this._send('Shuffle', 'player:setShuffle', mode);
   }
 
   get Volume(): number {
@@ -543,42 +576,42 @@ class MediaPlayer2Player extends Interface {
       this._pendingVolumes = [];
       this._volumeSafetyTimer = null;
     }, this._volumeSafetyMs);
-    this._send('player:setVolume', clamped);
+    this._send('Volume', 'player:setVolume', clamped);
   }
 
   // --- Methods ---
 
   Next(): void {
-    this._send('player:next');
+    this._send('Next', 'player:next');
   }
 
   Previous(): void {
-    this._send('player:previous');
+    this._send('Previous', 'player:previous');
   }
 
   Pause(): void {
-    this._send('player:pause');
+    this._send('Pause', 'player:pause');
   }
 
   PlayPause(): void {
-    this._send('player:playPause');
+    this._send('PlayPause', 'player:playPause');
   }
 
   Stop(): void {
     // Pause, never MusicKit's stop(): stop() clears the queue, and the MPRIS
     // spec requires Play() after Stop() to resume from the start of the track.
-    this._send('player:pause');
+    this._send('Stop', 'player:pause');
   }
 
   Play(): void {
-    this._send('player:play');
+    this._send('Play', 'player:play');
   }
 
   Seek(offset: bigint): void {
     // offset is in microseconds; dbus-next delivers int64 as BigInt
     const targetUs = this._position + Number(offset);
     const targetSeconds = Math.max(0, targetUs) / 1_000_000;
-    this._send('player:seek', targetSeconds);
+    this._send('Seek', 'player:seek', targetSeconds);
   }
 
   SetPosition(trackId: string, position: bigint): void {
@@ -588,7 +621,7 @@ class MediaPlayer2Player extends Interface {
       return;
     }
     const targetSeconds = Number(position) / 1_000_000;
-    this._send('player:seek', targetSeconds);
+    this._send('SetPosition', 'player:seek', targetSeconds);
   }
 
   /**
@@ -600,18 +633,21 @@ class MediaPlayer2Player extends Interface {
     try {
       const parsed = new URL(uri);
       if (getServiceByHost(parsed.hostname) === undefined || parsed.protocol !== 'https:') {
-        mprisLog.warn('OpenUri rejected:', uri);
+        mprisLog.warn('OpenUri rejected');
         return;
       }
     } catch {
-      mprisLog.warn('OpenUri rejected malformed URI:', uri);
+      mprisLog.warn('OpenUri rejected malformed URI');
       return;
     }
     const win = this._getMainWindow();
     if (win) {
-      win.loadURL(uri).catch((err: Error) => {
-        mprisLog.warn('failed to open URI:', err.message);
+      win.loadURL(uri).catch(() => {
+        mprisLog.warn('failed to open accepted URI');
       });
+      logCommand('OpenUri', 'sent');
+    } else {
+      logCommand('OpenUri', 'dropped');
     }
   }
 

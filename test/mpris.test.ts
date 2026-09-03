@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { app } from 'electron';
 import type { BrowserWindow } from 'electron';
+import log from 'electron-log/main';
 
 import { setMusicService } from '../src/config';
 import { PlaybackState } from '../src/player';
@@ -55,17 +57,27 @@ const busStub = {
 };
 
 interface WindowStub {
+  show: ReturnType<typeof vi.fn>;
+  focus: ReturnType<typeof vi.fn>;
   loadURL: ReturnType<typeof vi.fn>;
   webContents: { send: ReturnType<typeof vi.fn> };
 }
 
 interface PlayerInterface {
   OpenUri(uri: string): void;
+  Next(): void;
+  Previous(): void;
+  Pause(): void;
+  PlayPause(): void;
+  Stop(): void;
+  Play(): void;
+  Seek(offset: bigint): void;
+  SetPosition(trackId: string, position: bigint): void;
   Seeked(position: number): number;
   Volume: number;
   readonly PlaybackStatus: string;
-  readonly LoopStatus: string;
-  readonly Shuffle: boolean;
+  LoopStatus: string;
+  Shuffle: boolean;
   readonly Metadata: Record<string, VariantValue>;
   readonly Position: number;
   readonly CanGoNext: boolean;
@@ -74,6 +86,12 @@ interface PlayerInterface {
   readonly CanPause: boolean;
   readonly CanSeek: boolean;
   readonly CanControl: boolean;
+}
+
+interface RootInterface {
+  Raise(): void;
+  Quit(): void;
+  readonly SupportedUriSchemes: string[];
 }
 
 /**
@@ -100,18 +118,42 @@ let player: FakePlayer;
  * export. Driving the real methods and properties this way needs no production
  * change.
  */
-function initPlayerInterface(): PlayerInterface {
+function initInterfaces(getMainWindow: () => BrowserWindow | null = () => win as unknown as BrowserWindow): {
+  root: RootInterface;
+  player: PlayerInterface;
+} {
   const ctx: IntegrationContext = {
     player,
-    getMainWindow: () => win as unknown as BrowserWindow,
+    getMainWindow,
   };
   mpris.init(ctx);
   expect(busStub.export).toHaveBeenCalledTimes(2);
-  return busStub.export.mock.calls[1][1] as PlayerInterface;
+  return {
+    root: busStub.export.mock.calls[0][1] as RootInterface,
+    player: busStub.export.mock.calls[1][1] as PlayerInterface,
+  };
+}
+
+function initPlayerInterface(): PlayerInterface {
+  return initInterfaces().player;
+}
+
+function mprisLogText(): string {
+  const scopedLog = log.scope('mpris');
+  return [scopedLog.info, scopedLog.warn, scopedLog.error, scopedLog.debug]
+    .flatMap((method) => vi.mocked(method).mock.calls)
+    .flat()
+    .join(' ');
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(log.scope('mpris'), {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  });
   vi.spyOn(dbus, 'sessionBus').mockReturnValue(busStub);
   vi.spyOn(dbus.interface.Interface, 'emitPropertiesChanged').mockImplementation((iface, changed, invalidated) => {
     emissions.push(changed);
@@ -126,7 +168,12 @@ beforeEach(() => {
   emissions = [];
   setMusicService('music');
   // loadURL must return a promise: production attaches a .catch() to it.
-  win = { loadURL: vi.fn(() => Promise.resolve()), webContents: { send: vi.fn() } };
+  win = {
+    show: vi.fn(),
+    focus: vi.fn(),
+    loadURL: vi.fn(() => Promise.resolve()),
+    webContents: { send: vi.fn() },
+  };
   player = new FakePlayer();
 });
 
@@ -140,6 +187,142 @@ afterEach(() => {
   expect(positionBreaches).toEqual([]);
 });
 
+const COMMAND_CASES: ReadonlyArray<{
+  method: string;
+  channel: string;
+  args: unknown[];
+  invoke: (iface: PlayerInterface) => void;
+}> = [
+  {
+    method: 'LoopStatus',
+    channel: 'player:setRepeat',
+    args: [1],
+    invoke: (iface) => { iface.LoopStatus = 'Track'; },
+  },
+  {
+    method: 'Shuffle',
+    channel: 'player:setShuffle',
+    args: [1],
+    invoke: (iface) => { iface.Shuffle = true; },
+  },
+  {
+    method: 'Volume',
+    channel: 'player:setVolume',
+    args: [0.42],
+    invoke: (iface) => { iface.Volume = 0.42; },
+  },
+  { method: 'Next', channel: 'player:next', args: [], invoke: (iface) => iface.Next() },
+  { method: 'Previous', channel: 'player:previous', args: [], invoke: (iface) => iface.Previous() },
+  { method: 'Pause', channel: 'player:pause', args: [], invoke: (iface) => iface.Pause() },
+  { method: 'PlayPause', channel: 'player:playPause', args: [], invoke: (iface) => iface.PlayPause() },
+  { method: 'Stop', channel: 'player:pause', args: [], invoke: (iface) => iface.Stop() },
+  { method: 'Play', channel: 'player:play', args: [], invoke: (iface) => iface.Play() },
+  { method: 'Seek', channel: 'player:seek', args: [2.5], invoke: (iface) => iface.Seek(2_500_000n) },
+  {
+    method: 'SetPosition',
+    channel: 'player:seek',
+    args: [7.25],
+    invoke: (iface) => {
+      player.emitNowPlaying({ trackId: 'track-1' });
+      iface.SetPosition('/org/sidra/track/track_1', 7_250_000n);
+    },
+  },
+];
+
+describe('MPRIS command provenance', () => {
+  it.each(COMMAND_CASES)('maps $method to $channel with its exact arguments', ({ method, channel, args, invoke }) => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+
+    invoke(iface);
+
+    expect(win.webContents.send).toHaveBeenCalledOnce();
+    expect(win.webContents.send).toHaveBeenCalledWith(channel, ...args);
+    const commandLog = method === 'Volume' ? log.scope('mpris').debug : log.scope('mpris').info;
+    expect(commandLog).toHaveBeenCalledWith(
+      `source=mpris method=${method} channel=${channel} result=sent`,
+    );
+  });
+
+  it.each(COMMAND_CASES)('logs $method as dropped when no window exists', ({ method, channel, invoke }) => {
+    vi.useFakeTimers();
+    const iface = initInterfaces(() => null).player;
+
+    invoke(iface);
+
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(log.scope('mpris').info).toHaveBeenCalledWith(
+      `source=mpris method=${method} channel=${channel} result=dropped`,
+    );
+  });
+
+  it('logs method-only provenance for Raise and Quit', () => {
+    const { root } = initInterfaces();
+
+    root.Raise();
+    root.Quit();
+
+    expect(win.show).toHaveBeenCalledOnce();
+    expect(win.focus).toHaveBeenCalledOnce();
+    expect(app.quit).toHaveBeenCalledOnce();
+    expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Raise result=sent');
+    expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Quit result=sent');
+  });
+
+  it('logs Raise as dropped when no window exists', () => {
+    const { root } = initInterfaces(() => null);
+
+    root.Raise();
+
+    expect(win.show).not.toHaveBeenCalled();
+    expect(win.focus).not.toHaveBeenCalled();
+    expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Raise result=dropped');
+  });
+
+  it('logs a sent Volume burst at debug without per-value info records', () => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+
+    iface.Volume = 0.2;
+    iface.Volume = 0.4;
+    iface.Volume = 0.6;
+
+    const provenance = 'source=mpris method=Volume channel=player:setVolume result=sent';
+    expect(win.webContents.send.mock.calls).toEqual([
+      ['player:setVolume', 0.2],
+      ['player:setVolume', 0.4],
+      ['player:setVolume', 0.6],
+    ]);
+    expect(log.scope('mpris').debug).toHaveBeenCalledTimes(3);
+    expect(log.scope('mpris').debug).toHaveBeenCalledWith(provenance);
+    expect(log.scope('mpris').info).not.toHaveBeenCalledWith(provenance);
+  });
+
+  it('does not log accepted or rejected SetPosition request data', () => {
+    const iface = initPlayerInterface();
+    const acceptedTrackId = 'private-track-accepted';
+    const rejectedTrackId = 'private-track-rejected';
+    player.emitNowPlaying({ trackId: acceptedTrackId });
+
+    iface.SetPosition('/org/sidra/track/private_track_accepted', 12_345_678n);
+
+    expect(win.webContents.send).toHaveBeenCalledWith('player:seek', 12.345678);
+    expect(mprisLogText()).toContain('source=mpris method=SetPosition channel=player:seek result=sent');
+    expect(mprisLogText()).not.toContain(acceptedTrackId);
+    expect(mprisLogText()).not.toContain('12345678');
+
+    vi.mocked(log.scope('mpris').info).mockClear();
+    win.webContents.send.mockClear();
+    iface.SetPosition(rejectedTrackId, 98_765_432n);
+
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(mprisLogText()).toContain('SetPosition trackId mismatch, ignoring');
+    expect(mprisLogText()).not.toContain('method=SetPosition');
+    expect(mprisLogText()).not.toContain(rejectedTrackId);
+    expect(mprisLogText()).not.toContain('98765432');
+  });
+});
+
 describe('MPRIS OpenUri', () => {
   it('advertises HTTPS URI support', () => {
     initPlayerInterface();
@@ -150,6 +333,7 @@ describe('MPRIS OpenUri', () => {
   it('loads a music.apple.com URI', () => {
     initPlayerInterface().OpenUri('https://music.apple.com/gb/album/foo');
     expect(win.loadURL).toHaveBeenCalledWith('https://music.apple.com/gb/album/foo');
+    expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=OpenUri result=sent');
   });
 
   it('loads a classical.music.apple.com URI', () => {
@@ -180,6 +364,36 @@ describe('MPRIS OpenUri', () => {
     const playerIface = initPlayerInterface();
     expect(() => playerIface.OpenUri('not a url')).not.toThrow();
     expect(win.loadURL).not.toHaveBeenCalled();
+  });
+
+  it('does not log accepted or rejected URI request data', () => {
+    const iface = initPlayerInterface();
+    const acceptedUri = 'https://music.apple.com/gb/album/private?token=accepted-secret';
+    const rejectedUri = 'https://example.com/private?token=rejected-secret';
+
+    iface.OpenUri(acceptedUri);
+
+    expect(win.loadURL).toHaveBeenCalledWith(acceptedUri);
+    expect(mprisLogText()).toContain('source=mpris method=OpenUri result=sent');
+    expect(mprisLogText()).not.toContain(acceptedUri);
+    expect(mprisLogText()).not.toContain('accepted-secret');
+
+    vi.mocked(log.scope('mpris').info).mockClear();
+    win.loadURL.mockClear();
+    iface.OpenUri(rejectedUri);
+
+    expect(win.loadURL).not.toHaveBeenCalled();
+    expect(mprisLogText()).toContain('OpenUri rejected');
+    expect(mprisLogText()).not.toContain('method=OpenUri');
+    expect(mprisLogText()).not.toContain(rejectedUri);
+    expect(mprisLogText()).not.toContain('rejected-secret');
+  });
+
+  it('logs an accepted URI as dropped when no window exists', () => {
+    initInterfaces(() => null).player.OpenUri('https://music.apple.com/gb/album/foo');
+
+    expect(win.loadURL).not.toHaveBeenCalled();
+    expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=OpenUri result=dropped');
   });
 });
 

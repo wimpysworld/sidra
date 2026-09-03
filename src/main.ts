@@ -40,6 +40,16 @@ const SPLASH_WIDTH_PX = 300;
 const SPLASH_HEIGHT_PX = 350;
 const MAIN_WINDOW_WIDTH_PX = 1280;
 const MAIN_WINDOW_HEIGHT_PX = 800;
+const PRELOAD_ERROR_NAMES = new Set([
+  'AggregateError',
+  'Error',
+  'EvalError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'TypeError',
+  'URIError',
+]);
 
 // --- Logging: initialise before anything else ---
 log.initialize();
@@ -61,6 +71,15 @@ if (envLevel && VALID_LEVELS.has(envLevel as LogLevel)) {
 const mainLog = log.scope('main');
 const splashLog = log.scope('splash');
 mainLog.info(`${app.name} ${app.getVersion()}`);
+
+app.on('child-process-gone', (_event, details) => {
+  const serviceName = details.serviceName === undefined
+    ? ''
+    : ` serviceName=${JSON.stringify(details.serviceName)}`;
+  mainLog.warn(
+    `event=child-process-gone processType=${details.type} reason=${details.reason} exitCode=${details.exitCode}${serviceName}`,
+  );
+});
 
 // --- App identity: must be set before app.whenReady() on Windows, or neither
 // desktop notifications nor the GSMTC media identity attach to Sidra ---
@@ -495,6 +514,24 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
 }
 
 function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
+  win.webContents.on('unresponsive', () => {
+    mainLog.warn('event=unresponsive processType=renderer');
+  });
+  win.webContents.on('responsive', () => {
+    mainLog.info('event=responsive processType=renderer');
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    mainLog.error(
+      `event=render-process-gone processType=renderer reason=${details.reason} exitCode=${details.exitCode}`,
+    );
+  });
+  win.webContents.on('preload-error', (_event, preloadPath, error) => {
+    const errorName = PRELOAD_ERROR_NAMES.has(error.name) ? error.name : 'UnknownError';
+    mainLog.warn(
+      `event=preload-error processType=renderer preloadPath=${path.basename(preloadPath)} errorName=${errorName}`,
+    );
+  });
+
   // Prevent the web page title from overriding the window title
   win.on('page-title-updated', (event) => {
     event.preventDefault();
