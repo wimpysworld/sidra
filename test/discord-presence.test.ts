@@ -4,9 +4,11 @@ import { ActivityType } from 'discord-api-types/v10';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
 
-// Matches DEBOUNCE_MS in src/integrations/discord-presence/index.ts, which the
-// module keeps private. The reconnect backoff doubles from the base to the cap.
+// Matches DEBOUNCE_MS and PAUSE_TIMEOUT_MS in
+// src/integrations/discord-presence/index.ts, which keeps them private.
 const DEBOUNCE_MS = 1000;
+const PAUSE_TIMEOUT_MS = 30_000;
+// The reconnect backoff doubles from the base to the cap.
 const RECONNECT_BASE_MS = 2000;
 const RECONNECT_CAP_MS = 60_000;
 const CLEAR_ACTIVITY_TIMEOUT_MS = 2000;
@@ -286,7 +288,7 @@ describe('discord presence integration', () => {
     expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
     expect(rpc.setActivity).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS);
     expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
   });
 });
