@@ -320,6 +320,41 @@ describe('musicKitHook', () => {
     });
   });
 
+  it('omits an unsafe catalogue identity from timed metadata', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+
+    musicKitListeners.get('timedMetadataDidChange')?.({
+      ...timedSong,
+      storefrontAdamIds: { gb: '123\u0001' },
+    });
+
+    expect(bridgeSend).toHaveBeenCalledWith('timedMetadataDidChange', {
+      name: 'Blue Monday',
+      artistName: 'New Order',
+      albumName: 'Power, Corruption & Lies',
+      trackId: undefined,
+      playParams: undefined,
+    });
+  });
+
+  it.each([
+    ['normalises surrounding whitespace', '  Radio Album  ', 'Radio Album'],
+    ['omits forbidden controls', 'Radio\u202eAlbum', undefined],
+  ])('%s in optional album metadata', (_description, album, expected) => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+
+    musicKitListeners.get('timedMetadataDidChange')?.({ ...timedSong, album });
+
+    expect(bridgeSend).toHaveBeenCalledWith(
+      'timedMetadataDidChange',
+      expect.objectContaining({ albumName: expected }),
+    );
+  });
+
   it('marks two distinct radio songs as an initial item and a clean boundary', () => {
     const { bridgeSend, musicKitListeners } = createHarness({
       musicKitOverrides: { nowPlayingItem: radioItem },
