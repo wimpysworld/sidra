@@ -18,6 +18,11 @@ export class FakePlayer extends Player {
     return { ...this.snapshot };
   }
 
+  override resetForDocumentReplacement(): void {
+    this.snapshot = { isPlaying: false, positionUs: 0, state: PlaybackState.None };
+    super.resetForDocumentReplacement();
+  }
+
   /**
    * Moves the reported playhead and emits, as position reports from the
    * renderer do. Both halves matter: the real Player stores the position and

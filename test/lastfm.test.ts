@@ -168,16 +168,16 @@ describe('scrobble submission', () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
-  it('does not scrobble a track abandoned by a page load', async () => {
+  it('does not scrobble a stalled track when its state event is missing', async () => {
     const { player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
     player.emitPlaybackState(PlaybackState.Playing);
     play(player, 30_000);
 
-    // The page load replaces the renderer without emitting a state transition,
-    // so nothing cancels the armed timer and the cached snapshot stays frozen
-    // at playing, 30 seconds in.
+    // A missing or malformed renderer state event leaves the timer armed and
+    // the cached snapshot at playing, 30 seconds in. The frozen playhead must
+    // not earn the rest of the threshold from wall time.
     vi.advanceTimersByTime(600_000);
 
     expect(scrobbles()).toHaveLength(0);
@@ -192,11 +192,10 @@ describe('scrobble submission', () => {
     player.emitPlaybackState(PlaybackState.Playing);
     play(player, 100_000);
 
-    // The page load announces a different track. It emits no state transition
-    // and no position report, so the cached playing flag and the 100 second
-    // playhead both still belong to the track that went away. The timer arms
-    // for the new track's 30 second threshold and fires having played none of
-    // it.
+    // A metadata handover arrives without a valid state or position event. The
+    // cached playing flag and the 100 second playhead still belong to the old
+    // track. The timer arms for the new track's 30 second threshold and fires
+    // after it has played none of the new track.
     player.emitNowPlaying(SHORT_TRACK);
     vi.advanceTimersByTime(60_000);
 

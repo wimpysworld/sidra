@@ -58,6 +58,7 @@ const bootstrap = vi.hoisted(() => {
     wedgeDetector: vi.fn(),
     trayState: vi.fn(() => vi.fn()),
   };
+  const resetForDocumentReplacement = vi.fn();
 
   return {
     mainWebListeners,
@@ -66,6 +67,7 @@ const bootstrap = vi.hoisted(() => {
     mainWindow,
     splashWindow,
     integrations,
+    resetForDocumentReplacement,
     browserWindow: vi.fn(),
     ipcOn: vi.fn(),
     appOn: vi.fn((event: string, listener: Listener) => {
@@ -150,7 +152,11 @@ vi.mock('../src/i18n', () => ({
 
 vi.mock('../src/paths', () => ({ getAssetPath: vi.fn((...parts: string[]) => parts.join('/')) }));
 
-vi.mock('../src/player', () => ({ Player: class {} }));
+vi.mock('../src/player', () => ({
+  Player: class {
+    resetForDocumentReplacement = bootstrap.resetForDocumentReplacement;
+  },
+}));
 
 vi.mock('../src/storefront', () => ({
   buildAppleMusicURL: vi.fn(() => 'https://music.apple.com/gb/new'),
@@ -344,5 +350,31 @@ describe('main bootstrap', () => {
       isMainFrame: false,
     });
     expect(bootstrap.webContents.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('resets playback only after a committed document navigation', async () => {
+    const { handleStorefrontNavigation } = await import('../src/storefront');
+    await startMain();
+    const didStartNavigation = bootstrap.mainWebListeners.get('did-start-navigation');
+    const didNavigate = bootstrap.mainWebListeners.get('did-navigate');
+    const didNavigateInPage = bootstrap.mainWebListeners.get('did-navigate-in-page');
+
+    expect(didStartNavigation).toBeDefined();
+    expect(didNavigate).toBeDefined();
+    expect(didNavigateInPage).toBeDefined();
+
+    didStartNavigation?.({
+      url: 'https://music.apple.com/gb/album/example',
+      isSameDocument: false,
+      isMainFrame: true,
+    });
+    await didNavigateInPage?.({}, 'https://music.apple.com/gb/new#dialog');
+    expect(bootstrap.resetForDocumentReplacement).not.toHaveBeenCalled();
+
+    didNavigate?.({}, 'https://music.apple.com/gb/album/example');
+
+    expect(bootstrap.resetForDocumentReplacement).toHaveBeenCalledOnce();
+    expect(bootstrap.resetForDocumentReplacement.mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(handleStorefrontNavigation).mock.invocationCallOrder.at(-1)!);
   });
 });

@@ -273,6 +273,22 @@ describe('discord presence integration', () => {
     expect(sent).not.toHaveProperty('startTimestamp');
     expect(sent).not.toHaveProperty('endTimestamp');
   });
+
+  it('clears a published activity once after a document replacement', async () => {
+    player.setPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(rpc.setActivity).toHaveBeenCalledTimes(1);
+
+    player.resetForDocumentReplacement();
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
+    expect(rpc.setActivity).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
+  });
 });
 
 // Separate from the block above because these tests install their own connect

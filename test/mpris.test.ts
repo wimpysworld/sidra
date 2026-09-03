@@ -64,8 +64,16 @@ interface PlayerInterface {
   Seeked(position: number): number;
   Volume: number;
   readonly PlaybackStatus: string;
+  readonly LoopStatus: string;
+  readonly Shuffle: boolean;
   readonly Metadata: Record<string, VariantValue>;
   readonly Position: number;
+  readonly CanGoNext: boolean;
+  readonly CanGoPrevious: boolean;
+  readonly CanPlay: boolean;
+  readonly CanPause: boolean;
+  readonly CanSeek: boolean;
+  readonly CanControl: boolean;
 }
 
 /**
@@ -285,6 +293,59 @@ describe('MPRIS metadata', () => {
       'mpris:trackid': ['o', '/org/sidra/track/1440857781'],
       'xesam:title': ['s', 'Blue Monday'],
     });
+  });
+
+  it('clears stale playback data when the document is replaced', () => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+    const seeked = vi.spyOn(iface, 'Seeked');
+
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(FULL_TRACK);
+    player.setPositionUs(42_000_000);
+    player.emit('repeatModeDidChange', 2);
+    player.emit('shuffleModeDidChange', 1);
+    vi.advanceTimersByTime(250);
+
+    const persistentProperties = {
+      LoopStatus: iface.LoopStatus,
+      Shuffle: iface.Shuffle,
+      CanGoNext: iface.CanGoNext,
+      CanGoPrevious: iface.CanGoPrevious,
+      CanPlay: iface.CanPlay,
+      CanPause: iface.CanPause,
+      CanSeek: iface.CanSeek,
+      CanControl: iface.CanControl,
+    };
+    emissions = [];
+    seeked.mockClear();
+
+    player.resetForDocumentReplacement();
+    vi.advanceTimersByTime(250);
+
+    expect(iface.PlaybackStatus).toBe('Stopped');
+    expect(iface.Position).toBe(0);
+    expect(flatten(iface.Metadata)).toEqual({
+      'mpris:trackid': ['o', '/org/mpris/MediaPlayer2/TrackList/NoTrack'],
+    });
+    expect(seeked).toHaveBeenCalledOnce();
+    expect(seeked).toHaveBeenCalledWith(0);
+    expect(emissions).toHaveLength(1);
+    expect(emissions[0]).toMatchObject({
+      PlaybackStatus: 'Stopped',
+      Metadata: iface.Metadata,
+    });
+    expect(emissions.every((properties) => !('Position' in properties))).toBe(true);
+    expect({
+      LoopStatus: iface.LoopStatus,
+      Shuffle: iface.Shuffle,
+      CanGoNext: iface.CanGoNext,
+      CanGoPrevious: iface.CanGoPrevious,
+      CanPlay: iface.CanPlay,
+      CanPause: iface.CanPause,
+      CanSeek: iface.CanSeek,
+      CanControl: iface.CanControl,
+    }).toEqual(persistentProperties);
   });
 });
 
