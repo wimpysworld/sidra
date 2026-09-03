@@ -32,6 +32,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🔔 **Desktop notifications** - track changes, native to each platform
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
+- 🎮 **Controller navigation** - use a standard controller to move through and select items in both services
 - 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
 - 🎼 **Apple Music Classical** - switch at runtime from the tray **Player** submenu:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
@@ -60,6 +61,18 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 <p align="center">
   <img src="assets/source/sidra-screenshot.png" alt="Sidra screenshot" width="100%">
 </p>
+
+### Controller navigation
+
+Sidra supports controllers that expose the browser's standard Gamepad mapping. The controls work in Apple Music and Apple Music Classical:
+
+| Controller input | Action |
+|---|---|
+| D-pad | Move up, down, left, or right |
+| A button | Select the focused item |
+| B button | Go back when navigation history permits |
+
+Hold a D-pad direction to repeat it. The A and B buttons act once per press. Controller input does not control media playback or settings.
 
 ### Mini Player
 
