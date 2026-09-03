@@ -211,6 +211,40 @@ describe('Player playbackSnapshot', () => {
   });
 });
 
+describe('Player document replacement reset', () => {
+  it('resets the snapshot before emitting the two reset events in order', () => {
+    const player = new Player();
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+    player.handlePlaybackTimeDidChange(42_000);
+
+    const events: Array<[keyof PlayerEvents, unknown]> = [];
+    const snapshots: ReturnType<Player['playbackSnapshot']>[] = [];
+    player.on('playbackStateDidChange', payload => {
+      events.push(['playbackStateDidChange', payload]);
+      snapshots.push(player.playbackSnapshot());
+    });
+    player.on('nowPlayingItemDidChange', payload => {
+      events.push(['nowPlayingItemDidChange', payload]);
+      snapshots.push(player.playbackSnapshot());
+    });
+    player.on('playbackTimeDidChange', payload => events.push(['playbackTimeDidChange', payload]));
+    player.on('volumeDidChange', payload => events.push(['volumeDidChange', payload]));
+    player.on('repeatModeDidChange', payload => events.push(['repeatModeDidChange', payload]));
+    player.on('shuffleModeDidChange', payload => events.push(['shuffleModeDidChange', payload]));
+
+    player.resetForDocumentReplacement();
+
+    expect(events).toEqual([
+      ['playbackStateDidChange', { status: false, state: PlaybackState.None }],
+      ['nowPlayingItemDidChange', null],
+    ]);
+    expect(snapshots).toEqual([
+      { isPlaying: false, positionUs: 0, state: PlaybackState.None },
+      { isPlaying: false, positionUs: 0, state: PlaybackState.None },
+    ]);
+  });
+});
+
 // Every handle* method takes its argument straight off an IPC channel, where
 // nothing is typed, so a malformed payload must be dropped rather than emitted:
 // integrations read these events as though the declared type held.

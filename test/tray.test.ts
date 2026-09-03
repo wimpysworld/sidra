@@ -1653,6 +1653,51 @@ describe('initTrayStateManager', () => {
   });
 
   describe('pause timeout', () => {
+    it('clears stale tray state when the player document is replaced', () => {
+      initTrayStateManager(player, mockTray);
+      const payload: NowPlayingPayload = {
+        name: 'Old Track',
+        artistName: 'Old Artist',
+        albumName: 'Old Album',
+      };
+
+      player.emitPlaybackState(PlaybackState.Playing);
+      player.emitNowPlaying(payload);
+      vi.advanceTimersByTime(COALESCE_MS);
+
+      let template = getLastTemplate();
+      expect(template.some(item => item.label === 'Old Track')).toBe(true);
+      expect(template.some(item => item.label === 'Old Artist')).toBe(true);
+      expect(template.some(item => item.label === mockTrayStrings.pause)).toBe(true);
+
+      // Arm the pause timer before the old document is replaced. The reset
+      // must cancel it as well as clear the visible state.
+      player.emitPlaybackState(PlaybackState.Paused);
+      player.resetForDocumentReplacement();
+      vi.advanceTimersByTime(COALESCE_MS);
+
+      const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
+      expect(setToolTipFn).toHaveBeenLastCalledWith('Sidra');
+
+      template = getLastTemplate();
+      const labels = template.map(item => item.label);
+      expect(labels).not.toContain('Old Track');
+      expect(labels).not.toContain('Old Artist');
+      for (const label of [
+        mockTrayStrings.previous,
+        mockTrayStrings.play,
+        mockTrayStrings.pause,
+        mockTrayStrings.next,
+        `${mockTrayStrings.volume}: 100%`,
+      ]) {
+        expect(labels).not.toContain(label);
+      }
+
+      vi.mocked(Menu.buildFromTemplate).mockClear();
+      vi.advanceTimersByTime(30_000);
+      expect(vi.mocked(Menu.buildFromTemplate)).not.toHaveBeenCalled();
+    });
+
     it('clears Now Playing after 30s of inactivity when paused', () => {
       initTrayStateManager(player, mockTray);
 

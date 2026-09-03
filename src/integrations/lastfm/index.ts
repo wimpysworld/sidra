@@ -638,21 +638,20 @@ function sendNowPlaying(): void {
  * True when live playback confirms the track really reached its scrobble
  * threshold.
  *
- * The scrobble is armed with a wall-clock timer, and a page load cancels
- * nothing: the fresh page emits no playback state transition, so the timer
- * survives it and the cached state in `Player` freezes at its pre-reload values
- * - the playing flag and the playhead each have a single writer, and neither
- * fires on an idle page. Re-reading the snapshot at submission time catches
- * that, because a track abandoned mid-play leaves the playhead short of the
- * threshold.
+ * A committed document navigation resets `Player`, which cancels the timer
+ * through its playback-state event. This check remains a defence against a
+ * missing or malformed renderer event. If playback stops without a valid state
+ * event, the wall-clock timer stays armed and `Player` keeps its last snapshot.
+ * Re-reading that snapshot prevents a track abandoned before its threshold
+ * from earning play time while idle.
  *
  * The playhead belongs to the player, not to the track held here, so it is only
  * trusted once a position report has arrived for this track: `positionReported`
- * is cleared with the rest of the track state. Without it, the fresh page after
- * a reload announces a new track while the frozen playhead still carries the
- * previous one's play time, and a short track would be scrobbled off it having
- * never played. An idle page reports no position, so the stale value never
- * counts.
+ * is cleared with the rest of the track state. Without it, a metadata event can
+ * announce a new track while a missing or malformed position event leaves the
+ * previous track's playhead cached. A short track could then scrobble without
+ * playing. The stale value does not count until the new track reports a valid
+ * position.
  *
  * The comparison is absolute rather than a delta against the position sampled
  * when the timer was armed. A delta cannot work: a track abandoned after some

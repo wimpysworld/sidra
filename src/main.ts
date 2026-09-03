@@ -423,7 +423,7 @@ async function injectRendererScripts(win: BrowserWindow, assets: Assets, context
   }
 }
 
-function setupNavigationHandlers(win: BrowserWindow, assets: Assets): void {
+function setupNavigationHandlers(win: BrowserWindow, player: Player, assets: Assets): void {
   // Keeps the main frame on Apple's hosts, so the preload command bridge and the
   // injected hook can only ever reach Apple Music. Main-process loadURL() calls do
   // not raise this event, so launch, service switching and itms:// routing are unaffected.
@@ -440,6 +440,7 @@ function setupNavigationHandlers(win: BrowserWindow, assets: Assets): void {
     }
   });
   win.webContents.on('did-navigate', (_event, url) => {
+    player.resetForDocumentReplacement();
     mainLog.debug('did-navigate:', url);
     handleStorefrontNavigation(url);
   });
@@ -651,7 +652,7 @@ if (gotLock) {
     setupSessionHeaders(ses);
     setupContentHandlers(win, player, markCssReady, assets);
     setupWindowEvents(win, markCssReady);
-    setupNavigationHandlers(win, assets);
+    setupNavigationHandlers(win, player, assets);
     setupAuthFrameInjection(win, assets.authFrameScript);
     if (process.env.SIDRA_DEVTOOLS === '1') {
       win.webContents.openDevTools();

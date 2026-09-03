@@ -243,6 +243,14 @@ export class Player extends TypedEmitter<PlayerEvents> {
     return { isPlaying: this._isPlaying, positionUs: this._positionUs, state: this._state };
   }
 
+  resetForDocumentReplacement(): void {
+    this._state = PlaybackState.None;
+    this._isPlaying = false;
+    this._positionUs = 0;
+    this.emit('playbackStateDidChange', { status: false, state: PlaybackState.None });
+    this.emit('nowPlayingItemDidChange', null);
+  }
+
   handlePlaybackStateDidChange(payload: PlaybackStatePayload): void {
     if (payload != null) {
       if (typeof payload !== 'object' || Array.isArray(payload)) {

@@ -210,7 +210,8 @@ function sendActivity(player: Player): void {
   if (!client) return;
 
   if (!trackName) {
-    discordLog.debug('no track metadata, skipping activity update');
+    discordLog.debug('no track metadata, clearing activity');
+    client.user?.clearActivity().catch(() => {});
     return;
   }
 

@@ -226,6 +226,8 @@ Current dependency roles:
 
 MusicKit events flow from the renderer hook to `player.ts`, which emits them to all integrations. Controller actions use a separate private path from the isolated preload to `controllerIPC.ts`.
 
+When a full-document navigation commits, `main.ts` calls `Player.resetForDocumentReplacement()` before the new hook reports events. The reset sets playback to `PlaybackState.None`, clears the playing flag and position, then emits `playbackStateDidChange` before `nowPlayingItemDidChange(null)`. Same-document navigation does not reset the player. Repeat, shuffle, and volume stay unchanged.
+
 ### Renderer → Main (via `ipcRenderer.send`)
 
 | Event | Payload | Consumers |
@@ -789,7 +791,7 @@ Reference implementation: [ytmdesktop Discord presence](https://github.com/ytmde
 
 | Event | Action |
 |---|---|
-| `nowPlayingItemDidChange` | Cache metadata, cancel pause timer, `scheduleUpdate()` |
+| `nowPlayingItemDidChange` | Cache metadata, or clear it for a null payload. Cancel the pause timer and call `scheduleUpdate()`. The debounced no-track path clears Discord activity. |
 | `playbackStateDidChange` | Update `isPlaying`, manage pause timer, `scheduleUpdate()` |
 
 ---
@@ -836,7 +838,7 @@ The desktop token flow, because Last.fm offers no callback for a desktop app:
 
 ### Playback verification
 
-The scrobble timer is wall-clock and a page load cancels nothing - a reload, a service switch and `itms://` routing all emit no playback state transition. `doScrobble()` therefore re-reads `player.playbackSnapshot()` at submission time and refuses unless playback is still live and the playhead has reached the threshold. The comparison is absolute, never a delta against a position sampled when the timer was armed.
+A committed full-document navigation resets the shared `Player`, which cancels the scrobble timer and clears the current track through the two reset events. `doScrobble()` still re-reads `player.playbackSnapshot()` at submission time as a defence against missing or malformed renderer events. It refuses unless playback is live and the playhead has reached the threshold. The comparison is absolute, never a delta against a position sampled when the timer was armed, and `positionReported` prevents a new track from using the previous track's cached playhead.
 
 ### Event subscriptions
 
