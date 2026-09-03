@@ -12,6 +12,7 @@
 
     /** @type {number | null} Timer ID for the volume polling fallback. */
     let volumePollTimer = null;
+    const unsafeTimedText = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
     /**
      * Send to the main process, tolerating an absent bridge.
@@ -200,16 +201,18 @@
           typeof metadata.storefrontAdamIds === 'object' &&
           !Array.isArray(metadata.storefrontAdamIds)
           ? [...new Set(Object.values(metadata.storefrontAdamIds)
-              .filter((value) => typeof value === 'string' && value.trim() !== '')
-              .map((value) => value.trim()))]
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter((value) => value !== '' && value.length <= 128 && !unsafeTimedText.test(value)))]
           : [];
-        const catalogId = adamIds.length === 1 && adamIds[0].length <= 128 ? adamIds[0] : null;
+        const catalogId = adamIds.length === 1 ? adamIds[0] : null;
+        const album = typeof metadata.album === 'string' ? metadata.album.trim() : undefined;
         if (title.length > 512 || artist.length > 512) return;
         sendToMain('timedMetadataDidChange', {
           name: title,
           artistName: artist,
-          albumName: typeof metadata.album === 'string' && metadata.album.length <= 512
-            ? metadata.album
+          albumName: album !== undefined && album.length <= 512 && !unsafeTimedText.test(album)
+            ? album
             : undefined,
           trackId: catalogId ?? undefined,
           playParams: catalogId ? { catalogId, kind: 'song' } : undefined,
