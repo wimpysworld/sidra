@@ -13,6 +13,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 - [Source Structure](#source-structure)
 - [Dependencies](#dependencies)
 - [IPC Event Flow](#ipc-event-flow)
+- [Controller Navigation](#controller-navigation)
 - [MusicKit Hook Script](#musickit-hook-script)
 - [Platform Media Controls](#platform-media-controls)
 - [MPRIS Specification](#mpris-specification)
@@ -44,7 +45,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 | Language | TypeScript | Type safety, ecosystem match |
 | Renderer content | `music.apple.com` and `classical.music.apple.com` | Zero UI code; Apple maintains it |
 | MusicKit hook | Injected JS script post-page-load | Hooks `MusicKit.getInstance()` events |
-| Preload | `contextBridge` IPC bridge | Standard Electron security pattern |
+| Preload | Isolated IPC bridge and Gamepad polling | Renderer bridge and controller navigation without Node.js exposure |
 | MPRIS (Linux) | `dbus-next` directly | Full control, clean service name |
 | Windows controls | Chromium `mediaSession` → GSMTC | Built-in bridge, identity via `setAppUserModelId` |
 | Windows taskbar | `win.setThumbarButtons()` + `win.setOverlayIcon()` | Thumbnail toolbar and overlay badge |
@@ -77,7 +78,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 │  │  │ ├─ Notifier    │  │      │                             │   │
 │  │  │ └─ Taskbar/Dock│  │      │  ┌──────────────┐           │   │
 │  │  └───────┬────────┘  │      │  │  preload.ts  │           │   │
-│  │          │           │      │  │ (IPC bridge) │           │   │
+│  │          │           │      │  │ IPC + Gamepad│           │   │
 │  │  ┌───────▼────────┐  │      │  └──────────────┘           │   │
 │  │  │ electron-conf  │  │      └─────────────────────────────┘   │
 │  │  └────────────────┘  │                                        │
@@ -91,6 +92,8 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
     └────────────┘
 ```
 
+The sandboxed isolated preload owns standard Gamepad polling for both services. It sends private controller actions to the main process, which dispatches native key pairs or uses guarded navigation history. This path does not enter Apple's main world or query Apple's DOM.
+
 ---
 
 ## Source Structure
@@ -99,7 +102,9 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 sidra/
 ├── src/
 │   ├── main.ts                    - bootstrap, Widevine wait, window, IPC hub
-│   ├── preload.ts                 - contextBridge IPC exposure (AMWrapper)
+│   ├── preload.ts                 - contextBridge exposure plus isolated standard Gamepad polling
+│   ├── controller.ts              - private controller actions, channel constants, and guards
+│   ├── controllerIPC.ts           - action validation, native key input, and guarded Back navigation
 │   ├── config.ts                  - electron-conf wrapper
 │   ├── i18n.ts                    - locale detection, JSON loader, and re-exported translation records
 │   ├── paths.ts                   - getAssetPath() and getProductInfo() utilities
@@ -219,7 +224,7 @@ Current dependency roles:
 
 ## IPC Event Flow
 
-Events flow from the renderer (MusicKit hook script) to the main process (player.ts), which emits to all integrations.
+MusicKit events flow from the renderer hook to `player.ts`, which emits them to all integrations. Controller actions use a separate private path from the isolated preload to `controllerIPC.ts`.
 
 ### Renderer → Main (via `ipcRenderer.send`)
 
@@ -234,6 +239,8 @@ Events flow from the renderer (MusicKit hook script) to the main process (player
 | `nav:back` | (none) | Main process navigation |
 | `nav:forward` | (none) | Main process navigation |
 | `nav:reload` | (none) | Main process navigation |
+
+`controller:action` is not part of `SendChannel` or `SEND_CHANNELS`. The isolated preload sends this private channel directly, and `initControllerIPC()` accepts only the six `ControllerAction` values from the main window's `webContents`. It ignores controller input while the window is not focused.
 
 ### MusicKit.js Enum Values
 
@@ -293,6 +300,43 @@ The command bridge uses the `RECEIVE_CHANNELS` allowlist in `src/preload.ts` and
 | Set volume | `window.__sidra.setVolume(float)` | MPRIS volume property |
 | Set repeat mode | `window.__sidra.setRepeat(mode)` | MPRIS `LoopStatus` |
 | Set shuffle mode | `window.__sidra.setShuffle(mode)` | MPRIS `Shuffle` |
+
+---
+
+## Controller Navigation
+
+The same sandboxed `src/preload.ts` runs for Apple Music and Apple Music Classical. It uses the browser Gamepad API only for connected controllers whose `mapping` is `standard`.
+
+### Input mapping
+
+| Standard button | Controller action | Main-process result |
+|---|---|---|
+| 12 | `up` | `keyDown` then `keyUp` for `Up` |
+| 13 | `down` | `keyDown` then `keyUp` for `Down` |
+| 14 | `left` | `keyDown` then `keyUp` for `Left` |
+| 15 | `right` | `keyDown` then `keyUp` for `Right` |
+| 0 | `select` | `keyDown` then `keyUp` for `Enter` |
+| 1 | `back` | `navigationHistory.goBack()` only when `canGoBack()` returns true |
+
+The native fixed-key mapping lets Apple's existing keyboard navigation choose the focused element. Controller support does not add Apple DOM selectors, main-world injection, media controls, settings, translations, dependencies, or runtime assets.
+
+### Preload lifecycle
+
+Polling uses one `requestAnimationFrame` loop. The loop starts only when a standard controller is present and the page is visible, active, and focused. It stops when no standard controller remains or the page cannot accept input.
+
+A D-pad press repeats after 400 ms and then every 100 ms. Select and Back do not repeat. Each controller index has independent button state.
+
+The preload suppresses buttons that are held during its initial sample. It applies the same release-before-input rule after `controller:reset`, window blur, a hidden document, `pagehide`, or a frame gap above 1,000 ms. The main process sends `controller:reset` on every main-frame `did-start-navigation`, so navigation cannot carry a held press into a replacement document.
+
+The sandboxed preload must compile as one runtime file. Its only runtime `require()` is `electron`, so controller types use type-only imports and the channel literals in `preload.ts` use `satisfies` checks.
+
+### Private IPC
+
+`controller:action` carries one validated `ControllerAction` from the preload to the main process. `controller:reset` runs in the reverse direction. Neither channel is exposed through `window.AMWrapper`, routed through `window.postMessage()`, or added to the MusicKit hook allowlists.
+
+### Tests
+
+`test/controller.test.ts` checks the action union and channel guards. `test/controllerIPC.test.ts` checks sender and payload validation, focus gating, ordered key pairs, and guarded Back navigation. `test/preload.test.ts` checks the single-file preload, demand-driven polling, mappings, repeat timing, lifecycle resets, held-input suppression, controller isolation, and the private IPC boundary. `test/main.test.ts` checks IPC initialisation, shared guarded Back navigation, and main-frame navigation resets. These tests are automated. No physical controller validation is recorded.
 
 ---
 
@@ -609,6 +653,8 @@ Classical has no library route. Both services accept `last`, which restores the 
 `ALLOWED_NAVIGATION_HOSTS` is built from every service `host` plus its `authFrameHosts`, so adding a service widens the allowlist without a second edit. `isAllowedNavigationUrl()` takes a URL string, parses it, and compares `URL.hostname` exactly: a subdomain, a suffix, or a userinfo prefix of an allowed host is not an allowed host.
 
 The `will-navigate` handler in `src/main.ts` calls `event.preventDefault()` when the predicate returns false. Main-process `loadURL()` calls do not raise `will-navigate`, so launch, service switching and `itms://` routing are unaffected. The same predicate gates hook injection at both injection sites.
+
+The main-frame `did-start-navigation` handler also sends `controller:reset` to the isolated preload. The reset suppresses held controller input until release while the document changes.
 
 ### Persistence and URL building
 
@@ -1082,6 +1128,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Update checking (non-auto-update) | `src/update.ts` | GitHub API check for deb/rpm/Nix/DMG platforms |
 | Service worker cache clearing | `session.defaultSession.clearStorageData` | Clears on startup to prevent stale assets |
 | Last.fm scrobbling | `src/integrations/lastfm` + Last.fm API 2.0 | Opt-in; browser auth from the tray, per-user session key in `electron-conf` |
+| Controller navigation | Gamepad API in `preload.ts` + `controllerIPC.ts` | Standard mapping; D-pad, Select, and guarded Back in both services |
 
 #### Tray Menu Implementation Notes
 

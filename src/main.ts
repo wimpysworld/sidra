@@ -13,6 +13,8 @@ import { initServiceSwitch, routeToMusicService, switchService } from './service
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
 import { initCommandBridge } from './commandBridge';
+import { initControllerIPC, goBackIfPossible } from './controllerIPC';
+import { CONTROLLER_RESET_CHANNEL } from './controller';
 import { showAboutWindow } from './aboutWindow';
 import { checkForUpdates } from './update';
 import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
@@ -384,7 +386,7 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
   setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
 
   onSendChannels<NavSendChannel>({
-    'nav:back': () => win.webContents.navigationHistory.goBack(),
+    'nav:back': () => goBackIfPossible(win),
     'nav:forward': () => win.webContents.navigationHistory.goForward(),
     'nav:reload': () => {
       resetWedgeDetector();
@@ -431,9 +433,10 @@ function setupNavigationHandlers(win: BrowserWindow, assets: Assets): void {
       mainLog.warn('blocked navigation to disallowed host:', url);
     }
   });
-  win.webContents.on('did-start-navigation', (_event, url, _isInPlace, isMainFrame) => {
-    if (isMainFrame) {
-      mainLog.debug('did-start-navigation:', url);
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame) {
+      win.webContents.send(CONTROLLER_RESET_CHANNEL);
+      mainLog.debug('did-start-navigation:', details.url);
     }
   });
   win.webContents.on('did-navigate', (_event, url) => {
@@ -628,6 +631,7 @@ if (gotLock) {
     win = created.win;
     const winReady = created.winReady;
     initCommandBridge((channel, ...args) => win!.webContents.send(channel, ...args));
+    initControllerIPC(win);
     setGetMainWindowCallback(() => win);
     initServiceSwitch({
       getTray: () => appTray,

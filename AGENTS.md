@@ -40,7 +40,7 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 
 **Electron security**
 - `contextIsolation: true`, `nodeIntegration: false` on all windows
-- All renderer→main IPC flows through the `SEND_CHANNELS` allowlist in `src/preload.ts`; blocked channels log a warning
+- All main-world renderer→main IPC flows through the `SEND_CHANNELS` allowlist in `src/preload.ts`. Blocked channels log a warning. Private isolated-preload channels do not use `AMWrapper`
 - No Node.js APIs exposed to the renderer
 - External URLs validated for `http:`/`https:` protocol before opening. `openExternalUrl()` in `src/utils/openExternal.ts` is the one guard, used by `setWindowOpenHandler`, the tray update link and the update notification, so a hardening change is made once. It hands `shell.openExternal()` the parsed `URL`, never the string that came in: Chromium re-parses the argument with its own parser, so passing the raw string would open a URL nothing checked. Both refusals are logged; a silent one leaves a dead menu item with no record of why. Last.fm's `openInBrowser()` is the one caller outside it, and it takes a `URL` the integration built itself
 
@@ -57,6 +57,15 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 - `playbackTimeDidChange` handlers store position only - never trigger a debounced send (see architecture notes)
 - The tray, the macOS dock and the Windows taskbar reach the renderer through `sendCommand()` in `src/commandBridge.ts`, never through a callback captured at menu-build time. `main.ts` calls `initCommandBridge()` once, after the window exists, and every caller reads the sender inside its click handler, so a menu built before that call still works. A click landing before the window exists logs a warning instead of doing nothing in silence
 - All event listeners and resources cleaned up on `will-quit`, enforced by `test/integrationCleanup.test.ts`. It reads every `src/integrations/*/index.ts` plus `src/wedgeDetector.ts` and `src/tray.ts` off disk and fails when a `player.on()` has no matching `removeListener`, so a new integration directory is covered without touching the test. Register listeners as named references: an inline function cannot be removed and fails the same check
+
+**Controller navigation**
+- `controller:action` and `controller:reset` are private preload channels. Keep them out of `AMWrapper`, `SendChannel`, `ReceiveChannel`, both bridge allowlists, `window.postMessage()`, and `assets/musicKitHook.js`
+- The sandboxed preload must compile to one runtime file whose only `require()` is `electron`. Keep controller runtime logic in `src/preload.ts`. Use type-only imports and `satisfies` for the channel literals
+- Map standard Gamepad buttons 12-15 and 0 to native `Up`, `Down`, `Left`, `Right`, and `Enter` key-down/key-up pairs in `src/controllerIPC.ts`. Button 1 uses `goBackIfPossible()`. Do not send key names or arbitrary input from the renderer
+- Poll only while a standard controller exists and the page is visible, active, and focused. Use one demand-driven `requestAnimationFrame` loop. Directions repeat after 400 ms and every 100 ms. Select and Back do not repeat
+- Suppress held input until release on the initial sample, every main-frame navigation, blur, a hidden document, `pagehide`, and a frame gap above 1,000 ms. Send `controller:reset` from `did-start-navigation`
+- Both services use the same isolated preload path. Do not add Apple DOM selectors or main-world injection for controller navigation
+- Controller support covers navigation only. Keep media controls and settings outside this feature. Do not add a dependency, setting, locale string, or runtime asset for it
 
 **Tests**
 - Tests cover pure logic and event forwarding; shared mock fixtures live in `test/mocks/` to avoid duplication. `appLifecycle.ts` fires the recorded `will-quit` handlers, `platform.ts` overrides `process.platform` through a captured descriptor, and `notify.ts` stands in for `src/notify` with the D-Bus daemon gate a test can open or close. `test/notify.test.ts` covers the real gate and must not import that fake

@@ -67,6 +67,7 @@ const bootstrap = vi.hoisted(() => {
     splashWindow,
     integrations,
     browserWindow: vi.fn(),
+    ipcOn: vi.fn(),
     appOn: vi.fn((event: string, listener: Listener) => {
       appListeners.set(event, listener);
     }),
@@ -103,7 +104,7 @@ vi.mock('electron', () => ({
     whenReady: vi.fn(() => Promise.resolve()),
     status: vi.fn(() => ({})),
   },
-  ipcMain: { on: vi.fn() },
+  ipcMain: { on: bootstrap.ipcOn },
   Menu: {
     buildFromTemplate: vi.fn(),
     setApplicationMenu: vi.fn(),
@@ -183,6 +184,10 @@ vi.mock('../src/tray', () => ({
 }));
 
 vi.mock('../src/commandBridge', () => ({ initCommandBridge: vi.fn() }));
+vi.mock('../src/controllerIPC', () => ({
+  initControllerIPC: vi.fn(),
+  goBackIfPossible: vi.fn(),
+}));
 vi.mock('../src/aboutWindow', () => ({ showAboutWindow: vi.fn() }));
 vi.mock('../src/update', () => ({ checkForUpdates: vi.fn() }));
 vi.mock('../src/autoUpdate', () => ({ isAutoUpdateSupported: vi.fn(() => false), initAutoUpdate: vi.fn() }));
@@ -251,12 +256,16 @@ describe('main bootstrap', () => {
     }
   });
 
-  it('creates a locked-down window, wires integrations, and contains first navigation failure', async () => {
+  async function startMain(): Promise<void> {
     await import('../src/main');
     for (let i = 0; i < 10 && bootstrap.mainWindow.loadURL.mock.calls.length === 0; i++) {
       await Promise.resolve();
     }
     await Promise.resolve();
+  }
+
+  it('creates a locked-down window, wires integrations, and contains first navigation failure', async () => {
+    await startMain();
 
     expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(1, expect.objectContaining({
       webPreferences: {
@@ -295,5 +304,45 @@ describe('main bootstrap', () => {
     expect(bootstrap.integrations.wedgeDetector).toHaveBeenCalledOnce();
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
     expect(bootstrap.appOn).toHaveBeenCalledWith('will-quit', expect.any(Function));
+  });
+
+  it('initialises controller IPC once and reuses guarded back navigation', async () => {
+    const { goBackIfPossible, initControllerIPC } = await import('../src/controllerIPC');
+    await startMain();
+
+    expect(initControllerIPC).toHaveBeenCalledOnce();
+    expect(initControllerIPC).toHaveBeenCalledWith(bootstrap.mainWindow);
+
+    const backCall = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'nav:back');
+    expect(backCall).toBeDefined();
+    backCall?.[1]();
+    expect(goBackIfPossible).toHaveBeenCalledWith(bootstrap.mainWindow);
+  });
+
+  it('resets controller state only for main-frame navigation', async () => {
+    await startMain();
+    const didStartNavigation = bootstrap.mainWebListeners.get('did-start-navigation');
+    expect(didStartNavigation).toBeDefined();
+
+    didStartNavigation?.({
+      url: 'https://music.apple.com/gb/new#dialog',
+      isSameDocument: true,
+      isMainFrame: true,
+    });
+    expect(bootstrap.webContents.send).toHaveBeenCalledWith('controller:reset');
+
+    didStartNavigation?.({
+      url: 'https://music.apple.com/gb/album/example',
+      isSameDocument: false,
+      isMainFrame: true,
+    });
+    expect(bootstrap.webContents.send).toHaveBeenCalledTimes(2);
+
+    didStartNavigation?.({
+      url: 'https://music.apple.com/gb/iframe',
+      isSameDocument: false,
+      isMainFrame: false,
+    });
+    expect(bootstrap.webContents.send).toHaveBeenCalledTimes(2);
   });
 });
