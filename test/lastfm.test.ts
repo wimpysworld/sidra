@@ -494,6 +494,50 @@ describe('radio scrobble submission', () => {
     expect(scrobbles()).toHaveLength(0);
   });
 
+  it('confirms a pending boundary after Last.fm is re-enabled', async () => {
+    const { lastfm, player } = await startIntegration();
+    player.emitNowPlaying(RADIO_STATION);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitTimedMetadata(RADIO_A);
+    reachCleanSong(player);
+    play(player, 31_000);
+    player.emitTimedMetadata(RADIO_C);
+
+    session.enabled = false;
+    lastfm.disable();
+    play(player, 1_000);
+    session.enabled = true;
+    lastfm.enable();
+    play(player, 1_000);
+
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+  });
+
+  it('starts radio timing again when the Last.fm session changes', async () => {
+    const { lastfm, player } = await startIntegration();
+    player.emitNowPlaying(RADIO_STATION);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitTimedMetadata(RADIO_A);
+    reachCleanSong(player);
+    play(player, 180_000);
+
+    lastfm.disconnect();
+    session.enabled = true;
+    respondToAuth(() => new Response(JSON.stringify({
+      session: { key: 'new-key', name: 'wimpy' },
+    })));
+    lastfm.startAuth();
+    await flush();
+    play(player, 60_000);
+
+    expect(scrobbles()).toHaveLength(0);
+
+    play(player, 180_000);
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get('sk')).toBe('new-key');
+  });
+
   it('excludes a pause from the four-minute radio threshold', async () => {
     const player = await startRadio();
     reachCleanSong(player);

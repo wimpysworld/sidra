@@ -833,7 +833,7 @@ function invalidateRadioContinuity(): void {
   trackStartUnix = 0;
   lastResumeAt = null;
   clearScrobbleTimer();
-  if (playerRef?.playbackSnapshot().isPlaying && getLastfmEnabled()) {
+  if (playerRef?.playbackSnapshot().isPlaying && active()) {
     trackStartUnix = nowUnix();
     lastResumeAt = Date.now();
     armScrobbleTimer();
@@ -841,7 +841,7 @@ function invalidateRadioContinuity(): void {
 }
 
 function confirmRadioBoundary(): void {
-  if (pendingRadioBoundary === undefined) return;
+  if (pendingRadioBoundary === undefined || !getLastfmEnabled()) return;
   const outgoing = pendingRadioBoundary;
   pendingRadioBoundary = undefined;
   if (outgoing && getLastfmEnabled() && outgoing.generation === sessionGeneration &&
@@ -920,7 +920,6 @@ export function enable(): void {
 export function disable(): void {
   clearScrobbleTimer();
   foldPlayTime();
-  pendingRadioBoundary = undefined;
   lastfmLog.info('scrobbling disabled');
 }
 
@@ -1008,6 +1007,7 @@ function pollForSession(token: string, startedAt: number, generation: number, on
       if (key && name) {
         authInProgress = false;
         authPollTimer = null;
+        invalidateRadioContinuity();
         setLastfmSession(key, name);
         sessionGeneration += 1;
         lastfmLog.info('authenticated as', name);
@@ -1041,6 +1041,7 @@ export function disconnect(): void {
   // Every request already out was signed for the account that has gone, so its
   // response must not touch the queue the next account fills.
   sessionGeneration += 1;
+  invalidateRadioContinuity();
   // The queued plays go with the account. They are the user's listening history
   // held in plain text, and Disconnect is what removes Sidra's copy of that; a
   // queue that outlived the account would also submit those plays to whichever
