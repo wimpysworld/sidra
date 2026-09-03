@@ -48,6 +48,39 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          # Sidra uses Chromium only, so the Playwright MCP server ships
+          # Chromium only. The stock package wraps PLAYWRIGHT_BROWSERS_PATH
+          # with Chromium, the headless shell, Firefox, and WebKit (2.5 GB).
+          # Swapping the browser set in both the driver and playwright-test
+          # cuts the closure to 0.9 GB. The headless shell is not needed: the
+          # wrapper defaults PLAYWRIGHT_MCP_BROWSER to the chromium channel,
+          # which launches the full Chrome for Testing even in headless mode.
+          playwrightMcpChromium =
+            let
+              browsers = pkgs.playwright-driver.browsers-chromium;
+              playwright-test = pkgs.playwright-test.overrideAttrs (old: {
+                installPhase =
+                  let
+                    stockBrowsers = "${pkgs.playwright-driver.browsers}";
+                    phaseContext =
+                      builtins.removeAttrs (builtins.getContext old.installPhase) (
+                        builtins.attrNames (builtins.getContext stockBrowsers)
+                      )
+                      // builtins.getContext "${browsers}";
+                    phaseText = builtins.replaceStrings
+                      [ (builtins.unsafeDiscardStringContext stockBrowsers) ]
+                      [ (builtins.unsafeDiscardStringContext "${browsers}") ]
+                      (builtins.unsafeDiscardStringContext old.installPhase);
+                  in
+                  builtins.appendContext phaseText phaseContext;
+              });
+            in
+            pkgs.playwright-mcp.override {
+              inherit playwright-test;
+              playwright-driver = pkgs.playwright-driver // {
+                inherit browsers;
+              };
+            };
         in
         {
           default = pkgs.mkShell {
@@ -61,7 +94,7 @@
                 librsvg # rsvg-convert for tray menu icon generation
                 optipng # PNG optimisation for tray menu icons
                 nodejs # 24.x Active LTS, matches Electron 40's bundled Node
-                playwright-mcp
+                playwrightMcpChromium
               ]
               ++ lib.optionals stdenv.isDarwin [
                 uv # required for EVS VMP signing via uvx
