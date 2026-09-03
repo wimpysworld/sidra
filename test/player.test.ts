@@ -20,6 +20,7 @@ import {
   isTerminalPlaybackState,
   type NowPlayingPayload,
   type PlayerEvents,
+  type TimedMetadataInput,
 } from '../src/player';
 
 /** The shipped hook, read so the command contract is checked against real source. */
@@ -88,6 +89,7 @@ describe('PlayerEvents', () => {
     type ExpectedKeys =
       | 'playbackStateDidChange'
       | 'nowPlayingItemDidChange'
+      | 'timedMetadataDidChange'
       | 'playbackTimeDidChange'
       | 'repeatModeDidChange'
       | 'shuffleModeDidChange'
@@ -143,6 +145,25 @@ describe('Player event forwarding', () => {
     player.handlePlaybackTimeDidChange(42000);
 
     expect(listener).toHaveBeenCalledWith(42000);
+  });
+
+  it('emits validated timedMetadataDidChange payloads', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('timedMetadataDidChange', listener);
+    const payload = {
+      name: 'Track',
+      artistName: 'Artist',
+      albumName: 'Album',
+      trackId: '123',
+      playParams: { catalogId: '123', kind: 'song' },
+    } satisfies TimedMetadataInput;
+
+    player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+    player.handleTimedMetadataDidChange(payload);
+
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ ...payload, transition: 'initial' }));
   });
 
   it('emits repeatModeDidChange with mode', () => {
@@ -271,6 +292,7 @@ describe('Player handle* payload validation', () => {
     ['handlePlaybackStateDidChange', 'payload with non-number state', { status: true, state: 'playing' }],
     ['handleNowPlayingItemDidChange', 'string payload', 'invalid'],
     ['handleNowPlayingItemDidChange', 'array payload', [1, 2, 3]],
+    ['handleTimedMetadataDidChange', 'incomplete payload', { name: 'Track' }],
     ['handlePlaybackTimeDidChange', 'string payload', 'not-a-number'],
     ['handlePlaybackTimeDidChange', 'undefined payload', undefined],
     ['handleRepeatModeDidChange', 'string payload', 'repeat'],
@@ -345,6 +367,254 @@ describe('Player handle* payload validation', () => {
     player.handleNowPlayingItemDidChange({ name: 'Track', extra: true });
 
     expect(listener).toHaveBeenCalledWith({ name: 'Track' });
+  });
+
+  it.each([
+    ['unknown field', { name: 'Track', artistName: 'Artist', blob: [] }],
+    ['blank title', { name: ' ', artistName: 'Artist' }],
+    ['untrimmed artist', { name: 'Track', artistName: ' Artist ' }],
+    ['station kind', { name: 'Track', artistName: 'Artist', trackId: '1', playParams: { catalogId: '1', kind: 'radioStation' } }],
+    ['extra nested key', { name: 'Track', artistName: 'Artist', trackId: '1', playParams: { catalogId: '1', kind: 'song', isLibrary: false } }],
+    ['mismatched IDs', { name: 'Track', artistName: 'Artist', trackId: '1', playParams: { catalogId: '2', kind: 'song' } }],
+    ['trackId without playParams', { name: 'Track', artistName: 'Artist', trackId: '1' }],
+    ['playParams without trackId', { name: 'Track', artistName: 'Artist', playParams: { catalogId: '1', kind: 'song' } }],
+  ])('handleTimedMetadataDidChange rejects %s', (_description, payload) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('timedMetadataDidChange', listener);
+    player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+    player.handleTimedMetadataDidChange(payload);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  const timedPayload = (overrides: Partial<TimedMetadataInput> = {}): TimedMetadataInput => ({
+    name: 'Track',
+    artistName: 'Artist',
+    ...overrides,
+  });
+
+  it.each([
+    ['name', timedPayload({ name: 'a'.repeat(512) })],
+    ['artistName', timedPayload({ artistName: 'a'.repeat(512) })],
+    ['albumName', timedPayload({ albumName: 'a'.repeat(512) })],
+    ['catalogue identity', timedPayload({
+      trackId: '1'.repeat(128),
+      playParams: { catalogId: '1'.repeat(128), kind: 'song' },
+    })],
+  ])('accepts the timed metadata %s maximum', (_description, payload) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('timedMetadataDidChange', listener);
+    player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+    player.handleTimedMetadataDidChange(payload);
+
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['name', timedPayload({ name: 'a'.repeat(513) })],
+    ['artistName', timedPayload({ artistName: 'a'.repeat(513) })],
+    ['albumName', timedPayload({ albumName: 'a'.repeat(513) })],
+    ['trackId', timedPayload({ trackId: '1'.repeat(129), playParams: { catalogId: '1'.repeat(129), kind: 'song' } })],
+    ['playParams.catalogId', timedPayload({ trackId: '1'.repeat(129), playParams: { catalogId: '1'.repeat(129), kind: 'song' } })],
+    ['transition', { name: 'Track', artistName: 'Artist', transition: 'unknown' }],
+  ])('rejects a timed metadata %s above its limit', (_description, payload) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('timedMetadataDidChange', listener);
+    player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+    player.handleTimedMetadataDidChange(payload);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['C0', '\u0001'],
+    ['DEL', '\u007f'],
+    ['C1', '\u0085'],
+    ['bidirectional', '\u202e'],
+  ])('rejects %s controls from every timed text and ID field', (_description, control) => {
+    const invalidPayloads: unknown[] = [
+      timedPayload({ name: `Track${control}` }),
+      timedPayload({ artistName: `Artist${control}` }),
+      timedPayload({ albumName: `Album${control}` }),
+      timedPayload({
+        trackId: `1${control}`,
+        playParams: { catalogId: `1${control}`, kind: 'song' },
+      }),
+    ];
+
+    for (const payload of invalidPayloads) {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+      player.handleTimedMetadataDidChange(payload);
+      expect(listener).not.toHaveBeenCalled();
+    }
+  });
+
+  it('requires a current validated radioStation queue item', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('timedMetadataDidChange', listener);
+
+    player.handleTimedMetadataDidChange(timedPayload());
+    player.handleNowPlayingItemDidChange({ name: 'Track', playParams: { kind: 'song' } });
+    player.handleTimedMetadataDidChange(timedPayload());
+    player.handleNowPlayingItemDidChange({
+      name: 'Station',
+      playParams: { kind: 'radioStation', unexpected: true },
+    });
+    player.handleTimedMetadataDidChange(timedPayload());
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('suppresses direct IPC replays and coalesces a burst of unique songs', () => {
+    vi.useFakeTimers();
+    try {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+      for (let i = 0; i < 20; i += 1) player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'B' }));
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'C' }));
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'D' }));
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1499);
+      expect(listener).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(listener.mock.calls[1][0]).toEqual(expect.objectContaining({ name: 'D', transition: 'clean' }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('derives an ambiguous transition after incomplete direct IPC metadata', () => {
+    vi.useFakeTimers();
+    try {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+      player.handleTimedMetadataDidChange(timedPayload());
+      vi.advanceTimersByTime(1500);
+      player.handleTimedMetadataDidChange(null);
+      player.handleTimedMetadataDidChange(timedPayload());
+      vi.advanceTimersByTime(1500);
+
+      expect(listener.mock.calls.map(([payload]) => payload.transition)).toEqual(['initial', 'ambiguous']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not turn an A to B to A burst into a false boundary', () => {
+    vi.useFakeTimers();
+    try {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'B' }));
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+      vi.advanceTimersByTime(1500);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(expect.objectContaining({ name: 'A', transition: 'initial' }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels queued metadata across services and starts the next station as initial', () => {
+    vi.useFakeTimers();
+    try {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station 1', playParams: { kind: 'radioStation' } });
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'B' }));
+
+      player.handleNowPlayingItemDidChange({ name: 'Normal', playParams: { kind: 'song' } });
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'Rejected' }));
+      player.handleNowPlayingItemDidChange({ name: 'Station 2', playParams: { kind: 'radioStation' } });
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'C' }));
+      vi.advanceTimersByTime(1500);
+
+      expect(listener.mock.calls.map(([payload]) => [payload.name, payload.transition]))
+        .toEqual([['A', 'initial'], ['C', 'initial']]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the timed metadata rate limit across queue-item resets', () => {
+    vi.useFakeTimers();
+    try {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station 0', playParams: { kind: 'radioStation' } });
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+
+      for (let i = 1; i <= 20; i += 1) {
+        player.handleNowPlayingItemDidChange({ name: `Station ${i}`, playParams: { kind: 'radioStation' } });
+        player.handleTimedMetadataDidChange(timedPayload({ name: `Song ${i}` }));
+      }
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1499);
+      expect(listener).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the first receipt time when a pending identity gains catalogue data', () => {
+    const startMs = new Date('2026-01-01T00:00:00Z').getTime();
+    vi.useFakeTimers();
+    vi.setSystemTime(startMs);
+    try {
+      const player = new Player();
+      const listener = vi.fn();
+      player.on('timedMetadataDidChange', listener);
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'A' }));
+      vi.advanceTimersByTime(100);
+      player.handleTimedMetadataDidChange(timedPayload({ name: 'B' }));
+      vi.advanceTimersByTime(400);
+      player.handleTimedMetadataDidChange(timedPayload({
+        name: 'B',
+        trackId: '123',
+        playParams: { catalogId: '123', kind: 'song' },
+      }));
+      vi.advanceTimersByTime(1000);
+
+      expect(listener.mock.calls[1][0]).toEqual(expect.objectContaining({
+        name: 'B',
+        trackId: '123',
+        observedAtMs: startMs + 100,
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -425,6 +695,7 @@ describe('Channel contract', () => {
     type ExpectedSend =
       | 'playbackStateDidChange'
       | 'nowPlayingItemDidChange'
+      | 'timedMetadataDidChange'
       | 'playbackTimeDidChange'
       | 'repeatModeDidChange'
       | 'shuffleModeDidChange'

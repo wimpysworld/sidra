@@ -25,6 +25,7 @@ export interface PendingScrobble {
   timestamp: number;
   album?: string;
   durationSec?: number;
+  chosenByUser?: 0;
 }
 
 interface StoreSchema {
@@ -162,7 +163,8 @@ function isPendingScrobble(value: unknown): value is PendingScrobble {
     && (entry.album === undefined || typeof entry.album === 'string')
     && (entry.durationSec === undefined
       || (typeof entry.durationSec === 'number'
-        && Number.isInteger(entry.durationSec) && entry.durationSec > 0));
+        && Number.isInteger(entry.durationSec) && entry.durationSec > 0))
+    && (entry.chosenByUser === undefined || entry.chosenByUser === 0);
 }
 
 export function getPendingScrobbles(): PendingScrobble[] {
@@ -294,4 +296,3 @@ export function getLastPageUrlFor(id: MusicServiceId): string | undefined {
 export function setLastPageUrlFor(id: MusicServiceId, url: string): void {
   SERVICE_PAGE_ACCESSORS[id].setLastPageUrl(url);
 }
-

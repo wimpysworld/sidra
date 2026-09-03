@@ -9,7 +9,7 @@
 // It extends the real Player rather than reimplementing the interface: Player
 // holds private fields, so a structural stand-in is not assignable to
 // IntegrationContext without a cast.
-import { Player, PlaybackSnapshot, PlaybackState, NowPlayingPayload } from '../../src/player';
+import { Player, PlaybackSnapshot, PlaybackState, NowPlayingPayload, TimedMetadataPayload } from '../../src/player';
 
 export class FakePlayer extends Player {
   private snapshot: PlaybackSnapshot = { isPlaying: false, positionUs: 0, state: PlaybackState.None };
@@ -52,5 +52,9 @@ export class FakePlayer extends Player {
 
   emitNowPlaying(payload: NowPlayingPayload | null): void {
     this.emit('nowPlayingItemDidChange', payload);
+  }
+
+  emitTimedMetadata(payload: TimedMetadataPayload): void {
+    this.emit('timedMetadataDidChange', payload);
   }
 }

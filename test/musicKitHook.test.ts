@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { Player } from '../src/player';
 
 const hookScript = fs.readFileSync(
   path.join(__dirname, '..', 'assets', 'musicKitHook.js'),
@@ -169,6 +170,7 @@ function createHarness({
     AMWrapper?: { ipcRenderer: { send: ReturnType<typeof vi.fn> } };
     addEventListener: ReturnType<typeof vi.fn>;
     navigator: unknown;
+    location: { hostname: string };
     __sidraHookedMk?: unknown;
     __sidra?: Record<string, (...args: unknown[]) => unknown>;
   }
@@ -183,6 +185,7 @@ function createHarness({
       if (event === 'pointerover') pointerOverListeners.push(listener);
     }),
     navigator,
+    location: { hostname: 'music.apple.com' },
   };
   if (!bridgeMissing) {
     window.AMWrapper = { ipcRenderer: { send: vi.fn() } };
@@ -287,6 +290,141 @@ function createHarness({
 }
 
 describe('musicKitHook', () => {
+  const radioItem = {
+    attributes: {
+      playParams: { kind: 'radioStation' },
+      streamingRadioSubType: 'Episode',
+    },
+  };
+  const timedSong = {
+    title: 'Blue Monday',
+    performer: 'New Order',
+    album: 'Power, Corruption & Lies',
+    links: [{ description: 'artworkURL_390x', url: 'https://is1-ssl.mzstatic.com/image/thumb/radio.jpg' }],
+    storefrontAdamIds: { gb: '12345' },
+  };
+
+  it('forwards complete timed metadata for a live radio station or archived episode', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+
+    musicKitListeners.get('timedMetadataDidChange')?.(timedSong);
+
+    expect(bridgeSend).toHaveBeenCalledWith('timedMetadataDidChange', {
+      name: 'Blue Monday',
+      artistName: 'New Order',
+      albumName: 'Power, Corruption & Lies',
+      trackId: '12345',
+      playParams: { catalogId: '12345', kind: 'song' },
+    });
+  });
+
+  it('marks two distinct radio songs as an initial item and a clean boundary', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+    const listener = musicKitListeners.get('timedMetadataDidChange');
+
+    listener?.(timedSong);
+    listener?.({
+      ...timedSong,
+      title: 'Temptation',
+      storefrontAdamIds: { gb: '67890' },
+    });
+
+    const sends = bridgeSend.mock.calls.filter(([channel]) => channel === 'timedMetadataDidChange');
+    const player = new Player();
+    const transitions: string[] = [];
+    player.on('timedMetadataDidChange', payload => transitions.push(payload.transition));
+    vi.useFakeTimers();
+    try {
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+      player.handleTimedMetadataDidChange(sends[0][1]);
+      vi.advanceTimersByTime(1500);
+      player.handleTimedMetadataDidChange(sends[1][1]);
+      expect(transitions).toEqual(['initial', 'clean']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores timed metadata outside a radioStation queue item', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: { attributes: { playParams: { kind: 'song' } } } },
+    });
+
+    musicKitListeners.get('timedMetadataDidChange')?.(timedSong);
+
+    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything());
+  });
+
+  it('forwards incomplete and repeated radio metadata for main-process classification', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+    const listener = musicKitListeners.get('timedMetadataDidChange');
+
+    listener?.({ ...timedSong, performer: '' });
+    listener?.(timedSong);
+    listener?.(timedSong);
+    listener?.({ ...timedSong, title: '' });
+    listener?.(timedSong);
+
+    const sends = bridgeSend.mock.calls.filter(([channel]) => channel === 'timedMetadataDidChange');
+    expect(sends.filter(([, payload]) => payload !== null)).toHaveLength(3);
+    expect(sends.filter(([, payload]) => payload === null)).toHaveLength(2);
+  });
+
+  it('preserves distinct catalogue identities end to end for the same artist and title', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+    const listener = musicKitListeners.get('timedMetadataDidChange');
+    const withoutId = { ...timedSong, storefrontAdamIds: {} };
+
+    listener?.(withoutId);
+    listener?.({ ...withoutId, storefrontAdamIds: { gb: '12345' } });
+    listener?.({ ...withoutId, storefrontAdamIds: { gb: '67890' } });
+
+    const sends = bridgeSend.mock.calls.filter(([channel]) => channel === 'timedMetadataDidChange');
+    expect(sends).toHaveLength(3);
+
+    vi.useFakeTimers();
+    try {
+      const player = new Player();
+      const delivered: Array<{ trackId?: string; transition: string }> = [];
+      player.on('timedMetadataDidChange', payload => delivered.push(payload));
+      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+
+      player.handleTimedMetadataDidChange(sends[0][1]);
+      vi.advanceTimersByTime(1500);
+      player.handleTimedMetadataDidChange(sends[1][1]);
+      vi.advanceTimersByTime(1500);
+      player.handleTimedMetadataDidChange(sends[2][1]);
+
+      expect(delivered).toEqual([
+        expect.objectContaining({ trackId: undefined, transition: 'initial' }),
+        expect.objectContaining({ trackId: '67890', transition: 'clean' }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for unique artwork links during a radio transition', () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+
+    musicKitListeners.get('timedMetadataDidChange')?.({
+      ...timedSong,
+      links: [timedSong.links[0], timedSong.links[0]],
+    });
+
+    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything());
+  });
+
   it('handles one player command after repeated injection before MusicKit loads', () => {
     const skipToNextItem = vi.fn();
     const { messageListeners, window } = createHarness({

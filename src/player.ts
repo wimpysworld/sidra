@@ -31,8 +31,39 @@ export interface NowPlayingPayload {
   sourceHost?: string;
 }
 
+export type RadioMetadataTransition = 'initial' | 'clean' | 'ambiguous';
+
+export interface TimedPlayParams {
+  catalogId: string;
+  kind: 'song';
+}
+
+export interface TimedMetadataInput {
+  name: string;
+  artistName: string;
+  albumName?: string;
+  trackId?: string;
+  playParams?: TimedPlayParams;
+}
+
+export interface TimedMetadataPayload extends TimedMetadataInput {
+  transition: RadioMetadataTransition;
+  /** Main-process receipt time for the delivered candidate. */
+  observedAtMs?: number;
+}
+
+interface TimedMetadataIdentity {
+  catalogId: string | null;
+  artistName: string;
+  name: string;
+}
+
 const MAX_DBUS_INT32 = 2_147_483_647;
 const MAX_SAFE_DURATION_MS = Math.floor(Number.MAX_SAFE_INTEGER / 1_000);
+const MAX_TIMED_TEXT_LENGTH = 512;
+const MAX_CATALOG_ID_LENGTH = 128;
+const TIMED_METADATA_INTERVAL_MS = 1500;
+const UNSAFE_TIMED_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 type FieldValidator = (value: unknown) => boolean;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,6 +119,26 @@ const NOW_PLAYING_FIELD_VALIDATORS = {
   playParams: isPlayParams,
   sourceHost: (field: unknown) => typeof field === 'string' && getServiceByHost(field) !== undefined,
 } satisfies Record<keyof NowPlayingPayload, FieldValidator>;
+
+function isSafeTimedString(value: unknown, maximum: number, allowEmpty = false): value is string {
+  return typeof value === 'string' && value === value.trim() && value.length <= maximum &&
+    (allowEmpty || value.length > 0) && !UNSAFE_TIMED_TEXT.test(value);
+}
+
+function isTimedPlayParams(value: unknown): value is TimedPlayParams {
+  return isRecord(value) && hasValidFields(value, {
+    catalogId: field => isSafeTimedString(field, MAX_CATALOG_ID_LENGTH),
+    kind: field => field === 'song',
+  }) && isSafeTimedString(value.catalogId, MAX_CATALOG_ID_LENGTH) && value.kind === 'song';
+}
+
+const TIMED_METADATA_FIELD_VALIDATORS = {
+  name: (field: unknown) => isSafeTimedString(field, MAX_TIMED_TEXT_LENGTH),
+  artistName: (field: unknown) => isSafeTimedString(field, MAX_TIMED_TEXT_LENGTH),
+  albumName: (field: unknown) => isSafeTimedString(field, MAX_TIMED_TEXT_LENGTH, true),
+  trackId: (field: unknown) => isSafeTimedString(field, MAX_CATALOG_ID_LENGTH),
+  playParams: isTimedPlayParams,
+} satisfies Record<keyof TimedMetadataInput, FieldValidator>;
 
 function sanitiseNowPlayingPayload(value: unknown): NowPlayingPayload | null {
   if (!isRecord(value)) return null;
@@ -161,6 +212,7 @@ export type PlaybackStatePayload = { status: boolean; state: number } | null;
 export interface PlayerEvents {
   playbackStateDidChange: [payload: PlaybackStatePayload];
   nowPlayingItemDidChange: [payload: NowPlayingPayload | null];
+  timedMetadataDidChange: [payload: TimedMetadataPayload];
   /** Playback position in microseconds, sent by the playbackTimeDidChange listener in assets/musicKitHook.js. */
   playbackTimeDidChange: [payload: number];
   repeatModeDidChange: [payload: number | null];
@@ -233,6 +285,82 @@ export class Player extends TypedEmitter<PlayerEvents> {
   private _isPlaying = false;
   private _positionUs = 0;
   private _state = 0;
+  private _isRadioStation = false;
+  private timedMetadataIdentity: TimedMetadataIdentity | null = null;
+  private timedMetadataInterrupted = false;
+  private lastTimedMetadataEmitAt: number | null = null;
+  private pendingTimedMetadata: { input: TimedMetadataInput; observedAtMs: number } | null = null;
+  private pendingTimedMetadataInterrupted = false;
+  private timedMetadataTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private resetTimedMetadata(): void {
+    if (this.timedMetadataTimer) clearTimeout(this.timedMetadataTimer);
+    this.timedMetadataTimer = null;
+    this.pendingTimedMetadata = null;
+    this.pendingTimedMetadataInterrupted = false;
+    this.timedMetadataIdentity = null;
+    this.timedMetadataInterrupted = false;
+  }
+
+  private deliverTimedMetadata(input: TimedMetadataInput, observedAtMs: number): boolean {
+    if (this.pendingTimedMetadataInterrupted) this.timedMetadataInterrupted = true;
+    this.pendingTimedMetadataInterrupted = false;
+    const catalogId = input.trackId ?? null;
+    const identity = { catalogId, artistName: input.artistName, name: input.name };
+    const previous = this.timedMetadataIdentity;
+    const repeated = previous !== null && (
+      previous.catalogId && identity.catalogId
+        ? previous.catalogId === identity.catalogId
+        : previous.artistName === identity.artistName && previous.name === identity.name
+    );
+    if (repeated && !this.timedMetadataInterrupted) {
+      if (!previous.catalogId && identity.catalogId) previous.catalogId = identity.catalogId;
+      return false;
+    }
+
+    const transition: RadioMetadataTransition = previous === null
+      ? 'initial'
+      : repeated
+        ? 'ambiguous'
+        : 'clean';
+    this.timedMetadataIdentity = identity;
+    this.timedMetadataInterrupted = false;
+    playerLog.debug('timedMetadataDidChange: accepted');
+    this.emit('timedMetadataDidChange', { ...input, transition, observedAtMs });
+    return true;
+  }
+
+  private dispatchTimedMetadata(input: TimedMetadataInput): void {
+    const now = Date.now();
+    const remaining = this.lastTimedMetadataEmitAt === null
+      ? 0
+      : TIMED_METADATA_INTERVAL_MS - (now - this.lastTimedMetadataEmitAt);
+    if (remaining <= 0) {
+      if (this.deliverTimedMetadata(input, now)) this.lastTimedMetadataEmitAt = now;
+      return;
+    }
+
+    const pending = this.pendingTimedMetadata;
+    const samePending = pending !== null && (
+      pending.input.trackId && input.trackId
+        ? pending.input.trackId === input.trackId
+        : pending.input.artistName === input.artistName && pending.input.name === input.name
+    );
+    this.pendingTimedMetadata = {
+      input,
+      observedAtMs: samePending ? pending.observedAtMs : now,
+    };
+    if (this.timedMetadataTimer) return;
+    this.timedMetadataTimer = setTimeout(() => {
+      this.timedMetadataTimer = null;
+      const pending = this.pendingTimedMetadata;
+      this.pendingTimedMetadata = null;
+      if (!pending || !this._isRadioStation) return;
+      if (this.deliverTimedMetadata(pending.input, pending.observedAtMs)) {
+        this.lastTimedMetadataEmitAt = Date.now();
+      }
+    }, remaining);
+  }
 
   /**
    * Current playback state, for callers that must read it outside an event.
@@ -247,6 +375,8 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this._state = PlaybackState.None;
     this._isPlaying = false;
     this._positionUs = 0;
+    this._isRadioStation = false;
+    this.resetTimedMetadata();
     this.emit('playbackStateDidChange', { status: false, state: PlaybackState.None });
     this.emit('nowPlayingItemDidChange', null);
   }
@@ -277,6 +407,8 @@ export class Player extends TypedEmitter<PlayerEvents> {
   }
 
   handleNowPlayingItemDidChange(payload: unknown): void {
+    this._isRadioStation = false;
+    this.resetTimedMetadata();
     if (payload === null) {
       playerLog.debug('nowPlayingItemDidChange:', payload);
       this.emit('nowPlayingItemDidChange', payload);
@@ -287,8 +419,35 @@ export class Player extends TypedEmitter<PlayerEvents> {
       playerLog.warn('nowPlayingItemDidChange: invalid metadata payload');
       return;
     }
+    this._isRadioStation = sanitised.playParams?.kind === 'radioStation';
     playerLog.debug('nowPlayingItemDidChange:', sanitised);
     this.emit('nowPlayingItemDidChange', sanitised);
+  }
+
+  handleTimedMetadataDidChange(payload: unknown): void {
+    if (!this._isRadioStation) {
+      playerLog.warn('timedMetadataDidChange: ignored outside radio playback');
+      return;
+    }
+    if (payload === null) {
+      this.pendingTimedMetadataInterrupted = true;
+      return;
+    }
+    if (!isRecord(payload) ||
+        !hasValidFields(payload, TIMED_METADATA_FIELD_VALIDATORS) ||
+        !TIMED_METADATA_FIELD_VALIDATORS.name(payload.name) ||
+        !TIMED_METADATA_FIELD_VALIDATORS.artistName(payload.artistName)) {
+      playerLog.warn('timedMetadataDidChange: invalid metadata payload');
+      return;
+    }
+    const input = payload as unknown as TimedMetadataInput;
+    if ((input.trackId === undefined) !== (input.playParams === undefined) ||
+        (input.trackId !== undefined && input.trackId !== input.playParams?.catalogId)) {
+      playerLog.warn('timedMetadataDidChange: invalid metadata payload');
+      return;
+    }
+
+    this.dispatchTimedMetadata(input);
   }
 
   handlePlaybackTimeDidChange(payload: number): void {

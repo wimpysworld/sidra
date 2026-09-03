@@ -20,6 +20,7 @@
 type SendChannel =
   | 'playbackStateDidChange'
   | 'nowPlayingItemDidChange'
+  | 'timedMetadataDidChange'
   | 'playbackTimeDidChange'
   | 'repeatModeDidChange'
   | 'shuffleModeDidChange'

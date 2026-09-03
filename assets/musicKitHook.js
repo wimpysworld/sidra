@@ -177,6 +177,46 @@
       });
 
       /**
+       * Forward complete songs embedded in a radio station or archived show.
+       * @param {object} metadata - MusicKit timedMetadataDidChange payload
+       */
+      mk.addEventListener('timedMetadataDidChange', (metadata) => {
+        if (mk.nowPlayingItem?.attributes?.playParams?.kind !== 'radioStation') return;
+
+        const title = typeof metadata?.title === 'string' ? metadata.title.trim() : '';
+        const artist = typeof metadata?.performer === 'string' ? metadata.performer.trim() : '';
+        if (!title || !artist) {
+          sendToMain('timedMetadataDidChange', null);
+          return;
+        }
+
+        const links = Array.isArray(metadata.links) ? metadata.links : [];
+        const descriptions = links
+          .map((link) => typeof link?.description === 'string' ? link.description : null)
+          .filter((description) => description !== null);
+        if (new Set(descriptions).size !== descriptions.length) return;
+
+        const adamIds = metadata.storefrontAdamIds &&
+          typeof metadata.storefrontAdamIds === 'object' &&
+          !Array.isArray(metadata.storefrontAdamIds)
+          ? [...new Set(Object.values(metadata.storefrontAdamIds)
+              .filter((value) => typeof value === 'string' && value.trim() !== '')
+              .map((value) => value.trim()))]
+          : [];
+        const catalogId = adamIds.length === 1 && adamIds[0].length <= 128 ? adamIds[0] : null;
+        if (title.length > 512 || artist.length > 512) return;
+        sendToMain('timedMetadataDidChange', {
+          name: title,
+          artistName: artist,
+          albumName: typeof metadata.album === 'string' && metadata.album.length <= 512
+            ? metadata.album
+            : undefined,
+          trackId: catalogId ?? undefined,
+          playParams: catalogId ? { catalogId, kind: 'song' } : undefined,
+        });
+      });
+
+      /**
        * Forward playback position (in microseconds) to the main process and
        * refresh the media session position state.
        */
