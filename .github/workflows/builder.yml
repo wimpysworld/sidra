@@ -183,7 +183,7 @@ jobs:
           # package.json build.linux.target is the fallback for a bare
           # electron-builder run, which nothing here performs.
           # `arch` names the artefact bundle and the cache key, so two Linux
-          # entries do not collide, and gates the snap steps to amd64.
+          # entries do not collide.
           - os: linux
             arch: amd64
             runner: ubuntu-24.04
@@ -236,10 +236,10 @@ jobs:
       # and its build is the longest step on the critical-path Linux leg. Skip
       # it on pull requests; the weekly schedule and every tag build keep it
       # covered, and publish-snap requires this job, so a broken snap still
-      # blocks a release rather than shipping. The arm64 entry skips the snap.
-      # No arm64 snap is published yet, and that is a separate issue.
+      # blocks a release rather than shipping. Both Linux entries build a snap;
+      # the Store holds one revision per arch.
       - name: Install snapcraft
-        if: matrix.os == 'linux' && matrix.arch == 'amd64' && github.event_name != 'pull_request'
+        if: matrix.os == 'linux' && github.event_name != 'pull_request'
         run: sudo snap install snapcraft --classic
       - name: Compile TypeScript
         run: npm run build
@@ -254,7 +254,7 @@ jobs:
       # Snapcraft host mode needs root, so this cannot join the step above:
       # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
-        if: matrix.os == 'linux' && matrix.arch == 'amd64' && github.event_name != 'pull_request'
+        if: matrix.os == 'linux' && github.event_name != 'pull_request'
         run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
@@ -309,45 +309,43 @@ jobs:
       - name: Download Linux artefacts
         uses: actions/download-artifact@v8
         with:
-          name: sidra-linux-amd64
+          pattern: sidra-linux-*
           path: release/
-      - name: Locate snap file
-        id: find
-        run: |
-          set -euo pipefail
-          snap_file=$(find release -maxdepth 1 -type f -name '*.snap' -print -quit)
-          if [[ -z "$snap_file" ]]; then
-            echo "No snap package found in release/" >&2
-            exit 1
-          fi
-          echo "snap=$snap_file" >> "$GITHUB_OUTPUT"
+          merge-multiple: true
       - name: Install snapcraft
         run: sudo snap install snapcraft --classic
-      - name: Upload snap to Store
-        id: upload
+      # One Store revision per arch under one name, so upload and release run
+      # once per file. Zero files is a failure, not a no-op.
+      - name: Upload and release snaps to edge
         run: |
           set -euo pipefail
-          upload_output=$(snapcraft upload "$SNAP_FILE")
-          printf '%s\n' "$upload_output"
-          revision=$(printf '%s\n' "$upload_output" | sed -nE 's/.*Revision[[:space:]]+([0-9]+).*/\1/p' | tail -n1)
-          if [[ -z "$revision" ]]; then
-            echo "Could not determine snap revision from upload output" >&2
+          shopt -s nullglob
+          snap_files=(release/*.snap)
+          if [[ ${#snap_files[@]} -eq 0 ]]; then
+            echo "No snap packages found in release/" >&2
             exit 1
           fi
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
-        env:
-          SNAP_FILE: ${{ steps.find.outputs.snap }}
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-      - name: Release snap to edge
-        run: snapcraft release "$SNAP_NAME" "$SNAP_REVISION" "$SNAP_CHANNEL"
+          for snap_file in "${snap_files[@]}"; do
+            echo "Uploading $snap_file"
+            upload_output=$(snapcraft upload "$snap_file")
+            printf '%s\n' "$upload_output"
+            revision=$(printf '%s\n' "$upload_output" | sed -nE 's/.*Revision[[:space:]]+([0-9]+).*/\1/p' | tail -n1)
+            if [[ -z "$revision" ]]; then
+              echo "Could not determine snap revision from upload output for $snap_file" >&2
+              exit 1
+            fi
+            snapcraft release "$SNAP_NAME" "$revision" "$SNAP_CHANNEL"
+          done
         env:
           SNAP_NAME: sidra
-          SNAP_REVISION: ${{ steps.upload.outputs.revision }}
           SNAP_CHANNEL: edge
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
       - name: Show Snap Store revisions
         continue-on-error: true
-        run: snapcraft revisions "$SNAP_NAME" --arch amd64
+        run: |
+          for arch in amd64 arm64; do
+            snapcraft revisions "$SNAP_NAME" --arch "$arch"
+          done
         env:
           SNAP_NAME: sidra
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}

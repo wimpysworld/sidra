@@ -2,6 +2,8 @@
 # cutting a full release. Do not delete. The tag-driven `publish-snap` job
 # in `builder.yml` is the normal path; this workflow exists for ad-hoc
 # pushes to the edge channel from a branch.
+# Runs on amd64 only: it is a debugging aid, not the release path, and one
+# arch is enough to exercise a snap fix. The tag build publishes both arches.
 name: Publish Snap (Manual) 📦
 
 on:
@@ -87,7 +89,10 @@ jobs:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
       - name: Show Snap Store Revisions 🔎
         continue-on-error: true
-        run: snapcraft revisions "$SNAP_NAME" --arch amd64
+        run: |
+          for arch in amd64 arm64; do
+            snapcraft revisions "$SNAP_NAME" --arch "$arch"
+          done
         env:
           SNAP_NAME: sidra
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
