@@ -155,7 +155,7 @@ jobs:
           echo "All jobs passed"
 
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
     needs: [lint-code, lint-actions, test-config, test-code]
     # EVS secrets exist only in release-evs, whose deployment policy admits
     # version tags. A pull request uses ci, which carries no EVS secrets.
@@ -182,13 +182,22 @@ jobs:
           # snap unprivileged and the snap step would build it again.
           # package.json build.linux.target is the fallback for a bare
           # electron-builder run, which nothing here performs.
+          # `arch` names the artefact bundle and the cache key, so two Linux
+          # entries do not collide, and gates the snap steps to amd64.
           - os: linux
+            arch: amd64
             runner: ubuntu-24.04
             targets: "--linux AppImage deb rpm"
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            targets: "--linux AppImage deb rpm --arm64"
           - os: macos
+            arch: universal
             runner: macos-latest
             targets: "--mac dmg --x64 --arm64"
           - os: windows
+            arch: amd64
             runner: windows-latest
             targets: "--win nsis"
     runs-on: ${{ matrix.runner }}
@@ -212,7 +221,7 @@ jobs:
             ~/Library/Caches/electron-builder
             ~/AppData/Local/electron/Cache
             ~/AppData/Local/electron-builder/Cache
-          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: electron-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('package-lock.json') }}
       - name: Install dependencies
         run: npm ci
       - name: Install uv
@@ -227,9 +236,10 @@ jobs:
       # and its build is the longest step on the critical-path Linux leg. Skip
       # it on pull requests; the weekly schedule and every tag build keep it
       # covered, and publish-snap requires this job, so a broken snap still
-      # blocks a release rather than shipping.
+      # blocks a release rather than shipping. The arm64 entry skips the snap.
+      # No arm64 snap is published yet, and that is a separate issue.
       - name: Install snapcraft
-        if: matrix.os == 'linux' && github.event_name != 'pull_request'
+        if: matrix.os == 'linux' && matrix.arch == 'amd64' && github.event_name != 'pull_request'
         run: sudo snap install snapcraft --classic
       - name: Compile TypeScript
         run: npm run build
@@ -244,12 +254,12 @@ jobs:
       # Snapcraft host mode needs root, so this cannot join the step above:
       # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
-        if: matrix.os == 'linux' && github.event_name != 'pull_request'
+        if: matrix.os == 'linux' && matrix.arch == 'amd64' && github.event_name != 'pull_request'
         run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
-          name: sidra-${{ matrix.os }}
+          name: sidra-${{ matrix.os }}-${{ matrix.arch }}
           path: ${{ env.RELEASE_ARTEFACTS }}
           retention-days: 7
 
@@ -299,7 +309,7 @@ jobs:
       - name: Download Linux artefacts
         uses: actions/download-artifact@v8
         with:
-          name: sidra-linux
+          name: sidra-linux-amd64
           path: release/
       - name: Locate snap file
         id: find
@@ -413,9 +423,11 @@ jobs:
             }
           }
 
-          # One deb is built. The dmg is built for both arches and nix/darwin.nix
-          # covers aarch64-darwin alone, so that one is matched on its arch.
-          linux_url=$(asset_url '\.deb$')
+          # Two debs are built, one per arch, and `nix/linux.nix` covers
+          # x86_64-linux alone, so both are matched on their arch. The dmg is
+          # built for both arches and nix/darwin.nix covers aarch64-darwin
+          # alone, so that one is matched on its arch.
+          linux_url=$(asset_url 'linux-amd64\.deb$')
           darwin_url=$(asset_url 'arm64\.dmg$')
 
           echo "⬇️  Fetching Linux deb: ${linux_url}"
