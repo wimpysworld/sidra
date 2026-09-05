@@ -131,6 +131,7 @@ import { setPlatform, restorePlatform } from './mocks/platform';
 import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type MusicServiceId } from '../src/musicService';
 
 afterEach(restorePlatform);
+afterEach(() => vi.unstubAllEnvs());
 
 /**
  * Puts every mock and every piece of tray module state the menu reads back to
@@ -142,6 +143,7 @@ afterEach(restorePlatform);
  * describes becomes part of the contract.
  */
 function resetTrayMocks(): void {
+  vi.stubEnv('XDG_CURRENT_DESKTOP', undefined);
   vi.mocked(getMusicService).mockReturnValue('music');
   vi.mocked(getClassicalStartPage).mockReturnValue('home');
   vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
@@ -221,6 +223,17 @@ describe('sanitiseLinuxLabel', () => {
 });
 
 describe('createTray - menu template inspection', () => {
+  it.each([
+    ['win32', 'sidra-tray.png'],
+    ['darwin', 'sidraTemplate.png'],
+  ] as const)('keeps the %s tray icon when the environment names GNOME', (platform, icon) => {
+    setPlatform(platform);
+    vi.stubEnv('XDG_CURRENT_DESKTOP', 'GNOME');
+    const tray = createTray() as Tray & { icon: string };
+
+    expect(tray.icon).toBe(`assets/icons/${icon}`);
+  });
+
   afterEach(() => {
     vi.mocked(Menu.buildFromTemplate).mockClear();
   });
@@ -244,6 +257,34 @@ describe('createTray - menu template inspection', () => {
     beforeEach(() => {
       setPlatform('linux');
       Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    });
+
+    it.each([
+      ['GNOME', false],
+      ['GNOME', true],
+      ['ubuntu:GNOME', false],
+      ['gnome', true],
+    ] as const)('uses the outlined tray icon on %s when shouldUseDarkColors is %s', (desktop, dark) => {
+      vi.stubEnv('XDG_CURRENT_DESKTOP', desktop);
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: dark, configurable: true });
+      const tray = createTray() as Tray & { icon: string };
+
+      expect(tray.icon).toBe('assets/icons/sidra-tray-linux.png');
+    });
+
+    it.each([
+      ['KDE', false],
+      ['KDE', true],
+      [undefined, false],
+      [undefined, true],
+      ['', false],
+      ['not-GNOME', true],
+    ] as const)('uses the themed tray icon on %s when shouldUseDarkColors is %s', (desktop, dark) => {
+      vi.stubEnv('XDG_CURRENT_DESKTOP', desktop);
+      Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: dark, configurable: true });
+      const tray = createTray() as Tray & { icon: string };
+
+      expect(tray.icon).toBe(`assets/icons/sidra-tray-${dark ? 'dark' : 'light'}.png`);
     });
 
     it('uses plain text label for About on Linux', () => {
@@ -1378,17 +1419,43 @@ describe('theme change menu refresh', () => {
     expect(setContextMenuFn.mock.calls.length).toBeGreaterThan(contextMenuCountBefore);
   });
 
-  it('updates tray image on theme change on Linux', () => {
+  it.each([false, true])('keeps the GNOME tray image when shouldUseDarkColors changes to %s', (dark) => {
     setPlatform('linux');
-    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: true, configurable: true });
+    vi.stubEnv('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME');
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: !dark, configurable: true });
     const tray = createTray();
-    const setImageFn = tray.setImage as ReturnType<typeof vi.fn>;
+    vi.mocked(nativeImage.createFromPath).mockClear();
+    vi.mocked(tray.setContextMenu).mockClear();
 
     const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
+    expect(themeCall).toBeDefined();
     const callback = themeCall![1] as () => void;
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: dark, configurable: true });
     callback();
 
-    expect(setImageFn).toHaveBeenCalled();
+    expect(tray.setImage).not.toHaveBeenCalled();
+    expect(tray.setContextMenu).toHaveBeenCalledTimes(1);
+    expect(nativeImage.createFromPath).toHaveBeenCalledWith(
+      expect.stringContaining(`tray/menu/${dark ? 'dark' : 'light'}/circle-info.png`),
+    );
+  });
+
+  it.each([false, true])('updates the non-GNOME Linux tray image when shouldUseDarkColors changes to %s', (dark) => {
+    setPlatform('linux');
+    vi.stubEnv('XDG_CURRENT_DESKTOP', 'KDE');
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: !dark, configurable: true });
+    const tray = createTray();
+    vi.mocked(tray.setContextMenu).mockClear();
+
+    const themeCall = vi.mocked(nativeTheme.on).mock.calls.find(([event]) => event === 'updated');
+    expect(themeCall).toBeDefined();
+    const callback = themeCall![1] as () => void;
+    Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: dark, configurable: true });
+    callback();
+
+    expect(tray.setImage).toHaveBeenCalledTimes(1);
+    expect(tray.setImage).toHaveBeenCalledWith(`assets/icons/sidra-tray-${dark ? 'dark' : 'light'}.png`);
+    expect(tray.setContextMenu).toHaveBeenCalledTimes(1);
   });
 
   it('rebuilds context menu on theme change on Windows', () => {

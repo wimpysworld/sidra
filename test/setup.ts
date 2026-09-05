@@ -60,6 +60,7 @@ vi.mock('electron', () => ({
     setApplicationMenu: vi.fn(),
   },
   Tray: class MockTray {
+    constructor(readonly icon: string | Electron.NativeImage) {}
     setContextMenu = vi.fn();
     setToolTip = vi.fn();
     setImage = vi.fn();

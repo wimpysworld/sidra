@@ -180,8 +180,9 @@ sidra/
 │   └── icons/
 │       ├── sidraTemplate.png      - macOS tray (template image)
 │       ├── sidra-tray.png         - Windows tray
-│       ├── sidra-tray-dark.png    - Linux tray (dark theme)
-│       ├── sidra-tray-light.png   - Linux tray (light theme)
+│       ├── sidra-tray-linux.png   - GNOME tray (outlined icon)
+│       ├── sidra-tray-dark.png    - Other Linux trays (dark theme)
+│       ├── sidra-tray-light.png   - Other Linux trays (light theme)
 │       └── tray/menu/
 │           ├── dark/              - 18px dark-theme menu item PNGs
 │           └── light/             - 18px light-theme menu item PNGs
@@ -960,7 +961,10 @@ The context menu rebuilds on track change, playback state change, and volume cha
 |----------|------|-------|
 | macOS | `sidraTemplate.png` | Template image; OS handles dark/light automatically |
 | Windows | `sidra-tray.png` | Static icon |
-| Linux | `sidra-tray-dark.png` or `sidra-tray-light.png` | Switches on `nativeTheme.shouldUseDarkColors`; listens for theme changes |
+| Linux (GNOME) | `sidra-tray-linux.png` | Fixed white icon with a charcoal outline for light and dark panels, independent of the app theme |
+| Linux (other desktops) | `sidra-tray-dark.png` or `sidra-tray-light.png` | Switches on `nativeTheme.shouldUseDarkColors` and updates when the theme changes |
+
+GNOME detection matches a complete `GNOME` token in the colon-separated `XDG_CURRENT_DESKTOP` value, regardless of case. For example, `ubuntu:GNOME` matches. Missing or unrecognised values retain the theme-selected Linux icons.
 
 ### Tooltip
 
