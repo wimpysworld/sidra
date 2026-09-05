@@ -32,8 +32,11 @@ let cachedProductInfo: ProductInfo | null = null;
 
 /**
  * Product details taken from package.json, which is the single source for the
- * About window and the tray. The author email is stripped, because the About
- * window shows the name alone. require() reads through the asar archive, so
+ * About window and the tray. The author field keeps only the text before the
+ * first '<', because the npm author form is 'Name <email> (url)' and the About
+ * window shows the name alone. Cutting at the delimiter rather than deleting a
+ * '<...>' match cannot leave part of a bracketed segment behind, which is what
+ * CodeQL's incomplete-sanitization check flags about a single-pass replace. require() reads through the asar archive, so
  * package.json is loaded relative to the compiled output and needs no
  * asarUnpack entry, unlike everything getAssetPath() resolves.
  */
@@ -44,7 +47,7 @@ export function getProductInfo(): ProductInfo {
 
   const pkg = require(path.join(__dirname, '..', 'package.json')) as PackageJson;
   const author = typeof pkg.author === 'string'
-    ? pkg.author.replace(/\s*<[^>]+>/, '')
+    ? pkg.author.split('<')[0].trim()
     : (pkg.author?.name ?? '');
 
   cachedProductInfo = {
