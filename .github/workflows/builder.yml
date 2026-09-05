@@ -218,12 +218,19 @@ jobs:
       - name: Install uv
         if: matrix.os == 'macos' || matrix.os == 'windows'
         uses: astral-sh/setup-uv@v10.0.1
-      - name: Install snap tooling
+      - name: Install packaging tooling
         if: matrix.os == 'linux'
         run: |
-          sudo snap install snapcraft --classic
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin rpm
+      # The snap is mechanical packaging, unaffected by ordinary code changes,
+      # and its build is the longest step on the critical-path Linux leg. Skip
+      # it on pull requests; the weekly schedule and every tag build keep it
+      # covered, and publish-snap requires this job, so a broken snap still
+      # blocks a release rather than shipping.
+      - name: Install snapcraft
+        if: matrix.os == 'linux' && github.event_name != 'pull_request'
+        run: sudo snap install snapcraft --classic
       - name: Compile TypeScript
         run: npm run build
         env:
@@ -237,7 +244,7 @@ jobs:
       # Snapcraft host mode needs root, so this cannot join the step above:
       # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && github.event_name != 'pull_request'
         run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
