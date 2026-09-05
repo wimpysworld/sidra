@@ -1,6 +1,7 @@
 {
   lib,
   stdenvNoCC,
+  stdenv,
   fetchurl,
   buildFHSEnv,
   bintools,
@@ -49,12 +50,22 @@
 let
   pname = "sidra";
 
-  # The url and hash below are rewritten together by the nix-hash CI job, which
+  # Both pairs below are rewritten together by the nix-hash CI job, which
   # reads the filename off the published release. Do not edit them by hand.
-  src = fetchurl {
-    url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
-    hash = "sha256-7ViRvbc087+JWxwKu481fI3eHLzi6XdRrJcLFm0jwYQ=";
+  # aarch64-linux carries the fake hash until the first arm64 deb is released;
+  # the job replaces it then, and `nix build` on aarch64-linux fails before that.
+  sources = {
+    x86_64-linux = {
+      url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
+      hash = "sha256-7ViRvbc087+JWxwKu481fI3eHLzi6XdRrJcLFm0jwYQ=";
+    };
+    aarch64-linux = {
+      url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-arm64.deb";
+      hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    };
   };
+
+  src = fetchurl sources.${stdenv.hostPlatform.system};
 
   # Unpack the deb into a plain derivation. No patching - the CastLabs
   # Electron binary is VMP-signed for Widevine DRM and must not be modified.
@@ -155,7 +166,10 @@ let
       homepage = "https://github.com/wimpysworld/sidra";
       license = lib.licenses.blueOak100;
       maintainers = with lib.maintainers; [ flexiondotorg ];
-      platforms = [ "x86_64-linux" ];
+      platforms = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
       mainProgram = "sidra";
     };
