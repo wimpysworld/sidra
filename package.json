@@ -1,7 +1,7 @@
 {
   "name": "sidra",
   "productName": "Sidra",
-  "version": "0.4.1",
+  "version": "1.0.0",
   "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
   "main": "dist/main.js",
   "scripts": {
