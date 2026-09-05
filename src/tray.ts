@@ -150,8 +150,15 @@ export function getMenuIcon(action: MenuIconKey): Electron.NativeImage | undefin
   return img.isEmpty() ? undefined : img;
 }
 
+function isGnomeSession(): boolean {
+  return process.env.XDG_CURRENT_DESKTOP?.toLowerCase().split(':').includes('gnome') ?? false;
+}
+
 function getLinuxTrayIconPath(): string {
-  // Dark theme = white icon (dark.png); light theme = black icon (light.png)
+  if (isGnomeSession()) {
+    return path.join(iconsDir, 'sidra-tray-linux.png');
+  }
+
   return nativeTheme.shouldUseDarkColors
     ? path.join(iconsDir, 'sidra-tray-dark.png')
     : path.join(iconsDir, 'sidra-tray-light.png');
@@ -743,16 +750,13 @@ export function createTray(): Tray {
     }
   });
 
-  if (process.platform === 'linux') {
+  if (process.platform === 'linux' || process.platform === 'win32') {
     nativeTheme.on('updated', () => {
-      const newIconPath = getLinuxTrayIconPath();
-      trayLog.info('theme changed, switching tray icon:', newIconPath);
-      tray.setImage(newIconPath);
-      trayLog.info('theme changed, rebuilding context menu');
-      tray.setContextMenu(buildContextMenu(tray));
-    });
-  } else if (process.platform === 'win32') {
-    nativeTheme.on('updated', () => {
+      if (process.platform === 'linux' && !isGnomeSession()) {
+        const newIconPath = getLinuxTrayIconPath();
+        trayLog.info('theme changed, switching tray icon:', newIconPath);
+        tray.setImage(newIconPath);
+      }
       trayLog.info('theme changed, rebuilding context menu');
       tray.setContextMenu(buildContextMenu(tray));
     });
