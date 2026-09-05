@@ -399,7 +399,7 @@ jobs:
           # package.json: a hash left stale then fails loudly instead of serving
           # an older release under the new version number.
           update_nix() {
-            local file="$1" url="$2" hash="$3" nix_url
+            local file="$1" url="$2" hash="$3" key="${4:-}" nix_url range=""
             # This is the only point at which the Nix files are written, so it
             # is where a resolution that produced nothing has to stop. Do not
             # rely on errexit alone to have caught that further up: a job that
@@ -409,9 +409,11 @@ jobs:
               return 1
             fi
             nix_url="${url//${PKG_VERSION}/${NIX_VERSION}}"
+            # With a key, confine the rewrite to that `<key> = { ... };` block.
+            [[ -n "${key}" ]] && range="/^[[:space:]]*${key} = {/,/^[[:space:]]*};/"
             sed -i \
-              -e "s|^\([[:space:]]*\)url = \"[^\"]*\";|\1url = \"${nix_url}\";|" \
-              -e "s|^\([[:space:]]*\)hash = \"sha256-[^\"]*\";|\1hash = \"${hash}\";|" \
+              -e "${range}s|^\([[:space:]]*\)url = \"[^\"]*\";|\1url = \"${nix_url}\";|" \
+              -e "${range}s|^\([[:space:]]*\)hash = \"sha256-[^\"]*\";|\1hash = \"${hash}\";|" \
               "${file}"
             grep -Fq "url = \"${nix_url}\";" "${file}" || {
               echo "::error::${file}: url not rewritten to ${nix_url}" >&2
@@ -423,22 +425,28 @@ jobs:
             }
           }
 
-          # Two debs are built, one per arch, and `nix/linux.nix` covers
-          # x86_64-linux alone, so both are matched on their arch. The dmg is
-          # built for both arches and nix/darwin.nix covers aarch64-darwin
-          # alone, so that one is matched on its arch.
-          linux_url=$(asset_url 'linux-amd64\.deb$')
+          # Two debs are built, one per arch, and nix/linux.nix holds a pair per
+          # system, so each is matched on its arch and written into its own block.
+          # The dmg is built for both arches and nix/darwin.nix covers
+          # aarch64-darwin alone, so that one is matched on its arch.
+          linux_amd64_url=$(asset_url 'linux-amd64\.deb$')
+          linux_arm64_url=$(asset_url 'linux-arm64\.deb$')
           darwin_url=$(asset_url 'arm64\.dmg$')
 
-          echo "⬇️  Fetching Linux deb: ${linux_url}"
-          linux_hash=$(nix store prefetch-file --json --hash-type sha256 "${linux_url}" | jq -r '.hash')
-          echo "🔑 Linux hash: ${linux_hash}"
+          echo "⬇️  Fetching Linux amd64 deb: ${linux_amd64_url}"
+          linux_amd64_hash=$(nix store prefetch-file --json --hash-type sha256 "${linux_amd64_url}" | jq -r '.hash')
+          echo "🔑 Linux amd64 hash: ${linux_amd64_hash}"
+
+          echo "⬇️  Fetching Linux arm64 deb: ${linux_arm64_url}"
+          linux_arm64_hash=$(nix store prefetch-file --json --hash-type sha256 "${linux_arm64_url}" | jq -r '.hash')
+          echo "🔑 Linux arm64 hash: ${linux_arm64_hash}"
 
           echo "⬇️  Fetching Darwin dmg: ${darwin_url}"
           darwin_hash=$(nix store prefetch-file --json --hash-type sha256 "${darwin_url}" | jq -r '.hash')
           echo "🔑 Darwin hash: ${darwin_hash}"
 
-          update_nix nix/linux.nix "${linux_url}" "${linux_hash}" || exit 1
+          update_nix nix/linux.nix "${linux_amd64_url}" "${linux_amd64_hash}" x86_64-linux || exit 1
+          update_nix nix/linux.nix "${linux_arm64_url}" "${linux_arm64_hash}" aarch64-linux || exit 1
           update_nix nix/darwin.nix "${darwin_url}" "${darwin_hash}" || exit 1
 
           echo "✅ Updated nix/linux.nix and nix/darwin.nix"
