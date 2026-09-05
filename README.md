@@ -126,6 +126,8 @@ Grab the latest release from [GitHub Releases](https://github.com/wimpysworld/si
 
 ### Linux
 
+Linux builds ship for x86_64 and arm64. Pick the file that matches your CPU: `Sidra-linux-x86_64.AppImage` or `Sidra-linux-arm64.AppImage`, `-linux-amd64.deb` or `-linux-arm64.deb`, `.x86_64.rpm` or `.aarch64.rpm`. The arm64 builds are made natively on `ubuntu-24.04-arm` runners and update from the release like the x86_64 ones. The snap is amd64 only.
+
 **AppImage**
 
 On Debian 13 (Trixie) and Ubuntu 24.04 or newer, install the AppImage FUSE dependency first:
