@@ -336,6 +336,40 @@ describe('main bootstrap', () => {
     expect(goBackIfPossible).toHaveBeenCalledWith(bootstrap.mainWindow);
   });
 
+  it('waits for Settings and its dependencies before creating the tray', async () => {
+    const { components } = await import('electron');
+    const { initSettingsActions } = await import('../src/settings');
+    const { initSettingsWindow } = await import('../src/settingsWindow');
+    const { createTray, rebuildTrayMenu, setGetMainWindowCallback, setShowSettingsCallback } = await import('../src/tray');
+    const { initServiceSwitch } = await import('../src/serviceSwitch');
+    let resolveComponents!: () => void;
+    vi.mocked(components.whenReady).mockReturnValueOnce(new Promise(resolve => {
+      resolveComponents = () => resolve([]);
+    }));
+
+    await startMain();
+    try {
+      expect(components.whenReady).toHaveBeenCalledOnce();
+      expect(createTray).not.toHaveBeenCalled();
+      expect(initSettingsActions).not.toHaveBeenCalled();
+      expect(bootstrap.mainWindow.loadURL).not.toHaveBeenCalled();
+    } finally {
+      resolveComponents();
+      await startMain();
+    }
+
+    expect(createTray).toHaveBeenCalledOnce();
+    const trayCreated = vi.mocked(createTray).mock.invocationCallOrder[0];
+    for (const initialise of [initSettingsActions, initSettingsWindow, initServiceSwitch, setGetMainWindowCallback, setShowSettingsCallback]) {
+      expect(initialise).toHaveBeenCalledOnce();
+      expect(vi.mocked(initialise).mock.invocationCallOrder[0]).toBeLessThan(trayCreated);
+    }
+    expect(trayCreated).toBeLessThan(bootstrap.mainWindow.loadURL.mock.invocationCallOrder[0]);
+    expect(vi.mocked(initServiceSwitch).mock.calls[0][0].getTray()).toBe(bootstrap.tray);
+    vi.mocked(initSettingsActions).mock.calls[0][0].refreshTray();
+    expect(rebuildTrayMenu).toHaveBeenCalledWith(bootstrap.tray);
+  });
+
   it('wires Settings entry points and refreshes state without a tray', async () => {
     const { initSettingsActions, notifySettingsChanged } = await import('../src/settings');
     const { initSettingsWindow, showSettingsWindow, handleSettingsNavigation } = await import('../src/settingsWindow');
