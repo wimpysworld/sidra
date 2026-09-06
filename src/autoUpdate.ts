@@ -111,7 +111,7 @@ export async function configureAutoUpdate(
     const result = await dialog.showMessageBox({
       type: 'info',
       title: autoUpdateStrings.ready,
-      message: `Sidra ${info.version}`,
+      message: `${app.getName()} ${info.version}`,
       buttons: [autoUpdateStrings.restartNow, autoUpdateStrings.later],
       defaultId: 0,
       cancelId: 1,

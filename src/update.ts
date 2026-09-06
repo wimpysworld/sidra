@@ -54,7 +54,7 @@ export function showUpdateNotification(version: string, label: string, onClick: 
   const strings = getUpdateStrings();
   const notification = createNotification({
     title: strings.updateAvailable.replace('{version}', version),
-    body: `Sidra ${version}`,
+    body: `${app.getName()} ${version}`,
     silent: true,
   });
   if (!notification) return;
@@ -143,7 +143,7 @@ export async function checkForUpdates(tray: Tray, rebuildMenu: (tray: Tray) => v
   try {
     const response = await net.fetch(GITHUB_API_URL, {
       headers: {
-        'User-Agent': `Sidra/${localVersion}`,
+        'User-Agent': `${app.getName()}/${localVersion}`,
         'Accept': 'application/vnd.github.v3+json',
       },
       signal: controller.signal,

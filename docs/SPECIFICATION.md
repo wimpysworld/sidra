@@ -463,7 +463,7 @@ if (process.platform === 'linux') {
 
 ### macOS: Chromium's Built-in mediaSession Bridge
 
-Chromium maps `navigator.mediaSession` to `MPNowPlayingInfoCenter` automatically. The **app bundle name** determines what appears in the Now Playing widget (Control Centre, Lock Screen) - set via `productName: "Sidra"` in electron-builder config.
+Chromium maps `navigator.mediaSession` to `MPNowPlayingInfoCenter` automatically. The **app bundle name** determines what appears in the Now Playing widget (Control Centre, Lock Screen). electron-builder takes this name from the top-level `productName` in `package.json`.
 
 ### macOS: Dock Menu and Progress Bar
 
@@ -1082,7 +1082,7 @@ When `getShareUrl()` returns `undefined`, the Share item is omitted from the men
 
 The About item uses `getMenuIcon('about')`, which resolves to the `info.circle` SF Symbol on macOS Tahoe or later (undefined on earlier versions, in which case the icon property is omitted entirely).
 
-`productName: "Sidra"` in `package.json` sets `app.name` to `"Sidra"`; electron-builder derives the menu label from this field.
+The top-level `productName: "Sidra"` in `package.json` is the single source for the product display name. electron-builder inherits this field without a `build.productName` override. Runtime labels use `app.getName()` directly or through `getProductInfo().productName`. Technical identifiers, URLs and storage names remain unchanged.
 
 `showAboutWindow()` is exported from `src/aboutWindow.ts` and imported by `src/main.ts` for use in the app menu. Both the About window and the splash window set `fullscreenable: false` and `fullscreen: false` to prevent them entering full-screen mode.
 

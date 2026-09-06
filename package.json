@@ -33,7 +33,6 @@
   },
   "build": {
     "appId": "world.wimpys.sidra",
-    "productName": "Sidra",
     "copyright": "Copyright (c) Martin Wimpress",
     "publish": {
       "provider": "github",

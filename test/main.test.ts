@@ -29,7 +29,7 @@ const bootstrap = vi.hoisted(() => {
   const mainWindow = {
     webContents,
     loadURL: vi.fn(() => Promise.reject(new Error('offline'))),
-    on: vi.fn(),
+    on: vi.fn((_event: string, _listener: Listener) => {}),
     once: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
@@ -90,7 +90,7 @@ vi.mock('electron', () => ({
   app: {
     name: 'Sidra',
     isPackaged: false,
-    getName: vi.fn(() => 'Sidra'),
+    getName: vi.fn(() => 'Test Player'),
     getVersion: vi.fn(() => '0.3.0'),
     getPath: vi.fn((name: string) => `/tmp/sidra-test/${name}`),
     whenReady: vi.fn(() => Promise.resolve()),
@@ -290,7 +290,7 @@ describe('main bootstrap', () => {
       },
     }));
     expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      title: 'Sidra',
+      title: 'Test Player',
       show: false,
       webPreferences: expect.objectContaining({
         partition: 'persist:sidra',
@@ -305,6 +305,11 @@ describe('main bootstrap', () => {
       'https://music.apple.com/gb/new',
       { userAgent: expect.stringContaining('Chrome/148.0.0.0') },
     );
+    const titleListener = bootstrap.mainWindow.on.mock.calls.find(([event]) => event === 'page-title-updated')?.[1];
+    const preventDefault = vi.fn();
+    expect(titleListener).toBeDefined();
+    titleListener?.({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
     expect(bootstrap.log.warn).toHaveBeenCalledWith('initial navigation loadURL failed:', 'offline');
 
     const didFinishLoad = bootstrap.mainWebListeners.get('did-finish-load');

@@ -20,7 +20,7 @@ function loadLocaleFile(filename: string): TranslationFile {
     const reason = error instanceof Error ? error.message : String(error);
     i18nLog.error(`failed to load locale file ${filePath}: ${reason}`);
     throw new Error(
-      `Sidra could not load the locale file ${filePath}: ${reason}. ` +
+      `${app.getName()} could not load the locale file ${filePath}: ${reason}. ` +
       'Every file in assets/locales/ must be listed individually under asarUnpack in package.json.',
     );
   }
