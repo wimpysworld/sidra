@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { extractInlineScript } from './mocks/inlineScript';
 
 describe.each(['about', 'splash'])('%s page language', page => {
   const html = fs.readFileSync(path.join(__dirname, `../assets/${page}.html`), 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const script = extractInlineScript(html);
 
   it.each([
     ['fr', 'ltr'],
@@ -21,8 +22,7 @@ describe.each(['about', 'splash'])('%s page language', page => {
       querySelector: () => element,
     };
     const search = new URLSearchParams({ lang, text: 'Chargement...' }).toString();
-    expect(script).toBeDefined();
-    vm.runInNewContext(script!, { document, window: { location: { search } }, URLSearchParams });
+    vm.runInNewContext(script, { document, window: { location: { search } }, URLSearchParams });
     expect(document.documentElement).toEqual({ lang: lang || 'en', dir });
     if (page === 'splash') {
       expect(document.title).toBe('Chargement...');
