@@ -11,6 +11,14 @@ import { init } from '../src/integrations/notifications';
 import { NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
 import { quit } from './mocks/appLifecycle';
+import { setPlatform, restorePlatform } from './mocks/platform';
+import { initCommandBridge } from '../src/commandBridge';
+import { getTrayStrings } from '../src/i18n';
+import type { BrowserWindow } from 'electron';
+import * as i18n from '../src/i18n';
+
+const linuxAdapter = vi.hoisted(() => ({ show: vi.fn(), dispose: vi.fn() }));
+vi.mock('../src/linuxNotifications', () => ({ createLinuxNotifications: () => linuxAdapter }));
 
 // Matches NOTIFICATION_DEBOUNCE_MS in src/integrations/notifications/index.ts,
 // which the module keeps private.
@@ -37,6 +45,7 @@ describe('notifications integration', () => {
   let player: FakePlayer;
 
   beforeEach(() => {
+    setPlatform('win32');
     vi.clearAllMocks();
     vi.useFakeTimers();
     resetNotifyFake('record');
@@ -46,6 +55,9 @@ describe('notifications integration', () => {
   });
 
   afterEach(() => {
+    quit();
+    vi.restoreAllMocks();
+    restorePlatform();
     vi.useRealTimers();
   });
 
@@ -72,6 +84,10 @@ describe('notifications integration', () => {
       title: 'Blue Monday',
       body: 'New Order - Power, Corruption & Lies',
       silent: true,
+      actions: [
+        { type: 'button', text: getTrayStrings().previous },
+        { type: 'button', text: getTrayStrings().next },
+      ],
     });
     expect(shown()?.show).toHaveBeenCalledOnce();
   });
@@ -119,5 +135,89 @@ describe('notifications integration', () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 
     expect(vi.mocked(createNotification)).not.toHaveBeenCalled();
+  });
+
+  it.each(['win32', 'darwin'])('dispatches only the two native actions on %s', async (platform) => {
+    setPlatform(platform);
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    shown()?.handlers.action({ actionIndex: 0 }, 1);
+    shown()?.handlers.action({ actionIndex: 1 }, 0);
+    for (const actionIndex of [-1, 2, 0.5, '0', undefined]) {
+      shown()?.handlers.action({ actionIndex });
+    }
+    expect(send.mock.calls).toEqual([['player:previous'], ['player:next']]);
+  });
+
+  it('shows and focuses the window only on a body click', async () => {
+    quit();
+    const win = { show: vi.fn(), focus: vi.fn() };
+    init({ player, getMainWindow: () => win as unknown as BrowserWindow });
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    shown()?.handlers.action({ actionIndex: 0 });
+    expect(win.show).not.toHaveBeenCalled();
+    shown()?.handlers.click();
+    expect(win.show).toHaveBeenCalledOnce();
+    expect(win.focus).toHaveBeenCalledOnce();
+  });
+
+  it('rechecks the preference before a pending notification', async () => {
+    player.emitNowPlaying(TRACK);
+    setNotificationsEnabled(false);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('drops artwork work after quit', async () => {
+    vi.mocked(downloadArtwork).mockReturnValueOnce(new Promise(() => {}));
+    player.emitNowPlaying({ ...TRACK, artworkUrl: 'https://example.com/art.jpg' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    quit();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(createNotification).not.toHaveBeenCalled();
+  });
+
+  it('closes native notifications and removes action handlers on quit', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const notification = shown();
+    quit();
+    expect(notification?.close).toHaveBeenCalledOnce();
+    expect(notification?.handlers).toEqual({});
+  });
+
+  it('uses the existing translated labels for native buttons', async () => {
+    vi.spyOn(i18n, 'getTrayStrings').mockReturnValue({
+      ...getTrayStrings(), previous: 'Précédent', next: 'Suivant',
+    });
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(shown()?.options.actions).toEqual([
+      { type: 'button', text: 'Précédent' },
+      { type: 'button', text: 'Suivant' },
+    ]);
+  });
+
+  it('uses only the Linux adapter and disposes it on quit', async () => {
+    setPlatform('linux');
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(createNotification).not.toHaveBeenCalled();
+    expect(linuxAdapter.show).toHaveBeenCalledOnce();
+    const [notification] = linuxAdapter.show.mock.calls[0];
+    expect(notification).toMatchObject({
+      title: TRACK.name, previous: getTrayStrings().previous, next: getTrayStrings().next,
+    });
+    notification.onAction('previous');
+    notification.onAction('next');
+    expect(send.mock.calls).toEqual([['player:previous'], ['player:next']]);
+    quit();
+    await Promise.resolve();
+    expect(linuxAdapter.dispose).toHaveBeenCalledOnce();
   });
 });

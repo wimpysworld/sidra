@@ -23,7 +23,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus live-reloading `custom.css`
 - 📊 **Last.fm scrobbling** - opt-in, with browser approval
 - 🎮 **Discord Rich Presence** - show what you are listening to
-- 🔔 **Desktop notifications** - track changes, native to each platform
+- 🔔 **Desktop notifications** - track changes with Previous and Next controls where the platform supports notification actions
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
 - 🎮 **Controller navigation** - use a standard controller to move through and select items in both services
@@ -56,6 +56,10 @@ Open **Settings** with the gear button beside Back, Forward and Reload.
 With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.
 The resizable window contains player, start page, style, zoom, close-to-tray, notification, Discord and Last.fm preferences.
 Changes save immediately. The existing tray preferences remain available. [View Settings screenshot](assets/source/sidra-settings.png).
+
+Track notifications let you select **Previous** or **Next** without opening Sidra. Click the notification body to show the player.
+On Linux, the controls and body click require a notification service that supports actions. On macOS, the controls require a signed app and alert-style notifications.
+The current unsigned macOS releases do not meet that requirement.
 
 ### As seen in
 

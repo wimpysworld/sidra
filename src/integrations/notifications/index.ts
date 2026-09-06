@@ -5,6 +5,9 @@ import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
 import { createNotification, notificationsAvailable } from '../../notify';
 import { errorMessage } from '../../utils';
+import { getTrayStrings } from '../../i18n';
+import { sendCommand } from '../../commandBridge';
+import type { createLinuxNotifications } from '../../linuxNotifications';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
 const ARTWORK_RACE_TIMEOUT_MS = 500;
@@ -14,6 +17,9 @@ const notifLog = log.scope('notifications');
 async function showNotification(
   payload: NowPlayingPayload | null,
   getMainWindow: () => BrowserWindow | null,
+  isCurrent: () => boolean,
+  getLinuxNotifications: () => Promise<ReturnType<typeof createLinuxNotifications>>,
+  activeNotifications: Set<Electron.Notification>,
 ): Promise<void> {
   if (!payload?.name) {
     notifLog.debug('skipping notification: no track name');
@@ -39,10 +45,41 @@ async function showNotification(
       ])
     : null;
 
+  if (!isCurrent()) return;
+  const strings = getTrayStrings();
+  const onAction = (action: 'previous' | 'next' | 'default'): void => {
+    if (action === 'previous') sendCommand('player:previous');
+    else if (action === 'next') sendCommand('player:next');
+    else {
+      const win = getMainWindow();
+      if (win) {
+        win.show();
+        win.focus();
+      }
+    }
+  };
+
+  if (process.platform === 'linux') {
+    const linux = await getLinuxNotifications();
+    await linux.show({
+      title: payload.name,
+      body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
+      icon: artworkPath ?? undefined,
+      previous: strings.previous,
+      next: strings.next,
+      onAction,
+    }, isCurrent);
+    return;
+  }
+
   const options: Electron.NotificationConstructorOptions = {
     title: payload.name,
     body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
     silent: true,
+    actions: [
+      { type: 'button', text: strings.previous },
+      { type: 'button', text: strings.next },
+    ],
   };
 
   if (artworkPath) {
@@ -55,6 +92,9 @@ async function showNotification(
     return;
   }
 
+  activeNotifications.add(notification);
+  notification.on('close', () => activeNotifications.delete(notification));
+
   notification.on('show', () => {
     notifLog.debug('notification displayed:', payload.name);
   });
@@ -63,13 +103,11 @@ async function showNotification(
     notifLog.error('notification failed:', payload.name, error);
   });
 
-  notification.on('click', () => {
-    const win = getMainWindow();
-    if (win) {
-      win.show();
-      win.focus();
-    }
+  notification.on('action', (event) => {
+    if (event.actionIndex === 0) onAction('previous');
+    else if (event.actionIndex === 1) onAction('next');
   });
+  notification.on('click', () => onAction('default'));
 
   notification.show();
   notifLog.debug('notification requested:', payload.name);
@@ -87,8 +125,15 @@ export function init(ctx: IntegrationContext): void {
   notifLog.info('notifications enabled:', getNotificationsEnabled());
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let generation = 0;
+  let stopped = false;
+  const activeNotifications = new Set<Electron.Notification>();
+  let linux: Promise<ReturnType<typeof createLinuxNotifications>> | null = null;
+  const getLinuxNotifications = () => linux ??= import('../../linuxNotifications')
+    .then(({ createLinuxNotifications }) => createLinuxNotifications());
 
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+    const currentGeneration = ++generation;
     if (!getNotificationsEnabled()) {
       return;
     }
@@ -99,7 +144,10 @@ export function init(ctx: IntegrationContext): void {
 
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      showNotification(payload, getWin).catch((error: unknown) =>
+      const isCurrent = () => !stopped && generation === currentGeneration
+        && getNotificationsEnabled() && notificationsAvailable();
+      if (!isCurrent()) return;
+      showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications).catch((error: unknown) =>
         notifLog.warn('notification error:', errorMessage(error)),
       );
     }, NOTIFICATION_DEBOUNCE_MS);
@@ -108,6 +156,13 @@ export function init(ctx: IntegrationContext): void {
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
 
   app.on('will-quit', () => {
+    stopped = true;
+    if (linux) void linux.then((adapter) => adapter.dispose()).catch(() => {});
+    for (const notification of activeNotifications) {
+      notification.removeAllListeners();
+      notification.close();
+    }
+    activeNotifications.clear();
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
