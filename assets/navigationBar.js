@@ -28,10 +28,13 @@
 
   const container = document.createElement('div');
   container.id = 'sidra-nav-buttons';
+  // Apple's sidebar content overlaps the header with a negative top margin.
   container.setAttribute('style', [
+    'position: relative !important',
+    'z-index: 1 !important',
     'display: flex !important',
     'align-items: center !important',
-    'gap: 4px !important',
+    'gap: 2px !important',
     'margin-left: auto !important',
     'pointer-events: auto !important',
   ].join('; '));
@@ -90,14 +93,6 @@
   // Icon geometry only; the wrapping svg carries sharedAttrs.
   /** @type {Array<{ label: string, channel: string, icon: Array<[string, Record<string, string>]> }>} */
   var BUTTONS = [
-    {
-      label: LABELS.settings,
-      channel: 'nav:settings',
-      icon: [
-        ['circle', { cx: '12', cy: '12', r: '3' }],
-        ['path', { d: 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z' }],
-      ],
-    },
     { label: LABELS.back, channel: 'nav:back', icon: [['polyline', { points: '15 18 9 12 15 6' }]] },
     {
       label: LABELS.forward,
@@ -110,6 +105,14 @@
       icon: [
         ['polyline', { points: '23 4 23 10 17 10' }],
         ['path', { d: 'M20.49 15a9 9 0 1 1-2.12-9.36L23 10' }],
+      ],
+    },
+    {
+      label: LABELS.settings,
+      channel: 'nav:settings',
+      icon: [
+        ['circle', { cx: '12', cy: '12', r: '3' }],
+        ['path', { d: 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z' }],
       ],
     },
   ];
