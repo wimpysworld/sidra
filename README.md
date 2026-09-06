@@ -13,14 +13,6 @@ Sidra is Apple Music as a proper desktop citizen on Linux, macOS, and Windows - 
 Most Apple Music desktop clients break the audio, mangle the playback controls, or bury you under a custom UI that Apple never signed off on - the problem is worst on Linux.
 Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of the way, and let the audio through untouched. Apple owns the interface and keeps it current; Sidra inherits every improvement automatically.
 
-**As featured on [Linux Matters](https://linuxmatters.sh) podcast!** 🎙️ I am a presenter on Linux Matters and I discussed some of the backstory and how came to create Sidra on [Episode 79 - Pouring out the Sidra](https://linuxmatters.sh/79/).
-
-<div align="center">
-  <a href="https://linuxmatters.sh" target="_blank"><img src="https://github.com/wimpysworld/nix-config/raw/main/assets/linuxmatters.png" alt="Linux Matters Podcast"/></a>
-  <br />
-  <em>Linux Matters Podcast</em>
-</div>
-
 ---
 
 ## Features
@@ -66,6 +58,23 @@ Changes save immediately. The existing tray preferences remain available. [View 
 <p align="center">
   <a href="assets/sidra-screenshot.png"><img src="assets/sidra-screenshot.png" alt="Sidra playing Cambodian Space Project in the Catppuccin theme, with Settings open" width="100%"></a>
 </p>
+
+### As seen in
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://linuxmatters.sh/79/"><img src="https://github.com/wimpysworld/nix-config/raw/main/assets/linuxmatters.png" alt="Linux Matters" height="64"></a><br>
+      <a href="https://linuxmatters.sh/79/">Episode 79: Pouring out the Sidra</a>
+    </td>
+    <td align="center">
+      <a href="https://www.linux-magazin.de/news/sidra-1-0-bringt-apple-music-auf-den-linux-desktop/"><img src="assets/source/linux-magazin-online.png" alt="Linux Magazin Online" height="64"></a><br>
+      <a href="https://www.linux-magazin.de/news/sidra-1-0-bringt-apple-music-auf-den-linux-desktop/">Sidra 1.0 on the Linux desktop</a> (German)
+    </td>
+  </tr>
+</table>
+
+I am a presenter on Linux Matters and discussed Sidra's origins in Episode 79. Linux Magazin Online covers Sidra 1.0 and includes an interview with me.
 
 ### Controller navigation
 
