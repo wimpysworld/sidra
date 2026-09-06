@@ -7,6 +7,7 @@ import type { SettingsAction, SettingsState } from '../src/settings';
 
 const source = fs.readFileSync(path.join(__dirname, '../assets/settings.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '../assets/settings.html'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '../assets/settings.css'), 'utf8');
 
 class Element {
   value = '';
@@ -54,7 +55,7 @@ function harness(initial = fixture()) {
     return element;
   });
   const document = {
-    title: '', documentElement: { lang: '', dir: '' }, activeElement: elements.get('theme'),
+    title: '', documentElement: { lang: '', dir: '', dataset: { theme: '' } }, activeElement: elements.get('theme'),
     getElementById: (id: string) => elements.get(id),
     querySelectorAll: () => labels,
     createElement: () => new Element(),
@@ -85,7 +86,7 @@ describe('settings page', () => {
     const focused = h.document.activeElement;
     h.push({ ...fixture(), lang: 'he' });
     expect(h.document.activeElement).toBe(focused);
-    expect(h.document.documentElement).toEqual({ lang: 'he', dir: 'rtl' });
+    expect(h.document.documentElement).toEqual({ lang: 'he', dir: 'rtl', dataset: { theme: 'apple-music' } });
     expect(h.document.title).toBe(fixture().labels.settings);
   });
 
@@ -190,5 +191,24 @@ describe('settings page', () => {
     expect(html).toContain("default-src 'none'; script-src 'self'; style-src 'self'");
     expect(html).not.toContain('unsafe-inline');
     expect(source).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML/);
+  });
+
+  it('updates the root style and restores the system colour scheme after Dracula', async () => {
+    const h = harness({ ...fixture(), theme: 'dracula' });
+    await settle();
+    expect(h.document.documentElement.dataset.theme).toBe('dracula');
+    expect(css).toContain(':root[data-theme="dracula"] { color-scheme: dark; }');
+    h.push(fixture());
+    expect(h.document.documentElement.dataset.theme).toBe('apple-music');
+    expect(css).toContain('color-scheme: light dark;');
+  });
+
+  it('uses shared theme tokens with system colour fallbacks', () => {
+    for (const mapping of [
+      'var(--systemPrimary, CanvasText)', 'var(--pageBG, Canvas)',
+      'var(--labelDivider, color-mix(in srgb, CanvasText 15%, Canvas))',
+      'var(--opaqueShelfBG, color-mix(in srgb, CanvasText 3%, Canvas))',
+      'var(--playerLCDBGFill, Canvas)', 'var(--keyColor, AccentColor)', 'var(--keyColor, Highlight)',
+    ]) expect(css).toContain(mapping);
   });
 });

@@ -6,9 +6,11 @@ import { getAssetPath } from './paths';
 import { getTrayStrings } from './i18n';
 import { isAllowedNavigationUrl } from './musicService';
 import { applySettingsAction, getSettingsState, subscribeSettingsChanges } from './settings';
+import { getThemeCss, resolveTheme } from './theme';
 
 let settingsWindow: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
+let refreshSettingsTheme: (() => Promise<void>) | null = null;
 const settingsLog = log.scope('settings');
 
 function settingsUrl(): string {
@@ -50,12 +52,53 @@ export function showSettingsWindow(): void {
     },
   });
   settingsWindow = window;
+  const contents = window.webContents;
+  let themeCss: string | null = null;
+  let themeKey: string | null = null;
+  let themeOp = Promise.resolve();
+  const refreshTheme = (): Promise<void> => {
+    themeOp = themeOp.then(async () => {
+      if (window.isDestroyed() || contents.isDestroyed() || contents.getURL() !== settingsUrl()) return;
+      const css = getThemeCss(resolveTheme());
+      if (css === themeCss) return;
+      if (themeKey !== null) {
+        await contents.removeInsertedCSS(themeKey);
+        if (window.isDestroyed() || contents.isDestroyed()) return;
+        themeKey = null;
+        themeCss = null;
+      }
+      if (css !== null) {
+        const key = await contents.insertCSS(css);
+        if (window.isDestroyed() || contents.isDestroyed()) return;
+        themeKey = key;
+        themeCss = css;
+      }
+    }).catch(() => {
+      settingsLog.warn('Settings style failed to update');
+    });
+    return themeOp;
+  };
+  refreshSettingsTheme = refreshTheme;
+  let showTimer: ReturnType<typeof setTimeout> | undefined;
   window.setMenu(null);
   window.once('ready-to-show', () => {
-    if (!window.isDestroyed()) window.show();
+    const show = (): void => {
+      clearTimeout(showTimer);
+      showTimer = undefined;
+      if (!window.isDestroyed()) window.show();
+    };
+    showTimer = setTimeout(show, 1000);
+    void refreshTheme().then(() => {
+      if (showTimer !== undefined) show();
+    });
   });
   window.once('closed', () => {
-    if (settingsWindow === window) settingsWindow = null;
+    clearTimeout(showTimer);
+    showTimer = undefined;
+    if (settingsWindow === window) {
+      settingsWindow = null;
+      refreshSettingsTheme = null;
+    }
   });
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.on('will-frame-navigate', event => event.preventDefault());
@@ -86,9 +129,11 @@ export function initSettingsWindow(window: BrowserWindow): () => void {
     return applySettingsAction(action);
   });
   const unsubscribe = subscribeSettingsChanges(state => {
+    if (!settingsWindow || settingsWindow.isDestroyed()) return;
     const contents = settingsWindow?.webContents;
     if (contents && !contents.isDestroyed() && contents.getURL() === settingsUrl()) {
       contents.send('settings:state', state);
+      void refreshSettingsTheme?.();
     }
   });
   const onInput = (event: Electron.Event, input: Electron.Input): void => {

@@ -2,11 +2,13 @@
   color-scheme: light dark;
   font-family: system-ui, sans-serif;
   font-size: 14px;
-  color: CanvasText;
-  background: Canvas;
-  --border: color-mix(in srgb, CanvasText 15%, Canvas);
-  --surface: color-mix(in srgb, CanvasText 3%, Canvas);
+  color: var(--systemPrimary, CanvasText);
+  background: var(--pageBG, Canvas);
+  --border: var(--labelDivider, color-mix(in srgb, CanvasText 15%, Canvas));
+  --surface: var(--opaqueShelfBG, color-mix(in srgb, CanvasText 3%, Canvas));
 }
+
+:root[data-theme="dracula"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -19,13 +21,13 @@ section + section { margin-block-start: 24px; }
 .row { min-block-size: 58px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .row + .row, #lastfm { border-block-start: 1px solid var(--border); }
 label { line-height: 1.4; }
-select, button { font: inherit; color: CanvasText; background: Canvas; border: 1px solid var(--border); border-radius: 6px; min-block-size: 36px; padding: 6px 10px; }
+select, button { font: inherit; color: var(--systemPrimary, CanvasText); background: var(--playerLCDBGFill, Canvas); border: 1px solid var(--border); border-radius: 6px; min-block-size: 36px; padding: 6px 10px; }
 select { inline-size: 54%; max-inline-size: 290px; min-inline-size: 0; }
 button { cursor: pointer; max-inline-size: 100%; }
 button:hover { background: var(--surface); }
-input[type="checkbox"] { accent-color: AccentColor; inline-size: 20px; block-size: 20px; flex-shrink: 0; margin: 0; cursor: pointer; }
+input[type="checkbox"] { accent-color: var(--keyColor, AccentColor); inline-size: 20px; block-size: 20px; flex-shrink: 0; margin: 0; cursor: pointer; }
 .toggle { cursor: pointer; }
-:focus-visible { outline: 2px solid Highlight; outline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--keyColor, Highlight); outline-offset: 3px; }
 .lastfm-details { padding: 0 16px 16px; }
 #lastfm-status { margin: 0 0 12px; overflow-wrap: anywhere; unicode-bidi: plaintext; }
 #lastfm-status:empty { display: none; }

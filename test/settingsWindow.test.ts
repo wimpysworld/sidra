@@ -7,6 +7,12 @@ import { getSettingsState, applySettingsAction, subscribeSettingsChanges, type S
 import { handleSettingsNavigation, initSettingsWindow, showSettingsWindow } from '../src/settingsWindow';
 import { restorePlatform, setPlatform } from './mocks/platform';
 import { quit } from './mocks/appLifecycle';
+import { getThemeCss, resolveTheme } from '../src/theme';
+
+vi.mock('../src/theme', () => ({
+  getThemeCss: vi.fn(() => null),
+  resolveTheme: vi.fn(() => 'apple-music'),
+}));
 
 vi.mock('../src/settings', () => ({
   getSettingsState: vi.fn(() => ({ theme: 'apple-music' })),
@@ -23,6 +29,8 @@ class WindowStub extends EventEmitter {
     isDestroyed: () => this.destroyed,
     getURL: () => this.url,
     send: vi.fn(),
+    insertCSS: vi.fn(async (_css: string) => 'theme-key'),
+    removeInsertedCSS: vi.fn(async (_key: string) => {}),
     setWindowOpenHandler: vi.fn(),
   });
   isDestroyed = () => this.destroyed;
@@ -48,6 +56,8 @@ function request(window = opened): IpcMainInvokeEvent {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getThemeCss).mockReset().mockReturnValue(null);
+  vi.mocked(resolveTheme).mockReset().mockReturnValue('apple-music');
   handlers.clear();
   main = new WindowStub();
   Object.assign(app, { removeListener: vi.fn() });
@@ -61,10 +71,25 @@ beforeEach(() => {
   dispose = initSettingsWindow(asWindow(main));
 });
 
-afterEach(() => { dispose(); restorePlatform(); });
+afterEach(() => { dispose(); restorePlatform(); vi.useRealTimers(); });
+
+async function settle(): Promise<void> {
+  for (let i = 0; i < 15; i++) await Promise.resolve();
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(yes => { resolve = yes; });
+  return { promise, resolve };
+}
+
+function changeStyle(css: string | null): void {
+  vi.mocked(getThemeCss).mockReturnValue(css);
+  vi.mocked(subscribeSettingsChanges).mock.calls[0][0]({ theme: 'custom' } as SettingsState);
+}
 
 describe('Settings window', () => {
-  it('uses a sandboxed local page with normal window controls', () => {
+  it('uses a sandboxed local page with normal window controls', async () => {
     showSettingsWindow();
     expect(BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
       frame: true, resizable: true, minWidth: 360, minHeight: 420,
@@ -73,6 +98,7 @@ describe('Settings window', () => {
     expect(opened.loadFile).toHaveBeenCalledWith(getAssetPath('assets', 'settings.html'));
     expect(opened.show).not.toHaveBeenCalled();
     opened.emit('ready-to-show');
+    await settle();
     expect(opened.show).toHaveBeenCalledOnce();
     opened.minimised = true;
     showSettingsWindow();
@@ -88,6 +114,121 @@ describe('Settings window', () => {
     expect(BrowserWindow).toHaveBeenCalledTimes(2);
     expect(ipcMain.handle).toHaveBeenCalledTimes(2);
     expect(subscribeSettingsChanges).toHaveBeenCalledOnce();
+  });
+
+  it('applies the selected style before showing the page', async () => {
+    vi.mocked(resolveTheme).mockReturnValue('dracula');
+    vi.mocked(getThemeCss).mockReturnValue(':root { --pageBG: #282a36; }');
+    showSettingsWindow();
+    const pending = deferred<string>();
+    opened.webContents.insertCSS.mockReturnValueOnce(pending.promise);
+    opened.emit('ready-to-show');
+    await settle();
+    expect(getThemeCss).toHaveBeenCalledWith('dracula');
+    expect(opened.webContents.insertCSS).toHaveBeenCalledWith(':root { --pageBG: #282a36; }');
+    expect(opened.show).not.toHaveBeenCalled();
+    pending.resolve('initial');
+    await settle();
+    expect(opened.show).toHaveBeenCalledOnce();
+  });
+
+  it('shows after one second even when CSS insertion does not settle', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getThemeCss).mockReturnValue('pending');
+    showSettingsWindow();
+    const pending = deferred<string>();
+    opened.webContents.insertCSS.mockReturnValueOnce(pending.promise);
+    opened.emit('ready-to-show');
+    await settle();
+    vi.advanceTimersByTime(1000);
+    expect(opened.show).toHaveBeenCalledOnce();
+    pending.resolve('late');
+    await settle();
+    expect(opened.show).toHaveBeenCalledOnce();
+  });
+
+  it('serialises replacements and removes the style when returning to Apple Music', async () => {
+    showSettingsWindow();
+    changeStyle('first');
+    await settle();
+    const removal = deferred<void>();
+    opened.webContents.removeInsertedCSS.mockReturnValueOnce(removal.promise);
+    changeStyle('second');
+    await settle();
+    expect(opened.webContents.insertCSS).toHaveBeenCalledExactlyOnceWith('first');
+    changeStyle(null);
+    removal.resolve();
+    await settle();
+    expect(opened.webContents.insertCSS.mock.calls).toEqual([['first'], ['second']]);
+    expect(opened.webContents.removeInsertedCSS).toHaveBeenCalledTimes(2);
+    expect(opened.webContents.removeInsertedCSS).toHaveBeenCalledWith('theme-key');
+  });
+
+  it('refreshes edited custom CSS without reinserting unchanged contents', async () => {
+    vi.mocked(resolveTheme).mockReturnValue('custom');
+    showSettingsWindow();
+    changeStyle('custom before');
+    await settle();
+    changeStyle('custom before');
+    await settle();
+    expect(opened.webContents.insertCSS).toHaveBeenCalledOnce();
+    changeStyle('custom after');
+    await settle();
+    expect(opened.webContents.insertCSS.mock.calls).toEqual([['custom before'], ['custom after']]);
+    expect(opened.webContents.removeInsertedCSS).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a pending insertion isolated from a reopened window', async () => {
+    showSettingsWindow();
+    const old = opened;
+    const contents = old.webContents;
+    const pending = deferred<string>();
+    contents.insertCSS.mockReturnValueOnce(pending.promise);
+    changeStyle('old');
+    await settle();
+    old.close();
+    Object.defineProperty(old, 'webContents', { get: () => { throw new Error('Object has been destroyed'); } });
+    showSettingsWindow();
+    changeStyle('new');
+    await settle();
+    pending.resolve('old-key');
+    await settle();
+    changeStyle(null);
+    await settle();
+    expect(contents.removeInsertedCSS).not.toHaveBeenCalled();
+    expect(opened.webContents.removeInsertedCSS).toHaveBeenCalledExactlyOnceWith('theme-key');
+  });
+
+  it('does not insert after the window closes during removal', async () => {
+    showSettingsWindow();
+    changeStyle('first');
+    await settle();
+    const pending = deferred<void>();
+    opened.webContents.removeInsertedCSS.mockReturnValueOnce(pending.promise);
+    changeStyle('second');
+    await settle();
+    dispose();
+    pending.resolve();
+    await settle();
+    expect(opened.webContents.insertCSS).toHaveBeenCalledExactlyOnceWith('first');
+  });
+
+  it('recovers from rejected insertions and retries rejected removals', async () => {
+    showSettingsWindow();
+    opened.webContents.insertCSS.mockRejectedValueOnce(new Error('insertion failed'));
+    changeStyle('first');
+    await settle();
+    changeStyle('first');
+    await settle();
+    expect(opened.webContents.insertCSS).toHaveBeenCalledTimes(2);
+    opened.webContents.removeInsertedCSS.mockRejectedValueOnce(new Error('removal failed'));
+    changeStyle('second');
+    await settle();
+    expect(opened.webContents.insertCSS).toHaveBeenCalledTimes(2);
+    changeStyle('second');
+    await settle();
+    expect(opened.webContents.removeInsertedCSS).toHaveBeenCalledTimes(2);
+    expect(opened.webContents.insertCSS).toHaveBeenLastCalledWith('second');
   });
 
   it('accepts only the current Settings document and passes unknown payloads to the validator', () => {

@@ -21,6 +21,7 @@
     const focusedId = document.activeElement?.id;
     state = next;
     document.documentElement.lang = state.lang;
+    document.documentElement.dataset.theme = state.theme;
     document.documentElement.dir = /^(ar|he)(-|$)/i.test(state.lang) ? 'rtl' : 'ltr';
     document.title = state.labels.settings;
     for (const element of document.querySelectorAll('[data-label]')) {
