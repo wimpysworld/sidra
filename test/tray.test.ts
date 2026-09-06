@@ -257,12 +257,15 @@ describe('createTray - menu template inspection', () => {
   it('publishes a tray preference action to Settings subscribers', () => {
     const listener = vi.fn();
     const unsubscribe = subscribeSettingsChanges(listener);
-    createTray();
-    const item = findItem(getLastTemplate(), 'Notifications');
-    const choices = item?.submenu as Electron.MenuItemConstructorOptions[];
-    choices[1].click?.({} as Electron.MenuItem, {} as BrowserWindow, {} as Electron.KeyboardEvent);
-    expect(listener).toHaveBeenCalledOnce();
-    unsubscribe();
+    try {
+      createTray();
+      const item = findItem(getLastTemplate(), 'Notifications');
+      const choices = item?.submenu as Electron.MenuItemConstructorOptions[];
+      choices[1].click?.({} as Electron.MenuItem, {} as BrowserWindow, {} as Electron.KeyboardEvent);
+      expect(listener).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe();
+    }
   });
 
   it.each([
