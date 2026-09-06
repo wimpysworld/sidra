@@ -99,7 +99,8 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 
 The **Custom** option appears when that file is readable and contains CSS.
 
-Your chosen theme applies to both Apple Music and Apple Music Classical.
+Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
+For custom colours in Settings, use Apple Music CSS variables. Selectors for Apple's web pages do not necessarily match the Settings window.
 
 ---
 
