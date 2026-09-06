@@ -659,7 +659,6 @@ if (gotLock) {
     setupApplicationMenu();
     const player = initPlayerIPC();
     initNotificationProbe();
-    appTray = createTray();
     const ses = await initSession();
     cleanArtworkCache();
 
@@ -706,6 +705,7 @@ if (gotLock) {
     setupWindowEvents(win, markCssReady);
     setupNavigationHandlers(win, player, assets);
     setupAuthFrameInjection(win, assets.authFrameScript);
+    appTray = createTray();
     if (process.env.SIDRA_DEVTOOLS === '1') {
       win.webContents.openDevTools();
       mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
