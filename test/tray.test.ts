@@ -23,10 +23,16 @@ vi.mock('../src/config', () => ({
   getMusicService: vi.fn(() => 'music'),
   setMusicService: vi.fn(),
   getClassicalStartPage: vi.fn(() => 'home'),
+  getStartPageFor: vi.fn((id: string) => id === 'classical' ? getClassicalStartPage() : 'new'),
   setClassicalStartPage: vi.fn(),
 }));
 
 const mockTrayStrings: TrayStrings = {
+  settings: 'Settings',
+  integrations: 'Integrations',
+  settingsError: 'Could not apply this setting.',
+  lastfm: 'Last.fm',
+  lastfmConnected: 'Connected',
   about: 'About Sidra',
   quit: 'Quit',
   notifications: 'Notifications',
@@ -81,6 +87,7 @@ const TEST_START_PAGE_LABELS: Record<AnyStartPageId, string> = {
 
 vi.mock('../src/i18n', () => ({
   getTrayStrings: () => mockTrayStrings,
+  getLoadingText: () => ({ lang: 'en', text: 'Loading...' }),
   getAboutStrings: () => ({ close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
   getUpdateStrings: () => ({ updateAvailable: 'Update available: {version}', upToDate: 'Up to date' }),
   getAutoUpdateStrings: () => ({ ready: 'Restart to update' }),
@@ -90,6 +97,7 @@ vi.mock('../src/integrations/lastfm', () => ({
   enable: vi.fn(),
   disable: vi.fn(),
   startAuth: vi.fn(),
+  setStateChangedCallback: vi.fn(),
   disconnect: vi.fn(),
   isConfigured: vi.fn(() => false),
 }));
@@ -119,7 +127,7 @@ vi.mock('../src/paths', () => ({
 
 import { BrowserWindow, Menu, Tray, nativeImage, nativeTheme } from 'electron';
 import { getUpdateInfo } from '../src/update';
-import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback, setSwitchServiceCallback, type MenuIconKey } from '../src/tray';
+import { truncateMenuLabel, sanitiseLinuxLabel, cancelTrayRebuild, createTray, getMenuIcon, updateNowPlayingState, updateTrayTooltip, rebuildTrayMenu, initTrayStateManager, setGetMainWindowCallback as setTrayMainWindowCallback, type MenuIconKey } from '../src/tray';
 import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getClassicalStartPage, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
@@ -129,6 +137,19 @@ import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigu
 import { FakePlayer } from './mocks/player';
 import { setPlatform, restorePlatform } from './mocks/platform';
 import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type MusicServiceId } from '../src/musicService';
+
+import { initSettingsActions, subscribeSettingsChanges } from '../src/settings';
+import { setShowSettingsCallback } from '../src/tray';
+
+let getSettingsMainWindow: () => BrowserWindow | null = () => null;
+let switchSettingsService: (id: MusicServiceId) => void = () => {};
+function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
+  getSettingsMainWindow = callback;
+  setTrayMainWindowCallback(callback);
+}
+function setSwitchServiceCallback(callback: (id: MusicServiceId) => void): void {
+  switchSettingsService = callback;
+}
 
 afterEach(restorePlatform);
 afterEach(() => vi.unstubAllEnvs());
@@ -143,6 +164,7 @@ afterEach(() => vi.unstubAllEnvs());
  * describes becomes part of the contract.
  */
 function resetTrayMocks(): void {
+  initSettingsActions({ getMainWindow: () => getSettingsMainWindow(), applyZoom: () => {}, switchService: id => switchSettingsService(id), refreshTray: () => {} });
   vi.stubEnv('XDG_CURRENT_DESKTOP', undefined);
   vi.mocked(getMusicService).mockReturnValue('music');
   vi.mocked(getClassicalStartPage).mockReturnValue('home');
@@ -223,6 +245,26 @@ describe('sanitiseLinuxLabel', () => {
 });
 
 describe('createTray - menu template inspection', () => {
+  it('opens Settings through the supplied callback', () => {
+    const openSettings = vi.fn();
+    setShowSettingsCallback(openSettings);
+    createTray();
+    const item = findItem(getLastTemplate(), 'Settings');
+    item?.click?.({} as Electron.MenuItem, {} as BrowserWindow, {} as Electron.KeyboardEvent);
+    expect(openSettings).toHaveBeenCalledOnce();
+  });
+
+  it('publishes a tray preference action to Settings subscribers', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeSettingsChanges(listener);
+    createTray();
+    const item = findItem(getLastTemplate(), 'Notifications');
+    const choices = item?.submenu as Electron.MenuItemConstructorOptions[];
+    choices[1].click?.({} as Electron.MenuItem, {} as BrowserWindow, {} as Electron.KeyboardEvent);
+    expect(listener).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+
   it.each([
     ['win32', 'sidra-tray.png'],
     ['darwin', 'sidraTemplate.png'],

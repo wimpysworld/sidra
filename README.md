@@ -27,14 +27,14 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 - 🎧 **Untouched audio** - no `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - 🎨 **Six bundled themes** - Catppuccin, Dracula, Gruvbox, Nord, Rosé Pine, and Solarized - plus a live-reloading `custom.css` escape hatch
-- 📊 **Last.fm scrobbling** - opt-in; connect from the tray and approve Sidra in your browser
+- 📊 **Last.fm scrobbling** - opt-in, with browser approval
 - 🎮 **Discord Rich Presence** - show what you are listening to
 - 🔔 **Desktop notifications** - track changes, native to each platform
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
 - 🎮 **Controller navigation** - use a standard controller to move through and select items in both services
 - 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
-- 🎼 **Apple Music Classical** - switch at runtime from the tray **Player** submenu:
+- 🎼 **Apple Music Classical** - switch at runtime through **Player** in Settings or the tray:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page
 - 🐧 **Linux**:
   - Widevine DRM via CastLabs Electron
@@ -57,6 +57,11 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🔄 **Auto-update** via GitHub Releases:
   - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
   - deb, rpm, Nix, macOS DMG: update notification linking to the release page
+
+Open **Settings** with the gear button beside Back, Forward and Reload, or choose **Settings** from the tray menu.
+With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.
+The resizable window contains player, start page, style, zoom, close-to-tray, notification, Discord and Last.fm preferences.
+Changes save immediately. The existing tray preferences remain available.
 
 <p align="center">
   <img src="assets/source/sidra-screenshot.png" alt="Sidra screenshot" width="100%">
@@ -84,7 +89,7 @@ It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the min
 
 ## Theming
 
-Theme selection lives in the tray **Style** submenu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
+Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
 
 As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
 
@@ -92,7 +97,7 @@ As an unsupported escape hatch, you can place a `custom.css` file in Sidra's use
 - macOS: `~/Library/Application Support/Sidra/custom.css`
 - Windows: `%APPDATA%\Sidra\custom.css`
 
-The **Custom** menu entry only appears when that file exists.
+The **Custom** option appears when that file is readable and contains CSS.
 
 Your chosen theme applies to both Apple Music and Apple Music Classical.
 
@@ -100,9 +105,9 @@ Your chosen theme applies to both Apple Music and Apple Music Classical.
 
 ## Last.fm scrobbling
 
-Nothing is sent to Last.fm until you connect an account. Open the tray menu, choose **Last.fm** → **Connect to Last.fm…**, and Sidra opens the Last.fm approval page in your browser. Approve Sidra there and the tray shows your username, along with a notification if you have those switched on.
+Nothing is sent to Last.fm until you connect an account. In Settings, choose **Connect to Last.fm…**, then approve Sidra in your browser. Settings and the tray show your username after approval. Sidra also sends a notification if notifications are on.
 
-Once connected, the **Last.fm** submenu turns scrobbling on and off and offers **Disconnect**. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
+Use Settings or the tray **Last.fm** submenu to turn scrobbling on or off, or disconnect. You can also connect through that submenu. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
 
 Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
 
@@ -281,7 +286,7 @@ Credentials are stored at `~/.config/evs/config.json`. The account is portable -
 
 ### Last.fm API credentials
 
-Official releases ship Last.fm API credentials; a build from this repository does not. Without them the tray hides the Last.fm menu entirely, so the advertised feature is simply absent rather than broken.
+Official releases ship Last.fm API credentials. A build from this repository does not. Without credentials, Settings and the tray hide the Last.fm controls.
 
 Register an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create), then export the key and secret before building:
 

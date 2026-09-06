@@ -15,7 +15,7 @@ const navBarSource = fs.readFileSync(
 // same before it runs it. These labels are deliberately not English, so a label
 // that reaches a button proves it came from here and not from a default in the
 // asset.
-const LABELS = { back: 'Zurück', forward: 'Vorwärts', reload: 'Neu laden' };
+const LABELS = { back: 'Zurück', forward: 'Vorwärts', reload: 'Neu laden', settings: 'Einstellungen' };
 
 const navBarScript = navBarSource.replace(NAV_LABELS_TOKEN, () => JSON.stringify(LABELS));
 
@@ -128,7 +128,7 @@ describe('navigationBar', () => {
 
     run();
 
-    expect(labelsOf(bar()?.children ?? [])).toEqual([LABELS.back, LABELS.forward, LABELS.reload]);
+    expect(labelsOf(bar()?.children ?? [])).toEqual([LABELS.settings, LABELS.back, LABELS.forward, LABELS.reload]);
   });
 
   it('appends nothing and throws nothing when the anchor is missing', () => {
@@ -153,15 +153,16 @@ describe('navigationBar', () => {
 
     run();
 
-    expect(buttons()).toHaveLength(3);
+    expect(buttons()).toHaveLength(4);
 
     run();
 
-    expect(buttons()).toHaveLength(3);
+    expect(buttons()).toHaveLength(4);
     expect(anchor?.children).toHaveLength(1);
   });
 
   it.each([
+    [LABELS.settings, 'nav:settings'],
     [LABELS.back, 'nav:back'],
     [LABELS.forward, 'nav:forward'],
     [LABELS.reload, 'nav:reload'],

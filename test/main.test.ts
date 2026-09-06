@@ -30,6 +30,7 @@ const bootstrap = vi.hoisted(() => {
     webContents,
     loadURL: vi.fn(() => Promise.reject(new Error('offline'))),
     on: vi.fn(),
+    once: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
     close: vi.fn(),
@@ -185,9 +186,18 @@ vi.mock('../src/tray', () => ({
   getMenuIcon: vi.fn(),
   initTrayStateManager: bootstrap.integrations.trayState,
   rebuildTrayMenu: vi.fn(),
-  setApplyZoomCallback: vi.fn(),
   setGetMainWindowCallback: vi.fn(),
-  setSwitchServiceCallback: vi.fn(),
+  setShowSettingsCallback: vi.fn(),
+}));
+
+vi.mock('../src/settings', () => ({
+  initSettingsActions: vi.fn(() => vi.fn()),
+  notifySettingsChanged: vi.fn(),
+}));
+vi.mock('../src/settingsWindow', () => ({
+  initSettingsWindow: vi.fn(),
+  showSettingsWindow: vi.fn(),
+  handleSettingsNavigation: vi.fn(),
 }));
 
 vi.mock('../src/commandBridge', () => ({ initCommandBridge: vi.fn() }));
@@ -324,6 +334,27 @@ describe('main bootstrap', () => {
     expect(backCall).toBeDefined();
     backCall?.[1]();
     expect(goBackIfPossible).toHaveBeenCalledWith(bootstrap.mainWindow);
+  });
+
+  it('wires Settings entry points and refreshes state without a tray', async () => {
+    const { initSettingsActions, notifySettingsChanged } = await import('../src/settings');
+    const { initSettingsWindow, showSettingsWindow, handleSettingsNavigation } = await import('../src/settingsWindow');
+    const { createTray, setShowSettingsCallback } = await import('../src/tray');
+    const { initServiceSwitch } = await import('../src/serviceSwitch');
+    const { setRebuildTrayCallback } = await import('../src/theme');
+    vi.mocked(createTray).mockReturnValueOnce(null as unknown as ReturnType<typeof createTray>);
+    await startMain();
+    expect(initSettingsActions).toHaveBeenCalledOnce();
+    expect(initSettingsWindow).toHaveBeenCalledWith(bootstrap.mainWindow);
+    expect(setShowSettingsCallback).toHaveBeenCalledWith(showSettingsWindow);
+    const nav = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'nav:settings');
+    const event = {};
+    nav?.[1](event);
+    expect(handleSettingsNavigation).toHaveBeenCalledWith(event, bootstrap.mainWindow);
+    vi.mocked(setRebuildTrayCallback).mock.calls[0][0]();
+    expect(notifySettingsChanged).toHaveBeenCalledOnce();
+    vi.mocked(initServiceSwitch).mock.calls[0][0].loadURL('https://music.apple.com/gb/new');
+    expect(notifySettingsChanged).toHaveBeenCalledTimes(2);
   });
 
   it('resets controller state only for main-frame navigation', async () => {

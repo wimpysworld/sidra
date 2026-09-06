@@ -167,6 +167,9 @@ describe('controller polling in the preload', () => {
         .map((match) => match[2]);
 
       expect(requires).toEqual(['electron']);
+      const settingsPreload = readFileSync(join(outputDirectory, 'settingsPreload.js'), 'utf8');
+      expect([...settingsPreload.matchAll(/\brequire\((["'])([^"']+)\1\)/g)].map(match => match[2]))
+        .toEqual(['electron']);
     } finally {
       rmSync(outputDirectory, { recursive: true, force: true });
     }
@@ -329,6 +332,21 @@ describe('controller polling in the preload', () => {
 
     exposed.ipcRenderer.send('playbackStateDidChange', true);
     expect(harness.ipcRenderer.send).toHaveBeenCalledWith('playbackStateDidChange', true);
+  });
+
+  it('allows only the Settings entry point, not private Settings channels', async () => {
+    const harness = await loadPreload();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const exposed = vi.mocked(harness.contextBridge.exposeInMainWorld).mock.calls
+      .find(([key]) => key === 'AMWrapper')?.[1] as {
+        ipcRenderer: { send(channel: string, data?: unknown): void };
+      };
+    for (const channel of ['settings:get', 'settings:apply', 'settings:state']) {
+      exposed.ipcRenderer.send(channel);
+    }
+    expect(harness.ipcRenderer.send).not.toHaveBeenCalled();
+    exposed.ipcRenderer.send('nav:settings');
+    expect(harness.ipcRenderer.send).toHaveBeenCalledWith('nav:settings', undefined);
   });
 
   it('installs one polling loop for each isolated preload setup', async () => {

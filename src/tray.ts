@@ -4,19 +4,16 @@ import log from 'electron-log/main';
 import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { Player, isTerminalPlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, setNotificationsEnabled, getDiscordEnabled, setDiscordEnabled, getLastfmEnabled, setLastfmEnabled, getLastfmSessionKey, getLastfmUsername, setTheme, getStartPage, setStartPage, getZoomFactor, setZoomFactor, getCloseToTrayEnabled, setCloseToTrayEnabled, getMusicService, getClassicalStartPage, setClassicalStartPage } from './config';
+import { getNotificationsEnabled, getDiscordEnabled, getLastfmEnabled, getLastfmSessionKey, getLastfmUsername, getCloseToTrayEnabled } from './config';
 import { showAboutWindow } from './aboutWindow';
 import { getUpdateInfo } from './update';
 import { quitAndInstall } from './autoUpdate';
-import { BUNDLED_THEMES, themeLabel } from './palettes';
-import { applyTheme, hasCustomCss, resolveTheme } from './theme';
-import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
-import { enable as enableLastfm, disable as disableLastfm, startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from './integrations/lastfm';
+import { isConfigured as isLastfmConfigured } from './integrations/lastfm';
+import { applySettingsAction, getSettingsState } from './settings';
 import { downloadArtwork } from './artwork';
 import { sendCommand } from './commandBridge';
 import { createPauseEdgeTimer } from './pauseTimer';
 import { openExternalUrl } from './utils/openExternal';
-import { allServices, getService, MUSIC_SERVICES, type AnyStartPageId, type MusicService, type MusicServiceId } from './musicService';
 
 const trayLog = log.scope('tray');
 
@@ -217,249 +214,96 @@ interface NowPlayingState {
 // rebuildTrayMenu and from the tray's own click and theme handlers, so the
 // handlers there update these fields rather than keeping a second copy.
 const nowPlayingState: NowPlayingState = { payload: null, artworkPath: null, isPlaying: false, volume: 1 };
-let applyZoomCallback: ((factor: number) => void) | null = null;
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
-let switchServiceCallback: ((serviceId: MusicServiceId) => void) | null = null;
+let showSettingsCallback: (() => void) | null = null;
 
 interface SubmenuContext {
   strings: TrayStrings;
   refresh: () => void;
 }
 
-function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings } = ctx;
-  const activeServiceId = getMusicService();
-  const activeService = getService(activeServiceId);
-  const parentLabel = `${strings.player}: ${activeService.displayName}`;
-  const icon = getMenuIcon('player');
-  return {
-    label: parentLabel,
-    ...(icon ? { icon } : {}),
-    submenu: allServices().map(svc => ({
-      label: svc.displayName,
-      type: 'radio' as const,
-      checked: activeServiceId === svc.id,
-      // switchService in ./serviceSwitch persists the new id and rebuilds this
-      // menu, so the click does neither itself.
-      click: () => {
-        if (activeServiceId === svc.id) return;
-        if (switchServiceCallback) switchServiceCallback(svc.id);
-      },
-    })),
-  };
-}
-
-// Typed over every registry id, so adding a start page without a translation
-// fails tsc rather than rendering a blank menu entry.
-function startPageLabels(strings: TrayStrings): Record<AnyStartPageId | 'last', string> {
-  return {
-    'home': strings.startPageHome,
-    'new': strings.startPageNew,
-    'radio': strings.startPageRadio,
-    'all-playlists': strings.startPageAllPlaylists,
-    'browse': strings.startPageBrowse,
-    'playlists': strings.startPagePlaylists,
-    'search': strings.startPageSearch,
-    'last': strings.startPageLast,
-  };
-}
-
-function buildStartPageSubmenuFor<PageId extends AnyStartPageId>(
-  service: MusicService<PageId>,
-  storedPage: PageId | 'last',
-  setPage: (page: PageId | 'last') => void,
-  ctx: SubmenuContext,
+function buildChoiceSubmenu(
+  label: string, iconKey: MenuIconKey, selected: string | number,
+  options: { value: string | number; label: string }[],
+  action: (value: string | number) => unknown,
 ): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const labels = startPageLabels(strings);
-  // 'last' is not a registry page: it is a stored-URL mode both services offer.
-  const pageIds: (PageId | 'last')[] = [...service.startPages.map(page => page.id), 'last'];
-  // A page id no longer offered resolves to the service's defaultStartPage, matching buildAppleMusicURL.
-  const currentPage = pageIds.includes(storedPage) ? storedPage : service.defaultStartPage;
-  const icon = getMenuIcon('start-page');
+  const icon = getMenuIcon(iconKey);
+  const selectedLabel = options.find(option => option.value === selected)?.label ?? `${Math.round(Number(selected) * 100)}%`;
   return {
-    label: `${strings.startPage}: ${labels[currentPage]}`,
+    label: `${label}: ${selectedLabel}`,
     ...(icon ? { icon } : {}),
-    submenu: pageIds.map(id => ({
-      label: labels[id],
-      type: 'radio' as const,
-      checked: currentPage === id,
-      click: () => { setPage(id); refresh(); },
+    submenu: options.map(option => ({
+      label: option.label, type: 'radio' as const, checked: selected === option.value,
+      click: () => { applySettingsAction(action(option.value)); },
     })),
   };
 }
 
-// The registry entries are passed directly rather than through getService(), which
-// returns the widened MusicService and would lose each service's page id union.
+function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const state = getSettingsState();
+  return buildChoiceSubmenu(ctx.strings.player, 'player', state.musicService, state.options.musicService,
+    value => ({ type: 'musicService', value }));
+}
+
 function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  if (getMusicService() === 'classical') {
-    return buildStartPageSubmenuFor(MUSIC_SERVICES.classical, getClassicalStartPage(), setClassicalStartPage, ctx);
-  }
-  return buildStartPageSubmenuFor(MUSIC_SERVICES.music, getStartPage(), setStartPage, ctx);
+  const state = getSettingsState();
+  return buildChoiceSubmenu(ctx.strings.startPage, 'start-page', state.startPage, state.options.startPage,
+    value => ({ type: 'startPage', serviceId: state.musicService, value }));
 }
 
-interface ToggleSubmenuOptions {
-  label: string;
-  iconKey: MenuIconKey;
-  get: () => boolean;
-  set: (value: boolean) => void;
-  onEnable?: () => void;
-  onDisable?: () => void;
-  extraItems?: Electron.MenuItemConstructorOptions[];
-}
-
-/**
- * Parent item for an on/off preference: a "Label: On" row over the two radio
- * choices. The side effect runs after the setter and before refresh, so the
- * rebuilt menu already reads the new state.
- */
-function buildToggleSubmenu(options: ToggleSubmenuOptions, ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const { label, iconKey, get, set, onEnable, onDisable, extraItems } = options;
-  const enabled = get();
+function buildToggleSubmenu(
+  label: string, iconKey: MenuIconKey, enabled: boolean,
+  type: 'notifications' | 'closeToTray' | 'discord' | 'lastfmEnabled',
+  ctx: SubmenuContext, extraItems: Electron.MenuItemConstructorOptions[] = [],
+): Electron.MenuItemConstructorOptions {
   const icon = getMenuIcon(iconKey);
   return {
-    label: `${label}: ${enabled ? strings.on : strings.off}`,
+    label: `${label}: ${enabled ? ctx.strings.on : ctx.strings.off}`,
     ...(icon ? { icon } : {}),
-    submenu: [
-      {
-        label: strings.on,
-        type: 'radio' as const,
-        checked: enabled,
-        click: () => { set(true); onEnable?.(); refresh(); },
-      },
-      {
-        label: strings.off,
-        type: 'radio' as const,
-        checked: !enabled,
-        click: () => { set(false); onDisable?.(); refresh(); },
-      },
-      ...(extraItems ?? []),
-    ],
+    submenu: [...[true, false].map(value => ({
+      label: value ? ctx.strings.on : ctx.strings.off, type: 'radio' as const, checked: enabled === value,
+      click: () => { applySettingsAction({ type, value }); },
+    })), ...extraItems],
   };
 }
 
 function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  return buildToggleSubmenu({
-    label: ctx.strings.notifications,
-    iconKey: 'notifications',
-    get: getNotificationsEnabled,
-    set: setNotificationsEnabled,
-  }, ctx);
+  return buildToggleSubmenu(ctx.strings.notifications, 'notifications', getNotificationsEnabled(), 'notifications', ctx);
 }
 
 function buildCloseToTraySubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  return buildToggleSubmenu({
-    label: ctx.strings.closeToTray,
-    iconKey: 'close-to-tray',
-    get: getCloseToTrayEnabled,
-    set: setCloseToTrayEnabled,
-    onDisable: () => {
-      const mainWin = getMainWindowCallback?.();
-      if (mainWin && !mainWin.isVisible()) { mainWin.show(); mainWin.focus(); }
-    },
-  }, ctx);
+  return buildToggleSubmenu(ctx.strings.closeToTray, 'close-to-tray', getCloseToTrayEnabled(), 'closeToTray', ctx);
 }
 
 function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  return buildToggleSubmenu({
-    label: ctx.strings.discord,
-    iconKey: 'discord',
-    get: getDiscordEnabled,
-    set: setDiscordEnabled,
-    onEnable: enableDiscord,
-    onDisable: disableDiscord,
-  }, ctx);
+  return buildToggleSubmenu(ctx.strings.discord, 'discord', getDiscordEnabled(), 'discord', ctx);
 }
 
 function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const connected = !!getLastfmSessionKey();
-
-  // Not yet linked: a single, obvious call to action that opens the browser
-  // approval flow. No API keys or configuration for the user to deal with.
-  if (!connected) {
+  if (!getLastfmSessionKey()) {
     const icon = getMenuIcon('lastfm');
     return {
-      label: 'Last.fm',
-      ...(icon ? { icon } : {}),
-      submenu: [
-        {
-          label: strings.lastfmConnect,
-          click: () => { setLastfmEnabled(true); startLastfmAuth(refresh); refresh(); },
-        },
-      ],
+      label: 'Last.fm', ...(icon ? { icon } : {}),
+      submenu: [{ label: ctx.strings.lastfmConnect, click: () => { applySettingsAction({ type: 'lastfmConnect' }); } }],
     };
   }
-
-  const username = getLastfmUsername();
-  return buildToggleSubmenu({
-    label: 'Last.fm',
-    iconKey: 'lastfm',
-    get: getLastfmEnabled,
-    set: setLastfmEnabled,
-    onEnable: enableLastfm,
-    onDisable: disableLastfm,
-    extraItems: [
-      { type: 'separator' },
-      { label: `✓ ${username}`, enabled: false },
-      { label: strings.lastfmDisconnect, click: () => { disconnectLastfm(); refresh(); } },
-    ],
-  }, ctx);
+  return buildToggleSubmenu('Last.fm', 'lastfm', getLastfmEnabled(), 'lastfmEnabled', ctx, [
+    { type: 'separator' },
+    { label: `✓ ${getLastfmUsername()}`, enabled: false },
+    { label: ctx.strings.lastfmDisconnect, click: () => { applySettingsAction({ type: 'lastfmDisconnect' }); } },
+  ]);
 }
 
 function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  const { strings, refresh } = ctx;
-  const currentTheme = resolveTheme();
-  const parentLabel = `${strings.style}: ${currentTheme === 'apple-music' ? strings.styleAppleMusic : themeLabel(currentTheme)}`;
-  const icon = getMenuIcon('style');
-  const items: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: strings.styleAppleMusic,
-      type: 'radio',
-      checked: currentTheme === 'apple-music',
-      click: () => { setTheme('apple-music'); applyTheme('apple-music'); refresh(); },
-    },
-    ...BUNDLED_THEMES.map(theme => ({
-      label: theme.label,
-      type: 'radio' as const,
-      checked: currentTheme === theme.name,
-      click: () => { setTheme(theme.name); applyTheme(theme.name); refresh(); },
-    })),
-  ];
-  if (hasCustomCss()) {
-    items.push({
-      label: themeLabel('custom'),
-      type: 'radio',
-      checked: currentTheme === 'custom',
-      click: () => { setTheme('custom'); applyTheme('custom'); refresh(); },
-    });
-  }
-  return {
-    label: parentLabel,
-    ...(icon ? { icon } : {}),
-    submenu: items,
-  };
+  const state = getSettingsState();
+  return buildChoiceSubmenu(ctx.strings.style, 'style', state.theme, state.options.theme,
+    value => ({ type: 'theme', value }));
 }
 
-function buildZoomSubmenu(ctx: SubmenuContext & { applyZoom: ((factor: number) => void) | null }): Electron.MenuItemConstructorOptions {
-  const { strings, refresh, applyZoom } = ctx;
-  const zoomFactor = getZoomFactor();
-  const zoomLabelMap: Record<number, string> = { 1.0: strings.zoom100, 1.25: strings.zoom125, 1.5: strings.zoom150, 1.75: strings.zoom175, 2.0: strings.zoom200 };
-  const parentLabel = `${strings.zoom}: ${zoomLabelMap[zoomFactor] ?? `${Math.round(zoomFactor * 100)}%`}`;
-  const makeClick = (factor: number) => () => { setZoomFactor(factor); if (applyZoom) applyZoom(factor); refresh(); };
-  const icon = getMenuIcon('zoom');
-  return {
-    label: parentLabel,
-    ...(icon ? { icon } : {}),
-    submenu: [
-      { label: strings.zoom100, type: 'radio', checked: zoomFactor === 1.0, click: makeClick(1.0) },
-      { label: strings.zoom125, type: 'radio', checked: zoomFactor === 1.25, click: makeClick(1.25) },
-      { label: strings.zoom150, type: 'radio', checked: zoomFactor === 1.5, click: makeClick(1.5) },
-      { label: strings.zoom175, type: 'radio', checked: zoomFactor === 1.75, click: makeClick(1.75) },
-      { label: strings.zoom200, type: 'radio', checked: zoomFactor === 2.0, click: makeClick(2.0) },
-    ],
-  };
+function buildZoomSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+  const state = getSettingsState();
+  return buildChoiceSubmenu(ctx.strings.zoom, 'zoom', state.zoomFactor, state.options.zoomFactor,
+    value => ({ type: 'zoomFactor', value }));
 }
 
 function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
@@ -642,6 +486,7 @@ function buildContextMenu(tray: Tray): Menu {
       ...(aboutIcon ? { icon: aboutIcon } : {}),
       click: () => showAboutWindow(),
     },
+    { label: strings.settings, click: () => showSettingsCallback?.() },
     buildPlayerSubmenu(ctx),
     buildStartPageSubmenu(ctx),
     buildCloseToTraySubmenu(ctx),
@@ -649,7 +494,7 @@ function buildContextMenu(tray: Tray): Menu {
     buildDiscordSubmenu(ctx),
     ...(isLastfmConfigured() ? [buildLastfmSubmenu(ctx)] : []),
     buildStyleSubmenu(ctx),
-    buildZoomSubmenu({ ...ctx, applyZoom: applyZoomCallback }),
+    buildZoomSubmenu(ctx),
     ...buildUpdateMenuItems(),
     { type: 'separator' },
     {
@@ -662,16 +507,12 @@ function buildContextMenu(tray: Tray): Menu {
   return Menu.buildFromTemplate(menuItems);
 }
 
-export function setApplyZoomCallback(callback: (factor: number) => void): void {
-  applyZoomCallback = callback;
-}
-
 export function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
   getMainWindowCallback = callback;
 }
 
-export function setSwitchServiceCallback(callback: (serviceId: MusicServiceId) => void): void {
-  switchServiceCallback = callback;
+export function setShowSettingsCallback(callback: () => void): void {
+  showSettingsCallback = callback;
 }
 
 /**

@@ -77,6 +77,9 @@ export const NOT_PLAYING_TEXT: Record<string, string> = trayData.NOT_PLAYING_TEX
 export const BACK_TEXT: Record<string, string> = trayData.BACK_TEXT;
 export const FORWARD_TEXT: Record<string, string> = trayData.FORWARD_TEXT;
 export const RELOAD_TEXT: Record<string, string> = trayData.RELOAD_TEXT;
+export const SETTINGS_TEXT: Record<string, string> = trayData.SETTINGS_TEXT;
+export const INTEGRATIONS_TEXT: Record<string, string> = trayData.INTEGRATIONS_TEXT;
+export const SETTINGS_ERROR_TEXT: Record<string, string> = trayData.SETTINGS_ERROR_TEXT;
 
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
@@ -152,6 +155,11 @@ export function getLoadingText(): { text: string; lang: string } {
 }
 
 export interface TrayStrings {
+  settings: string;
+  integrations: string;
+  settingsError: string;
+  lastfm: string;
+  lastfmConnected: string;
   about: string;
   quit: string;
   notifications: string;
@@ -198,6 +206,11 @@ export interface TrayStrings {
 // written as en-only records: en is what getLocalizedString falls back to, so
 // one shape covers the whole table.
 const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
+  settings: SETTINGS_TEXT,
+  integrations: INTEGRATIONS_TEXT,
+  settingsError: SETTINGS_ERROR_TEXT,
+  lastfm: { en: 'Last.fm' },
+  lastfmConnected: LASTFM_CONNECTED_TEXT,
   about: ABOUT_TEXT,
   quit: QUIT_TEXT,
   notifications: NOTIFICATIONS_TEXT,
@@ -280,12 +293,14 @@ export function getLastfmConnectFailedText(): string {
 export const NAV_LABELS_TOKEN = '__SIDRA_NAV_LABELS__';
 
 export function getNavigationStrings(): {
+  settings: string;
   back: string;
   forward: string;
   reload: string;
 } {
   const langs = getSystemLanguages();
   return {
+    settings: getLocalizedString(SETTINGS_TEXT, langs),
     back: getLocalizedString(BACK_TEXT, langs),
     forward: getLocalizedString(FORWARD_TEXT, langs),
     reload: getLocalizedString(RELOAD_TEXT, langs),

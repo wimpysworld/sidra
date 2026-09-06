@@ -1,6 +1,18 @@
 // test/i18n.test.ts
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { getLocalizedString, LOADING_TEXT } from '../src/i18n';
+import { getLocalizedString, getNavigationStrings, getTrayStrings, LOADING_TEXT, SETTINGS_TEXT, INTEGRATIONS_TEXT, SETTINGS_ERROR_TEXT } from '../src/i18n';
+
+describe('settings labels', () => {
+  it.each([SETTINGS_TEXT, INTEGRATIONS_TEXT, SETTINGS_ERROR_TEXT])('covers every supported locale', (record) => {
+    expect(Object.keys(record).sort()).toEqual(Object.keys(LOADING_TEXT).sort());
+    expect(Object.values(record).every(value => value.trim().length > 0)).toBe(true);
+  });
+
+  it('shares the settings label between navigation and the tray', () => {
+    expect(getNavigationStrings().settings).toBe(getTrayStrings().settings);
+    expect(getTrayStrings().lastfmConnected).toContain('{name}');
+  });
+});
 
 describe('getLocalizedString', () => {
   it('returns exact tag match', () => {
