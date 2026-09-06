@@ -9,7 +9,7 @@
   // this bare token with the translated labels as JSON, because the script is
   // injected with executeJavaScript() and cannot take the query parameters the
   // splash screen uses. NAV_LABELS_TOKEN in src/i18n.ts is the shared spelling.
-  /** @type {{ back: string, forward: string, reload: string }} */
+  /** @type {{ back: string, forward: string, reload: string, settings: string }} */
   var LABELS = __SIDRA_NAV_LABELS__;
 
   const logoEl = document.querySelector('.navigation__header .logo');
@@ -90,6 +90,14 @@
   // Icon geometry only; the wrapping svg carries sharedAttrs.
   /** @type {Array<{ label: string, channel: string, icon: Array<[string, Record<string, string>]> }>} */
   var BUTTONS = [
+    {
+      label: LABELS.settings,
+      channel: 'nav:settings',
+      icon: [
+        ['circle', { cx: '12', cy: '12', r: '3' }],
+        ['path', { d: 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z' }],
+      ],
+    },
     { label: LABELS.back, channel: 'nav:back', icon: [['polyline', { points: '15 18 9 12 15 6' }]] },
     {
       label: LABELS.forward,

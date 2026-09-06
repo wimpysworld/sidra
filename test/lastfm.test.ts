@@ -780,7 +780,9 @@ describe('revoked session', () => {
   afterEach(restoreRealTime);
 
   it('disconnects the account when the API returns error 9', async () => {
-    const { player } = await startIntegration();
+    const { player, lastfm } = await startIntegration();
+    const changed = vi.fn();
+    lastfm.setStateChangedCallback(changed);
     refuseScrobbles(9);
 
     playPastThreshold(player);
@@ -790,6 +792,7 @@ describe('revoked session', () => {
     // it is what returns the menu to the connect action.
     expect(session.key).toBeNull();
     expect(session.enabled).toBe(false);
+    expect(changed).toHaveBeenCalledOnce();
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
@@ -1784,6 +1787,8 @@ describe('authentication', () => {
 
   it('opens the browser, then stores and announces the session the user approves', async () => {
     const lastfm = await loadLastfm();
+    const changed = vi.fn();
+    lastfm.setStateChangedCallback(changed);
     noSession();
     respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'wimpy' } })));
 
@@ -1792,6 +1797,7 @@ describe('authentication', () => {
 
     expect(vi.mocked(shell.openExternal)).toHaveBeenCalledWith(expect.stringContaining('token=auth-token'));
     expect(session.key).toBe('new-key');
+    expect(changed).toHaveBeenCalledOnce();
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
@@ -1819,6 +1825,8 @@ describe('authentication', () => {
 
   it('releases authentication when the token request times out', async () => {
     const lastfm = await loadLastfm();
+    const changed = vi.fn();
+    lastfm.setStateChangedCallback(changed);
     noSession();
     let attempt = 0;
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
@@ -1829,6 +1837,7 @@ describe('authentication', () => {
     lastfm.startAuth();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(session.enabled).toBe(false);
+    expect(changed).toHaveBeenCalledOnce();
 
     lastfm.startAuth();
     await flush();

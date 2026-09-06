@@ -11,7 +11,9 @@ import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, hand
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
-import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setApplyZoomCallback, setGetMainWindowCallback, setSwitchServiceCallback } from './tray';
+import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setGetMainWindowCallback, setShowSettingsCallback } from './tray';
+import { initSettingsActions, notifySettingsChanged } from './settings';
+import { handleSettingsNavigation, initSettingsWindow, showSettingsWindow } from './settingsWindow';
 import { initCommandBridge } from './commandBridge';
 import { initControllerIPC, goBackIfPossible } from './controllerIPC';
 import { CONTROLLER_RESET_CHANNEL } from './controller';
@@ -403,9 +405,11 @@ function setupSessionHeaders(ses: Electron.Session): void {
 
 function setupWindowZoomAndNav(win: BrowserWindow): void {
   win.webContents.setZoomFactor(getZoomFactor());
-  setApplyZoomCallback((factor) => win.webContents.setZoomFactor(factor));
+  const onSettings: SendListener = event => handleSettingsNavigation(event, win);
+  win.once('closed', () => ipcMain.removeListener('nav:settings', onSettings));
 
   onSendChannels<NavSendChannel>({
+    'nav:settings': onSettings,
     'nav:back': () => goBackIfPossible(win),
     'nav:forward': () => win.webContents.navigationHistory.goForward(),
     'nav:reload': () => {
@@ -678,11 +682,21 @@ if (gotLock) {
         win?.loadURL(url, { userAgent: UA }).catch(err =>
           mainLog.warn('service navigation loadURL failed:', (err as Error).message)
         );
+        notifySettingsChanged();
       },
     });
-    setSwitchServiceCallback(switchService);
+    const teardownSettingsActions = initSettingsActions({
+      getMainWindow: () => win,
+      applyZoom: factor => win?.webContents.setZoomFactor(factor),
+      switchService,
+      refreshTray: () => { if (appTray) rebuildTrayMenu(appTray); },
+    });
+    app.on('will-quit', teardownSettingsActions);
+    initSettingsWindow(win);
+    setShowSettingsCallback(showSettingsWindow);
     setRebuildTrayCallback(() => {
       if (appTray) rebuildTrayMenu(appTray);
+      notifySettingsChanged();
     });
     setupWindowZoomAndNav(win);
     initThemeCSS(win);

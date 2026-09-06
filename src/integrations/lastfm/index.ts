@@ -28,6 +28,12 @@ import { createNotification } from '../../notify';
 
 const lastfmLog = log.scope('lastfm');
 
+let stateChangedCallback: (() => void) | null = null;
+
+export function setStateChangedCallback(callback: (() => void) | null): void {
+  stateChangedCallback = callback;
+}
+
 const API_ROOT = 'https://ws.audioscrobbler.com/2.0/';
 const AUTH_URL = 'https://www.last.fm/api/auth/';
 
@@ -948,6 +954,7 @@ function failAuth(reason: string, onComplete?: () => void): void {
   setLastfmEnabled(false);
   notify(getLastfmConnectFailedText(), true);
   onComplete?.();
+  stateChangedCallback?.();
 }
 
 /**
@@ -1014,6 +1021,7 @@ function pollForSession(token: string, startedAt: number, generation: number, on
         notify(getLastfmConnectedText(name));
         enable();
         onComplete?.();
+        stateChangedCallback?.();
         return;
       }
       throw new Error('session not yet authorised');
@@ -1049,6 +1057,7 @@ export function disconnect(): void {
   setPendingScrobbles([]);
   setLastfmEnabled(false);
   lastfmLog.info('disconnected from Last.fm');
+  stateChangedCallback?.();
 }
 
 /**

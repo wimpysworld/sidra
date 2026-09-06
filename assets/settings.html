@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Settings</title>
+  <link rel="stylesheet" href="settings.css">
+  <script src="settings.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1 data-label="settings">Settings</h1>
+    <p id="error" role="alert" hidden></p>
+    <div id="preferences" hidden>
+      <section aria-labelledby="player-heading">
+        <h2 id="player-heading" data-label="player"></h2>
+        <div class="group">
+          <div class="row"><label for="musicService" data-label="player"></label><select id="musicService"></select></div>
+          <div class="row"><label for="startPage" data-label="startPage"></label><select id="startPage"></select></div>
+        </div>
+      </section>
+      <section aria-labelledby="style-heading">
+        <h2 id="style-heading" data-label="style"></h2>
+        <div class="group">
+          <div class="row"><label for="theme" data-label="style"></label><select id="theme"></select></div>
+          <div class="row"><label for="zoomFactor" data-label="zoom"></label><select id="zoomFactor"></select></div>
+        </div>
+      </section>
+      <section aria-labelledby="integrations-heading">
+        <h2 id="integrations-heading" data-label="integrations"></h2>
+        <div class="group">
+          <label class="row toggle" for="closeToTray"><span data-label="closeToTray"></span><input id="closeToTray" type="checkbox"></label>
+          <label class="row toggle" for="notifications"><span data-label="notifications"></span><input id="notifications" type="checkbox"></label>
+          <label class="row toggle" for="discord"><span data-label="discord"></span><input id="discord" type="checkbox"></label>
+          <div id="lastfm" hidden>
+            <label class="row toggle" for="lastfmEnabled"><span data-label="lastfm"></span><input id="lastfmEnabled" type="checkbox"></label>
+            <div class="lastfm-details">
+              <p id="lastfm-status" role="status"></p>
+              <button id="lastfmConnect" type="button" data-label="lastfmConnect"></button>
+              <button id="lastfmDisconnect" type="button" data-label="lastfmDisconnect" hidden></button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

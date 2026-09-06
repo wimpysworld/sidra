@@ -27,7 +27,8 @@ type SendChannel =
   | 'volumeDidChange'
   | 'nav:back'
   | 'nav:forward'
-  | 'nav:reload';
+  | 'nav:reload'
+  | 'nav:settings';
 
 /**
  * Channels the main process sends to the renderer (main → renderer). Every
