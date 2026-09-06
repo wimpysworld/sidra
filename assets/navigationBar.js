@@ -34,7 +34,7 @@
     'z-index: 1 !important',
     'display: flex !important',
     'align-items: center !important',
-    'gap: 2px !important',
+    'gap: 0 !important',
     'margin-left: auto !important',
     'pointer-events: auto !important',
   ].join('; '));
@@ -85,7 +85,7 @@
     viewBox: '0 0 24 24',
     fill: 'none',
     stroke: IDLE_COLOR,
-    'stroke-width': '1.5',
+    'stroke-width': '1.8',
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
   };
@@ -93,11 +93,11 @@
   // Icon geometry only; the wrapping svg carries sharedAttrs.
   /** @type {Array<{ label: string, channel: string, icon: Array<[string, Record<string, string>]> }>} */
   var BUTTONS = [
-    { label: LABELS.back, channel: 'nav:back', icon: [['polyline', { points: '15 18 9 12 15 6' }]] },
+    { label: LABELS.back, channel: 'nav:back', icon: [['polyline', { points: '15 20 9 12 15 4' }]] },
     {
       label: LABELS.forward,
       channel: 'nav:forward',
-      icon: [['polyline', { points: '9 6 15 12 9 18' }]],
+      icon: [['polyline', { points: '9 4 15 12 9 20' }]],
     },
     {
       label: LABELS.reload,
@@ -111,8 +111,8 @@
       label: LABELS.settings,
       channel: 'nav:settings',
       icon: [
-        ['circle', { cx: '12', cy: '12', r: '3' }],
-        ['path', { d: 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z' }],
+        ['circle', { cx: '12', cy: '12', r: '3.7' }],
+        ['path', { d: 'M10 2h4l.5 2.5 1.5.6 2.1-1.4 2.2 2.2-1.4 2.1.6 1.5L22 10v4l-2.5.5-.6 1.5 1.4 2.1-2.2 2.2-2.1-1.4-1.5.6L14 22h-4l-.5-2.5-1.5-.6-2.1 1.4-2.2-2.2L5.1 16l-.6-1.5L2 14v-4l2.5-.5.6-1.5-1.4-2.1 2.2-2.2L8 5.1l1.5-.6z' }],
       ],
     },
   ];
