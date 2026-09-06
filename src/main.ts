@@ -4,7 +4,7 @@ import path from 'path';
 import log from 'electron-log/main';
 import { AUTH_FIX_TOKEN, PASSKEY_CONTAINER_SELECTORS } from './authFrame';
 import { getZoomFactor, getCloseToTrayEnabled, getMusicService } from './config';
-import { getLoadingText, getNavigationStrings, NAV_LABELS_TOKEN } from './i18n';
+import { getLoadingText, getNavigationStrings, getTrayStrings, NAV_LABELS_TOKEN } from './i18n';
 import { getAssetPath } from './paths';
 import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
@@ -232,7 +232,7 @@ function setupApplicationMenu(): void {
   if (process.env.SIDRA_DEVTOOLS === '1') {
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
-        label: 'View',
+        role: 'viewMenu',
         submenu: [{ role: 'toggleDevTools' }],
       },
     ];
@@ -241,7 +241,7 @@ function setupApplicationMenu(): void {
     Menu.setApplicationMenu(Menu.buildFromTemplate([{
       label: app.name,
       submenu: [
-        { label: `About ${app.name}`, ...(getMenuIcon('about') ? { icon: getMenuIcon('about') } : {}), click: () => showAboutWindow() },
+        { label: getTrayStrings().about, ...(getMenuIcon('about') ? { icon: getMenuIcon('about') } : {}), click: () => showAboutWindow() },
         { type: 'separator' },
         { role: 'quit' },
       ],

@@ -3,7 +3,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import log from 'electron-log/main';
 import { getAssetPath } from './paths';
-import { getTrayStrings } from './i18n';
+import { getLoadingText, getTrayStrings } from './i18n';
 import { isAllowedNavigationUrl } from './musicService';
 import { applySettingsAction, getSettingsState, subscribeSettingsChanges } from './settings';
 import { getThemeCss, resolveTheme } from './theme';
@@ -11,17 +11,14 @@ import { getThemeCss, resolveTheme } from './theme';
 let settingsWindow: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
 let refreshSettingsTheme: (() => Promise<void>) | null = null;
+let currentSettingsUrl: string | null = null;
 const settingsLog = log.scope('settings');
-
-function settingsUrl(): string {
-  return pathToFileURL(getAssetPath('assets', 'settings.html')).href;
-}
 
 function validateSender(event: IpcMainInvokeEvent): void {
   const contents = settingsWindow?.webContents;
   if (!settingsWindow || settingsWindow.isDestroyed() || !contents || contents.isDestroyed()
     || event.sender !== contents || event.senderFrame !== contents.mainFrame
-    || event.senderFrame?.url !== settingsUrl() || contents.getURL() !== settingsUrl()) {
+    || event.senderFrame?.url !== currentSettingsUrl || contents.getURL() !== currentSettingsUrl) {
     throw new Error('Invalid settings sender');
   }
 }
@@ -34,8 +31,16 @@ export function showSettingsWindow(): void {
     settingsWindow.focus();
     return;
   }
+  const labels = getTrayStrings();
+  const url = pathToFileURL(getAssetPath('assets', 'settings.html'));
+  url.search = new URLSearchParams({
+    lang: getLoadingText().lang,
+    settings: labels.settings,
+    settingsError: labels.settingsError,
+  }).toString();
+  const settingsUrl = url.href;
   const window = new BrowserWindow({
-    title: getTrayStrings().settings,
+    title: labels.settings,
     width: 620,
     height: 760,
     minWidth: 360,
@@ -52,13 +57,14 @@ export function showSettingsWindow(): void {
     },
   });
   settingsWindow = window;
+  currentSettingsUrl = settingsUrl;
   const contents = window.webContents;
   let themeCss: string | null = null;
   let themeKey: string | null = null;
   let themeOp = Promise.resolve();
   const refreshTheme = (): Promise<void> => {
     themeOp = themeOp.then(async () => {
-      if (window.isDestroyed() || contents.isDestroyed() || contents.getURL() !== settingsUrl()) return;
+      if (window.isDestroyed() || contents.isDestroyed() || contents.getURL() !== settingsUrl) return;
       const css = getThemeCss(resolveTheme());
       if (css === themeCss) return;
       if (themeKey !== null) {
@@ -97,6 +103,7 @@ export function showSettingsWindow(): void {
     showTimer = undefined;
     if (settingsWindow === window) {
       settingsWindow = null;
+      currentSettingsUrl = null;
       refreshSettingsTheme = null;
     }
   });
@@ -104,7 +111,7 @@ export function showSettingsWindow(): void {
   window.webContents.on('will-frame-navigate', event => event.preventDefault());
   window.webContents.on('will-redirect', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.loadFile(getAssetPath('assets', 'settings.html')).catch(() => {
+  window.loadURL(settingsUrl).catch(() => {
     settingsLog.warn('Settings page failed to load');
     if (!window.isDestroyed()) window.close();
   });
@@ -131,7 +138,7 @@ export function initSettingsWindow(window: BrowserWindow): () => void {
   const unsubscribe = subscribeSettingsChanges(state => {
     if (!settingsWindow || settingsWindow.isDestroyed()) return;
     const contents = settingsWindow?.webContents;
-    if (contents && !contents.isDestroyed() && contents.getURL() === settingsUrl()) {
+    if (contents && !contents.isDestroyed() && contents.getURL() === currentSettingsUrl) {
       contents.send('settings:state', state);
       void refreshSettingsTheme?.();
     }

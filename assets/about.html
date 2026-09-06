@@ -69,6 +69,9 @@ body {
 <button class="close-btn" id="close-btn"></button>
 <script>
   var params = new URLSearchParams(window.location.search);
+  var lang = params.get('lang') || 'en';
+  document.documentElement.lang = lang;
+  document.documentElement.dir = /^(ar|he)(-|$)/i.test(lang) ? 'rtl' : 'ltr';
   var name = params.get('name') || 'Sidra';
   var version = params.get('version') || '';
   var description = params.get('description') || '';

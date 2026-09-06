@@ -149,6 +149,7 @@ vi.mock('../src/config', () => ({
 vi.mock('../src/i18n', () => ({
   getLoadingText: vi.fn(() => ({ text: 'Loading...', lang: 'en' })),
   getNavigationStrings: vi.fn(() => ({})),
+  getTrayStrings: vi.fn(() => ({ about: 'À propos de Sidra' })),
   NAV_LABELS_TOKEN: '__NAV_LABELS__',
 }));
 
@@ -278,6 +279,17 @@ describe('main bootstrap', () => {
     }
     await Promise.resolve();
   }
+
+  it('uses the translated About label in the macOS menu', async () => {
+    setPlatform('darwin');
+    await startMain();
+    const { Menu } = await import('electron');
+    expect(Menu.buildFromTemplate).toHaveBeenCalledWith([
+      expect.objectContaining({ submenu: expect.arrayContaining([
+        expect.objectContaining({ label: 'À propos de Sidra' }),
+      ]) }),
+    ]);
+  });
 
   it('creates a locked-down window, wires integrations, and contains first navigation failure', async () => {
     await startMain();

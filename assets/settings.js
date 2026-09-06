@@ -3,6 +3,12 @@
 
   const bridge = window.sidraSettings;
   const byId = (id) => document.getElementById(id);
+  const params = new URLSearchParams(window.location.search);
+  const lang = params.get('lang') || 'en';
+  document.documentElement.lang = lang;
+  document.documentElement.dir = /^(ar|he)(-|$)/i.test(lang) ? 'rtl' : 'ltr';
+  document.title = params.get('settings') || 'Settings';
+  document.querySelector('[data-label="settings"]').textContent = document.title;
   const selects = ['musicService', 'startPage', 'theme', 'zoomFactor'];
   const toggles = ['closeToTray', 'notifications', 'discord', 'lastfmEnabled'];
   let state;
@@ -12,7 +18,7 @@
 
   function showError() {
     if (closed) return;
-    byId('error').textContent = state?.labels.settingsError || 'Could not update settings. Please try again.';
+    byId('error').textContent = state?.labels.settingsError || params.get('settingsError') || 'Could not update settings. Please try again.';
     byId('error').hidden = false;
   }
 

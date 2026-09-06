@@ -17,6 +17,7 @@ describe('About page display name', () => {
     ]));
     const document = {
       title: '',
+      documentElement: { lang: '', dir: '' },
       getElementById: (id: string) => elements.get(id),
       querySelector: () => elements.get('close-btn'),
     };

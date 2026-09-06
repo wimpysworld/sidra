@@ -6,6 +6,7 @@ import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, Integra
 import { getDiscordEnabled, getMusicService } from '../../config';
 import { getService } from '../../musicService';
 import { createPauseTimer } from '../../pauseTimer';
+import { getDiscordArtistText, getDiscordPlayOnText } from '../../i18n';
 
 const discordLog = log.scope('discord');
 
@@ -216,7 +217,7 @@ function sendActivity(player: Player): void {
   }
 
   const details = padMin(truncate(trackName, MAX_STRING_LEN), MIN_STRING_LEN);
-  const state = padMin(truncate(`by ${artistName ?? 'Unknown Artist'}`, MAX_STRING_LEN), MIN_STRING_LEN);
+  const state = padMin(truncate(getDiscordArtistText(artistName), MAX_STRING_LEN), MIN_STRING_LEN);
 
   const largeImageKey = (artworkUrl && artworkUrl.length <= MAX_IMAGE_URL_LEN)
     ? artworkUrl
@@ -230,7 +231,7 @@ function sendActivity(player: Player): void {
   ];
   if (trackUrl) {
     const displayName = getService(getMusicService()).displayName;
-    buttons.push({ label: `Play on ${displayName}`, url: trackUrl });
+    buttons.push({ label: getDiscordPlayOnText(displayName), url: trackUrl });
   }
 
   const activity: SetActivity = {

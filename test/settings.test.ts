@@ -90,6 +90,21 @@ describe('settings actions', () => {
     expect(config.getTheme()).toBe('apple-music');
   });
 
+  it('translates the Custom Theme option without changing its stored value', async () => {
+    vi.resetModules();
+    const { app } = await import('electron');
+    const language = vi.spyOn(app, 'getPreferredSystemLanguages').mockReturnValue(['fr']);
+    const theme = await import('../src/theme');
+    vi.mocked(theme.hasCustomTheme).mockReturnValue(true);
+    try {
+      const { getSettingsState: freshState } = await import('../src/settings');
+      expect(freshState().options.theme).toContainEqual({ value: 'custom', label: 'Thème personnalisé' });
+    } finally {
+      language.mockRestore();
+      vi.resetModules();
+    }
+  });
+
   it('accepts Custom Theme only while it is available', () => {
     vi.mocked(hasCustomTheme).mockReturnValue(true);
     applySettingsAction({ type: 'theme', value: 'custom' });

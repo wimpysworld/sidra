@@ -37,12 +37,11 @@
 (function() {
   var params = new URLSearchParams(window.location.search);
   var text = params.get('text') || 'Loading...';
-  var lang = params.get('lang') || '';
+  var lang = params.get('lang') || 'en';
+  document.documentElement.lang = lang;
   document.title = text;
   document.querySelector('.loading-text').textContent = text;
-  if (lang === 'ar' || lang === 'he') {
-    document.dir = 'rtl';
-  }
+  document.documentElement.dir = /^(ar|he)(-|$)/i.test(lang) ? 'rtl' : 'ltr';
 })();
 </script>
 </body>

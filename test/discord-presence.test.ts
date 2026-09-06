@@ -270,6 +270,20 @@ describe('discord presence integration', () => {
     });
   });
 
+  it('translates artist fallback and service buttons without changing metadata or URLs', async () => {
+    const { app: freshApp } = await import('electron');
+    vi.spyOn(freshApp, 'getPreferredSystemLanguages').mockReturnValue(['fr']);
+    player.emitNowPlaying({ ...TRACK, artistName: undefined });
+    vi.advanceTimersByTime(DEBOUNCE_MS);
+    expect(activity()).toMatchObject({
+      details: TRACK.name,
+      state: 'par Artiste inconnu',
+      buttons: expect.arrayContaining([
+        { label: 'Lire sur Apple Music', url: TRACK.url },
+      ]),
+    });
+  });
+
   it('sends no timestamps while paused but keeps the status display', () => {
     player.setPlaybackState(PlaybackState.Paused);
     player.emitNowPlaying(TRACK);
