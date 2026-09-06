@@ -76,70 +76,6 @@ Changes save immediately. The existing tray preferences remain available. [View 
 
 I am a presenter on Linux Matters and discussed Sidra's origins in Episode 79. Linux Magazin Online covers Sidra 1.0 and includes an interview with me.
 
-### Controller navigation
-
-Sidra supports controllers that expose the browser's standard Gamepad mapping. The controls work in Apple Music and Apple Music Classical:
-
-| Controller input | Action |
-|---|---|
-| D-pad | Move up, down, left, or right |
-| A button | Select the focused item |
-| B button | Go back when navigation history permits |
-
-Hold a D-pad direction to repeat it. The A and B buttons act once per press. Controller input does not control media playback or settings.
-
-### Mini Player
-
-Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLauinger77](https://github.com/ChrisLauinger77)) asked for one in [#125](https://github.com/wimpysworld/sidra/issues/125), then built [**MPRIS MiniPlayer**](https://github.com/ChrisLauinger77/mpris-miniplayer): a small GTK4/libadwaita window that controls any MPRIS player on Linux.
-
-It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
-
----
-
-## Theming
-
-Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
-
-These theme examples show different artist pages. Select an image to view the full-resolution screenshot.
-
-| Rosé Pine | Catppuccin |
-|---|---|
-| [![Sidra artist page with the Rosé Pine theme](assets/source/sidra-screenshot-01.png)](assets/source/sidra-screenshot-01@2x.png) | [![Sidra artist page with the Catppuccin theme](assets/source/sidra-screenshot-02.png)](assets/source/sidra-screenshot-02@2x.png) |
-| **Gruvbox** | **Dracula** |
-| [![Sidra artist page with the Gruvbox theme](assets/source/sidra-screenshot-03.png)](assets/source/sidra-screenshot-03@2x.png) | [![Sidra artist page with the Dracula theme](assets/source/sidra-screenshot-04.png)](assets/source/sidra-screenshot-04@2x.png) |
-
-As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
-
-- Linux: `~/.config/Sidra/custom.css`
-- macOS: `~/Library/Application Support/Sidra/custom.css`
-- Windows: `%APPDATA%\Sidra\custom.css`
-
-The **Custom** option appears when that file is readable and contains CSS.
-
-Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
-For custom colours in Settings, use Apple Music CSS variables. Selectors for Apple's web pages do not necessarily match the Settings window.
-
----
-
-## Last.fm scrobbling
-
-Nothing is sent to Last.fm until you connect an account. In Settings, choose **Connect to Last.fm…**, then approve Sidra in your browser. Settings and the tray show your username after approval. Sidra also sends a notification if notifications are on.
-
-Use Settings or the tray **Last.fm** submenu to turn scrobbling on or off, or disconnect. You can also connect through that submenu. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
-
-Sidra also scrobbles individual songs from live radio and archived shows. Radio songs have no reported duration, so they scrobble after four minutes of active playback. A song can scrobble at the next confirmed song change if Sidra observed its start and more than 30 seconds of playback. The first song joined part-way through uses the four-minute fallback.
-
-Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
-
-- Linux: `~/.config/Sidra/config.json`
-- macOS: `~/Library/Application Support/Sidra/config.json`
-- Windows: `%APPDATA%\Sidra\config.json`
-
-> [!IMPORTANT]
-> Last.fm session keys never expire, and the Last.fm API has no call to revoke one. **Disconnect** deletes Sidra's copy of the key, which stops this installation scrobbling, but only Last.fm can invalidate the key itself. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that. Sidra notices the revoked session on its next request, disconnects, and tells you.
-
-What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md).
-
 ---
 
 > [!IMPORTANT]
@@ -196,11 +132,84 @@ yay -S sidra-bin
 
 **Nix**:
 
+With flakes enabled, install Sidra for your user:
+
 ```bash
 nix profile add github:wimpysworld/sidra
 ```
 
-For NixOS or Home Manager, add `github:wimpysworld/sidra` as a flake input and reference `inputs.sidra.packages.<system>.default`.
+The flake provides `packages.<system>.default` for `x86_64-linux`, `aarch64-linux` and `aarch64-darwin` (Apple Silicon).
+
+For a declarative installation, add Sidra to your existing `flake.nix` inputs. Bind the inputs with `inputs@` in your existing `outputs` function:
+
+```nix
+{
+  inputs.sidra.url = "github:wimpysworld/sidra";
+
+  outputs = inputs@{ nixpkgs, ... }: {
+    # Your existing outputs go here.
+  };
+}
+```
+
+Keep your other inputs and outputs. Choose one of the following examples. Both examples belong inside `outputs`.
+
+**NixOS: install system-wide**
+
+Add the inline module below to the `modules` list in your existing `nixosSystem` call:
+
+```nix
+nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+  modules = [
+    ./configuration.nix
+    ({ pkgs, ... }: {
+      environment.systemPackages = [
+        inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
+      ];
+    })
+  ];
+};
+```
+
+Keep your existing host name, platform settings and modules. From your configuration directory, apply the change with your host name:
+
+```bash
+sudo nixos-rebuild switch --flake .#my-host
+```
+
+**Home Manager: install for your user**
+
+For standalone Home Manager, add the inline module below to your existing `homeManagerConfiguration` call:
+
+```nix
+homeConfigurations.my-user = inputs.home-manager.lib.homeManagerConfiguration {
+  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+  modules = [
+    ./home.nix
+    ({ pkgs, ... }: {
+      home.packages = [
+        inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
+      ];
+    })
+  ];
+};
+```
+
+Keep your existing Home Manager input, configuration name, `pkgs` and modules. The package selection uses your configured platform automatically.
+
+From your configuration directory, apply the change with your configuration name:
+
+```bash
+home-manager switch --flake .#my-user
+```
+
+If Home Manager is a NixOS module, add the same `home.packages` entry to your user module. Pass `inputs` through `home-manager.extraSpecialArgs = { inherit inputs; };` in your NixOS configuration. Add `inputs` to your user module's function arguments. Apply the change with `nixos-rebuild`.
+
+The first rebuild records the Sidra input in your configuration's `flake.lock`. Keep that file with your configuration. To update Sidra later, run this command in the same directory, then repeat your rebuild command:
+
+```bash
+nix flake update sidra
+```
 
 ### macOS
 
@@ -224,6 +233,72 @@ System Settings → Privacy & Security only offers **Open Anyway** for the milde
 **Installer** (`.exe`) - run and follow the prompts.
 
 SmartScreen will warn the installer is unsigned. Click **More info** then **Run anyway**.
+
+---
+
+## Controller navigation
+
+Sidra supports controllers that expose the browser's standard Gamepad mapping. The controls work in Apple Music and Apple Music Classical:
+
+| Controller input | Action |
+|---|---|
+| D-pad | Move up, down, left, or right |
+| A button | Select the focused item |
+| B button | Go back when navigation history permits |
+
+Hold a D-pad direction to repeat it. The A and B buttons act once per press. Controller input does not control media playback or settings.
+
+## Mini Player
+
+Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLauinger77](https://github.com/ChrisLauinger77)) asked for one in [#125](https://github.com/wimpysworld/sidra/issues/125), then built [**MPRIS MiniPlayer**](https://github.com/ChrisLauinger77/mpris-miniplayer): a small GTK4/libadwaita window that controls any MPRIS player on Linux.
+
+It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
+
+---
+
+## Theming
+
+Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
+
+These theme examples show different artist pages. Select an image to view the full-resolution screenshot.
+
+| Rosé Pine | Catppuccin |
+|---|---|
+| [![Sidra artist page with the Rosé Pine theme](assets/source/sidra-screenshot-01.png)](assets/source/sidra-screenshot-01@2x.png) | [![Sidra artist page with the Catppuccin theme](assets/source/sidra-screenshot-02.png)](assets/source/sidra-screenshot-02@2x.png) |
+| **Gruvbox** | **Dracula** |
+| [![Sidra artist page with the Gruvbox theme](assets/source/sidra-screenshot-03.png)](assets/source/sidra-screenshot-03@2x.png) | [![Sidra artist page with the Dracula theme](assets/source/sidra-screenshot-04.png)](assets/source/sidra-screenshot-04@2x.png) |
+
+As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
+
+- Linux: `~/.config/Sidra/custom.css`
+- macOS: `~/Library/Application Support/Sidra/custom.css`
+- Windows: `%APPDATA%\Sidra\custom.css`
+
+The **Custom** option appears when that file is readable and contains CSS.
+
+Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
+For custom colours in Settings, use Apple Music CSS variables. Selectors for Apple's web pages do not necessarily match the Settings window.
+
+---
+
+## Last.fm scrobbling
+
+Nothing is sent to Last.fm until you connect an account. In Settings, choose **Connect to Last.fm…**, then approve Sidra in your browser. Settings and the tray show your username after approval. Sidra also sends a notification if notifications are on.
+
+Use Settings or the tray **Last.fm** submenu to turn scrobbling on or off, or disconnect. You can also connect through that submenu. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
+
+Sidra also scrobbles individual songs from live radio and archived shows. Radio songs have no reported duration, so they scrobble after four minutes of active playback. A song can scrobble at the next confirmed song change if Sidra observed its start and more than 30 seconds of playback. The first song joined part-way through uses the four-minute fallback.
+
+Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
+
+- Linux: `~/.config/Sidra/config.json`
+- macOS: `~/Library/Application Support/Sidra/config.json`
+- Windows: `%APPDATA%\Sidra\config.json`
+
+> [!IMPORTANT]
+> Last.fm session keys never expire, and the Last.fm API has no call to revoke one. **Disconnect** deletes Sidra's copy of the key, which stops this installation scrobbling, but only Last.fm can invalidate the key itself. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that. Sidra notices the revoked session on its next request, disconnects, and tells you.
+
+What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md).
 
 ---
 
