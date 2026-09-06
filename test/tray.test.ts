@@ -139,7 +139,6 @@ import { setPlatform, restorePlatform } from './mocks/platform';
 import { MUSIC_SERVICES, type AnyStartPageId, type ClassicalStartPageId, type MusicServiceId } from '../src/musicService';
 
 import { initSettingsActions, subscribeSettingsChanges } from '../src/settings';
-import { setShowSettingsCallback } from '../src/tray';
 
 let getSettingsMainWindow: () => BrowserWindow | null = () => null;
 let switchSettingsService: (id: MusicServiceId) => void = () => {};
@@ -245,13 +244,10 @@ describe('sanitiseLinuxLabel', () => {
 });
 
 describe('createTray - menu template inspection', () => {
-  it('opens Settings through the supplied callback', () => {
-    const openSettings = vi.fn();
-    setShowSettingsCallback(openSettings);
+  it.each(['linux', 'win32', 'darwin'] as const)('omits the Settings launcher on %s', platform => {
+    setPlatform(platform);
     createTray();
-    const item = findItem(getLastTemplate(), 'Settings');
-    item?.click?.({} as Electron.MenuItem, {} as BrowserWindow, {} as Electron.KeyboardEvent);
-    expect(openSettings).toHaveBeenCalledOnce();
+    expect(findItem(getLastTemplate(), mockTrayStrings.settings)).toBeUndefined();
   });
 
   it('publishes a tray preference action to Settings subscribers', () => {

@@ -215,7 +215,6 @@ interface NowPlayingState {
 // handlers there update these fields rather than keeping a second copy.
 const nowPlayingState: NowPlayingState = { payload: null, artworkPath: null, isPlaying: false, volume: 1 };
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
-let showSettingsCallback: (() => void) | null = null;
 
 interface SubmenuContext {
   strings: TrayStrings;
@@ -486,7 +485,6 @@ function buildContextMenu(tray: Tray): Menu {
       ...(aboutIcon ? { icon: aboutIcon } : {}),
       click: () => showAboutWindow(),
     },
-    { label: strings.settings, click: () => showSettingsCallback?.() },
     buildPlayerSubmenu(ctx),
     buildStartPageSubmenu(ctx),
     buildCloseToTraySubmenu(ctx),
@@ -509,10 +507,6 @@ function buildContextMenu(tray: Tray): Menu {
 
 export function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
   getMainWindowCallback = callback;
-}
-
-export function setShowSettingsCallback(callback: () => void): void {
-  showSettingsCallback = callback;
 }
 
 /**
