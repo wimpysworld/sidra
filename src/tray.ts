@@ -153,7 +153,7 @@ function isGnomeSession(): boolean {
 
 function getLinuxTrayIconPath(): string {
   if (isGnomeSession()) {
-    return path.join(iconsDir, 'sidra-tray-linux.png');
+    return path.join(iconsDir, 'sidra-tray-outline.png');
   }
 
   return nativeTheme.shouldUseDarkColors

@@ -123,7 +123,7 @@ validate:
 generate-tray-icon: generate-linux-tray-icon
     #!/usr/bin/env bash
     set -euo pipefail
-    src="assets/source/sidra-mini.svg"
+    src="assets/source/sidra-tray-symbol.svg"
     out="assets/icons"
     # macOS Template icons (black on transparent, macOS handles theme adaptation)
     rsvg-convert -w 16 -h 16 -o "$out/sidraTemplate.png" "$src"
@@ -148,11 +148,12 @@ generate-tray-icon: generate-linux-tray-icon
         "$out/sidra-tray.png" \
         "$out/sidra-tray@2x.png"
 
-# Generate outlined Linux tray icons from SVG source
+# Derive the outline SVG and generate GNOME tray icons
 generate-linux-tray-icon:
-    rsvg-convert -w 24 -h 24 -o assets/icons/sidra-tray-linux.png assets/source/sidra-tray-linux.svg
-    rsvg-convert -w 48 -h 48 -o assets/icons/sidra-tray-linux@2x.png assets/source/sidra-tray-linux.svg
-    optipng -strip all -o7 -quiet assets/icons/sidra-tray-linux.png assets/icons/sidra-tray-linux@2x.png
+    python3 scripts/generate-tray-outline.py
+    rsvg-convert -w 24 -h 24 -o assets/icons/sidra-tray-outline.png assets/source/sidra-tray-outline.svg
+    rsvg-convert -w 48 -h 48 -o assets/icons/sidra-tray-outline@2x.png assets/source/sidra-tray-outline.svg
+    optipng -strip all -o7 -quiet assets/icons/sidra-tray-outline.png assets/icons/sidra-tray-outline@2x.png
 
 # Generate tray menu icon PNGs from SVG sources
 generate-menu-icons:

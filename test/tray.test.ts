@@ -314,7 +314,7 @@ describe('createTray - menu template inspection', () => {
       Object.defineProperty(nativeTheme, 'shouldUseDarkColors', { value: dark, configurable: true });
       const tray = createTray() as Tray & { icon: string };
 
-      expect(tray.icon).toBe('assets/icons/sidra-tray-linux.png');
+      expect(tray.icon).toBe('assets/icons/sidra-tray-outline.png');
     });
 
     it.each([
