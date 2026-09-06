@@ -196,9 +196,9 @@ Choose **Style** in Settings. Sidra ships with **Catppuccin**, **Dracula**, **Ev
 
 These theme examples show different artist pages. Select an image to view the full-resolution screenshot.
 
-| Rosé Pine | Catppuccin |
+| Everforest | Catppuccin |
 |---|---|
-| [![Sidra artist page with the Rosé Pine theme](assets/source/sidra-screenshot-01.png)](assets/source/sidra-screenshot-01@2x.png) | [![Sidra artist page with the Catppuccin theme](assets/source/sidra-screenshot-02.png)](assets/source/sidra-screenshot-02@2x.png) |
+| [![Sidra artist page with the Everforest theme](assets/source/sidra-screenshot-01.png)](assets/source/sidra-screenshot-01@2x.png) | [![Sidra artist page with the Catppuccin theme](assets/source/sidra-screenshot-02.png)](assets/source/sidra-screenshot-02@2x.png) |
 | **Gruvbox** | **Dracula** |
 | [![Sidra artist page with the Gruvbox theme](assets/source/sidra-screenshot-03.png)](assets/source/sidra-screenshot-03@2x.png) | [![Sidra artist page with the Dracula theme](assets/source/sidra-screenshot-04.png)](assets/source/sidra-screenshot-04@2x.png) |
 
