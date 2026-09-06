@@ -3,6 +3,7 @@ license: BlueOak-1.0.0
 
 repository:
   description: An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎
+  homepage: https://github.com/wimpysworld/sidra
   has_wiki: false
   has_discussions: false
   has_projects: false
