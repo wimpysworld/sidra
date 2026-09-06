@@ -119,6 +119,12 @@ validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit --omit=dev
 
+# Generate DMG background PNGs from SVG source
+generate-dmg-background:
+    rsvg-convert -w 540 -h 380 -o build/background.png assets/source/sidra-background.svg
+    rsvg-convert -w 1080 -h 760 -o build/background@2x.png assets/source/sidra-background.svg
+    optipng -strip all -o7 -quiet build/background.png build/background@2x.png
+
 # Generate tray icon PNGs from SVG source
 generate-tray-icon: generate-linux-tray-icon
     #!/usr/bin/env bash
