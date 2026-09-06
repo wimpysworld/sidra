@@ -90,7 +90,7 @@ describe('settings actions', () => {
     expect(config.getTheme()).toBe('apple-music');
   });
 
-  it('translates the Custom Theme option without changing its stored value', async () => {
+  it('translates the Custom Theme label and keeps its option value', async () => {
     vi.resetModules();
     const { app } = await import('electron');
     const language = vi.spyOn(app, 'getPreferredSystemLanguages').mockReturnValue(['fr']);
