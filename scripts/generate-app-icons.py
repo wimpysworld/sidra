@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the app icon and package its PNG images for macOS and Windows."""
+"""Render the shared logo and package app icons for macOS and Windows."""
 
 from pathlib import Path
 import shutil
@@ -58,6 +58,8 @@ with tempfile.TemporaryDirectory(prefix="app-icons-", dir=output) as temporary:
         offset += length
     (staging / "icon.ico").write_bytes(directory + b"".join(images[size] for size in ico_sizes))
     (staging / "icon.png").write_bytes(images[1024])
+    (staging / "sidra-logo.png").write_bytes(images[256])
 
     for name in ("icon.png", "icon.icns", "icon.ico"):
         (staging / name).replace(output / name)
+    (staging / "sidra-logo.png").replace(root / "assets/sidra-logo.png")
