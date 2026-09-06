@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { extractInlineScript } from './mocks/inlineScript';
 
 const html = fs.readFileSync(path.join(__dirname, '../assets/about.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+const script = extractInlineScript(html);
 
 describe('About page display name', () => {
   it.each([
@@ -21,8 +22,7 @@ describe('About page display name', () => {
       getElementById: (id: string) => elements.get(id),
       querySelector: () => elements.get('close-btn'),
     };
-    expect(script).toBeDefined();
-    vm.runInNewContext(script!, { document, window: { location: { search } }, URLSearchParams });
+    vm.runInNewContext(script, { document, window: { location: { search } }, URLSearchParams });
 
     expect(document.title).toBe(`About ${name}`);
     expect(elements.get('name')?.textContent).toBe(name);
