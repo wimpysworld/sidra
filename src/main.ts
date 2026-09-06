@@ -11,9 +11,9 @@ import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, hand
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
 import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
-import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setGetMainWindowCallback, setShowSettingsCallback } from './tray';
+import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setGetMainWindowCallback } from './tray';
 import { initSettingsActions, notifySettingsChanged } from './settings';
-import { handleSettingsNavigation, initSettingsWindow, showSettingsWindow } from './settingsWindow';
+import { handleSettingsNavigation, initSettingsWindow } from './settingsWindow';
 import { initCommandBridge } from './commandBridge';
 import { initControllerIPC, goBackIfPossible } from './controllerIPC';
 import { CONTROLLER_RESET_CHANNEL } from './controller';
@@ -692,7 +692,6 @@ if (gotLock) {
     });
     app.on('will-quit', teardownSettingsActions);
     initSettingsWindow(win);
-    setShowSettingsCallback(showSettingsWindow);
     setRebuildTrayCallback(() => {
       if (appTray) rebuildTrayMenu(appTray);
       notifySettingsChanged();

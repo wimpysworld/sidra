@@ -187,7 +187,6 @@ vi.mock('../src/tray', () => ({
   initTrayStateManager: bootstrap.integrations.trayState,
   rebuildTrayMenu: vi.fn(),
   setGetMainWindowCallback: vi.fn(),
-  setShowSettingsCallback: vi.fn(),
 }));
 
 vi.mock('../src/settings', () => ({
@@ -196,7 +195,6 @@ vi.mock('../src/settings', () => ({
 }));
 vi.mock('../src/settingsWindow', () => ({
   initSettingsWindow: vi.fn(),
-  showSettingsWindow: vi.fn(),
   handleSettingsNavigation: vi.fn(),
 }));
 
@@ -340,7 +338,7 @@ describe('main bootstrap', () => {
     const { components } = await import('electron');
     const { initSettingsActions } = await import('../src/settings');
     const { initSettingsWindow } = await import('../src/settingsWindow');
-    const { createTray, rebuildTrayMenu, setGetMainWindowCallback, setShowSettingsCallback } = await import('../src/tray');
+    const { createTray, rebuildTrayMenu, setGetMainWindowCallback } = await import('../src/tray');
     const { initServiceSwitch } = await import('../src/serviceSwitch');
     let resolveComponents!: () => void;
     vi.mocked(components.whenReady).mockReturnValueOnce(new Promise(resolve => {
@@ -360,7 +358,7 @@ describe('main bootstrap', () => {
 
     expect(createTray).toHaveBeenCalledOnce();
     const trayCreated = vi.mocked(createTray).mock.invocationCallOrder[0];
-    for (const initialise of [initSettingsActions, initSettingsWindow, initServiceSwitch, setGetMainWindowCallback, setShowSettingsCallback]) {
+    for (const initialise of [initSettingsActions, initSettingsWindow, initServiceSwitch, setGetMainWindowCallback]) {
       expect(initialise).toHaveBeenCalledOnce();
       expect(vi.mocked(initialise).mock.invocationCallOrder[0]).toBeLessThan(trayCreated);
     }
@@ -372,15 +370,14 @@ describe('main bootstrap', () => {
 
   it('wires Settings entry points and refreshes state without a tray', async () => {
     const { initSettingsActions, notifySettingsChanged } = await import('../src/settings');
-    const { initSettingsWindow, showSettingsWindow, handleSettingsNavigation } = await import('../src/settingsWindow');
-    const { createTray, setShowSettingsCallback } = await import('../src/tray');
+    const { initSettingsWindow, handleSettingsNavigation } = await import('../src/settingsWindow');
+    const { createTray } = await import('../src/tray');
     const { initServiceSwitch } = await import('../src/serviceSwitch');
     const { setRebuildTrayCallback } = await import('../src/theme');
     vi.mocked(createTray).mockReturnValueOnce(null as unknown as ReturnType<typeof createTray>);
     await startMain();
     expect(initSettingsActions).toHaveBeenCalledOnce();
     expect(initSettingsWindow).toHaveBeenCalledWith(bootstrap.mainWindow);
-    expect(setShowSettingsCallback).toHaveBeenCalledWith(showSettingsWindow);
     const nav = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'nav:settings');
     const event = {};
     nav?.[1](event);
