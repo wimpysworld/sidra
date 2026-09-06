@@ -136,78 +136,30 @@ With flakes enabled, install Sidra for your user:
 nix profile add github:wimpysworld/sidra
 ```
 
-The flake provides `packages.<system>.default` for `x86_64-linux`, `aarch64-linux` and `aarch64-darwin` (Apple Silicon).
-
-For a declarative installation, add Sidra to your existing `flake.nix` inputs. Bind the inputs with `inputs@` in your existing `outputs` function:
+For NixOS or Home Manager, add Sidra to your `flake.nix` inputs:
 
 ```nix
-{
-  inputs.sidra.url = "github:wimpysworld/sidra";
-
-  outputs = inputs@{ nixpkgs, ... }: {
-    # Your existing outputs go here.
-  };
-}
+inputs.sidra.url = "github:wimpysworld/sidra";
 ```
 
-Keep your other inputs and outputs. Choose one of the following examples. Both examples belong inside `outputs`.
-
-**NixOS: install system-wide**
-
-Add the inline module below to the `modules` list in your existing `nixosSystem` call:
+**NixOS**:
 
 ```nix
-nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
-  modules = [
-    ./configuration.nix
-    ({ pkgs, ... }: {
-      environment.systemPackages = [
-        inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
-      ];
-    })
-  ];
-};
+environment.systemPackages = [
+  inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
+];
 ```
 
-Keep your existing host name, platform settings and modules. From your configuration directory, apply the change with your host name:
-
-```bash
-sudo nixos-rebuild switch --flake .#my-host
-```
-
-**Home Manager: install for your user**
-
-For standalone Home Manager, add the inline module below to your existing `homeManagerConfiguration` call:
+**Home Manager**:
 
 ```nix
-homeConfigurations.my-user = inputs.home-manager.lib.homeManagerConfiguration {
-  pkgs = nixpkgs.legacyPackages.x86_64-linux;
-  modules = [
-    ./home.nix
-    ({ pkgs, ... }: {
-      home.packages = [
-        inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
-      ];
-    })
-  ];
-};
+home.packages = [
+  inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
+];
 ```
 
-Keep your existing Home Manager input, configuration name, `pkgs` and modules. The package selection uses your configured platform automatically.
-
-From your configuration directory, apply the change with your configuration name:
-
-```bash
-home-manager switch --flake .#my-user
-```
-
-If Home Manager is a NixOS module, add the same `home.packages` entry to your user module. Pass `inputs` through `home-manager.extraSpecialArgs = { inherit inputs; };` in your NixOS configuration. Add `inputs` to your user module's function arguments. Apply the change with `nixos-rebuild`.
-
-The first rebuild records the Sidra input in your configuration's `flake.lock`. Keep that file with your configuration. To update Sidra later, run this command in the same directory, then repeat your rebuild command:
-
-```bash
-nix flake update sidra
-```
+These module snippets need `inputs` in their function arguments, passed through NixOS `specialArgs` or Home Manager `extraSpecialArgs`.
+For Home Manager inside NixOS, use `home-manager.extraSpecialArgs`.
 
 ### macOS
 
@@ -316,9 +268,7 @@ The bonus became clear once everything was working. Wrapping `music.apple.com` d
 
 *Sidra* is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
 
----
-
-## How It Works
+### How It Works
 
 Sidra loads `music.apple.com` directly inside CastLabs Electron (required for Widevine DRM on Linux - no other shell supports this).
 A lightweight hook script is injected after page load that taps `MusicKit.getInstance()` events and forwards them over Electron IPC to the main process, which distributes them to platform integrations.
@@ -340,6 +290,8 @@ music.apple.com
 Controls flow in reverse: MPRIS method calls reach `window.__sidra` via `webContents.executeJavaScript()`, which calls the appropriate MusicKit method directly.
 
 The codebase is tightly focused and as lean as possible.
+
+---
 
 ## Development
 
