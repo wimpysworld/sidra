@@ -15,10 +15,12 @@
 // works, attribution given as a courtesy):
 // - Catppuccin (Mocha/Latte)  https://github.com/catppuccin/palette      MIT
 // - Dracula                   https://github.com/dracula/dracula-theme   MIT
+// - Everforest (Dark/Light)   https://github.com/sainnhe/everforest      MIT
 // - Gruvbox                   https://github.com/morhetz/gruvbox         MIT
 // - Nord                      https://github.com/nordtheme/nord          MIT
 // - Ros\u00e9 Pine (Main/Dawn)     https://github.com/rose-pine/palette       MIT
 // - Solarized                 https://github.com/altercation/solarized   MIT
+// - Tokyo Night (Night/Light) https://github.com/tokyo-night/tokyo-night-vscode-theme  MIT
 
 import type { SchemeColours, ThemeDefinition } from './themeTemplate';
 
@@ -30,10 +32,12 @@ interface BundledTheme extends ThemeDefinition {
 export type BundledThemeName =
   | 'catppuccin'
   | 'dracula'
+  | 'everforest'
   | 'gruvbox'
   | 'nord'
   | 'rose-pine'
-  | 'solarized';
+  | 'solarized'
+  | 'tokyo-night';
 
 /** Active theme. 'apple-music' means no override CSS is injected at all. */
 export type ThemeName = 'apple-music' | BundledThemeName | 'custom';
@@ -96,6 +100,40 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
     label: 'Dracula',
     dark: draculaDark,
     light: draculaDark,
+  },
+  {
+    name: 'everforest',
+    label: 'Everforest',
+    dark: {
+      // Dark, medium contrast
+      base: '#2d353b',
+      mantle: '#232a2e',
+      crust: '#1e2326',
+      surface0: '#343f44',
+      surface1: '#3d484d',
+      surface2: '#475258',
+      overlay: '#859289',
+      text: '#d3c6aa',
+      subtext1: '#d3c6aa',
+      subtext0: '#9da9a0',
+      accent: '#a7c080',
+      accentHover: '#83c092',
+    },
+    light: {
+      // Light, medium contrast. Darker text keeps 4.5:1 contrast after the template applies alpha.
+      base: '#fdf6e3',
+      mantle: '#f4f0d9',
+      crust: '#efebd4',
+      surface0: '#e6e2cc',
+      surface1: '#e0dcc7',
+      surface2: '#bdc3af',
+      overlay: '#939f91',
+      text: '#414b52',
+      subtext1: '#5c6a72',
+      subtext0: '#5c6a72',
+      accent: '#5d6b01',
+      accentHover: '#206e4e',
+    },
   },
   {
     name: 'gruvbox',
@@ -227,6 +265,40 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       subtext0: '#586e75',
       accent: '#268bd2',
       accentHover: '#2aa198',
+    },
+  },
+  {
+    name: 'tokyo-night',
+    label: 'Tokyo Night',
+    dark: {
+      // Night
+      base: '#1a1b26',
+      mantle: '#16161e',
+      crust: '#0f0f14',
+      surface0: '#292e42',
+      surface1: '#414868',
+      surface2: '#565f89',
+      overlay: '#545c7e',
+      text: '#c0caf5',
+      subtext1: '#a9b1d6',
+      subtext0: '#9aa5ce',
+      accent: '#7aa2f7',
+      accentHover: '#bb9af7',
+    },
+    light: {
+      // Light
+      base: '#e6e7ed',
+      mantle: '#d6d8df',
+      crust: '#c1c2c7',
+      surface0: '#dcdee3',
+      surface1: '#bdc1cf',
+      surface2: '#9da0ab',
+      overlay: '#707280',
+      text: '#343b59',
+      subtext1: '#6c6e75',
+      subtext0: '#4a5272',
+      accent: '#2959aa',
+      accentHover: '#5a3e8e',
     },
   },
 ];

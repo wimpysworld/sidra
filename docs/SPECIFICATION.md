@@ -744,7 +744,7 @@ This is standard Chromium/Electron behaviour, not CastLabs-specific. The same is
 
 ## Theming
 
-The default colour scheme is Apple Music's own (`'apple-music'`). Bundled themes are registry-driven: `src/palettes.ts` defines `BUNDLED_THEMES` (Catppuccin, Dracula, Gruvbox, Nord, Rosé Pine, Solarized), and `src/themeTemplate.ts` renders each 12-slot palette into a full override stylesheet.
+The default colour scheme is Apple Music's own (`'apple-music'`). `src/palettes.ts` defines `BUNDLED_THEMES`: Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night. `src/themeTemplate.ts` renders each 12-slot palette into a full override stylesheet.
 
 ### Persistence
 
