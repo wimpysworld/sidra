@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="build/icon.png" width="256" height="256" alt="Sidra">
+  <img src="assets/sidra-logo.png" width="256" height="256" alt="Sidra">
   <br />
   Sidra
 </h1>
