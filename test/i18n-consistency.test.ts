@@ -67,7 +67,7 @@ describe('i18n translation records', () => {
 
     it(`${name} has no empty values`, () => {
       for (const [lang, value] of Object.entries(record)) {
-        expect(value, `${name}['${lang}'] is empty`).not.toBe('');
+        expect(value.trim(), `${name}['${lang}'] is empty or whitespace-only`).not.toBe('');
       }
     });
 
