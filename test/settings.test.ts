@@ -3,12 +3,12 @@ import { Conf } from 'electron-conf/main';
 import type { BrowserWindow } from 'electron';
 import * as config from '../src/config';
 import { applySettingsAction, getSettingsState, initSettingsActions, notifySettingsChanged, subscribeSettingsChanges } from '../src/settings';
-import { applyTheme, hasCustomCss } from '../src/theme';
+import { applyTheme, hasCustomTheme } from '../src/theme';
 import * as lastfm from '../src/integrations/lastfm';
 import { enable as enableDiscord } from '../src/integrations/discord-presence';
 
 vi.mock('../src/theme', () => ({
-  applyTheme: vi.fn(), hasCustomCss: vi.fn(() => false),
+  applyTheme: vi.fn(), hasCustomTheme: vi.fn(() => false),
   resolveTheme: () => config.getTheme(),
 }));
 vi.mock('../src/integrations/discord-presence', () => ({ enable: vi.fn(), disable: vi.fn() }));
@@ -26,7 +26,7 @@ let dispose: () => void;
 beforeEach(() => {
   (Conf as unknown as { _data: Map<string, unknown> })._data.clear();
   vi.clearAllMocks();
-  vi.mocked(hasCustomCss).mockReturnValue(false);
+  vi.mocked(hasCustomTheme).mockReturnValue(false);
   vi.mocked(lastfm.isConfigured).mockReturnValue(true);
   dispose = initSettingsActions({ getMainWindow: () => window as unknown as BrowserWindow, applyZoom, switchService, refreshTray });
 });
@@ -90,11 +90,11 @@ describe('settings actions', () => {
     expect(config.getTheme()).toBe('apple-music');
   });
 
-  it('accepts custom CSS only while it is available', () => {
-    vi.mocked(hasCustomCss).mockReturnValue(true);
+  it('accepts Custom Theme only while it is available', () => {
+    vi.mocked(hasCustomTheme).mockReturnValue(true);
     applySettingsAction({ type: 'theme', value: 'custom' });
     expect(config.getTheme()).toBe('custom');
-    vi.mocked(hasCustomCss).mockReturnValue(false);
+    vi.mocked(hasCustomTheme).mockReturnValue(false);
     expect(() => applySettingsAction({ type: 'theme', value: 'custom' })).toThrow();
   });
 

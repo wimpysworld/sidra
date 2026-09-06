@@ -317,9 +317,9 @@ export function isThemeName(value: string): value is ThemeName {
     || bundledThemesByName.has(value as BundledThemeName);
 }
 
-/** Tray label for a theme name. */
+/** Settings label for a theme name. */
 export function themeLabel(name: ThemeName): string {
   if (name === 'apple-music') return 'Apple Music';
-  if (name === 'custom') return 'Custom';
+  if (name === 'custom') return 'Custom Theme';
   return bundledThemesByName.get(name)?.label ?? name;
 }

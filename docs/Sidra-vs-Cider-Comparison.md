@@ -255,7 +255,7 @@ The previous comparison reported zero findings from Semgrep, Gitleaks and OSV-Sc
 | Lossless (macOS/Windows) | Yes (EVS production VMP) | Vendor claims, platform coverage not independently verified |
 | **Interface** | | |
 | UI | Apple's `music.apple.com` and `classical.music.apple.com`, with Sidra additions | Custom UI, Vue.js documented in earlier versions |
-| Themes | Apple Music default, Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, Tokyo Night, custom CSS. Applies to both services | Extensive theming system |
+| Themes | Apple Music default, eight bundled themes and one JSON-based Custom Theme. Colours apply to both services and Settings | Extensive theming system |
 | Immersive/fullscreen mode | No | Yes (album art visualisation) |
 | Mini player | None bundled, external MPRIS MiniPlayer on Linux | Built-in mini-player and microplayer |
 | Settings | Dedicated resizable, themed window with gear and keyboard access, direct tray preferences remain | In-app settings, current layout not compared |

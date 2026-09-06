@@ -20,7 +20,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 ## Features
 
 - 🎧 **Untouched audio** - no `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
-- 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus live-reloading `custom.css`
+- 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus a live-reloading custom colour theme
 - 📊 **Last.fm scrobbling** - opt-in, with browser approval
 - 🎮 **Discord Rich Presence** - show what you are listening to
 - 🔔 **Desktop notifications** - track changes with Previous and Next controls where the platform supports notification actions
@@ -192,7 +192,7 @@ SmartScreen will warn the installer is unsigned. Click **More info** then **Run 
 
 ## Theming
 
-Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Everforest**, **Gruvbox**, **Nord**, **Rosé Pine**, **Solarized**, and **Tokyo Night**, plus the default **Apple Music** styling.
+Choose **Style** in Settings. Sidra ships with **Catppuccin**, **Dracula**, **Everforest**, **Gruvbox**, **Nord**, **Rosé Pine**, **Solarized**, and **Tokyo Night**, plus the default **Apple Music** styling.
 
 These theme examples show different artist pages. Select an image to view the full-resolution screenshot.
 
@@ -202,16 +202,62 @@ These theme examples show different artist pages. Select an image to view the fu
 | **Gruvbox** | **Dracula** |
 | [![Sidra artist page with the Gruvbox theme](assets/source/sidra-screenshot-03.png)](assets/source/sidra-screenshot-03@2x.png) | [![Sidra artist page with the Dracula theme](assets/source/sidra-screenshot-04.png)](assets/source/sidra-screenshot-04@2x.png) |
 
-As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
-
-- Linux: `~/.config/Sidra/custom.css`
-- macOS: `~/Library/Application Support/Sidra/custom.css`
-- Windows: `%APPDATA%\Sidra\custom.css`
-
-The **Custom** option appears when that file is readable and contains CSS.
-
 Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
-For custom colours in Settings, use Apple Music CSS variables. Selectors for Apple's web pages do not necessarily match the Settings window.
+
+### Custom theme
+
+Copy [custom-theme.json](docs/custom-theme.json) to Sidra's user data directory, then edit its colours:
+
+| Platform | File |
+|---|---|
+| Linux | `~/.config/Sidra/custom-theme.json` |
+| macOS | `~/Library/Application Support/Sidra/custom-theme.json` |
+| Windows | `%APPDATA%\Sidra\custom-theme.json` |
+
+On Linux, a set `XDG_CONFIG_HOME` replaces `~/.config`.
+
+A valid file adds one **Custom Theme** choice under **Style** in Settings.
+Select it once. Saved edits apply without a restart, including in an open Settings window.
+
+The example contains all 12 required colours in `dark`:
+
+```json
+{
+  "dark": {
+    "base": "#1e1e2e",
+    "mantle": "#181825",
+    "crust": "#11111b",
+    "surface0": "#313244",
+    "surface1": "#45475a",
+    "surface2": "#585b70",
+    "overlay": "#6c7086",
+    "text": "#cdd6f4",
+    "subtext1": "#bac2de",
+    "subtext0": "#a6adc8",
+    "accent": "#f38ba8",
+    "accentHover": "#eba0ac"
+  }
+}
+```
+
+Use six-digit hex colours, such as `#1e1e2e`. JSON requires double quotes and accepts no comments or trailing commas.
+For a separate light scheme, add a `light` object with the same 12 keys. Without it, Sidra uses `dark` in both modes.
+
+| Keys | Colour role |
+|---|---|
+| `base`, `mantle`, `crust` | Page, player and footer backgrounds |
+| `surface0`, `surface1`, `surface2` | Controls, scrollbars and borders |
+| `text`, `subtext1`, `subtext0`, `overlay` | Primary, secondary, emphasised secondary and tertiary text |
+| `accent`, `accentHover` | Highlight colour and its hover or pressed state |
+
+Sidra accepts low-contrast palettes without adjustment. Choose colours that you can read comfortably.
+Custom themes change colours only, not fonts or layout.
+
+If the file is missing, unreadable or invalid, **Custom Theme** disappears and an active custom theme falls back to **Apple Music**.
+Fix or restore the file to recover the theme automatically, unless you selected another style.
+
+**Migrating from custom CSS:** Sidra ignores existing `custom.css` files but leaves them untouched.
+Copy your colours into the JSON example. Sidra cannot automatically convert arbitrary CSS, and CSS rules no longer apply.
 
 ## Mini Player
 

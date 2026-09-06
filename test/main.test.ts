@@ -178,7 +178,7 @@ vi.mock('../src/serviceSwitch', () => ({
 vi.mock('../src/theme', () => ({
   initThemeCSS: vi.fn(),
   injectThemeCss: vi.fn(() => Promise.resolve()),
-  setRebuildTrayCallback: vi.fn(),
+  setThemeChangedCallback: vi.fn(),
 }));
 
 vi.mock('../src/tray', () => ({
@@ -378,7 +378,7 @@ describe('main bootstrap', () => {
     const { initSettingsWindow, handleSettingsNavigation } = await import('../src/settingsWindow');
     const { createTray } = await import('../src/tray');
     const { initServiceSwitch } = await import('../src/serviceSwitch');
-    const { setRebuildTrayCallback } = await import('../src/theme');
+    const { setThemeChangedCallback } = await import('../src/theme');
     vi.mocked(createTray).mockReturnValueOnce(null as unknown as ReturnType<typeof createTray>);
     await startMain();
     expect(initSettingsActions).toHaveBeenCalledOnce();
@@ -387,7 +387,7 @@ describe('main bootstrap', () => {
     const event = {};
     nav?.[1](event);
     expect(handleSettingsNavigation).toHaveBeenCalledWith(event, bootstrap.mainWindow);
-    vi.mocked(setRebuildTrayCallback).mock.calls[0][0]();
+    vi.mocked(setThemeChangedCallback).mock.calls[0][0]();
     expect(notifySettingsChanged).toHaveBeenCalledOnce();
     vi.mocked(initServiceSwitch).mock.calls[0][0].loadURL('https://music.apple.com/gb/new');
     expect(notifySettingsChanged).toHaveBeenCalledTimes(2);
