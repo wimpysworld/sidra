@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { SetActivity } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
+import { app } from 'electron';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
 
@@ -238,10 +239,12 @@ describe('discord presence integration', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
   it('sends a listening activity with the track title as the status display', () => {
+    vi.spyOn(app, 'getName').mockReturnValue('Test Player');
     player.setPlaybackState(PlaybackState.Playing);
     player.emitNowPlaying(TRACK);
     vi.advanceTimersByTime(DEBOUNCE_MS);
@@ -254,9 +257,11 @@ describe('discord presence integration', () => {
       details: 'Blue Monday',
       state: 'by New Order',
       buttons: [
-        { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
+        { label: 'Test Player', url: 'https://github.com/wimpysworld/sidra' },
         { label: 'Play on Apple Music', url: TRACK.url },
       ],
+      smallImageKey: 'sidra_logo',
+      smallImageText: 'Test Player',
       // sendActivity() anchors both stamps to Date.now() at fire time, and the
       // fake clock has moved by the debounce. The playhead sits at zero, so
       // the start is that moment and the end is a track length later.

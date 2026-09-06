@@ -1,5 +1,6 @@
 // test/i18n.test.ts
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import { app } from 'electron';
 import { getLocalizedString, getNavigationStrings, getTrayStrings, LOADING_TEXT } from '../src/i18n';
 
 describe('settings labels', () => {
@@ -53,16 +54,18 @@ async function freshErrorLog(): Promise<ReturnType<typeof vi.fn>> {
 
 describe('locale file loading', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.doUnmock('fs');
     vi.resetModules();
   });
 
   it('names the file and the asarUnpack rule when the read fails', async () => {
+    vi.spyOn(app, 'getName').mockReturnValue('Test Player');
     await expect(
       importI18nWithRead(() => {
         throw new Error('ENOENT: no such file or directory');
       }),
-    ).rejects.toThrow(/loading\.json.*ENOENT[\s\S]*asarUnpack/);
+    ).rejects.toThrow(/Test Player could not load the locale file .*loading\.json.*ENOENT[\s\S]*asarUnpack/);
 
     expect(await freshErrorLog()).toHaveBeenCalledWith(
       expect.stringContaining('failed to load locale file'),

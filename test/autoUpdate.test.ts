@@ -77,6 +77,7 @@ describe('auto-update', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     moduleApi._load = realLoad;
     restorePlatform();
     vi.unstubAllEnvs();
@@ -128,6 +129,7 @@ describe('auto-update', () => {
   });
 
   it('records a download, rebuilds the menu, and installs from either prompt', async () => {
+    vi.spyOn(app, 'getName').mockReturnValue('Test Player');
     const tray = new Tray('icon');
     const rebuildMenu = vi.fn();
     await configure(tray, rebuildMenu);
@@ -141,7 +143,7 @@ describe('auto-update', () => {
     expect(showUpdateNotification).toHaveBeenCalledWith('1.2.3', 'update-downloaded', expect.any(Function));
     expect(dialog.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Update ready',
-      message: 'Sidra 1.2.3',
+      message: 'Test Player 1.2.3',
       buttons: ['Restart now', 'Later'],
     }));
     expect(updater.autoUpdater.quitAndInstall).not.toHaveBeenCalled();

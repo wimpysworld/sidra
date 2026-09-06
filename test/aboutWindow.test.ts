@@ -11,7 +11,7 @@ vi.mock('../src/i18n', () => ({
 
 vi.mock('../src/paths', () => ({
   getAssetPath: vi.fn((...parts: string[]) => parts.join('/')),
-  getProductInfo: () => ({ productName: 'Sidra', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
+  getProductInfo: () => ({ productName: 'Test Player', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
 }));
 
 import { BrowserWindow, app } from 'electron';
@@ -114,7 +114,7 @@ describe('showAboutWindow', () => {
 
     expect(latestMockInstance.loadFile).toHaveBeenCalledWith('assets/about.html', {
       query: {
-        name: 'Sidra',
+        name: 'Test Player',
         version: app.getVersion(),
         description: 'Apple Music client',
         author: 'Test',

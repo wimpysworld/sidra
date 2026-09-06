@@ -226,7 +226,7 @@ function sendActivity(player: Player): void {
     : undefined;
 
   const buttons: Array<{ label: string; url: string }> = [
-    { label: 'Sidra', url: 'https://github.com/wimpysworld/sidra' },
+    { label: app.getName(), url: 'https://github.com/wimpysworld/sidra' },
   ];
   if (trackUrl) {
     const displayName = getService(getMusicService()).displayName;
@@ -241,7 +241,7 @@ function sendActivity(player: Player): void {
     largeImageKey,
     largeImageText,
     smallImageKey: 'sidra_logo',
-    smallImageText: 'Sidra',
+    smallImageText: app.getName(),
     buttons,
   };
 

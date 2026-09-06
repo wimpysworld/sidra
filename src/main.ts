@@ -337,7 +337,7 @@ function loadAssets(): Assets {
 
 function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
   const win = new BrowserWindow({
-    title: 'Sidra',
+    title: app.getName(),
     width: MAIN_WINDOW_WIDTH_PX,
     height: MAIN_WINDOW_HEIGHT_PX,
     show: false,

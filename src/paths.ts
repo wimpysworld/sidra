@@ -16,7 +16,6 @@ export function getAssetPath(...parts: string[]): string {
 
 interface PackageJson {
   author: string | { name: string };
-  build?: { productName?: string };
   description?: string;
   license?: string;
 }
@@ -51,7 +50,7 @@ export function getProductInfo(): ProductInfo {
     : (pkg.author?.name ?? '');
 
   cachedProductInfo = {
-    productName: pkg.build?.productName ?? app.getName(),
+    productName: app.getName(),
     description: pkg.description ?? '',
     author,
     license: pkg.license ?? '',
