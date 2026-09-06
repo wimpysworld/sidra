@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { app } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { getTrayStrings } from '../src/i18n';
 import type { SettingsAction, SettingsState } from '../src/settings';
@@ -47,7 +48,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function harness(initial = fixture()) {
+function harness(initial = fixture(), options: { search?: string; initialError?: Error } = {}) {
   const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(match => [match[1], new Element(match[1])]));
   const labels = [...html.matchAll(/data-label="([^"]+)"/g)].map(match => {
     const element = new Element();
@@ -58,17 +59,22 @@ function harness(initial = fixture()) {
     title: '', documentElement: { lang: '', dir: '', dataset: { theme: '' } }, activeElement: elements.get('theme'),
     getElementById: (id: string) => elements.get(id),
     querySelectorAll: () => labels,
+    querySelector: (selector: string) => labels.find(element => selector === `[data-label="${element.dataset.label}"]`),
     createElement: () => new Element(),
   };
   let push!: (state: SettingsState) => void;
   let close!: () => void;
   const unsubscribe = vi.fn();
-  const getState = vi.fn(async () => initial);
+  const getState = vi.fn(async () => {
+    if (options.initialError) throw options.initialError;
+    return initial;
+  });
   const apply = vi.fn(async (_action: SettingsAction) => initial);
   const onState = vi.fn((listener: typeof push) => { push = listener; return unsubscribe; });
   vm.runInNewContext(source, {
     document,
-    window: { sidraSettings: { getState, apply, onState }, addEventListener: (_event: string, listener: () => void) => { close = listener; } },
+    URLSearchParams,
+    window: { location: { search: options.search ?? '' }, sidraSettings: { getState, apply, onState }, addEventListener: (_event: string, listener: () => void) => { close = listener; } },
   });
   return { document, labels, getState, apply, onState, unsubscribe, push: (state: SettingsState) => push(state), close: () => close(),
     element: (id: string) => elements.get(id)! };
@@ -79,6 +85,43 @@ async function settle(): Promise<void> {
 }
 
 describe('settings page', () => {
+  it('resolves every HTML data-label from a non-English state', async () => {
+    const state = fixture();
+    const englishSettings = state.labels.settings;
+    const locale = vi.spyOn(app, 'getPreferredSystemLanguages').mockReturnValue(['fr']);
+    try {
+      vi.resetModules();
+      state.labels = (await import('../src/i18n')).getTrayStrings();
+    } finally {
+      locale.mockRestore();
+    }
+    state.lang = 'fr';
+    const h = harness(state);
+    await settle();
+    expect(state.labels.settings).not.toBe(englishSettings);
+    expect(h.labels.length).toBeGreaterThan(0);
+    for (const element of h.labels) {
+      const key = element.dataset.label!;
+      expect(state.labels, `No settings translation for data-label="${key}"`).toHaveProperty(key);
+      expect(element.textContent).toBe(state.labels[key as keyof typeof state.labels]);
+      expect(element.textContent.trim()).not.toBe('');
+    }
+  });
+
+  it('keeps the translated title, heading and error when the first state read fails', async () => {
+    const params = new URLSearchParams({
+      lang: 'fr', settings: 'Paramètres', settingsError: 'Impossible de modifier les paramètres.',
+    });
+    const h = harness(fixture(), { search: `?${params}`, initialError: new Error('private details') });
+    await settle();
+    expect(h.document.title).toBe('Paramètres');
+    expect(h.document.documentElement.lang).toBe('fr');
+    expect(h.document.documentElement.dir).toBe('ltr');
+    expect(h.labels.find(element => element.dataset.label === 'settings')?.textContent).toBe('Paramètres');
+    expect(h.element('error').textContent).toBe('Impossible de modifier les paramètres.');
+    expect(h.element('error').hidden).toBe(false);
+  });
+
   it('subscribes before reading state and preserves the focused control', async () => {
     const h = harness();
     await settle();

@@ -1,7 +1,8 @@
 // test/i18n.test.ts
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { app } from 'electron';
-import { getLocalizedString, getNavigationStrings, getTrayStrings, LOADING_TEXT } from '../src/i18n';
+import { DISCORD_PLAY_ON_TEXT, getLocalizedString, getNavigationStrings, getTrayStrings, LOADING_TEXT } from '../src/i18n';
+import { allServices } from '../src/musicService';
 
 describe('settings labels', () => {
   it('shares the settings label between navigation and the tray', () => {
@@ -29,6 +30,49 @@ describe('getLocalizedString', () => {
 
   it('handles empty language list', () => {
     expect(getLocalizedString(LOADING_TEXT, [])).toBe('Loading...');
+  });
+
+  it.each([
+    ['zh-Hans-CN', 'zh-CN'], ['zh-Hans', 'zh-CN'], ['zh-Hant-TW', 'zh-TW'],
+    ['zh-Hant', 'zh-TW'], ['zh-Hant-HK', 'zh-HK'], ['zh-Hans-SG', 'zh-SG'],
+    ['zh-Hant-US', 'zh-TW'], ['zh-Hans-HK', 'zh-CN'], ['ZH-hant-hk', 'zh-HK'],
+  ])('resolves %s to %s', (requested, resolved) => {
+    const record = Object.fromEntries(Object.keys(LOADING_TEXT).map(lang => [lang, lang]));
+    expect(getLocalizedString(record, [requested, 'en'])).toBe(resolved);
+  });
+
+  it('continues after a malformed language tag', () => {
+    expect(getLocalizedString(LOADING_TEXT, ['not_a_tag', 'fr'])).toBe(LOADING_TEXT.fr);
+  });
+});
+
+describe('translated UI labels', () => {
+  it('keeps every Discord button within the service limit without shortening brand names', () => {
+    for (const [lang, template] of Object.entries(DISCORD_PLAY_ON_TEXT)) {
+      for (const service of allServices()) {
+        const label = template.replace('{service}', service.displayName);
+        expect(label, `${lang}: ${service.id}`).toContain(service.displayName);
+        expect(label.length, `${lang}: ${service.id}`).toBeLessThanOrEqual(32);
+      }
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it('uses French labels and preserves literal metadata placeholders', async () => {
+    vi.resetModules();
+    const { app: freshApp } = await import('electron');
+    vi.spyOn(freshApp, 'getPreferredSystemLanguages').mockReturnValue(['fr-CA']);
+    const i18n = await import('../src/i18n');
+    expect(i18n.getTrayStrings().styleCustom).toBe('Thème personnalisé');
+    expect(i18n.getDiscordPlayOnText('Apple Music Classical')).toBe('Lire sur Apple Music Classical');
+    expect(i18n.getDiscordArtistText(null)).toBe('par Artiste inconnu');
+    expect(i18n.getDiscordArtistText('$&')).toBe('par $&');
+    expect(i18n.getAboutStrings().description).toBe('Un client de bureau minimaliste pour Apple Music.');
+    expect(i18n.getLoadingText().lang).toBe('fr');
   });
 });
 

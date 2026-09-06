@@ -85,18 +85,19 @@ The `10_15_7` macOS version freeze is intentional - Chrome itself freezes this v
 ### Locale detection
 
 - `app.getPreferredSystemLanguages()` returns a BCP 47 ordered list (e.g. `['en-GB', 'en']`)
-- `getLoadingText()` walks the list and matches against the `LOADING_TEXT` record - exact tag first, then base language (e.g. `en-GB` → `en`)
+- `getLoadingText()` and `getLocalizedString()` use the same resolver. Preserve the preferred-language order, exact matches, `Intl.Locale` normalisation and base-language fallback. Use English only after no preferred language matches.
+- Resolve Chinese scripts before the base-language fallback. Keep a supported region when its script matches. Otherwise use `zh-TW` for Hant and `zh-CN` for Hans, including script-only tags and foreign regions.
 - `getStorefront()` uses `app.getLocaleCountryCode()` to extract the region code independently of language (e.g. returns `GB` regardless of whether the language is `en`, `cy`, or `gd`), then lowercases it for use as an Apple Music storefront path segment
 
 ### Adding translations
 
-Translation records live in `assets/locales/` as JSON files. Each file contains a map of record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports all 47 named records.
+Translation records live in `assets/locales/` as JSON files. Each file maps record names to `Record<string, string>` objects keyed by BCP 47 language tags. `src/i18n.ts` loads these at startup via `fs.readFileSync` + `getAssetPath()` and re-exports every record.
 
 | File | Records |
 |------|---------|
 | `assets/locales/loading.json` | `LOADING_TEXT` |
-| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `LASTFM_CONNECT_TEXT`, `LASTFM_CONNECTED_TEXT`, `LASTFM_CONNECT_FAILED_TEXT`, `LASTFM_DISCONNECT_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `SHARE_TEXT`, `MUTE_TEXT`, `HIDE_WINDOW_TEXT`, `SHOW_WINDOW_TEXT`, `CLOSE_TO_TRAY_TEXT`, `PLAYER_TEXT`, `START_PAGE_BROWSE_TEXT`, `START_PAGE_LIBRARY_TEXT`, `START_PAGE_PLAYLISTS_TEXT`, `START_PAGE_SEARCH_TEXT`, `NOT_PLAYING_TEXT`, `BACK_TEXT`, `FORWARD_TEXT`, `RELOAD_TEXT` |
-| `assets/locales/about.json` | `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX` |
+| `assets/locales/tray.json` | `ABOUT_TEXT`, `QUIT_TEXT`, `NOTIFICATIONS_TEXT`, `DISCORD_TEXT`, `DISCORD_PLAY_ON_TEXT`, `DISCORD_BY_ARTIST_TEXT`, `UNKNOWN_ARTIST_TEXT`, `LASTFM_CONNECT_TEXT`, `LASTFM_CONNECTED_TEXT`, `LASTFM_CONNECT_FAILED_TEXT`, `LASTFM_DISCONNECT_TEXT`, `START_PAGE_TEXT`, `START_PAGE_HOME_TEXT`, `START_PAGE_NEW_TEXT`, `START_PAGE_RADIO_TEXT`, `START_PAGE_ALL_PLAYLISTS_TEXT`, `START_PAGE_LAST_TEXT`, `ON_TEXT`, `OFF_TEXT`, `STYLE_TEXT`, `STYLE_CUSTOM_TEXT`, `ZOOM_TEXT`, `PREVIOUS_TEXT`, `PLAY_TEXT`, `PAUSE_TEXT`, `NEXT_TEXT`, `VOLUME_TEXT`, `SHARE_TEXT`, `MUTE_TEXT`, `HIDE_WINDOW_TEXT`, `SHOW_WINDOW_TEXT`, `CLOSE_TO_TRAY_TEXT`, `PLAYER_TEXT`, `START_PAGE_BROWSE_TEXT`, `START_PAGE_LIBRARY_TEXT`, `START_PAGE_PLAYLISTS_TEXT`, `START_PAGE_SEARCH_TEXT`, `NOT_PLAYING_TEXT`, `BACK_TEXT`, `FORWARD_TEXT`, `RELOAD_TEXT`, `SETTINGS_TEXT`, `INTEGRATIONS_TEXT`, `SETTINGS_ERROR_TEXT` |
+| `assets/locales/about.json` | `ABOUT_DESCRIPTION_TEXT`, `CLOSE_TEXT`, `VERSION_PREFIX`, `COPYRIGHT_SUFFIX`, `LICENSE_PREFIX` |
 | `assets/locales/update.json` | `UPDATE_AVAILABLE_TEXT`, `UP_TO_DATE_TEXT`, `UPDATE_READY_TEXT`, `RESTART_NOW_TEXT`, `LATER_TEXT` |
 
 When adding a language, add an entry to every record in every JSON file:
@@ -113,6 +114,7 @@ When adding a language, add an entry to every record in every JSON file:
 
 - Every locale JSON file must be covered by an `asarUnpack` entry in `package.json`. They are currently listed one by one, so adding a locale file means adding its entry. That is not a constraint: `asarUnpack` takes glob patterns, and `assets/icons/**` in the same list is one. `loadLocaleFile()` in `src/i18n.ts` catches a failed read or parse, logs the full path and the reason, then throws naming the path and the `asarUnpack` requirement. The throw is deliberate: this runs before any window exists, and falling back to the `en` records would hide a missing `asarUnpack` entry behind a UI that looks almost right
 - Prefer specific regional tags only when the translation differs from the base language variant (e.g. `zh-CN` vs `zh-TW`); use the base tag (e.g. `fr`) for languages where one translation covers all regions
+- Preserve every English `{...}` placeholder, including its name and occurrence count, in each translation. `test/i18n-consistency.test.ts` compares sorted placeholder lists, so translated text can change their order. Discord records use `{service}` and `{artist}`. Keep these substitutions in `src/i18n.ts` rather than joining translated fragments at call sites.
 - A new tray label needs a key on the `TrayStrings` interface and a row in the `TRAY_TEXT` table beneath it. The table is typed `Record<keyof TrayStrings, Record<string, string>>`, so a key added to the interface and left out of the table fails tsc, and `getTrayStrings()` resolves the whole table in one loop. A label that reads the same in every language is written as an `en`-only record there, because `en` is what `getLocalizedString()` falls back to; the brand name and the five zoom steps are the current ones. `NAMED_TRAY_KEYS` lists the labels carrying a `{name}` placeholder, which is what keeps the product name in `package.json` instead of in a translation
 - `test/i18n-consistency.test.ts` derives the records it checks from the `src/i18n.ts` exports, treating every object export as a record and every function export as not one, so a new record is guarded as soon as it is re-exported. It also reads `assets/locales/` and fails when a record there has no matching re-export. Do not put the record names back in a hand-written list: the previous one drifted to 36 of 43 and left the whole tray media-control group unchecked
 

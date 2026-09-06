@@ -2,7 +2,7 @@ import type { BrowserWindow } from 'electron';
 import * as config from './config';
 import { getLoadingText, getTrayStrings, type TrayStrings } from './i18n';
 import { MUSIC_SERVICES, allServices, isMusicServiceId, DEFAULT_SERVICE_ID, type AnyStartPageId, type MusicServiceId, type MusicStartPageId, type ClassicalStartPageId } from './musicService';
-import { BUNDLED_THEMES, themeLabel, type ThemeName } from './palettes';
+import { BUNDLED_THEMES, type ThemeName } from './palettes';
 import { applyTheme, hasCustomTheme, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import * as lastfm from './integrations/lastfm';
@@ -87,7 +87,7 @@ export function getSettingsState(): SettingsState {
     { value: 'apple-music', label: labels.styleAppleMusic },
     ...BUNDLED_THEMES.map(theme => ({ value: theme.name, label: theme.label })),
   ];
-  if (hasCustomTheme()) themes.push({ value: 'custom', label: themeLabel('custom') });
+  if (hasCustomTheme()) themes.push({ value: 'custom', label: labels.styleCustom });
   return {
     musicService, startPage: pages.includes(storedPage) ? storedPage : service.defaultStartPage,
     theme: resolveTheme(), zoomFactor: config.getZoomFactor(),

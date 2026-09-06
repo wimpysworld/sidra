@@ -74,5 +74,16 @@ describe('i18n translation records', () => {
     it(`${name} includes English fallback`, () => {
       expect(record, `${name} has no 'en' entry to fall back to`).toHaveProperty('en');
     });
+
+    it(`${name} preserves English placeholders and their counts`, () => {
+      const placeholders = (value: string) => (value.match(/\{[^{}]+\}/g) ?? []).sort();
+      const expected = placeholders(record.en);
+      for (const [lang, value] of Object.entries(record)) {
+        expect(
+          placeholders(value),
+          `${name}['${lang}'] must preserve every English placeholder, including repeated occurrences`,
+        ).toEqual(expected);
+      }
+    });
   }
 });

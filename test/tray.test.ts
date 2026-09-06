@@ -54,6 +54,7 @@ const mockTrayStrings: TrayStrings = {
   off: 'Off',
   style: 'Style',
   styleAppleMusic: 'Apple Music',
+  styleCustom: 'Custom Theme',
   zoom: 'Zoom',
   zoom100: '100%',
   zoom125: '125%',

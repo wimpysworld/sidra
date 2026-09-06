@@ -39,7 +39,11 @@ class WindowStub extends EventEmitter {
   show = vi.fn();
   focus = vi.fn();
   setMenu = vi.fn();
-  loadFile = vi.fn(() => Promise.resolve());
+  loadURL = vi.fn((url: string) => {
+    this.url = url;
+    this.webContents.mainFrame.url = url;
+    return Promise.resolve();
+  });
   close = vi.fn(() => { this.destroyed = true; this.emit('closed'); });
 }
 
@@ -95,7 +99,11 @@ describe('Settings window', () => {
       frame: true, resizable: true, minWidth: 360, minHeight: 420,
       webPreferences: expect.objectContaining({ contextIsolation: true, sandbox: true, nodeIntegration: false }),
     }));
-    expect(opened.loadFile).toHaveBeenCalledWith(getAssetPath('assets', 'settings.html'));
+    const url = new URL(opened.loadURL.mock.calls[0][0]);
+    expect(url.pathname).toBe(new URL(pathToFileURL(getAssetPath('assets', 'settings.html')).href).pathname);
+    expect(url.searchParams.get('lang')).toBe('en');
+    expect(url.searchParams.get('settings')).toBe('Settings');
+    expect(url.searchParams.get('settingsError')).toBe('Could not update settings. Please try again.');
     expect(opened.show).not.toHaveBeenCalled();
     opened.emit('ready-to-show');
     await settle();
@@ -253,6 +261,9 @@ describe('Settings window', () => {
     opened.webContents.mainFrame.url = opened.url;
     opened.url += '?other';
     expect(() => read(request())).toThrow('Invalid settings sender');
+    opened.webContents.mainFrame.url = opened.url;
+    expect(() => read(request())).toThrow('Invalid settings sender');
+    expect(() => apply(request(), payload)).toThrow('Invalid settings sender');
     opened.close();
     expect(() => read(request())).toThrow('Invalid settings sender');
     expect(getSettingsState).toHaveBeenCalledOnce();

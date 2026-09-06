@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
-import { getTrayStrings, getAboutStrings } from './i18n';
+import { getTrayStrings, getAboutStrings, getLoadingText } from './i18n';
 import { getAssetPath, getProductInfo } from './paths';
 import { getZoomFactor } from './config';
 
@@ -60,7 +60,8 @@ export function showAboutWindow(): void {
     query: {
       name: info.productName,
       version: app.getVersion(),
-      description: info.description,
+      description: aboutStrings.description,
+      lang: getLoadingText().lang,
       author: info.author,
       license: info.license,
       about: trayStrings.about,

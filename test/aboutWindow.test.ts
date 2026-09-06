@@ -6,7 +6,8 @@ vi.mock('../src/config', () => ({
 
 vi.mock('../src/i18n', () => ({
   getTrayStrings: () => ({ about: 'About Sidra' }),
-  getAboutStrings: () => ({ close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
+  getAboutStrings: () => ({ description: 'Un client Apple Music minimaliste.', close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
+  getLoadingText: () => ({ lang: 'fr', text: 'Chargement...' }),
 }));
 
 vi.mock('../src/paths', () => ({
@@ -116,7 +117,8 @@ describe('showAboutWindow', () => {
       query: {
         name: 'Test Player',
         version: app.getVersion(),
-        description: 'Apple Music client',
+        description: 'Un client Apple Music minimaliste.',
+        lang: 'fr',
         author: 'Test',
         license: 'MIT',
         about: 'About Sidra',

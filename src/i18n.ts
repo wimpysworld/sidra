@@ -44,6 +44,9 @@ export const ABOUT_TEXT: Record<string, string> = trayData.ABOUT_TEXT;
 export const QUIT_TEXT: Record<string, string> = trayData.QUIT_TEXT;
 export const NOTIFICATIONS_TEXT: Record<string, string> = trayData.NOTIFICATIONS_TEXT;
 export const DISCORD_TEXT: Record<string, string> = trayData.DISCORD_TEXT;
+export const DISCORD_PLAY_ON_TEXT: Record<string, string> = trayData.DISCORD_PLAY_ON_TEXT;
+export const DISCORD_BY_ARTIST_TEXT: Record<string, string> = trayData.DISCORD_BY_ARTIST_TEXT;
+export const UNKNOWN_ARTIST_TEXT: Record<string, string> = trayData.UNKNOWN_ARTIST_TEXT;
 export const LASTFM_CONNECT_TEXT: Record<string, string> = trayData.LASTFM_CONNECT_TEXT;
 export const LASTFM_CONNECTED_TEXT: Record<string, string> = trayData.LASTFM_CONNECTED_TEXT;
 export const LASTFM_CONNECT_FAILED_TEXT: Record<string, string> = trayData.LASTFM_CONNECT_FAILED_TEXT;
@@ -57,6 +60,7 @@ export const START_PAGE_LAST_TEXT: Record<string, string> = trayData.START_PAGE_
 export const ON_TEXT: Record<string, string> = trayData.ON_TEXT;
 export const OFF_TEXT: Record<string, string> = trayData.OFF_TEXT;
 export const STYLE_TEXT: Record<string, string> = trayData.STYLE_TEXT;
+export const STYLE_CUSTOM_TEXT: Record<string, string> = trayData.STYLE_CUSTOM_TEXT;
 export const ZOOM_TEXT: Record<string, string> = trayData.ZOOM_TEXT;
 export const PREVIOUS_TEXT: Record<string, string> = trayData.PREVIOUS_TEXT;
 export const PLAY_TEXT: Record<string, string> = trayData.PLAY_TEXT;
@@ -88,6 +92,7 @@ export const RESTART_NOW_TEXT: Record<string, string> = updateData.RESTART_NOW_T
 export const LATER_TEXT: Record<string, string> = updateData.LATER_TEXT;
 
 export const CLOSE_TEXT: Record<string, string> = aboutData.CLOSE_TEXT;
+export const ABOUT_DESCRIPTION_TEXT: Record<string, string> = aboutData.ABOUT_DESCRIPTION_TEXT;
 export const VERSION_PREFIX: Record<string, string> = aboutData.VERSION_PREFIX;
 export const COPYRIGHT_SUFFIX: Record<string, string> = aboutData.COPYRIGHT_SUFFIX;
 export const LICENSE_PREFIX: Record<string, string> = aboutData.LICENSE_PREFIX;
@@ -121,8 +126,23 @@ function getLocalizedEntry(
 ): { value: string; lang: string } {
   for (const lang of langs) {
     if (record[lang]) return { value: record[lang], lang };
-    const base = lang.split('-')[0];
-    if (record[base]) return { value: record[base], lang: base };
+    try {
+      const locale = new Intl.Locale(lang);
+      if (record[locale.baseName]) return { value: record[locale.baseName], lang: locale.baseName };
+      if (locale.language === 'zh') {
+        const script = locale.maximize().script;
+        const region = locale.region;
+        const regionalTag = region ? `zh-${region}` : '';
+        const regionalScript = region ? new Intl.Locale(regionalTag).maximize().script : undefined;
+        const tag = record[regionalTag] && regionalScript === script
+          ? regionalTag : script === 'Hant' ? 'zh-TW' : 'zh-CN';
+        if (record[tag]) return { value: record[tag], lang: tag };
+      }
+      const base = locale.language;
+      if (record[base]) return { value: record[base], lang: base };
+    } catch {
+      continue;
+    }
   }
   return { value: record['en'], lang: 'en' };
 }
@@ -181,6 +201,7 @@ export interface TrayStrings {
   off: string;
   style: string;
   styleAppleMusic: string;
+  styleCustom: string;
   zoom: string;
   zoom100: string;
   zoom125: string;
@@ -232,6 +253,7 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   off: OFF_TEXT,
   style: STYLE_TEXT,
   styleAppleMusic: { en: 'Apple Music' },
+  styleCustom: STYLE_CUSTOM_TEXT,
   zoom: ZOOM_TEXT,
   zoom100: { en: '100%' },
   zoom125: { en: '125%' },
@@ -278,6 +300,16 @@ export function getTrayStrings(): TrayStrings {
   return strings;
 }
 
+export function getDiscordPlayOnText(service: string): string {
+  return getLocalizedString(DISCORD_PLAY_ON_TEXT, getSystemLanguages()).replace('{service}', () => service);
+}
+
+export function getDiscordArtistText(artist: string | null): string {
+  const langs = getSystemLanguages();
+  const name = artist ?? getLocalizedString(UNKNOWN_ARTIST_TEXT, langs);
+  return getLocalizedString(DISCORD_BY_ARTIST_TEXT, langs).replace('{artist}', () => name);
+}
+
 export function getLastfmConnectedText(name: string): string {
   const langs = getSystemLanguages();
   return getLocalizedString(LASTFM_CONNECTED_TEXT, langs).replace('{name}', name);
@@ -308,6 +340,7 @@ export function getNavigationStrings(): {
 }
 
 export function getAboutStrings(): {
+  description: string;
   close: string;
   versionPrefix: string;
   copyrightSuffix: string;
@@ -316,6 +349,7 @@ export function getAboutStrings(): {
   const langs = getSystemLanguages();
   return {
     close: getLocalizedString(CLOSE_TEXT, langs),
+    description: getLocalizedString(ABOUT_DESCRIPTION_TEXT, langs),
     versionPrefix: getLocalizedString(VERSION_PREFIX, langs),
     copyrightSuffix: getLocalizedString(COPYRIGHT_SUFFIX, langs),
     licensePrefix: getLocalizedString(LICENSE_PREFIX, langs),
