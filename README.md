@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/sidra-logo.png" width="256" height="256" alt="Sidra">
+  <img src="build/icon.png" width="256" height="256" alt="Sidra">
   <br />
   Sidra
 </h1>
@@ -58,13 +58,13 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
   - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
   - deb, rpm, Nix, macOS DMG: update notification linking to the release page
 
-Open **Settings** with the gear button beside Back, Forward and Reload, or choose **Settings** from the tray menu.
+Open **Settings** with the gear button beside Back, Forward and Reload.
 With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.
 The resizable window contains player, start page, style, zoom, close-to-tray, notification, Discord and Last.fm preferences.
-Changes save immediately. The existing tray preferences remain available.
+Changes save immediately. The existing tray preferences remain available. [View Settings screenshot](assets/source/sidra-settings.png).
 
 <p align="center">
-  <img src="assets/source/sidra-screenshot.png" alt="Sidra screenshot" width="100%">
+  <a href="assets/sidra-screenshot.png"><img src="assets/sidra-screenshot.png" alt="Sidra playing Cambodian Space Project in the Catppuccin theme, with Settings open" width="100%"></a>
 </p>
 
 ### Controller navigation
@@ -91,6 +91,14 @@ It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the min
 
 Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
 
+These theme examples show different artist pages. Select an image to view the full-resolution screenshot.
+
+| Rosé Pine | Catppuccin |
+|---|---|
+| [![Sidra artist page with the Rosé Pine theme](assets/source/sidra-screenshot-01.png)](assets/source/sidra-screenshot-01@2x.png) | [![Sidra artist page with the Catppuccin theme](assets/source/sidra-screenshot-02.png)](assets/source/sidra-screenshot-02@2x.png) |
+| **Gruvbox** | **Dracula** |
+| [![Sidra artist page with the Gruvbox theme](assets/source/sidra-screenshot-03.png)](assets/source/sidra-screenshot-03@2x.png) | [![Sidra artist page with the Dracula theme](assets/source/sidra-screenshot-04.png)](assets/source/sidra-screenshot-04@2x.png) |
+
 As an unsupported escape hatch, you can place a `custom.css` file in Sidra's user data directory and it will live-reload without restarting:
 
 - Linux: `~/.config/Sidra/custom.css`
@@ -109,6 +117,8 @@ For custom colours in Settings, use Apple Music CSS variables. Selectors for App
 Nothing is sent to Last.fm until you connect an account. In Settings, choose **Connect to Last.fm…**, then approve Sidra in your browser. Settings and the tray show your username after approval. Sidra also sends a notification if notifications are on.
 
 Use Settings or the tray **Last.fm** submenu to turn scrobbling on or off, or disconnect. You can also connect through that submenu. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
+
+Sidra also scrobbles individual songs from live radio and archived shows. Radio songs have no reported duration, so they scrobble after four minutes of active playback. A song can scrobble at the next confirmed song change if Sidra observed its start and more than 30 seconds of playback. The first song joined part-way through uses the four-minute fallback.
 
 Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
 
@@ -266,6 +276,9 @@ just run              # build and launch
 ```
 
 Sign in on first launch; your session persists across relaunches. Run `just` with no arguments to list all available recipes for building, testing, debugging, and diagnostics.
+
+Run `just generate-assets` to regenerate application icons, the logo, DMG backgrounds, tray icons and menu icons from SVG sources.
+The command also composes the README image from screenshots.
 
 ### Widevine VMP signing
 
