@@ -42,6 +42,7 @@ import {
 
 describe('theme helpers', () => {
   beforeEach(() => {
+    vi.mocked(app.on).mockClear();
     vi.mocked(getTheme).mockReturnValue('apple-music');
     // Reset per test, so a switch to classical cannot leak into the next one.
     vi.mocked(getMusicService).mockReturnValue('music');
@@ -632,6 +633,8 @@ describe('theme helpers', () => {
     const harness = watcherHarness();
     harness.start();
     harness.fire('change');
+    expect(app.on).toHaveBeenCalledOnce();
+    expect(app.on).toHaveBeenCalledWith('will-quit', expect.any(Function));
     quit();
     await vi.advanceTimersByTimeAsync(151);
     expect(harness.close).toHaveBeenCalledOnce();
