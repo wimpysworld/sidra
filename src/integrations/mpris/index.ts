@@ -42,6 +42,7 @@ type MprisMethod =
   | 'Seek'
   | 'SetPosition'
   | 'OpenUri'
+  | 'Fullscreen'
   | 'Raise'
   | 'Quit';
 
@@ -57,7 +58,7 @@ function logCommand(method: MprisMethod, result: 'sent' | 'dropped', channel?: R
 
 /**
  * The `org.mpris.MediaPlayer2` root interface: how Sidra identifies itself to
- * media clients, and the two window actions the spec puts here.
+ * media clients, and the window controls the spec puts here.
  */
 class MediaPlayer2 extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
@@ -80,6 +81,25 @@ class MediaPlayer2 extends Interface {
   }
 
   get CanRaise(): boolean {
+    return true;
+  }
+
+  get Fullscreen(): boolean {
+    const win = this._getMainWindow();
+    return win && !win.isDestroyed() ? win.isFullScreen() : false;
+  }
+
+  set Fullscreen(value: boolean) {
+    const win = this._getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.setFullScreen(value);
+      logCommand('Fullscreen', 'sent');
+    } else {
+      logCommand('Fullscreen', 'dropped');
+    }
+  }
+
+  get CanSetFullscreen(): boolean {
     return true;
   }
 
@@ -127,6 +147,14 @@ MediaPlayer2.configureMembers({
       access: ACCESS_READ,
     },
     CanRaise: {
+      signature: 'b',
+      access: ACCESS_READ,
+    },
+    Fullscreen: {
+      signature: 'b',
+      access: ACCESS_READWRITE,
+    },
+    CanSetFullscreen: {
       signature: 'b',
       access: ACCESS_READ,
     },
@@ -807,6 +835,12 @@ export function init(ctx: IntegrationContext): void {
 
   const rootIface = new MediaPlayer2(getMainWindow);
   const playerIface = new MediaPlayer2Player(getMainWindow);
+  let fullscreenWindow: BrowserWindow | null = null;
+  const onFullscreenChanged = (): void => {
+    if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
+      Interface.emitPropertiesChanged(rootIface, { Fullscreen: rootIface.Fullscreen });
+    }
+  };
 
   // Named wrappers, because `will-quit` has to hand removeListener the same
   // function reference; an inline handler could never be detached.
@@ -830,6 +864,8 @@ export function init(ctx: IntegrationContext): void {
   };
 
   app.on('will-quit', () => {
+    fullscreenWindow?.removeListener('enter-full-screen', onFullscreenChanged);
+    fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('repeatModeDidChange', onRepeatModeDidChange);
@@ -862,6 +898,12 @@ export function init(ctx: IntegrationContext): void {
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
+
+  fullscreenWindow = getMainWindow();
+  if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
+    fullscreenWindow.on('enter-full-screen', onFullscreenChanged);
+    fullscreenWindow.on('leave-full-screen', onFullscreenChanged);
+  }
 
   const busName = `org.mpris.MediaPlayer2.${app.getName().toLowerCase()}`;
   bus.requestName(busName, 0).then(() => {

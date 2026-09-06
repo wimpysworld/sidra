@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { app } from 'electron';
 import type { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
@@ -8,6 +9,7 @@ import { PlaybackState } from '../src/player';
 import type { IntegrationContext, NowPlayingPayload } from '../src/player';
 import * as mpris from '../src/integrations/mpris';
 import { FakePlayer } from './mocks/player';
+import { quit } from './mocks/appLifecycle';
 
 // updateNowPlaying() hands every https:// artwork URL to downloadArtwork(),
 // which fetches over the network and writes to the cache directory. Resolving
@@ -54,12 +56,16 @@ const busStub = {
   on: vi.fn(),
   export: vi.fn<(path: string, iface: object) => void>(),
   requestName: vi.fn(() => Promise.resolve()),
+  disconnect: vi.fn(),
 };
 
-interface WindowStub {
+interface WindowStub extends EventEmitter {
   show: ReturnType<typeof vi.fn>;
   focus: ReturnType<typeof vi.fn>;
   loadURL: ReturnType<typeof vi.fn>;
+  isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
+  isFullScreen: ReturnType<typeof vi.fn<() => boolean>>;
+  setFullScreen: ReturnType<typeof vi.fn<(value: boolean) => void>>;
   webContents: { send: ReturnType<typeof vi.fn> };
 }
 
@@ -91,6 +97,9 @@ interface PlayerInterface {
 interface RootInterface {
   Raise(): void;
   Quit(): void;
+  Fullscreen: boolean;
+  readonly CanSetFullscreen: boolean;
+  $introspect(): { property: Array<{ $: { name: string; type: string; access: string } }> };
   readonly SupportedUriSchemes: string[];
 }
 
@@ -168,12 +177,15 @@ beforeEach(() => {
   emissions = [];
   setMusicService('music');
   // loadURL must return a promise: production attaches a .catch() to it.
-  win = {
+  win = Object.assign(new EventEmitter(), {
     show: vi.fn(),
     focus: vi.fn(),
     loadURL: vi.fn(() => Promise.resolve()),
+    isDestroyed: vi.fn(() => false),
+    isFullScreen: vi.fn(() => false),
+    setFullScreen: vi.fn<(value: boolean) => void>(),
     webContents: { send: vi.fn() },
-  };
+  });
   player = new FakePlayer();
 });
 
@@ -185,6 +197,107 @@ afterEach(() => {
   // this hook and leave fake timers installed for every later test.
   vi.useRealTimers();
   expect(positionBreaches).toEqual([]);
+});
+
+describe('MPRIS fullscreen', () => {
+  it('exports boolean fullscreen properties with the required access', () => {
+    const { root } = initInterfaces();
+
+    expect(root.CanSetFullscreen).toBe(true);
+    expect(root.$introspect().property).toEqual(expect.arrayContaining([
+      { $: { name: 'Fullscreen', type: 'b', access: 'readwrite' } },
+      { $: { name: 'CanSetFullscreen', type: 'b', access: 'read' } },
+    ]));
+    expect(root.Fullscreen).toBe(false);
+    win.isFullScreen.mockReturnValue(true);
+    expect(root.Fullscreen).toBe(true);
+  });
+
+  it.each([true, false])('waits for the window transition after requesting %s', (value) => {
+    win.isFullScreen.mockReturnValue(!value);
+    const { root } = initInterfaces();
+
+    root.Fullscreen = value;
+
+    expect(win.setFullScreen).toHaveBeenCalledWith(value);
+    expect(root.Fullscreen).toBe(!value);
+    expect(emissions).toEqual([]);
+
+    win.isFullScreen.mockReturnValue(value);
+    win.emit(value ? 'enter-full-screen' : 'leave-full-screen');
+
+    expect(root.Fullscreen).toBe(value);
+    expect(emissions).toEqual([{ Fullscreen: value }]);
+    expect(dbus.interface.Interface.emitPropertiesChanged).toHaveBeenCalledWith(root, { Fullscreen: value });
+  });
+
+  it('reports external window transitions without a request', () => {
+    initInterfaces();
+
+    win.isFullScreen.mockReturnValue(true);
+    win.emit('enter-full-screen');
+    win.isFullScreen.mockReturnValue(false);
+    win.emit('leave-full-screen');
+
+    expect(win.setFullScreen).not.toHaveBeenCalled();
+    expect(emissions).toEqual([{ Fullscreen: true }, { Fullscreen: false }]);
+  });
+
+  it('does not announce a request that the window ignores', () => {
+    vi.useFakeTimers();
+    const { root } = initInterfaces();
+
+    root.Fullscreen = true;
+    vi.advanceTimersByTime(5000);
+
+    expect(root.Fullscreen).toBe(false);
+    expect(emissions).toEqual([]);
+  });
+
+  it.each(['missing', 'destroyed'])('handles a %s window', (state) => {
+    win.isDestroyed.mockReturnValue(state === 'destroyed');
+    const { root } = initInterfaces(() => state === 'missing' ? null : win as unknown as BrowserWindow);
+
+    expect(root.Fullscreen).toBe(false);
+    expect(() => { root.Fullscreen = true; }).not.toThrow();
+    expect(win.isFullScreen).not.toHaveBeenCalled();
+    expect(win.setFullScreen).not.toHaveBeenCalled();
+    expect(win.listenerCount('enter-full-screen')).toBe(0);
+    expect(win.listenerCount('leave-full-screen')).toBe(0);
+    expect(emissions).toEqual([]);
+  });
+
+  it('ignores events and requests after the window is destroyed', () => {
+    const { root } = initInterfaces();
+    win.isDestroyed.mockReturnValue(true);
+
+    root.Fullscreen = true;
+    win.emit('enter-full-screen');
+
+    expect(root.Fullscreen).toBe(false);
+    expect(win.isFullScreen).not.toHaveBeenCalled();
+    expect(win.setFullScreen).not.toHaveBeenCalled();
+    expect(emissions).toEqual([]);
+  });
+
+  it('removes both listeners before disconnecting the bus', () => {
+    initInterfaces();
+    expect(win.listenerCount('enter-full-screen')).toBe(1);
+    expect(win.listenerCount('leave-full-screen')).toBe(1);
+    const listenersAtDisconnect: number[] = [];
+    busStub.disconnect.mockImplementationOnce(() => {
+      listenersAtDisconnect.push(win.listenerCount('enter-full-screen'), win.listenerCount('leave-full-screen'));
+    });
+
+    quit();
+    win.isFullScreen.mockReturnValue(true);
+    win.emit('enter-full-screen');
+    win.emit('leave-full-screen');
+
+    expect(busStub.disconnect).toHaveBeenCalledOnce();
+    expect(listenersAtDisconnect).toEqual([0, 0]);
+    expect(emissions).toEqual([]);
+  });
 });
 
 const COMMAND_CASES: ReadonlyArray<{
@@ -797,6 +910,8 @@ describe('MPRIS without a session bus', () => {
 
     expect(busStub.export).not.toHaveBeenCalled();
     expect(busStub.requestName).not.toHaveBeenCalled();
+    expect(win.listenerCount('enter-full-screen')).toBe(0);
+    expect(win.listenerCount('leave-full-screen')).toBe(0);
   });
 
   it('subscribes to no player events when the bus cannot be opened', () => {
