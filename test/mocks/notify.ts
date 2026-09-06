@@ -40,6 +40,8 @@ export interface FakeNotification {
   handlers: Record<string, (...args: unknown[]) => void>;
   on(event: string, listener: (...args: unknown[]) => void): FakeNotification;
   show: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  removeAllListeners: ReturnType<typeof vi.fn>;
 }
 
 // A plain object, not vi.hoisted(): Vitest refuses to export a hoisted binding,
@@ -79,6 +81,10 @@ vi.mock('../../src/notify', async () => {
           return notification;
         },
         show: vi.fn(),
+        close: vi.fn(),
+        removeAllListeners: vi.fn(() => {
+          for (const event of Object.keys(handlers)) delete handlers[event];
+        }),
       };
       notifyFake.built.push(notification);
       return notification;

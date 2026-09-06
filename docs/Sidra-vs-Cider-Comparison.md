@@ -137,7 +137,7 @@ Sidra uses CastLabs Electron (CastLabs ECS), which bundles Widevine and supports
 | Wayland support | Native via Chromium | Supported in earlier Electron builds, current runtime map unverified |
 | X11 support | Yes | Yes |
 | PulseAudio/PipeWire identity | Corrected via `AudioServiceOutOfProcess` disable + `setDesktopName('sidra.desktop')` | Current identity unverified |
-| Desktop notifications | Via Electron Notification API; works on NixOS with libnotify in LD_LIBRARY_PATH | Supported |
+| Desktop notifications | Track notifications use D-Bus, with Previous/Next controls when the daemon supports actions. Other notifications use Electron and require libnotify on NixOS | Supported |
 | Stability on Linux | No current comparative stability test | Historical reports include #1373, #1280 and #1367, not evidence of universal Cider 4 behaviour |
 
 ### macOS
