@@ -129,7 +129,7 @@ describe('palettes', () => {
   it('resolves labels for bundled, custom, and apple-music names', () => {
     expect(themeLabel('catppuccin')).toBe('Catppuccin');
     expect(themeLabel('rose-pine')).toBe('Ros\u00e9 Pine');
-    expect(themeLabel('custom')).toBe('Custom');
+    expect(themeLabel('custom')).toBe('Custom Theme');
     expect(themeLabel('apple-music')).toBe('Apple Music');
   });
 });

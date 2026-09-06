@@ -10,7 +10,7 @@ import { Player, IntegrationContext } from './player';
 import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
 import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
 import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
-import { initThemeCSS, injectThemeCss, setRebuildTrayCallback } from './theme';
+import { initThemeCSS, injectThemeCss, setThemeChangedCallback } from './theme';
 import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setGetMainWindowCallback } from './tray';
 import { initSettingsActions, notifySettingsChanged } from './settings';
 import { handleSettingsNavigation, initSettingsWindow } from './settingsWindow';
@@ -692,7 +692,7 @@ if (gotLock) {
     });
     app.on('will-quit', teardownSettingsActions);
     initSettingsWindow(win);
-    setRebuildTrayCallback(() => {
+    setThemeChangedCallback(() => {
       if (appTray) rebuildTrayMenu(appTray);
       notifySettingsChanged();
     });

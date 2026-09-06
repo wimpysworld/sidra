@@ -524,7 +524,7 @@ export function rebuildTrayMenu(tray: Tray): void {
 
 // Playback, volume and now-playing events arrive in bursts: the hook polls
 // mk.volume every 250ms while the slider moves, and the renderer can emit far
-// faster than that. Each rebuild walks every submenu, reads custom.css and
+// faster than that. Each rebuild walks every submenu and
 // resizes the artwork five times, so a burst is collapsed into one rebuild.
 const TRAY_REBUILD_COALESCE_MS = 250;
 

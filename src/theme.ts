@@ -4,6 +4,7 @@ import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import log from 'electron-log/main';
 import { bundledTheme, isThemeName, type BundledThemeName, type ThemeName } from './palettes';
 import { buildThemeCss } from './themeTemplate';
+import { parseCustomTheme } from './customTheme';
 import { getTheme } from './config';
 
 export type { ThemeName };
@@ -11,17 +12,17 @@ export type { ThemeName };
 const themeLog = log.scope('theme');
 
 const THEME_RELOAD_DEBOUNCE_MS = 150;
-const customCssFilename = 'custom.css';
+const customThemeFilename = 'custom-theme.json';
 const bundledCssCache = new Map<BundledThemeName, string>();
 
-// custom.css is read on every tray rebuild, through both hasCustomCss() and
-// resolveTheme(), so its contents are cached and the fs.watch callback below
+// custom-theme.json is read for Settings, through both hasCustomTheme() and
+// resolveTheme(), so its generated CSS is cached and the fs.watch callback below
 // clears the cache. Nothing else would clear it, so a watcher that never starts
 // or dies switches caching off rather than leaving a cache that goes stale for
 // the life of the process.
-let customCssCache: string | null = null;
-let customCssCached = false;
-let customCssCacheEnabled = true;
+let customThemeCache: string | null = null;
+let customThemeCached = false;
+let customThemeCacheEnabled = true;
 
 // The insertCSS key of the sheet currently on the page, which is what a later
 // removeInsertedCSS needs. Null means no sheet is tracked.
@@ -98,42 +99,35 @@ async function insertAndTrack(
 // Apply or remove theme CSS on the main window.
 // Handles enable, disable, and re-injection (variant change) cases.
 //
-// Until initThemeCSS() assigns the real implementation there is no window and no
-// document, so this one warns and applies nothing. The gap is reachable: main.ts
-// builds the tray, whose Style items are live from that moment, before it awaits
-// the session and then calls initThemeCSS(), so a click landing inside that await
-// arrives here. Nothing is replayed because nothing is lost - the tray persists
-// the choice with setTheme() before it calls applyTheme(), and injectThemeCss()
-// reads the store on every page load, so the first load applies it. Queueing the
-// call instead would need a documentGeneration for a document that does not yet
-// exist, and initThemeCSS() still runs before the first loadURL().
+// Before initialisation there is no document to update. Settings persists the
+// choice before calling applyTheme(), and injectThemeCss() reads that choice on
+// every page load, so an early change needs no queued replay.
 let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = (name: ThemeName) => {
   themeLog.warn(`Theme CSS not applied, theme system not initialised yet: ${name}`);
   return Promise.resolve();
 };
 
-// Rebuild the tray menu after a custom.css change.
-// tray.ts imports theme.ts, so theme.ts cannot import rebuildTrayMenu back; main.ts supplies it.
-let rebuildTrayCallback: (() => void) | null = null;
+// main.ts supplies the callback to refresh Settings without an import cycle.
+let themeChangedCallback: (() => void) | null = null;
 
 /** Queue a theme change against the live page. Failures are logged, never thrown. */
 export function applyTheme(name: ThemeName): void {
   void applyThemeCSSInternal(name);
 }
 
-/** Where a user drops their own stylesheet: custom.css in the userData directory. */
-export function customCssPath(): string {
-  return path.join(app.getPath('userData'), customCssFilename);
+/** The custom palette path: custom-theme.json in the userData directory. */
+export function customThemePath(): string {
+  return path.join(app.getPath('userData'), customThemeFilename);
 }
 
-/** True when custom.css is readable and non-blank; existing is not enough. */
-export function hasCustomCss(): boolean {
+/** True when custom-theme.json contains a valid palette. */
+export function hasCustomTheme(): boolean {
   return getThemeCss('custom') !== null;
 }
 
 /**
  * The theme to render: the stored one, falling back to 'apple-music' when it is
- * unknown or when 'custom' is stored with no readable custom.css behind it.
+ * unknown or when 'custom' is stored without a valid custom-theme.json.
  */
 export function resolveTheme(): ThemeName {
   const theme = getTheme();
@@ -142,43 +136,47 @@ export function resolveTheme(): ThemeName {
   return theme;
 }
 
-function readCustomCss(): string | null {
+function readCustomTheme(): string | null {
   try {
-    const css = fs.readFileSync(customCssPath(), 'utf-8');
-    return css.trim().length > 0 ? css : null;
+    const theme = parseCustomTheme(fs.readFileSync(customThemePath(), 'utf-8'));
+    if (!theme) {
+      themeLog.warn('Invalid custom-theme.json in userData directory');
+      return null;
+    }
+    return buildThemeCss(theme);
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err.code !== 'ENOENT') {
-      themeLog.warn('Failed to read custom.css from userData directory', error);
+      themeLog.warn('Failed to read custom-theme.json from userData directory', error);
     }
     return null;
   }
 }
 
-/** Drop the cached custom.css. Exported for the watcher below and for tests; nothing else needs it. */
-export function invalidateCustomCssCache(): void {
-  customCssCache = null;
-  customCssCached = false;
+/** Drop the generated Custom Theme CSS cache. */
+export function invalidateCustomThemeCache(): void {
+  customThemeCache = null;
+  customThemeCached = false;
 }
 
-function disableCustomCssCache(): void {
-  customCssCacheEnabled = false;
-  invalidateCustomCssCache();
+function disableCustomThemeCache(): void {
+  customThemeCacheEnabled = false;
+  invalidateCustomThemeCache();
 }
 
 /**
- * Stylesheet for a theme, or null for 'apple-music' and for a missing or blank
- * custom.css. Bundled themes are rendered once and cached; custom.css is cached
- * only while the watcher below is alive to invalidate it.
+ * Stylesheet for a theme, or null for 'apple-music' and for a missing or invalid
+ * custom-theme.json. Bundled themes are rendered once and cached. Custom Theme
+ * CSS is cached while the watcher below can invalidate it.
  */
 export function getThemeCss(name: ThemeName): string | null {
   if (name === 'apple-music') return null;
   if (name === 'custom') {
-    if (customCssCached) return customCssCache;
-    const css = readCustomCss();
-    if (customCssCacheEnabled) {
-      customCssCache = css;
-      customCssCached = true;
+    if (customThemeCached) return customThemeCache;
+    const css = readCustomTheme();
+    if (customThemeCacheEnabled) {
+      customThemeCache = css;
+      customThemeCached = true;
     }
     return css;
   }
@@ -216,7 +214,7 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
 /**
  * Bring the theme system to life against a window: document tracking, the real
  * applyTheme implementation, re-application on a system colour-scheme change,
- * and the custom.css watcher. Call once.
+ * and the custom-theme.json watcher. Call once.
  */
 export function initThemeCSS(win: BrowserWindow): void {
   // Commit of a main-frame navigation; did-navigate-in-page keeps the document,
@@ -252,30 +250,30 @@ export function initThemeCSS(win: BrowserWindow): void {
 
   // Last, because the debounced callback below calls applyThemeCSSInternal and
   // resolveTheme against the window this function has just wired up.
-  initCustomCssWatcher(win);
+  initCustomThemeWatcher(win);
 }
 
 /**
- * Watch the userData directory for custom.css changes, re-apply the CSS when the
- * stored theme needs it, and rebuild the tray. Owns its debounce timer and closes
+ * Watch the userData directory for custom-theme.json changes, re-apply the CSS when the
+ * stored theme needs it, and refresh Settings. Owns its debounce timer and closes
  * both on will-quit.
  */
-function initCustomCssWatcher(win: BrowserWindow): void {
-  let customCssTimer: NodeJS.Timeout | null = null;
+function initCustomThemeWatcher(win: BrowserWindow): void {
+  let customThemeTimer: NodeJS.Timeout | null = null;
   const userDataPath = app.getPath('userData');
   let watcher: fs.FSWatcher | null = null;
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
     watcher = fs.watch(userDataPath, { persistent: false }, (eventType, filename) => {
       // macOS may emit a null filename for directory-level change events.
-      if (filename !== null && filename.toString() !== customCssFilename) return;
-      themeLog.debug(`custom.css watcher event: ${eventType}`);
-      // Before the debounce, not inside it: a tray rebuild during the debounce
+      if (filename !== null && filename.toString() !== customThemeFilename) return;
+      themeLog.debug(`custom-theme.json watcher event: ${eventType}`);
+      // Before the debounce, not inside it: a Settings refresh during the debounce
       // window must not read the previous contents back out of the cache.
-      invalidateCustomCssCache();
-      if (customCssTimer) clearTimeout(customCssTimer);
-      customCssTimer = setTimeout(() => {
-        customCssTimer = null;
+      invalidateCustomThemeCache();
+      if (customThemeTimer) clearTimeout(customThemeTimer);
+      customThemeTimer = setTimeout(() => {
+        customThemeTimer = null;
         if (win.isDestroyed()) return;
         const resolved = resolveTheme();
         if (resolved === 'custom') {
@@ -283,25 +281,24 @@ function initCustomCssWatcher(win: BrowserWindow): void {
         } else if (getTheme() === 'custom') {
           void applyThemeCSSInternal('apple-music');
         }
-        // Unconditional: creating custom.css adds the tray Style entry and deleting it removes
-        // the entry, whichever theme is stored.
-        rebuildTrayCallback?.();
+        // File creation and deletion change the Settings options for every stored theme.
+        themeChangedCallback?.();
       }, THEME_RELOAD_DEBOUNCE_MS);
     });
     watcher.on('error', (error) => {
-      themeLog.warn('custom.css watcher error', error);
+      themeLog.warn('custom-theme.json watcher error', error);
       // Node closes the watcher on error, so nothing is left to clear the cache.
-      disableCustomCssCache();
+      disableCustomThemeCache();
     });
   } catch (error) {
-    themeLog.warn('Failed to initialise custom.css watcher', error);
-    disableCustomCssCache();
+    themeLog.warn('Failed to initialise custom-theme.json watcher', error);
+    disableCustomThemeCache();
   }
 
   app.on('will-quit', () => {
-    if (customCssTimer) {
-      clearTimeout(customCssTimer);
-      customCssTimer = null;
+    if (customThemeTimer) {
+      clearTimeout(customThemeTimer);
+      customThemeTimer = null;
     }
     if (watcher) {
       watcher.close();
@@ -330,7 +327,7 @@ export function notifyDocumentReplacing(): void {
   });
 }
 
-/** main.ts supplies rebuildTrayMenu here; see the note on rebuildTrayCallback above. */
-export function setRebuildTrayCallback(callback: () => void): void {
-  rebuildTrayCallback = callback;
+/** main.ts supplies the Settings refresh callback here. */
+export function setThemeChangedCallback(callback: () => void): void {
+  themeChangedCallback = callback;
 }

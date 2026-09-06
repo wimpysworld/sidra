@@ -113,7 +113,7 @@ vi.mock('../src/autoUpdate', () => ({
 vi.mock('../src/theme', () => ({
   applyTheme: vi.fn(),
   resolveTheme: vi.fn(),
-  hasCustomCss: vi.fn(),
+  hasCustomTheme: vi.fn(),
 }));
 
 vi.mock('../src/artwork', () => ({
@@ -132,7 +132,7 @@ import { getCloseToTrayEnabled, setTheme, getMusicService, setMusicService, getC
 import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
 import type { NowPlayingPayload, PlayerEvents } from '../src/player';
-import { applyTheme, hasCustomCss, resolveTheme } from '../src/theme';
+import { applyTheme, hasCustomTheme, resolveTheme } from '../src/theme';
 import { startAuth as startLastfmAuth, disconnect as disconnectLastfm, isConfigured as isLastfmConfigured } from '../src/integrations/lastfm';
 import { FakePlayer } from './mocks/player';
 import { setPlatform, restorePlatform } from './mocks/platform';
@@ -173,7 +173,7 @@ function resetTrayMocks(): void {
   vi.mocked(getLastfmUsername).mockReturnValue(null);
   vi.mocked(isLastfmConfigured).mockReturnValue(false);
   vi.mocked(resolveTheme).mockReturnValue('apple-music');
-  vi.mocked(hasCustomCss).mockReturnValue(false);
+  vi.mocked(hasCustomTheme).mockReturnValue(false);
   vi.mocked(getUpdateInfo).mockReturnValue(null);
   vi.mocked(process.getSystemVersion).mockReturnValue('15.0.0');
   vi.mocked(nativeImage.createFromPath).mockClear();
@@ -852,25 +852,25 @@ describe('createTray - menu template inspection', () => {
       expect(tickedLabels()).toEqual(['Rosé Pine']);
     });
 
-    it('ticks Custom when custom.css is present and resolves to it', () => {
+    it('ticks Custom when custom-theme.json is present and resolves to it', () => {
       vi.mocked(resolveTheme).mockReturnValue('custom');
-      vi.mocked(hasCustomCss).mockReturnValue(true);
+      vi.mocked(hasCustomTheme).mockReturnValue(true);
       createTray();
       const styleItem = findItem(getLastTemplate(), 'Style');
-      expect(styleItem!.label).toBe('Style: Custom');
-      expect(tickedLabels()).toEqual(['Custom']);
+      expect(styleItem!.label).toBe('Style: Custom Theme');
+      expect(tickedLabels()).toEqual(['Custom Theme']);
     });
 
-    it('offers no Custom entry and ticks Apple Music when custom.css is gone', () => {
+    it('offers no Custom entry and ticks Apple Music when custom-theme.json is gone', () => {
       // resolveTheme() reduces a stored 'custom' to 'apple-music' once the file
       // is unreadable, so a Custom entry here would tick nothing at all.
       vi.mocked(resolveTheme).mockReturnValue('apple-music');
-      vi.mocked(hasCustomCss).mockReturnValue(false);
+      vi.mocked(hasCustomTheme).mockReturnValue(false);
       createTray();
       const styleItem = findItem(getLastTemplate(), 'Style');
       expect(styleItem!.label).toBe('Style: Apple Music');
       const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
-      expect(submenu.some(item => item.label === 'Custom')).toBe(false);
+      expect(submenu.some(item => item.label === 'Custom Theme')).toBe(false);
       expect(tickedLabels()).toEqual(['Apple Music']);
     });
   });
@@ -892,19 +892,19 @@ describe('createTray - menu template inspection', () => {
       expect(submenu.every(item => item.type === 'radio')).toBe(true);
     });
 
-    it('adds Custom only when custom.css exists', () => {
+    it('adds Custom only when custom-theme.json exists', () => {
       createTray();
       let template = getLastTemplate();
       let styleItem = findItem(template, 'Style');
       let submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
-      expect(submenu.some(item => item.label === 'Custom')).toBe(false);
+      expect(submenu.some(item => item.label === 'Custom Theme')).toBe(false);
 
-      vi.mocked(hasCustomCss).mockReturnValue(true);
+      vi.mocked(hasCustomTheme).mockReturnValue(true);
       createTray();
       template = getLastTemplate();
       styleItem = findItem(template, 'Style');
       submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
-      expect(submenu.some(item => item.label === 'Custom')).toBe(true);
+      expect(submenu.some(item => item.label === 'Custom Theme')).toBe(true);
     });
 
     it('clicking a theme radio updates config and applies theme', () => {
@@ -2002,7 +2002,7 @@ describe('initTrayStateManager', () => {
   describe('rebuild coalescing', () => {
     // The hook polls mk.volume every 250ms while the slider moves, and a page
     // in the renderer can emit far faster than that. Each rebuild walks every
-    // submenu, reads custom.css and resizes the artwork five times.
+    // submenu and resizes the artwork five times.
     it('collapses a burst of volume events into a single rebuild', () => {
       initTrayStateManager(player, mockTray);
       player.setPlaybackState(PlaybackState.Playing);

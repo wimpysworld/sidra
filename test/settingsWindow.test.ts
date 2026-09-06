@@ -164,7 +164,7 @@ describe('Settings window', () => {
     expect(opened.webContents.removeInsertedCSS).toHaveBeenCalledWith('theme-key');
   });
 
-  it('refreshes edited custom CSS without reinserting unchanged contents', async () => {
+  it('refreshes edited Custom Theme without reinserting unchanged contents', async () => {
     vi.mocked(resolveTheme).mockReturnValue('custom');
     showSettingsWindow();
     changeStyle('custom before');

@@ -119,6 +119,7 @@ sidra/
 │   │   └── hook.d.ts              - hook-preload contract: SidraHook, AMWrapperBridge, SendChannel, ReceiveChannel, SidraCommandMessage, Window augmentations
 │   ├── theme.ts                   - theme lifecycle: ThemeName, resolveTheme(), getThemeCss(), applyTheme(), injectThemeCss(), initThemeCSS()
 │   ├── palettes.ts                - bundled theme registry (BUNDLED_THEMES), BundledThemeName, themeLabel()
+│   ├── customTheme.ts             - validates the custom JSON colour palette
 │   ├── themeTemplate.ts           - pure palette→CSS renderer (buildThemeCss())
 │   ├── artwork.ts                 - downloadArtwork(), cleanArtworkCache(); UUID-based multi-file cache
 │   ├── autoUpdate.ts              - isAutoUpdateSupported(), initAutoUpdate(), quitAndInstall(); electron-updater
@@ -693,7 +694,7 @@ Each service keeps its own start page and last page. `classical.startPage` and `
 
 ### Themes across services
 
-Themes are service-agnostic. `resolveTheme()` does not branch on the active service, `injectThemeCss()` runs on every page load, and the tray Style submenu is enabled under both services. Both sites are separate builds of one Svelte design system and share an identical `:root` custom property block, so every token `src/themeTemplate.ts` overrides carries the same value on Classical.
+Themes are service-agnostic. `resolveTheme()` does not branch on the active service, and `injectThemeCss()` runs on every page load. Settings exposes the same Style choices under both services. Both sites are separate builds of one Svelte design system and share an identical `:root` custom property block, so every token `src/themeTemplate.ts` overrides carries the same value on Classical.
 
 ### Switching
 
@@ -753,10 +754,24 @@ Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-m
 
 - The active music service is not consulted; the same theme resolves on Apple Music and Apple Music Classical
 - Unknown stored values fall back to `'apple-music'`
-- `'custom'` falls back to `'apple-music'` when `custom.css` holds no usable CSS
+- `'custom'` falls back to `'apple-music'` when `custom-theme.json` is missing, unreadable or invalid
 - Bundled values pass through directly
 
-`hasCustomCss()` is `getThemeCss('custom') !== null`, so a present `custom.css` means a readable, non-blank file rather than one that merely exists.
+The fallback preserves the stored `'custom'` preference. A valid file restores the custom theme unless the user selects another style.
+
+### Custom palette
+
+`userData/custom-theme.json` defines one **Custom Theme** choice in Settings. See the [complete example](custom-theme.json) and [setup instructions](../README.md#custom-theme).
+
+- `dark` requires all 12 `SchemeColours` slots: `base`, `mantle`, `crust`, `surface0`, `surface1`, `surface2`, `overlay`, `text`, `subtext1`, `subtext0`, `accent`, `accentHover`.
+- `light` is optional. When present, it requires the same complete set. When absent, both modes use `dark`.
+- Every colour must match `#RRGGBB`, with either letter case. Malformed JSON, missing slots and invalid values reject the whole file.
+- Extra keys are ignored. The parser copies only known slots into the palette.
+- The fixed identity is `name: 'custom'`, `label: 'Custom Theme'`. File content cannot set either value.
+- Low-contrast palettes are accepted without adjustment. Bundled palette contrast requirements do not apply to user colours.
+- The palette changes colours across both services and Settings. It cannot change fonts or layout.
+
+Legacy `custom.css` files are ignored and left untouched. Arbitrary CSS cannot convert automatically, so users must copy their colours into the JSON format.
 
 ### Implementation
 
@@ -764,22 +779,21 @@ Theme preference is stored in `electron-conf` as `theme` (`ThemeName`: `'apple-m
 
 - `'apple-music'` → `null` (remove any injected override)
 - bundled themes → lazily rendered via `buildThemeCss(...)` and cached in memory
-- `'custom'` → `userData/custom.css`, cached in memory; missing, unreadable, or whitespace-only files are treated as absent
+- `'custom'` → the validated JSON palette rendered through `buildThemeCss(...)` and cached in memory, or `null` for an unusable file
 
 Each queued operation captures `documentGeneration`. A main-frame `did-navigate` event advances the generation, while `did-navigate-in-page` does not. Work for a replaced document is dropped and its tracked key is cleared. Inserts and removals check the generation again after each `await`, so a navigation cannot leave an untracked sheet on the new document.
 
-`custom.css` lifecycle:
+`custom-theme.json` lifecycle:
 
-- Path: `path.join(app.getPath('userData'), 'custom.css')`
-- `initThemeCSS()` ensures the user data directory exists, then installs `fs.watch(..., { persistent: false })`
-- Watcher reacts to `filename === 'custom.css'` and `filename === null` (macOS behaviour), debounced by 150ms
-- The file contents are cached, because `hasCustomCss()` and `resolveTheme()` both read them on every tray rebuild
-- The watcher calls `invalidateCustomCssCache()` before the debounce, not inside it, so a tray rebuild during the debounce window cannot read stale contents from the cache
-- A watcher that fails to start, or that errors and closes, calls `disableCustomCssCache()`. Caching switches off, rather than leaving a cache that goes stale for the life of the process
-- The debounced callback re-applies `'custom'` when `resolveTheme()` returns it, and falls back to `'apple-music'` when the stored theme is `'custom'` but the file no longer holds usable CSS. Both paths need the window to be alive
-- It then calls the tray rebuild callback unconditionally, because creating or deleting `custom.css` adds or removes the tray Style entry whichever theme is stored. `main.ts` supplies that callback through `setRebuildTrayCallback()`, since `tray.ts` imports `theme.ts` and the import cannot run back the other way
-- Watcher setup and runtime errors are logged as warnings; they never crash the app
-- Timer cleanup and watcher close run on `app.on('will-quit')`
+- Path: `path.join(app.getPath('userData'), 'custom-theme.json')`.
+- `initThemeCSS()` creates the user data directory if absent, then installs `fs.watch(..., { persistent: false })`.
+- The watcher accepts the filename or `null` (macOS behaviour), invalidates the cache immediately, then debounces updates by 150ms.
+- A watcher that fails to start or closes after an error disables caching, so later reads cannot return stale data indefinitely.
+- The callback applies the valid custom palette or the Apple Music fallback when the stored theme is `'custom'`.
+- It refreshes theme choices even when another theme is active. File creation, deletion and repair update Settings.
+- An open Settings window receives the same generated CSS and updates after file changes.
+- Watcher setup and runtime errors log warnings without crashing the app.
+- Timer cleanup and watcher close run on `app.on('will-quit')`.
 
 ---
 
