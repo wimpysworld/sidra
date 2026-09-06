@@ -119,6 +119,10 @@ validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit --omit=dev
 
+# Generate app icons from the squircle SVG source
+generate-app-icons:
+    python3 scripts/generate-app-icons.py
+
 # Generate DMG background PNGs from SVG source
 generate-dmg-background:
     rsvg-convert -w 540 -h 380 -o build/background.png assets/source/sidra-background.svg
