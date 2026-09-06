@@ -13,7 +13,9 @@ Sidra is Apple Music as a proper desktop citizen on Linux, macOS, and Windows - 
 Most Apple Music desktop clients break the audio, mangle the playback controls, or bury you under a custom UI that Apple never signed off on - the problem is worst on Linux.
 Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of the way, and let the audio through untouched. Apple owns the interface and keeps it current; Sidra inherits every improvement automatically.
 
----
+<p align="center">
+  <a href="assets/sidra-screenshot.png"><img src="assets/sidra-screenshot.png" alt="Sidra playing Cambodian Space Project in the Catppuccin theme, with Settings open" width="100%"></a>
+</p>
 
 ## Features
 
@@ -54,10 +56,6 @@ Open **Settings** with the gear button beside Back, Forward and Reload.
 With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.
 The resizable window contains player, start page, style, zoom, close-to-tray, notification, Discord and Last.fm preferences.
 Changes save immediately. The existing tray preferences remain available. [View Settings screenshot](assets/source/sidra-settings.png).
-
-<p align="center">
-  <a href="assets/sidra-screenshot.png"><img src="assets/sidra-screenshot.png" alt="Sidra playing Cambodian Space Project in the Catppuccin theme, with Settings open" width="100%"></a>
-</p>
 
 ### As seen in
 
@@ -236,26 +234,6 @@ SmartScreen will warn the installer is unsigned. Click **More info** then **Run 
 
 ---
 
-## Controller navigation
-
-Sidra supports controllers that expose the browser's standard Gamepad mapping. The controls work in Apple Music and Apple Music Classical:
-
-| Controller input | Action |
-|---|---|
-| D-pad | Move up, down, left, or right |
-| A button | Select the focused item |
-| B button | Go back when navigation history permits |
-
-Hold a D-pad direction to repeat it. The A and B buttons act once per press. Controller input does not control media playback or settings.
-
-## Mini Player
-
-Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLauinger77](https://github.com/ChrisLauinger77)) asked for one in [#125](https://github.com/wimpysworld/sidra/issues/125), then built [**MPRIS MiniPlayer**](https://github.com/ChrisLauinger77/mpris-miniplayer): a small GTK4/libadwaita window that controls any MPRIS player on Linux.
-
-It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
-
----
-
 ## Theming
 
 Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
@@ -279,7 +257,23 @@ The **Custom** option appears when that file is readable and contains CSS.
 Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
 For custom colours in Settings, use Apple Music CSS variables. Selectors for Apple's web pages do not necessarily match the Settings window.
 
----
+## Mini Player
+
+Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLauinger77](https://github.com/ChrisLauinger77)) asked for one in [#125](https://github.com/wimpysworld/sidra/issues/125), then built [**MPRIS MiniPlayer**](https://github.com/ChrisLauinger77/mpris-miniplayer): a small GTK4/libadwaita window that controls any MPRIS player on Linux.
+
+It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
+
+## Controller navigation
+
+Sidra supports controllers that expose the browser's standard Gamepad mapping. The controls work in Apple Music and Apple Music Classical:
+
+| Controller input | Action |
+|---|---|
+| D-pad | Move up, down, left, or right |
+| A button | Select the focused item |
+| B button | Go back when navigation history permits |
+
+Hold a D-pad direction to repeat it. The A and B buttons act once per press. Controller input does not control media playback or settings.
 
 ## Last.fm scrobbling
 
@@ -299,6 +293,28 @@ Connecting stores a Last.fm session key and your username in Sidra's configurati
 > Last.fm session keys never expire, and the Last.fm API has no call to revoke one. **Disconnect** deletes Sidra's copy of the key, which stops this installation scrobbling, but only Last.fm can invalidate the key itself. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that. Sidra notices the revoked session on its next request, disconnects, and tells you.
 
 What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md).
+
+---
+
+## Why Sidra?
+
+I used [Cider](https://cider.sh/) for years, but as time passed and the weight of new features grew the core experience degraded.
+
+Cider hardcodes a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. Common advice in the community is to simply turn it off.
+
+Reliability followed the same arc. Authentication reported failure after succeeding. Tracks stopped for no reason. Volume reset mid-session. On Linux, MPRIS volume never worked right because Cider's audio engine sat between the system volume curve and the actual output. These were not new bugs; they were architectural, and the architecture was load-bearing.
+
+I wanted something that just worked. So, I made Sidra.
+
+**Linux came first.** Every existing Apple Music client either lacks MPRIS, implements it badly, or wrecks the audio in the process. Media keys should work. Desktop notifications should fire. Volume should track. None of that is exotic, and none of it should require a custom audio engine.
+
+**macOS followed, for two reasons.** Devices enrolled in MDM can block personal Apple ID authentication - the native app simply refuses to sign in. Sidra authenticates at the application layer, a glorified browser session, so MDM policy never sees it. Then there is the more relatable problem: a friend's daughter was steadily polluting his Apple Music recommendations with K-pop. Sidra installed alongside the native app gives her a fully isolated session - her listening history, her "For You" shelf, her algorithmic rabbit holes. His recommendations are his own again.
+
+**Windows followed** at the request of another friend who wanted a decent Apple Music client that was not Cider.
+
+The bonus became clear once everything was working. Wrapping `music.apple.com` directly means none of those failure modes can exist. Apple's audio pipeline, Apple's auth, Apple's UI - Sidra never creates an `AudioContext`. Audio flows untouched through Chromium's media stack to the OS. Authentication cannot drift out of sync with Apple's servers. The interface updates whenever Apple ships a change, automatically.
+
+*Sidra* is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
 
 ---
 
@@ -324,30 +340,6 @@ music.apple.com
 Controls flow in reverse: MPRIS method calls reach `window.__sidra` via `webContents.executeJavaScript()`, which calls the appropriate MusicKit method directly.
 
 The codebase is tightly focused and as lean as possible.
-
----
-
-## Why Sidra?
-
-I used [Cider](https://cider.sh/) for years, but as time passed and the weight of new features grew the core experience degraded.
-
-Cider hardcodes a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. Common advice in the community is to simply turn it off.
-
-Reliability followed the same arc. Authentication reported failure after succeeding. Tracks stopped for no reason. Volume reset mid-session. On Linux, MPRIS volume never worked right because Cider's audio engine sat between the system volume curve and the actual output. These were not new bugs; they were architectural, and the architecture was load-bearing.
-
-I wanted something that just worked. So, I made Sidra.
-
-**Linux came first.** Every existing Apple Music client either lacks MPRIS, implements it badly, or wrecks the audio in the process. Media keys should work. Desktop notifications should fire. Volume should track. None of that is exotic, and none of it should require a custom audio engine.
-
-**macOS followed, for two reasons.** Devices enrolled in MDM can block personal Apple ID authentication - the native app simply refuses to sign in. Sidra authenticates at the application layer, a glorified browser session, so MDM policy never sees it. Then there is the more relatable problem: a friend's daughter was steadily polluting his Apple Music recommendations with K-pop. Sidra installed alongside the native app gives her a fully isolated session - her listening history, her "For You" shelf, her algorithmic rabbit holes. His recommendations are his own again.
-
-**Windows followed** at the request of another friend who wanted a decent Apple Music client that was not Cider.
-
-The bonus became clear once everything was working. Wrapping `music.apple.com` directly means none of those failure modes can exist. Apple's audio pipeline, Apple's auth, Apple's UI - Sidra never creates an `AudioContext`. Audio flows untouched through Chromium's media stack to the OS. Authentication cannot drift out of sync with Apple's servers. The interface updates whenever Apple ships a change, automatically.
-
-*Sidra* is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
-
----
 
 ## Development
 
