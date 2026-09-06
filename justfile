@@ -119,18 +119,24 @@ validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit --omit=dev
 
-# Generate app icons from the squircle SVG source
-generate-app-icons:
+# Generate all app, logo, DMG, tray and menu assets from SVG sources
+generate-assets: _generate-app-icons _generate-dmg-background _generate-tray-icon _generate-menu-icons
+
+# Generate app icons and the shared logo from the squircle SVG source
+[private]
+_generate-app-icons:
     python3 scripts/generate-app-icons.py
 
 # Generate DMG background PNGs from SVG source
-generate-dmg-background:
+[private]
+_generate-dmg-background:
     rsvg-convert -w 540 -h 380 -o build/background.png assets/source/sidra-background.svg
     rsvg-convert -w 1080 -h 760 -o build/background@2x.png assets/source/sidra-background.svg
     optipng -strip all -o7 -quiet build/background.png build/background@2x.png
 
 # Generate tray icon PNGs from SVG source
-generate-tray-icon: generate-linux-tray-icon
+[private]
+_generate-tray-icon: _generate-tray-outline
     #!/usr/bin/env bash
     set -euo pipefail
     src="assets/source/sidra-tray-symbol.svg"
@@ -159,14 +165,16 @@ generate-tray-icon: generate-linux-tray-icon
         "$out/sidra-tray@2x.png"
 
 # Derive the outline SVG and generate GNOME tray icons
-generate-linux-tray-icon:
+[private]
+_generate-tray-outline:
     python3 scripts/generate-tray-outline.py
     rsvg-convert -w 24 -h 24 -o assets/icons/sidra-tray-outline.png assets/source/sidra-tray-outline.svg
     rsvg-convert -w 48 -h 48 -o assets/icons/sidra-tray-outline@2x.png assets/source/sidra-tray-outline.svg
     optipng -strip all -o7 -quiet assets/icons/sidra-tray-outline.png assets/icons/sidra-tray-outline@2x.png
 
 # Generate tray menu icon PNGs from SVG sources
-generate-menu-icons:
+[private]
+_generate-menu-icons:
     #!/usr/bin/env bash
     set -euo pipefail
     src="assets/source/tray-menu"
