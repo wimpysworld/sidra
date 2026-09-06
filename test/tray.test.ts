@@ -802,7 +802,7 @@ describe('createTray - menu template inspection', () => {
 
     it('offers every theme entry on Classical', () => {
       const submenu = styleItemFor('classical').submenu as Electron.MenuItemConstructorOptions[];
-      expect(submenu.map(item => item.label)).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized']);
+      expect(submenu.map(item => item.label)).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Everforest', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized', 'Tokyo Night']);
       expect(submenu.every(item => item.enabled !== false)).toBe(true);
     });
 
@@ -888,7 +888,7 @@ describe('createTray - menu template inspection', () => {
       const styleItem = findItem(template, 'Style');
       const submenu = styleItem!.submenu as Electron.MenuItemConstructorOptions[];
       const labels = submenu.map(item => item.label);
-      expect(labels).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized']);
+      expect(labels).toEqual(['Apple Music', 'Catppuccin', 'Dracula', 'Everforest', 'Gruvbox', 'Nord', 'Rosé Pine', 'Solarized', 'Tokyo Night']);
       expect(submenu.every(item => item.type === 'radio')).toBe(true);
     });
 

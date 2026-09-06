@@ -20,7 +20,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 ## Features
 
 - 🎧 **Untouched audio** - no `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
-- 🎨 **Six bundled themes** - Catppuccin, Dracula, Gruvbox, Nord, Rosé Pine, and Solarized - plus a live-reloading `custom.css` escape hatch
+- 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus live-reloading `custom.css`
 - 📊 **Last.fm scrobbling** - opt-in, with browser approval
 - 🎮 **Discord Rich Presence** - show what you are listening to
 - 🔔 **Desktop notifications** - track changes, native to each platform
@@ -188,7 +188,7 @@ SmartScreen will warn the installer is unsigned. Click **More info** then **Run 
 
 ## Theming
 
-Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Gruvbox**, **Nord**, **Rosé Pine**, and **Solarized**, plus the default **Apple Music** styling.
+Choose **Style** in Settings or the tray menu. Sidra ships with **Catppuccin**, **Dracula**, **Everforest**, **Gruvbox**, **Nord**, **Rosé Pine**, **Solarized**, and **Tokyo Night**, plus the default **Apple Music** styling.
 
 These theme examples show different artist pages. Select an image to view the full-resolution screenshot.
 
