@@ -838,7 +838,11 @@ export function init(ctx: IntegrationContext): void {
   let fullscreenWindow: BrowserWindow | null = null;
   const onFullscreenChanged = (): void => {
     if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
-      Interface.emitPropertiesChanged(rootIface, { Fullscreen: rootIface.Fullscreen });
+      try {
+        Interface.emitPropertiesChanged(rootIface, { Fullscreen: rootIface.Fullscreen });
+      } catch (err: unknown) {
+        mprisLog.warn('failed to emit fullscreen PropertiesChanged:', errorMessage(err));
+      }
     }
   };
 

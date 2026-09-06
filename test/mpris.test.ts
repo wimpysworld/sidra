@@ -243,6 +243,18 @@ describe('MPRIS fullscreen', () => {
     expect(emissions).toEqual([{ Fullscreen: true }, { Fullscreen: false }]);
   });
 
+  it.each(['enter-full-screen', 'leave-full-screen'])('logs an emission failure on %s without throwing', (event) => {
+    initInterfaces();
+    vi.mocked(dbus.interface.Interface.emitPropertiesChanged).mockImplementationOnce(() => {
+      throw new Error('D-Bus connection closed');
+    });
+
+    expect(() => win.emit(event)).not.toThrow();
+    expect(log.scope('mpris').warn).toHaveBeenCalledWith(
+      'failed to emit fullscreen PropertiesChanged:', 'D-Bus connection closed',
+    );
+  });
+
   it('does not announce a request that the window ignores', () => {
     vi.useFakeTimers();
     const { root } = initInterfaces();
