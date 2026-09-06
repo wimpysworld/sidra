@@ -123,12 +123,12 @@ describe('navigationBar', () => {
     expect(anchor?.children).toContain(bar());
   });
 
-  it('builds the back, forward and reload buttons from the substituted labels', () => {
+  it('places settings after back, forward and reload with the substituted labels', () => {
     const { bar, run } = createHarness();
 
     run();
 
-    expect(labelsOf(bar()?.children ?? [])).toEqual([LABELS.settings, LABELS.back, LABELS.forward, LABELS.reload]);
+    expect(labelsOf(bar()?.children ?? [])).toEqual([LABELS.back, LABELS.forward, LABELS.reload, LABELS.settings]);
   });
 
   it('appends nothing and throws nothing when the anchor is missing', () => {
