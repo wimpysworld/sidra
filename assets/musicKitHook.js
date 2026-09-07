@@ -354,10 +354,12 @@
       window.__sidraHookedMk = mk;
 
       let generation = 0;
+      let resumeGeneration = 0;
       let pendingStop = null;
       let stopped = false;
       let queueRequest = 0;
       let queueTask = Promise.resolve();
+      let blockedQueue = null;
       function resetStop() {
         generation += 1;
         pendingStop = null;
@@ -407,10 +409,11 @@
       }
       function resume(toggle) {
         const operationGeneration = generation;
+        const resumeToken = resumeGeneration;
         const pageGeneration = documentGeneration;
         const afterStop = pendingStop;
         const run = () => {
-          if (!current(operationGeneration, pageGeneration)) return;
+          if (resumeToken !== resumeGeneration || !current(operationGeneration, pageGeneration)) return;
           return toggle && !afterStop && !stopped && mk.isPlaying ? mk.pause() : mk.play();
         };
         try {
@@ -446,6 +449,7 @@
             if (url.protocol !== 'https:' || !serviceHosts.has(url.hostname) ||
                 url.origin !== window.location.origin || url.username || url.password ||
                 !documentActive || window.__sidraHookedMk !== mk) return;
+            if (blockedQueue) throw new Error('Queue replacement still pending');
             const request = ++queueRequest;
             const pageGeneration = documentGeneration;
             queueTask = queueTask.then(async () => {
@@ -456,13 +460,31 @@
             }).catch(() => {
               console.warn('[Sidra] failed to open requested media');
             });
-            await queueTask;
+            let timeout;
+            try {
+              await Promise.race([
+                queueTask,
+                new Promise((_, reject) => {
+                  timeout = setTimeout(() => {
+                    if (!blockedQueue) {
+                      // Keep the SDK operation serialised after callers stop waiting.
+                      queueRequest += 1;
+                      blockedQueue = queueTask;
+                      blockedQueue.then(() => { blockedQueue = null; });
+                    }
+                    reject(new Error('Queue replacement timed out'));
+                  }, 5000);
+                }),
+              ]);
+            } finally {
+              clearTimeout(timeout);
+            }
           } catch (_) {
             console.warn('[Sidra] failed to open requested media');
           }
         },
         play:       () => resume(false),
-        pause:      () => mk.pause(),
+        pause:      () => { resumeGeneration += 1; return mk.pause(); },
         stop,
         playPause:  () => resume(true),
         next:       () => mk.skipToNextItem(),
