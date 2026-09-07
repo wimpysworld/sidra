@@ -425,6 +425,10 @@ describe('Player handle* payload validation', () => {
     ['malformed artwork URL', { artworkUrl: 'not a URL' }],
     ['non-string source host', { sourceHost: 123 }],
     ['unknown source host', { sourceHost: 'attacker.test' }],
+    // JSON.parse() creates an own __proto__ key, which an object literal cannot.
+    ['own __proto__ key', JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>],
+    ['constructor key', { constructor: 'polluted' }],
+    ['toString key', { toString: 'polluted' }],
   ];
 
   it.each(BAD_METADATA)('handleNowPlayingItemDidChange drops %s', (_description, payload) => {
