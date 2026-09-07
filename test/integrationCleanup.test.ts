@@ -53,6 +53,47 @@ function endOfString(source: string, openIndex: number): number {
 }
 
 /**
+ * Blank comments and string contents so a registration or removal quoted in either
+ * cannot satisfy the sweep. Event-name arguments are string literals the matchers
+ * need, so string content survives only when it is word characters and hyphens;
+ * any quoted call text carries a dot and a parenthesis and is blanked.
+ */
+function stripCommentsAndStrings(source: string): string {
+  const KEEPABLE_STRING = /^[\w-]+$/;
+  let out = '';
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      const eol = source.indexOf('\n', i);
+      if (eol === -1) return out;
+      i = eol - 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const end = source.indexOf('*/', i + 2);
+      if (end === -1) return `${out} `;
+      out += ' ';
+      i = end + 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const end = endOfString(source, i);
+      if (end === -1) {
+        // Drop the rest of an unterminated literal so nothing inside it can match.
+        return out + ch + ch;
+      }
+      const content = source.slice(i + 1, end);
+      out += ch + (KEEPABLE_STRING.test(content) ? content : '') + ch;
+      i = end;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * Find the block body by balancing braces outside comments and string literals.
  * Return `null` for unreadable blocks so the cleanup check fails instead of assuming that removals exist.
  */
@@ -105,11 +146,14 @@ function cleanupRegions(source: string): { bodies: string[]; unbalanced: number 
 
 /**
  * Return listener-cleanup faults, using the same pure check for source files and fixtures.
+ * Match against the source with comments and string contents blanked, so a call quoted
+ * in either neither counts as a registration nor satisfies a removal.
  * Require removals inside cleanup blocks because a removal elsewhere does not establish teardown.
  * Registration order is unrestricted because MPRIS declares cleanup before attaching its listeners.
  */
-function findCleanupFaults(source: string): string[] {
+function findCleanupFaults(rawSource: string): string[] {
   const faults: string[] = [];
+  const source = stripCommentsAndStrings(rawSource);
 
   // Named references let teardown remove listeners, including `once` listeners that do not fire before quit.
   // Node exposes the original callback through the once wrapper's `.listener`, so removeListener accepts that reference even after delivery.
@@ -244,6 +288,58 @@ describe('player listener cleanup', () => {
       expect(findCleanupFaults(source)).toEqual([
         expect.stringContaining('inline function, which cannot be removed'),
       ]);
+    });
+
+    it('ignores a removal written in a comment inside the cleanup block', () => {
+      const source = `
+        export function init(): void {
+          ${REGISTER}
+
+          app.on('will-quit', () => {
+            // TODO: ${REMOVE}
+            teardown();
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining("registers 'playbackStateDidChange'"),
+      ]);
+    });
+
+    it('ignores a removal quoted in a string literal inside the cleanup block', () => {
+      const source = `
+        export function init(): void {
+          ${REGISTER}
+
+          app.on('will-quit', () => {
+            log.warn("${REMOVE}");
+          });
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining("registers 'playbackStateDidChange'"),
+      ]);
+    });
+
+    it('ignores a registration that appears only in a comment', () => {
+      const source = `
+        /* Callers must pair ${REGISTER} with a removal on quit. */
+        export function init(): void {}
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('ignores a registration inside a template literal', () => {
+      const source = `
+        export function init(): void {
+          const doc = \`example: ${REGISTER}\`;
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
     });
 
     // addListener aliases on, so matching only player.on misses valid registrations.
