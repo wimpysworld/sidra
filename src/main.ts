@@ -1,4 +1,4 @@
-import { app, BrowserWindow, components, ipcMain, Menu, session, Tray, webFrameMain } from 'electron';
+import { app, BrowserWindow, components, dialog, ipcMain, Menu, session, Tray, webFrameMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
@@ -726,6 +726,17 @@ if (gotLock) {
         pendingItmsTarget = null;
       }
     });
+  }).catch((err: unknown) => {
+    // The splash is already on screen and setupSplashTransition() was never
+    // reached, so without this catch a startup failure leaves the splash up
+    // for the life of the process with no message.
+    mainLog.error('startup failed:', err);
+    const detail = err instanceof Error ? err.message : String(err);
+    dialog.showErrorBox(
+      'Sidra failed to start',
+      `Sidra could not finish starting.\n\n${detail}\n\nSee the Sidra log for details, then start Sidra again.`
+    );
+    app.quit();
   });
 }
 
