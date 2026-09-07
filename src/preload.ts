@@ -152,6 +152,7 @@ function channelSet<C extends string>(
 // Extend this list and SendChannel in src/types/hook.d.ts together.
 const SEND_CHANNELS = channelSet<SendChannel>({
   playbackStateDidChange: true,
+  hookReady: true,
   playbackCapabilitiesDidChange: true,
   playbackStopped: true,
   nowPlayingItemDidChange: true,
@@ -171,6 +172,7 @@ const SEND_CHANNELS = channelSet<SendChannel>({
 // The command allowlist in assets/musicKitHook.js must stay in sync.
 const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
   'player:play': true,
+  'player:openUri': true,
   'player:pause': true,
   'player:stop': true,
   'player:playPause': true,

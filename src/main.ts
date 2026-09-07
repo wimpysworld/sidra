@@ -142,6 +142,7 @@ app.on('before-quit', () => { isQuitting = true; });
 // Promoted to module scope so second-instance and pending-target handlers can
 // access the main window without threading it through closures.
 let win: BrowserWindow | null = null;
+let rendererDocumentGeneration = 0;
 
 // Single-instance lock: forward subsequent launches to the running instance so
 // itms:// URLs from a second invocation are routed instead of opening a new
@@ -272,6 +273,11 @@ function onSendChannels<C extends SendChannel>(listeners: Record<C, SendListener
 function initPlayerIPC(): Player {
   const player = new Player();
   onSendChannels<PlayerSendChannel>({
+    hookReady: (event, generation) => {
+      if (generation !== rendererDocumentGeneration || event.sender !== win?.webContents ||
+        event.senderFrame !== win.webContents.mainFrame) return;
+      player.handleHookReady(event.senderFrame.url);
+    },
     playbackCapabilitiesDidChange: (_event, data) => player.handlePlaybackCapabilitiesDidChange(data),
     playbackStopped: (_event, data) => player.handlePlaybackStopped(data),
     playbackStateDidChange: (_event, data) => player.handlePlaybackStateDidChange(data),
@@ -333,7 +339,8 @@ function loadAssets(): Assets {
     .readFileSync(navBarPath, 'utf-8')
     .replace(NAV_LABELS_TOKEN, () => JSON.stringify(getNavigationStrings()));
   const hookPath = getAssetPath('assets', 'musicKitHook.js');
-  const hookScript = fs.readFileSync(hookPath, 'utf-8');
+  const hookScript = fs.readFileSync(hookPath, 'utf-8')
+    .replace('__SIDRA_SERVICE_HOSTS__', () => JSON.stringify(allServices().map(service => service.host)));
   return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript };
 }
 
@@ -433,7 +440,8 @@ async function injectRendererScripts(win: BrowserWindow, assets: Assets, context
   try {
     const currentUrl = win.webContents.getURL();
     if (isAllowedNavigationUrl(currentUrl)) {
-      await win.webContents.executeJavaScript(assets.hookScript);
+      await win.webContents.executeJavaScript(assets.hookScript
+        .replace('__SIDRA_DOCUMENT_GENERATION__', () => String(rendererDocumentGeneration)));
       mainLog.debug('MusicKit hook injected');
     } else {
       mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
@@ -466,6 +474,7 @@ function setupNavigationHandlers(win: BrowserWindow, player: Player): void {
     }
   });
   win.webContents.on('did-navigate', (_event, url) => {
+    rendererDocumentGeneration += 1;
     player.resetForDocumentReplacement();
     mainLog.debug('did-navigate:', url);
     handleStorefrontNavigation(url);

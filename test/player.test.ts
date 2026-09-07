@@ -87,6 +87,7 @@ describe('PlayerEvents', () => {
   it('keys match Player handler event names', () => {
     type EventKeys = keyof PlayerEvents;
     type ExpectedKeys =
+      | 'hookReady'
       | 'playbackStopped'
       | 'playbackCapabilitiesDidChange'
       | 'playbackStateDidChange'
@@ -133,6 +134,27 @@ describe('Player playback capabilities', () => {
     player.handlePlaybackCapabilitiesDidChange(payload);
     expect(listener).not.toHaveBeenCalled();
     expect(player.capabilitiesSnapshot()).toEqual(capabilities);
+  });
+});
+
+describe('Player hook readiness', () => {
+  it('stores a service document URL and clears it on navigation', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('hookReady', listener);
+    player.handleHookReady('https://music.apple.com/gb/new');
+    expect(player.hookReadyUrl()).toBe('https://music.apple.com/gb/new');
+    player.resetForDocumentReplacement();
+    expect(player.hookReadyUrl()).toBeNull();
+    expect(listener).toHaveBeenLastCalledWith(null);
+  });
+
+  it.each([null, {}, 'invalid', 'http://music.apple.com/', 'https://music.apple.com.evil.test/', 'https://music.apple.com:1234/', 'https://user@music.apple.com/'])('rejects invalid readiness URL %#', (url) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('hookReady', listener);
+    player.handleHookReady(url);
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 
@@ -682,6 +704,7 @@ describe('SidraHook contract', () => {
     type HookKeys = keyof SidraHook;
     type ExpectedKeys =
       | 'play'
+      | 'openUri'
       | 'pause'
       | 'stop'
       | 'playPause'
@@ -707,6 +730,7 @@ describe('SidraHook contract', () => {
       play: true,
       pause: true,
       playPause: true,
+      openUri: true,
       stop: true,
       next: true,
       previous: true,
@@ -754,6 +778,7 @@ describe('SidraHook contract', () => {
 describe('Channel contract', () => {
   it('SendChannel matches expected renderer-to-main channels', () => {
     type ExpectedSend =
+      | 'hookReady'
       | 'playbackStopped'
       | 'playbackCapabilitiesDidChange'
       | 'playbackStateDidChange'
@@ -773,6 +798,7 @@ describe('Channel contract', () => {
 
   it('ReceiveChannel matches expected main-to-renderer channels', () => {
     type ExpectedReceive =
+      | 'player:openUri'
       | 'player:play'
       | 'player:pause'
       | 'player:stop'

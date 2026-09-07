@@ -8,6 +8,7 @@ const bootstrap = vi.hoisted(() => {
   const appListeners = new Map<string, Listener>();
 
   const webContents = {
+    mainFrame: { url: 'https://music.apple.com/gb/new' },
     on: vi.fn((event: string, listener: Listener) => {
       mainWebListeners.set(event, listener);
     }),
@@ -69,6 +70,7 @@ const bootstrap = vi.hoisted(() => {
     splashWindow,
     integrations,
     resetForDocumentReplacement,
+    handleHookReady: vi.fn(),
     browserWindow: vi.fn(),
     ipcOn: vi.fn(),
     appQuit: vi.fn(),
@@ -157,6 +159,7 @@ vi.mock('../src/paths', () => ({ getAssetPath: vi.fn((...parts: string[]) => par
 
 vi.mock('../src/player', () => ({
   Player: class {
+    handleHookReady = bootstrap.handleHookReady;
     resetForDocumentReplacement = bootstrap.resetForDocumentReplacement;
   },
 }));
@@ -211,6 +214,7 @@ vi.mock('../src/autoUpdate', () => ({ isAutoUpdateSupported: vi.fn(() => false),
 vi.mock('../src/musicService', () => ({
   getService: vi.fn(() => ({ contentReadySelector: '#content' })),
   allServices: vi.fn(() => [{
+    host: 'music.apple.com',
     origin: 'https://music.apple.com',
     authFrameHosts: ['idmsa.apple.com'],
   }]),
@@ -354,6 +358,24 @@ describe('main bootstrap', () => {
     expect(backCall).toBeDefined();
     backCall?.[1]();
     expect(goBackIfPossible).toHaveBeenCalledWith(bootstrap.mainWindow);
+  });
+
+  it('accepts hook readiness only from the current main frame and document generation', async () => {
+    await startMain();
+    const ready = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'hookReady')?.[1];
+    const event = { sender: bootstrap.webContents, senderFrame: bootstrap.webContents.mainFrame };
+    ready?.({ ...event, sender: {} }, 0);
+    ready?.({ ...event, senderFrame: { url: event.senderFrame.url } }, 0);
+    ready?.(event, '0');
+    expect(bootstrap.handleHookReady).not.toHaveBeenCalled();
+    ready?.(event, 0);
+    expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(event.senderFrame.url);
+    bootstrap.handleHookReady.mockClear();
+    bootstrap.mainWebListeners.get('did-navigate')?.({}, event.senderFrame.url);
+    ready?.(event, 0);
+    expect(bootstrap.handleHookReady).not.toHaveBeenCalled();
+    ready?.(event, 1);
+    expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(event.senderFrame.url);
   });
 
   it('defers early SPA injection until integrations register and preserves later injection', async () => {

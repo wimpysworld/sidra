@@ -3,11 +3,13 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { Player } from '../src/player';
+import { allServices } from '../src/musicService';
 
 const hookScript = fs.readFileSync(
   path.join(__dirname, '..', 'assets', 'musicKitHook.js'),
   'utf-8',
-);
+).replace('__SIDRA_DOCUMENT_GENERATION__', '1')
+  .replace('__SIDRA_SERVICE_HOSTS__', JSON.stringify(allServices().map(service => service.host)));
 
 /** A listener registration made on a fake element. */
 interface Registration {
@@ -112,6 +114,7 @@ function createMusicKit(
     queue: { length: 1 },
     repeatMode: 0,
     seekToTime: vi.fn(),
+    setQueue: vi.fn(() => Promise.resolve()),
     setVolume: vi.fn(),
     shuffleMode: 0,
     skipToNextItem: vi.fn(),
@@ -172,7 +175,7 @@ function createHarness({
     AMWrapper?: { ipcRenderer: { send: ReturnType<typeof vi.fn> } };
     addEventListener: ReturnType<typeof vi.fn>;
     navigator: unknown;
-    location: { hostname: string };
+    location: { hostname: string; origin: string };
     __sidraHookedMk?: unknown;
     __sidra?: Record<string, (...args: unknown[]) => unknown>;
   }
@@ -187,12 +190,13 @@ function createHarness({
       if (event === 'pointerover') pointerOverListeners.push(listener);
     }),
     navigator,
-    location: { hostname: 'music.apple.com' },
+    location: { hostname: 'music.apple.com', origin: 'https://music.apple.com' },
   };
   if (!bridgeMissing) {
     window.AMWrapper = { ipcRenderer: { send: vi.fn() } };
   }
   const context = vm.createContext({
+    URL,
     setTimeout: (callback: () => void) => {
       const id = ++nextTimeoutId;
       timeouts.set(id, callback);
@@ -305,6 +309,66 @@ function createHarness({
     window,
   };
 }
+
+describe('MusicKit OpenUri', () => {
+  it.each(['music.apple.com', 'classical.music.apple.com'])('queues and starts a URL on %s', async (host) => {
+    const { window, musicKit } = createHarness();
+    Object.assign(window.location, { hostname: host, origin: `https://${host}` });
+    const uri = `https://${host}/gb/album/123`;
+    await window.__sidra!.openUri(uri);
+    expect(musicKit.setQueue).toHaveBeenCalledExactlyOnceWith({ url: uri, startPlaying: true });
+    expect(musicKit.play).not.toHaveBeenCalled();
+  });
+
+  it.each(['invalid', 'http://music.apple.com/album/1', 'https://music.apple.com.evil.test/album/1', 'https://classical.music.apple.com/album/1', 'https://music.apple.com:1234/album/1', 'https://user@music.apple.com/album/1'])('rejects an invalid or wrong-service queue URL %#', async (uri) => {
+    const { window, musicKit } = createHarness();
+    await window.__sidra!.openUri(uri);
+    expect(musicKit.setQueue).not.toHaveBeenCalled();
+    expect(musicKit.play).not.toHaveBeenCalled();
+  });
+
+  it('does not play the old queue or log request data after setQueue rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { window, musicKit } = createHarness();
+      const uri = 'https://music.apple.com/album/private?token=secret';
+      musicKit.setQueue.mockRejectedValueOnce(new Error(uri));
+      const queue = musicKit.queue;
+      await expect(window.__sidra!.openUri(uri)).resolves.toBeUndefined();
+      expect(musicKit.play).not.toHaveBeenCalled();
+      expect(musicKit.queue).toBe(queue);
+      expect(warn).toHaveBeenCalledExactlyOnceWith('[Sidra] failed to open requested media');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('reports readiness only after the command listener exists', () => {
+    const { window, bridgeSend } = createHarness();
+    const listenerIndex = window.addEventListener.mock.calls.findIndex(([event]) => event === 'message');
+    const readyIndex = bridgeSend.mock.calls.findIndex(([channel]) => channel === 'hookReady');
+    expect(bridgeSend.mock.calls[readyIndex]).toEqual(['hookReady', 1]);
+    expect(window.addEventListener.mock.invocationCallOrder[listenerIndex]).toBeLessThan(bridgeSend.mock.invocationCallOrder[readyIndex]);
+    expect(typeof window.__sidra!.openUri).toBe('function');
+  });
+
+  it('serialises queue replacement and drops superseded waiting requests', async () => {
+    let resolveQueue!: () => void;
+    const { window, musicKit } = createHarness();
+    musicKit.setQueue.mockReturnValueOnce(new Promise(resolve => { resolveQueue = resolve; }));
+    const first = window.__sidra!.openUri('https://music.apple.com/album/1');
+    await Promise.resolve();
+    const superseded = window.__sidra!.openUri('https://music.apple.com/album/2');
+    const latest = window.__sidra!.openUri('https://music.apple.com/album/3');
+    expect(musicKit.setQueue).toHaveBeenCalledOnce();
+    resolveQueue();
+    await Promise.all([first, superseded, latest]);
+    expect(musicKit.setQueue.mock.calls).toEqual([
+      [{ url: 'https://music.apple.com/album/1', startPlaying: true }],
+      [{ url: 'https://music.apple.com/album/3', startPlaying: true }],
+    ]);
+  });
+});
 
 describe('MusicKit Stop', () => {
   function pendingSeekHarness() {
