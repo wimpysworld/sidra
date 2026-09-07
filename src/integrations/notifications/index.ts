@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
 import { NowPlayingPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
@@ -11,8 +11,27 @@ import type { createLinuxNotifications } from '../../linuxNotifications';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
 const ARTWORK_RACE_TIMEOUT_MS = 500;
+const PLAYBACK_NOTIFICATION_ID = 'playback';
+const PLAYBACK_NOTIFICATION_GROUP = 'playback';
 
 const notifLog = log.scope('notifications');
+
+function clearPlaybackHistory(): void {
+  if (process.platform !== 'darwin') return;
+  try {
+    Notification.removeGroup(PLAYBACK_NOTIFICATION_GROUP);
+  } catch {
+    notifLog.warn('playback notification cleanup unavailable');
+  }
+}
+
+function closeNotifications(notifications: Set<Electron.Notification>): void {
+  for (const notification of notifications) {
+    notification.removeAllListeners();
+    notification.close();
+  }
+  notifications.clear();
+}
 
 async function showNotification(
   payload: NowPlayingPayload | null,
@@ -48,6 +67,7 @@ async function showNotification(
   if (!isCurrent()) return;
   const strings = getTrayStrings();
   const onAction = (action: 'previous' | 'next' | 'default'): void => {
+    if (!isCurrent()) return;
     if (action === 'previous') sendCommand('player:previous');
     else if (action === 'next') sendCommand('player:next');
     else {
@@ -73,6 +93,8 @@ async function showNotification(
   }
 
   const options: Electron.NotificationConstructorOptions = {
+    id: PLAYBACK_NOTIFICATION_ID,
+    groupId: PLAYBACK_NOTIFICATION_GROUP,
     title: payload.name,
     body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
     silent: true,
@@ -92,8 +114,10 @@ async function showNotification(
     return;
   }
 
+  closeNotifications(activeNotifications);
+  // A closed Windows banner can remain in Action Center. Keep its object for
+  // actions and explicit removal until the next track or quit.
   activeNotifications.add(notification);
-  notification.on('close', () => activeNotifications.delete(notification));
 
   notification.on('show', () => {
     notifLog.debug('notification displayed:', payload.name);
@@ -120,6 +144,7 @@ async function showNotification(
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;
   const getWin = getMainWindow ?? (() => null);
+  clearPlaybackHistory();
 
   notifLog.info('notification module initialised');
   notifLog.info('notifications enabled:', getNotificationsEnabled());
@@ -156,13 +181,11 @@ export function init(ctx: IntegrationContext): void {
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
 
   app.on('will-quit', () => {
+    if (stopped) return;
     stopped = true;
     if (linux) void linux.then((adapter) => adapter.dispose()).catch(() => {});
-    for (const notification of activeNotifications) {
-      notification.removeAllListeners();
-      notification.close();
-    }
-    activeNotifications.clear();
+    closeNotifications(activeNotifications);
+    clearPlaybackHistory();
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;

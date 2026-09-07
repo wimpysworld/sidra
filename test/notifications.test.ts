@@ -14,7 +14,7 @@ import { quit } from './mocks/appLifecycle';
 import { setPlatform, restorePlatform } from './mocks/platform';
 import { initCommandBridge } from '../src/commandBridge';
 import { getTrayStrings } from '../src/i18n';
-import type { BrowserWindow } from 'electron';
+import { Notification, type BrowserWindow } from 'electron';
 import * as i18n from '../src/i18n';
 
 const linuxAdapter = vi.hoisted(() => ({ show: vi.fn(), dispose: vi.fn() }));
@@ -81,6 +81,8 @@ describe('notifications integration', () => {
 
     expect(vi.mocked(createNotification)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createNotification)).toHaveBeenCalledWith({
+      id: 'playback',
+      groupId: 'playback',
       title: 'Blue Monday',
       body: 'New Order - Power, Corruption & Lies',
       silent: true,
@@ -187,6 +189,73 @@ describe('notifications integration', () => {
     quit();
     expect(notification?.close).toHaveBeenCalledOnce();
     expect(notification?.handlers).toEqual({});
+  });
+
+  it.each(['win32', 'darwin'])('replaces the previous native notification on %s', async (platform) => {
+    setPlatform(platform);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const previous = shown()!;
+    player.emitNowPlaying({ ...TRACK, name: 'Ceremony' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(previous.close).toHaveBeenCalledOnce();
+    expect(previous.handlers).toEqual({});
+    expect(notifyFake.built[1].options).toMatchObject({ id: 'playback', groupId: 'playback' });
+    expect(notifyFake.built[1].show).toHaveBeenCalledOnce();
+  });
+
+  it('retains the native object for history cleanup after its banner closes', async () => {
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const notification = shown()!;
+    notification.handlers.close?.();
+    notification.handlers.action({ actionIndex: 0 });
+    expect(send).toHaveBeenCalledExactlyOnceWith('player:previous');
+    quit();
+    expect(notification.close).toHaveBeenCalledOnce();
+  });
+
+  it('removes only the playback group on macOS startup and quit, even while disabled', () => {
+    quit();
+    setPlatform('darwin');
+    setNotificationsEnabled(false);
+    vi.mocked(Notification.removeGroup).mockClear();
+    init({ player, getMainWindow: () => null });
+    expect(Notification.removeGroup).toHaveBeenCalledExactlyOnceWith('playback');
+    expect(createNotification).not.toHaveBeenCalled();
+    quit();
+    expect(vi.mocked(Notification.removeGroup).mock.calls).toEqual([['playback'], ['playback']]);
+  });
+
+  it('does not use the macOS history API on Windows', () => {
+    quit();
+    expect(Notification.removeGroup).not.toHaveBeenCalled();
+  });
+
+  it('continues delivery when macOS history cleanup fails', async () => {
+    quit();
+    setPlatform('darwin');
+    vi.mocked(Notification.removeGroup).mockImplementationOnce(() => { throw new Error('Unavailable'); });
+    init({ player, getMainWindow: () => null });
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(shown()?.show).toHaveBeenCalledOnce();
+  });
+
+  it('ignores captured callbacks after preference disable or quit', async () => {
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const action = shown()!.handlers.action;
+    setNotificationsEnabled(false);
+    action({ actionIndex: 0 });
+    setNotificationsEnabled(true);
+    quit();
+    action({ actionIndex: 1 });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('uses the existing translated labels for native buttons', async () => {

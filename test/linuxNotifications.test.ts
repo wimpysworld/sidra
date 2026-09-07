@@ -53,7 +53,7 @@ beforeEach(() => {
         return { body: [owner] };
       }
       if (message.member === 'GetCapabilities') return { body: [capabilities] };
-      if (message.member === 'Notify') return { body: [nextId++] };
+      if (message.member === 'Notify') return { body: [message.body[1] || nextId++] };
       return { body: [] };
     }),
     disconnect: vi.fn(),
@@ -77,6 +77,9 @@ describe('Linux track notifications', () => {
       ['default', '', 'previous', 'Zurück', 'next', 'Weiter'],
     ]);
     expect(message.body[6]['suppress-sound'].value).toBe(true);
+    expect(message.body[6].transient.signature).toBe('b');
+    expect(message.body[6].transient.value).toBe(true);
+    expect(message.body[7]).toBe(-1);
     expect(message.body[6]['desktop-entry'].value).toBe('sidra');
     expect(message.body[6]['image-path'].signature).toBe('s');
     expect(message.body[6]['image-path'].value).toBe('file:///tmp/art.jpg');
@@ -110,13 +113,47 @@ describe('Linux track notifications', () => {
     expect(onAction.mock.calls).toEqual([['previous'], ['next'], ['default']]);
   });
 
-  it('forgets closed notifications without affecting another id', async () => {
+  it('forgets the closed playback notification and ignores unrelated closed ids', async () => {
     await adapter.show(track(), current);
-    await adapter.show(track(), current);
+    signal('NotificationClosed', [99, 2]);
+    signal('ActionInvoked', [1, 'previous']);
     signal('NotificationClosed', [1, 2]);
     signal('ActionInvoked', [1, 'next']);
-    signal('ActionInvoked', [2, 'previous']);
+    await adapter.show(track(), current);
+    expect(notifyCalls().map(message => message.body[1])).toEqual([0, 0]);
     expect(onAction.mock.calls).toEqual([['previous']]);
+  });
+
+  it.each([true, false])('replaces the previous id when actions are supported: %s', async (actions) => {
+    capabilities = actions ? ['actions'] : [];
+    const oldAction = vi.fn();
+    await adapter.show({ ...track(), onAction: oldAction }, current);
+    await adapter.show(track(), current);
+    expect(notifyCalls().map(message => message.body[1])).toEqual([0, 1]);
+    signal('ActionInvoked', [1, 'next']);
+    expect(oldAction).not.toHaveBeenCalled();
+    expect(onAction).toHaveBeenCalledTimes(actions ? 1 : 0);
+  });
+
+  it('serialises Notify replies and skips a queued notification that becomes stale', async () => {
+    let resolveNotify!: (reply: { body: unknown[] }) => void;
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation(async (message: Message) => {
+      if (message.member === 'Notify' && !resolveNotify) {
+        return new Promise(resolve => { resolveNotify = resolve; });
+      }
+      return original(message);
+    });
+    const first = adapter.show(track(), current);
+    await vi.waitFor(() => expect(notifyCalls()).toHaveLength(1));
+    let isCurrent = true;
+    const stale = adapter.show(track(), () => isCurrent);
+    const latest = adapter.show(track(), current);
+    isCurrent = false;
+    expect(notifyCalls()).toHaveLength(1);
+    resolveNotify({ body: [42] });
+    await Promise.all([first, stale, latest]);
+    expect(notifyCalls().map(message => message.body[1])).toEqual([0, 42]);
   });
 
   it('sends a plain notification when the daemon lacks actions and markup', async () => {
@@ -144,6 +181,19 @@ describe('Linux track notifications', () => {
     expect(notifyCalls()).toHaveLength(1);
     signal('ActionInvoked', [1, 'next']);
     expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('discards the previous callback after an uncertain replacement reply', async () => {
+    await adapter.show(track(), current);
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation(async (message: Message) => {
+      if (message.member === 'Notify') throw new Error('Reply lost');
+      return original(message);
+    });
+    await adapter.show(track(), current);
+    signal('ActionInvoked', [1, 'next']);
+    expect(onAction).not.toHaveBeenCalled();
+    expect(notifyCalls()).toHaveLength(2);
   });
 
   it('clears ids on daemon replacement and accepts reused ids from its successor', async () => {
@@ -186,12 +236,15 @@ describe('Linux track notifications', () => {
 
   it('detaches listeners and destroys the socket on quit', async () => {
     await adapter.show(track(), current);
-    adapter.dispose();
-    adapter.dispose();
+    await adapter.dispose();
+    await adapter.dispose();
     expect(bus.listenerCount('message')).toBe(0);
     expect(() => bus.emit('error', new Error('Late socket error'))).not.toThrow();
     expect(bus.disconnect).toHaveBeenCalledOnce();
     expect(bus._connection.stream.destroy).toHaveBeenCalledOnce();
+    const close = bus.call.mock.calls.map(([message]) => message).filter(message => message.member === 'CloseNotification');
+    expect(close).toHaveLength(1);
+    expect(close[0]).toMatchObject({ destination: owner, flags: MessageFlag.NO_AUTO_START, signature: 'u', body: [1] });
     signal('ActionInvoked', [1, 'next']);
     await adapter.show(track(), current);
     expect(onAction).not.toHaveBeenCalled();
@@ -204,6 +257,37 @@ describe('Linux track notifications', () => {
     await adapter.show(track(), current);
     expect(notifyCalls()).toHaveLength(1);
     expect(bus._connection.stream.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('bounds cleanup when CloseNotification never replies', async () => {
+    await adapter.show(track(), current);
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation((message: Message) => message.member === 'CloseNotification'
+      ? new Promise(() => {}) : original(message));
+    vi.useFakeTimers();
+    try {
+      const disposing = adapter.dispose();
+      signal('ActionInvoked', [1, 'next']);
+      await adapter.show(track(), current);
+      expect(onAction).not.toHaveBeenCalled();
+      expect(notifyCalls()).toHaveLength(1);
+      expect(bus.disconnect).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(500);
+      await disposing;
+      expect(bus.disconnect).toHaveBeenCalledOnce();
+      expect(bus._connection.stream.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases the socket when CloseNotification fails', async () => {
+    await adapter.show(track(), current);
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation((message: Message) => message.member === 'CloseNotification'
+      ? Promise.reject(new Error('No owner')) : original(message));
+    await expect(adapter.dispose()).resolves.toBeUndefined();
+    expect(bus.disconnect).toHaveBeenCalledOnce();
   });
 
   it('handles a session bus that cannot be opened', async () => {
