@@ -25,6 +25,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 - [Discord Rich Presence](#discord-rich-presence)
 - [Last.fm Scrobbling](#lastfm-scrobbling)
 - [Track Change Notifications](#track-change-notifications)
+- [Settings Window](#settings-window)
 - [Tray](#tray)
 - [macOS Dock](#macos-dock)
 - [Windows Taskbar](#windows-taskbar)
@@ -384,6 +385,17 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
   window.__sidraHookInjected = true;
 
   function attachToInstance(mk) {
+    // Per-instance marker, read by the 5-second monitor below. It is not an
+    // injection guard: __sidraHookInjected is. The assignment is the first
+    // statement, before anything that can throw. A marker assigned last went
+    // stale on a throw, so the monitor re-attached on every cycle and added
+    // a duplicate set of listeners each time.
+    window.__sidraHookedMk = mk;
+
+    // Then, in this order: stopVolumePoll(), attachPlaybackListeners(mk),
+    // attachVolume(mk). The stop runs first so a throw in either attach
+    // cannot leave a second timer polling the replaced instance.
+
     // Event listeners: playbackStateDidChange, nowPlayingItemDidChange,
     // playbackTimeDidChange (forwards the position, then calls
     // reportPositionState()), repeatModeDidChange, shuffleModeDidChange,
@@ -400,24 +412,30 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     // Volume polling: stores lastVolume, sends initial volume on attach,
     // polls mk.volume at 250ms intervals, sends IPC only on change
 
-    // window.__sidra control object:
-    //   play, pause, playPause, next, previous, seek,
-    //   setVolume, setRepeat, setShuffle
+    // window.__sidra control object, assigned last:
+    //   play, pause, stop, playPause, next, previous, openUri,
+    //   seek, setVolume, setRepeat, setShuffle
+  }
 
-    // Per-instance marker, read by the 5-second monitor below.
-    // This is not an injection guard: __sidraHookInjected is.
-    window.__sidraHookedMk = mk;
+  // Contains an attachment failure and logs it. The monitor's own catch
+  // would swallow the error silently, and a throw on the first call must
+  // not abort the message and pointerover listeners below.
+  function attachSafely(mk) {
+    try { attachToInstance(mk); } catch (err) { console.error(/* ... */); }
   }
 
   const waitForMK = setInterval(() => {
     if (!window.MusicKit) return;
     clearInterval(waitForMK);
-    attachToInstance(MusicKit.getInstance());
 
     // sidra:command message listener for preload bridge:
     //   window.addEventListener('message', ...) dispatches
     //   incoming { type: 'sidra:command', channel, args } messages
-    //   to the matching window.__sidra method via a COMMANDS allowlist
+    //   to the matching window.__sidra method via a COMMANDS allowlist.
+    //   It indexes window.__sidra?.[method], because a failed attach
+    //   leaves no hook object while the listener still runs.
+
+    attachSafely(MusicKit.getInstance());
 
     // A passive pointerover listener on window resolves the current volume
     // control with target.closest('.chrome-volume'). bindVolumeWheel() removes
@@ -425,7 +443,8 @@ Injected into `music.apple.com` and `classical.music.apple.com` after page load 
     // to the current control. The handler steps the live instance volume by 5%.
 
     // 5-second monitor: compares MusicKit.getInstance() against
-    // window.__sidraHookedMk and re-attaches when the singleton is replaced.
+    // window.__sidraHookedMk and calls attachSafely() when the singleton
+    // is replaced.
     setInterval(() => { /* ... */ }, 5000);
   }, 500);
 })();
@@ -585,17 +604,24 @@ Missing song fields clear the previous song's fields. A missing song URL falls b
 
 ## Volume Sync
 
-Cider's MPRIS volume sync is one-directional (MPRIS to MusicKit only, no reliable MusicKit to MPRIS), with a feedback loop on `volumeDidChange`. Sidra fixes this with a suppression flag pattern:
+Cider's MPRIS volume sync is one-directional (MPRIS to MusicKit only, no reliable MusicKit to MPRIS), with a feedback loop on `volumeDidChange`. Sidra fixes this with an ordered queue of pending echoes:
 
 ```
-MPRIS sets volume
-  → executeJavaScript sets mk.volume
-    → mk fires playbackVolumeDidChange
-      → IPC sends volume back to main
-        → suppression flag swallows the echo
+MPRIS sets Volume
+  → typed player:setVolume command reaches the preload
+    → window.postMessage() bridges it to the hook, which sets mk.volume
+      → mk fires playbackVolumeDidChange
+        → IPC sends the volume back to main
+          → the pending-echo queue swallows the echo
 ```
 
-The matching echo clears the flag. A 2000ms safety timeout (`_volumeSafetyMs` in `src/integrations/mpris/index.ts`) clears it when no echo arrives, so a lost echo cannot suppress volume updates for the rest of the session. The epsilon comparison (0.01) absorbs floating-point rounding without masking genuine user-initiated changes.
+The `set Volume` accessor in `src/integrations/mpris/index.ts` clamps and rounds the value, schedules its own `Volume` property emission, pushes the value onto `_pendingVolumes` and sends the command. Without the emission, only the client that made the change would know the new value.
+
+`updateVolume()` matches an incoming value against every pending entry within `VOLUME_ECHO_TOLERANCE` (0.01, absorbing floating-point rounding), then discards the matched entry and every older one: echoes arrive in order, so an overtaken set left in the queue would suppress a later in-app change. An unmatched value is an in-app change and is published.
+
+The queue is bounded by `MAX_PENDING_VOLUMES` (8). A full queue drops the value being added, never the oldest entry. The oldest entry is the one the next echo matches, so evicting it would make that echo read as an in-app change and pull the cached volume back behind the level the player reached - the same fault a single pending slot had, where a 0.5, 0.6, 0.7 drag burst left the cached volume one echo behind. An untracked newest value is harmless: its echo matches nothing and writes the level the player actually reached.
+
+A 2000ms safety timeout (`_volumeSafetyMs`) drops the whole queue when no echo arrives, so a missed echo cannot suppress volume updates for the rest of the session.
 
 **PulseAudio sink input volume is intentionally not synced.** MPRIS `Volume` controls MusicKit's software volume (`HTMLMediaElement.volume`) only. The PulseAudio/PipeWire sink input volume shown in pulsemixer and pavucontrol is independent and left to the user via their system mixer. This matches the behaviour of Rhythmbox, Spotify, VLC, mpv, and Clementine. Syncing both would cause double-volume multiplication (e.g. 0.5 × 0.5 = 0.25, −12 dB instead of the expected −6 dB) and would require a `libpulse` binding or fragile `pactl` subprocess calls.
 
@@ -681,7 +707,7 @@ Sidra loads two Apple web apps from one shell. `src/musicService.ts` holds the r
 
 `defineService()` infers the page id union from `startPages` alone and wraps `defaultStartPage` in `NoInfer`, so a typo there fails to compile instead of widening the union.
 
-Accessors: `isMusicServiceId()`, `getService()`, `getServiceByHost()` and `allServices()`. `getService()` is total at runtime as well as in the type: `?? MUSIC_SERVICES[DEFAULT_SERVICE_ID]` catches an unknown id. Every call runs while the tray menu is built, and the tray is the app's only settings surface.
+Accessors: `isMusicServiceId()`, `getService()`, `getServiceByHost()` and `allServices()`. `getService()` is total at runtime as well as in the type: `?? MUSIC_SERVICES[DEFAULT_SERVICE_ID]` catches an unknown id. Every call runs while the tray menu and the Settings state are built, the app's two settings surfaces.
 
 ### The two services
 
@@ -989,6 +1015,26 @@ Notifications are toggleable via an `electron-conf` boolean setting (default: on
 
 ---
 
+## Settings Window
+
+Sidra has two settings surfaces: the tray menu and a Settings window. `src/settingsWindow.ts` owns the window. `src/settings.ts` owns the state and the validated `SettingsAction` union that Settings and the tray controls share.
+
+The window is a local `BrowserWindow` that loads `assets/settings.html` over `file:` with `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` and its own preload, `src/settingsPreload.ts`. It opens from the gear button beside Back, Forward and Reload, and from Ctrl+, (Cmd+, on macOS), captured by a `before-input-event` listener on the main window. `will-navigate`, `will-frame-navigate` and `will-redirect` are all prevented, and `setWindowOpenHandler` denies every new window.
+
+### Private IPC
+
+Three channels are private to the Settings preload and appear on no other allowlist: `settings:get` and `settings:apply` (invoked from the renderer) and `settings:state` (pushed from main). The preload exposes them as `window.sidraSettings` with `getState()`, `apply(action)` and `onState(listener)`, checked against the `SettingsBridge` interface with `satisfies`.
+
+### Sender checks
+
+`validateSender()` guards both invoke handlers. It rejects a request unless the sender is the live Settings `webContents`, the sending frame is its main frame, and both the frame URL and `getURL()` equal the exact URL the window was created with. `handleSettingsNavigation()` opens the window only for a main-frame request from the main window's `webContents` whose document URL passes `isAllowedNavigationUrl()`.
+
+### State and actions
+
+`getSettingsState()` resolves the stored configuration, the available options and the translated labels into one `SettingsState`. `applySettingsAction()` validates each incoming action against that state, so an option that is not offered is rejected, then applies it, refreshes the tray and pushes the new state to subscribers. The tray and an open Settings window therefore stay in step. The window receives the active theme CSS through `insertCSS` and refreshes it on every state change.
+
+---
+
 ## Tray
 
 `src/tray.ts` manages the system tray icon and context menu. The menu is built from localised strings (`assets/locales/tray.json`) and rebuilds itself on state changes.
@@ -1197,7 +1243,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | MPRIS (Linux) | `dbus-next` D-Bus service | `org.mpris.MediaPlayer2.sidra` |
 | MPRIS primitives | play/pause/next/prev/seek/stop/OpenUri | Typed IPC with capability updates, bounded seeking and ordered Stop |
 | MPRIS metadata | title/artist/album/artwork/duration/trackId | Queue-item metadata, effective duration and timed radio songs |
-| MPRIS volume | Two-way with suppression flag | musicKitHook.js + main MPRIS plugin |
+| MPRIS volume | Two-way with pending-echo queue | musicKitHook.js + main MPRIS plugin |
 | MPRIS repeat/shuffle | Two-way | `repeatModeDidChange` + `shuffleModeDidChange` |
 | Discord Rich Presence | `@xhayper/discord-rpc` | With debounce + pause timeout + retry |
 | Track change notifications | D-Bus on Linux, Electron `Notification` elsewhere | Tracks and radio songs, artwork, replacement, and Play/Pause/Previous/Next controls where supported |
@@ -1235,7 +1281,7 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Artwork cache | `src/artwork.ts` | UUID-based filenames, 7-day expiry, atomic writes |
 | Pause timer utility | `src/pauseTimer.ts` | `createPauseTimer()` shared by tray, dock, Discord |
 | Update checking (non-auto-update) | `src/update.ts` | GitHub API check for deb/rpm/Nix/DMG platforms |
-| Service worker cache clearing | `session.defaultSession.clearStorageData` | Clears on startup to prevent stale assets |
+| Service worker cache clearing | `clearData()` on the `persist:sidra` partition in `initSession()` | Clears service workers and cache for the service origins on startup |
 | Last.fm scrobbling | `src/integrations/lastfm` + Last.fm API 2.0 | Opt-in; browser auth from the tray, per-user session key in `electron-conf` |
 | Controller navigation | Gamepad API in `preload.ts` + `controllerIPC.ts` | Standard mapping; D-pad, Select, and guarded Back in both services |
 
