@@ -93,6 +93,7 @@
                 optipng # PNG optimisation for tray menu icons
                 nodejs # Node.js for npm and TypeScript builds
                 playwrightMcpChromium
+                python3Minimal # asset generation scripts (app icons, tray outline, README image)
               ]
               ++ lib.optionals stdenv.hostPlatform.isDarwin [
                 uv # required for EVS VMP signing via uvx
