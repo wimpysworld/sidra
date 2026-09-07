@@ -3,6 +3,8 @@ import log from 'electron-log/main';
 import { Message, MessageType, MessageFlag, Variant, sessionBus } from '@holusion/dbus-next';
 import type { MessageBus } from '@holusion/dbus-next';
 import type { EventEmitter } from 'node:events';
+import { pathToFileURL } from 'node:url';
+import { getAssetPath } from './paths';
 
 const NAME = 'org.freedesktop.Notifications';
 const PATH = '/org/freedesktop/Notifications';
@@ -114,13 +116,18 @@ export function createLinuxNotifications() {
       const capabilities = await call(owner, 'GetCapabilities');
       if (!bus || generation !== currentGeneration || !isCurrent()) return;
       const actions = Array.isArray(capabilities?.body[0]) && capabilities.body[0].includes('actions');
+      const hints: Record<string, Variant> = {
+        'suppress-sound': new Variant('b', true),
+        'desktop-entry': new Variant('s', app.getName().toLowerCase()),
+      };
+      if (notification.icon) hints['image-path'] = new Variant('s', pathToFileURL(notification.icon).href);
       const result = await call(owner, 'Notify', 'susssasa{sv}i', [
-        app.getName(), 0, notification.icon ?? '', notification.title,
+        app.getName(), 0, getAssetPath('assets', 'sidra-logo.png'), notification.title,
         Array.isArray(capabilities?.body[0]) && capabilities.body[0].includes('body-markup')
           ? notification.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           : notification.body,
         actions ? ['default', '', 'previous', notification.previous, 'next', notification.next] : [],
-        { 'suppress-sound': new Variant('b', true), 'desktop-entry': new Variant('s', 'sidra') }, -1,
+        hints, -1,
       ]);
       if (!bus || generation !== currentGeneration) return;
       const id: unknown = result?.body[0];
