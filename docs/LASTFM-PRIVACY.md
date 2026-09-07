@@ -16,13 +16,13 @@ For each track, Sidra sends:
 - Track length (when the player reports one)
 - The time playback started (with a scrobble only)
 
-A now-playing update goes out when a track starts or resumes, and a scrobble once the track has played far enough to qualify. Nothing else about your listening is sent. Nothing at all is sent while the feature is off or no account is connected.
+A now-playing update goes out when a track starts or resumes, and a scrobble once the track has played far enough to qualify. When the track came from a radio station, the scrobble also carries a flag telling Last.fm that the station chose it rather than you. Nothing else about your listening is sent. Nothing at all is sent while the feature is off or no account is connected.
 
 ## What is stored on your machine
 
 Connecting stores a Last.fm session key and your Last.fm username in Sidra's configuration file (`config.json` in Sidra's user data directory), in plain text. The session key authorises scrobbling to your account. It goes nowhere except Last.fm.
 
-When a scrobble cannot reach Last.fm, because the connection dropped for example, the same file holds that play until the next request carries it out. Each held play is a track title, artist name and the time playback started, plus the album name and track length when the player reported them. At most 50 are held, and the oldest goes once that is full.
+When a scrobble cannot reach Last.fm, because the connection dropped for example, the same file holds that play until the next request carries it out. Each held play is a track title, artist name and the time playback started, plus the album name and track length when the player reported them. A play from a radio station also keeps the flag saying the station chose it. At most 50 are held, and the oldest goes once that is full.
 
 ## Turning it off and revoking access
 
