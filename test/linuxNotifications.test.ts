@@ -22,7 +22,7 @@ let owner: string;
 let capabilities: string[];
 let nextId: number;
 const onAction = vi.fn();
-const track = () => ({ title: 'Song', body: 'Artist & <Album>', icon: '/tmp/art.jpg', previous: 'Zurück', next: 'Weiter', onAction });
+const track = () => ({ title: 'Song', body: 'Artist & <Album>', icon: '/tmp/art.jpg', previous: 'Zurück', next: 'Weiter', playbackAction: 'play' as const, playbackLabel: 'Abspielen', onAction });
 const current = () => true;
 
 function signal(member: string, body: unknown[], sender = owner): void {
@@ -74,7 +74,7 @@ describe('Linux track notifications', () => {
     expect(message.flags).toBe(MessageFlag.NO_AUTO_START);
     expect(message.body.slice(0, 6)).toEqual([
       'Sidra', 0, getAssetPath('assets', 'sidra-logo.png'), 'Song', 'Artist &amp; &lt;Album&gt;',
-      ['default', '', 'previous', 'Zurück', 'next', 'Weiter'],
+      ['default', '', 'play', 'Abspielen', 'previous', 'Zurück', 'next', 'Weiter'],
     ]);
     expect(message.body[6]['suppress-sound'].value).toBe(true);
     expect(message.body[6].transient.signature).toBe('b');
@@ -106,11 +106,42 @@ describe('Linux track notifications', () => {
     signal('ActionInvoked', [1, 'previous']);
     signal('ActionInvoked', [1, 'next']);
     signal('ActionInvoked', [1, 'default']);
+    signal('ActionInvoked', [1, 'play']);
+    signal('ActionInvoked', [1, 'pause']);
     signal('ActionInvoked', [1, 'quit']);
     signal('ActionInvoked', [2, 'next']);
     signal('ActionInvoked', ['1', 'next']);
     signal('ActionInvoked', [1, 'next'], ':1.99');
-    expect(onAction.mock.calls).toEqual([['previous'], ['next'], ['default']]);
+    expect(onAction.mock.calls).toEqual([['previous'], ['next'], ['default'], ['play'], ['pause']]);
+  });
+
+  it('refreshes a playback button only on an existing notification with actions', async () => {
+    await adapter.show(track(), current);
+    await adapter.show({ ...track(), playbackAction: 'pause', playbackLabel: 'Pause' }, current, true);
+    expect(notifyCalls()[1].body[1]).toBe(1);
+    expect(notifyCalls()[1].body[5]).toEqual(['default', '', 'pause', 'Pause', 'previous', 'Zurück', 'next', 'Weiter']);
+    capabilities = [];
+    await adapter.show(track(), current, true);
+    expect(notifyCalls()).toHaveLength(2);
+    signal('NotificationClosed', [1, 2]);
+    await adapter.show(track(), current, true);
+    expect(notifyCalls()).toHaveLength(2);
+  });
+
+  it('does not turn a queued state refresh into a new notification after daemon replacement', async () => {
+    let resolveNotify!: (reply: { body: unknown[] }) => void;
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation((message: Message) => {
+      if (message.member === 'Notify') return new Promise(resolve => { resolveNotify = resolve; });
+      return original(message);
+    });
+    const first = adapter.show(track(), current);
+    await vi.waitFor(() => expect(notifyCalls()).toHaveLength(1));
+    const refreshing = adapter.show(track(), current, true);
+    replaceOwner(':1.43');
+    await Promise.all([first, refreshing]);
+    resolveNotify({ body: [1] });
+    expect(notifyCalls()).toHaveLength(1);
   });
 
   it('forgets the closed playback notification and ignores unrelated closed ids', async () => {

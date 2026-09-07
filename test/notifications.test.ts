@@ -8,7 +8,7 @@ import { downloadArtwork } from '../src/artwork';
 import { createNotification } from '../src/notify';
 import { setNotificationsEnabled } from '../src/config';
 import { init } from '../src/integrations/notifications';
-import { NowPlayingPayload } from '../src/player';
+import { NowPlayingPayload, PlaybackState } from '../src/player';
 import { FakePlayer } from './mocks/player';
 import { quit } from './mocks/appLifecycle';
 import { setPlatform, restorePlatform } from './mocks/platform';
@@ -17,7 +17,7 @@ import { getTrayStrings } from '../src/i18n';
 import { Notification, type BrowserWindow } from 'electron';
 import * as i18n from '../src/i18n';
 
-const linuxAdapter = vi.hoisted(() => ({ show: vi.fn(), dispose: vi.fn() }));
+const linuxAdapter = vi.hoisted(() => ({ show: vi.fn().mockResolvedValue(undefined), dispose: vi.fn() }));
 vi.mock('../src/linuxNotifications', () => ({ createLinuxNotifications: () => linuxAdapter }));
 
 // Matches NOTIFICATION_DEBOUNCE_MS in src/integrations/notifications/index.ts,
@@ -94,6 +94,7 @@ describe('notifications integration', () => {
       body: 'New Order - Power, Corruption & Lies',
       silent: true,
       actions: [
+        { type: 'button', text: getTrayStrings().play },
         { type: 'button', text: getTrayStrings().previous },
         { type: 'button', text: getTrayStrings().next },
       ],
@@ -152,9 +153,9 @@ describe('notifications integration', () => {
     initCommandBridge(send);
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-    shown()?.handlers.action({ actionIndex: 0 }, 1);
     shown()?.handlers.action({ actionIndex: 1 }, 0);
-    for (const actionIndex of [-1, 2, 0.5, '0', undefined]) {
+    shown()?.handlers.action({ actionIndex: 2 }, 1);
+    for (const actionIndex of [-1, 3, 0.5, '0', undefined]) {
       shown()?.handlers.action({ actionIndex });
     }
     expect(send.mock.calls).toEqual([['player:previous'], ['player:next']]);
@@ -224,7 +225,7 @@ describe('notifications integration', () => {
     const notification = shown()!;
     notification.handlers.show();
     notification.handlers.close?.();
-    notification.handlers.action({ actionIndex: 0 });
+    notification.handlers.action({ actionIndex: 1 });
     expect(send).toHaveBeenCalledExactlyOnceWith('player:previous');
     quit();
     expect(notification.close).toHaveBeenCalledOnce();
@@ -328,6 +329,7 @@ describe('notifications integration', () => {
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(shown()?.options.actions).toEqual([
+      { type: 'button', text: getTrayStrings().play },
       { type: 'button', text: 'Précédent' },
       { type: 'button', text: 'Suivant' },
     ]);
@@ -446,5 +448,130 @@ describe('notifications integration', () => {
     player.emitTimedMetadata({ ...RADIO_SONG, name: 'After Quit' });
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(linuxAdapter.show).toHaveBeenCalledOnce();
+  });
+
+  it.each(['win32', 'darwin'])('uses an explicit primary action and checks the latest snapshot on %s', async (platform) => {
+    setPlatform(platform);
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const notification = shown()!;
+    expect(notification.options.actions?.[0].text).toBe(getTrayStrings().pause);
+    player.setPlaybackState(PlaybackState.Paused);
+    notification.handlers.action({ actionIndex: 0 });
+    expect(send).not.toHaveBeenCalled();
+    player.setPlaybackState(PlaybackState.Playing);
+    notification.handlers.action({ actionIndex: 0 });
+    expect(send).toHaveBeenCalledExactlyOnceWith('player:pause');
+  });
+
+  it('refreshes state with cached artwork and ignores repeated or transient state events', async () => {
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying({ ...TRACK, artworkUrl: STATION.artworkUrl });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    shown()!.handlers.show();
+    player.emitPlaybackState(PlaybackState.Waiting);
+    player.emitPlaybackState(PlaybackState.Playing);
+    expect(notifyFake.built).toHaveLength(1);
+    player.emitPlaybackState(PlaybackState.Paused);
+    const paused = notifyFake.built[1];
+    expect(paused.options.actions?.[0].text).toBe(getTrayStrings().play);
+    expect(paused.options.icon).toBe('/tmp/sidra-test/artwork.jpg');
+    paused.handlers.show();
+    player.emitPlaybackState(PlaybackState.Paused);
+    expect(notifyFake.built).toHaveLength(2);
+    expect(downloadArtwork).toHaveBeenCalledOnce();
+  });
+
+  it('does not reset the song debounce when playback changes', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(1000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(notifyFake.built).toHaveLength(1);
+    expect(shown()!.options.actions?.[0].text).toBe(getTrayStrings().pause);
+  });
+
+  it('refreshes a pending display once after it settles without a show loop', async () => {
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    player.emitPlaybackState(PlaybackState.Paused);
+    player.emitPlaybackState(PlaybackState.Paused);
+    player.emitPlaybackState(PlaybackState.Seeking);
+    expect(notifyFake.built).toHaveLength(1);
+    shown()!.handlers.show();
+    expect(notifyFake.built).toHaveLength(2);
+    expect(notifyFake.built[1].options.actions?.[0].text).toBe(getTrayStrings().play);
+    notifyFake.built[1].handlers.show();
+    expect(notifyFake.built).toHaveLength(2);
+  });
+
+  it('keeps the last stable button when display settles during a transient state', async () => {
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    player.emitPlaybackState(PlaybackState.Seeking);
+    shown()!.handlers.show();
+    expect(notifyFake.built).toHaveLength(1);
+    expect(shown()!.options.actions?.[0].text).toBe(getTrayStrings().pause);
+  });
+
+  it('does not revive a dismissed notification on state changes', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    shown()!.handlers.show();
+    shown()!.handlers.close();
+    player.emitPlaybackState(PlaybackState.Playing);
+    expect(notifyFake.built).toHaveLength(1);
+  });
+
+  it('ignores a previous object close event during replacement', async () => {
+    player.emitPlaybackState(PlaybackState.Paused);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    shown()!.handlers.show();
+    const oldClose = shown()!.handlers.close;
+    player.emitPlaybackState(PlaybackState.Playing);
+    oldClose();
+    notifyFake.built[1].handlers.show();
+    player.emitPlaybackState(PlaybackState.Paused);
+    expect(notifyFake.built).toHaveLength(3);
+  });
+
+  it('disables state refresh after preference disable, navigation or quit', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    shown()!.handlers.show();
+    setNotificationsEnabled(false);
+    player.emitPlaybackState(PlaybackState.Playing);
+    setNotificationsEnabled(true);
+    player.resetForDocumentReplacement();
+    player.emitPlaybackState(PlaybackState.Paused);
+    quit();
+    player.emitPlaybackState(PlaybackState.Playing);
+    expect(notifyFake.built).toHaveLength(1);
+    expect(player.listenerCount('playbackStateDidChange')).toBe(0);
+  });
+
+  it('refreshes Linux buttons without artwork work and makes stale explicit actions harmless', async () => {
+    setPlatform('linux');
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying({ ...TRACK, artworkUrl: STATION.artworkUrl });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const [notification] = linuxAdapter.show.mock.calls[0];
+    expect(notification).toMatchObject({ playbackAction: 'pause', playbackLabel: getTrayStrings().pause });
+    player.emitPlaybackState(PlaybackState.Paused);
+    expect(linuxAdapter.show.mock.calls[1][0]).toMatchObject({ playbackAction: 'play', playbackLabel: getTrayStrings().play });
+    expect(linuxAdapter.show.mock.calls[1][2]).toBe(true);
+    notification.onAction('pause');
+    expect(send).not.toHaveBeenCalled();
+    notification.onAction('play');
+    expect(send).toHaveBeenCalledExactlyOnceWith('player:play');
+    expect(downloadArtwork).toHaveBeenCalledOnce();
   });
 });

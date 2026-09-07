@@ -19,7 +19,9 @@ export interface TrackNotification {
   icon?: string;
   previous: string;
   next: string;
-  onAction: (action: 'previous' | 'next' | 'default') => void;
+  playbackAction: 'play' | 'pause';
+  playbackLabel: string;
+  onAction: (action: 'previous' | 'next' | 'default' | 'play' | 'pause') => void;
 }
 
 interface BusInternals {
@@ -101,7 +103,7 @@ export function createLinuxNotifications() {
       }
     } else if (message.member === 'ActionInvoked') {
       const action: unknown = message.body[1];
-      if (action === 'previous' || action === 'next' || action === 'default') {
+      if (action === 'previous' || action === 'next' || action === 'default' || action === 'play' || action === 'pause') {
         if (id === notificationId) onAction?.(action);
       }
     }
@@ -139,9 +141,11 @@ export function createLinuxNotifications() {
     notification: TrackNotification,
     isCurrent: () => boolean,
     operation: { active: boolean; notifyOwner: string | null },
+    refreshGeneration: number | null,
   ): Promise<void> => {
     await ready;
     if (!operation.active || !bus || !isCurrent()) return;
+    if (refreshGeneration !== null && (generation !== refreshGeneration || !notificationId)) return;
     const currentGeneration = generation;
     try {
       const reply = await call(BUS_NAME, 'GetNameOwner', 's', [NAME]);
@@ -157,6 +161,7 @@ export function createLinuxNotifications() {
       const capabilities = await call(owner, 'GetCapabilities');
       if (!operation.active || !bus || generation !== currentGeneration || !isCurrent()) return;
       const actions = Array.isArray(capabilities?.body[0]) && capabilities.body[0].includes('actions');
+      if (refreshGeneration !== null && (!notificationId || !actions)) return;
       const hints: Record<string, Variant> = {
         'suppress-sound': new Variant('b', true),
         transient: new Variant('b', true),
@@ -170,7 +175,8 @@ export function createLinuxNotifications() {
         Array.isArray(capabilities?.body[0]) && capabilities.body[0].includes('body-markup')
           ? notification.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           : notification.body,
-        actions ? ['default', '', 'previous', notification.previous, 'next', notification.next] : [],
+        actions ? ['default', '', notification.playbackAction, notification.playbackLabel,
+          'previous', notification.previous, 'next', notification.next] : [],
         hints, -1,
       ]);
       if (!operation.active || !bus || generation !== currentGeneration) return;
@@ -187,7 +193,8 @@ export function createLinuxNotifications() {
     }
   };
 
-  const show = (notification: TrackNotification, isCurrent: () => boolean): Promise<void> => {
+  const show = (notification: TrackNotification, isCurrent: () => boolean, refreshOnly = false): Promise<void> => {
+    const refreshGeneration = refreshOnly ? generation : null;
     pending = pending.then(async () => {
       const operation = { active: true, notifyOwner: null as string | null };
       let cancel!: () => void;
@@ -201,7 +208,7 @@ export function createLinuxNotifications() {
         notificationLog.warn('track notification delivery timed out');
       }, DELIVERY_TIMEOUT_MS);
       try {
-        await Promise.race([deliver(notification, isCurrent, operation), cancelled]);
+        await Promise.race([deliver(notification, isCurrent, operation, refreshGeneration), cancelled]);
       } finally {
         operation.active = false;
         clearTimeout(timeout);
