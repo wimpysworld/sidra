@@ -150,8 +150,9 @@ function sanitiseNowPlayingPayload(value: unknown): NowPlayingPayload | null {
   if (!isRecord(value)) return null;
   const validators: Record<string, FieldValidator> = NOW_PLAYING_FIELD_VALIDATORS;
   const fields = Object.entries(value).filter(([field, fieldValue]) => {
-    const validate = validators[field];
-    if (validate?.(fieldValue)) return true;
+    // Object.hasOwn() first: a prototype-named key such as __proto__ or
+    // constructor would otherwise resolve a prototype member here.
+    if (Object.hasOwn(validators, field) && validators[field](fieldValue)) return true;
     playerLog.warn('nowPlayingItemDidChange: dropping invalid metadata field', field);
     return false;
   });
