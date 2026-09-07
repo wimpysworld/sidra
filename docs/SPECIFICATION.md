@@ -251,7 +251,10 @@ When a full-document navigation commits, `main.ts` calls `Player.resetForDocumen
 |---|---|---|
 | `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
 | `nowPlayingItemDidChange` | `NowPlayingPayload` (see `src/player.ts`) or `null` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
-| `timedMetadataDidChange` | Bounded song candidate, or an incomplete-transition marker | Last.fm |
+| `timedMetadataDidChange` | Bounded song candidate, or an incomplete-transition marker | Last.fm, MPRIS, Notifications |
+| `playbackCapabilitiesDidChange` | `PlaybackCapabilities` | MPRIS |
+| `playbackStopped` | `{ requestId, success }` | MPRIS |
+| `hookReady` | Injected document generation, validated against the current document | MPRIS |
 | `playbackTimeDidChange` | Position in microseconds | MPRIS, Dock, Taskbar |
 | `repeatModeDidChange` | Mode integer (0/1/2) | MPRIS |
 | `shuffleModeDidChange` | Mode integer | MPRIS |
@@ -315,6 +318,7 @@ The MPRIS and wedge dispatch sites log command provenance without command argume
 |---|---|---|
 | Play | `window.__sidra.play()` | MPRIS `Play()` |
 | Pause | `window.__sidra.pause()` | MPRIS `Pause()` |
+| Stop | `window.__sidra.stop(requestId)` | MPRIS `Stop()` |
 | Play/Pause toggle | `window.__sidra.playPause()` | MPRIS `PlayPause()` |
 | Next track | `window.__sidra.next()` | MPRIS `Next()` |
 | Previous track | `window.__sidra.previous()` | MPRIS `Previous()` |
@@ -322,6 +326,7 @@ The MPRIS and wedge dispatch sites log command provenance without command argume
 | Set volume | `window.__sidra.setVolume(float)` | MPRIS volume property |
 | Set repeat mode | `window.__sidra.setRepeat(mode)` | MPRIS `LoopStatus` |
 | Set shuffle mode | `window.__sidra.setShuffle(mode)` | MPRIS `Shuffle` |
+| Open media URL | `window.__sidra.openUri(url)` | MPRIS `OpenUri()` |
 
 ---
 
@@ -501,7 +506,7 @@ Guarded with `process.platform === 'win32'`.
 
 ## MPRIS Specification
 
-Full `org.mpris.MediaPlayer2.Player` property and method checklist. All must work.
+The `org.mpris.MediaPlayer2.Player` interface exposes the following properties and methods.
 
 ### Properties
 
@@ -509,18 +514,18 @@ Full `org.mpris.MediaPlayer2.Player` property and method checklist. All must wor
 |---|---|---|
 | `PlaybackStatus` | Read | From `playbackStateDidChange` |
 | `LoopStatus` | Read/Write | Bidirectional via `repeatModeDidChange` |
-| `Rate` | Read | Always 1.0 |
+| `Rate` | Read/Write | Always 1.0. Writing 0 pauses. Other writes leave the rate unchanged |
 | `Shuffle` | Read/Write | Bidirectional via `shuffleModeDidChange` |
-| `Metadata` | Read | Full dict on `nowPlayingItemDidChange` |
+| `Metadata` | Read | Queue-item metadata, effective duration, and timed radio song updates |
 | `Volume` | Read/Write | Bidirectional with suppression flag |
 | `Position` | Read | Updated from `playbackTimeDidChange` (microseconds) |
 | `MinimumRate` | Read | 1.0 |
 | `MaximumRate` | Read | 1.0 |
 | `CanGoNext` | Read | true |
 | `CanGoPrevious` | Read | true |
-| `CanPlay` | Read | true |
-| `CanPause` | Read | true |
-| `CanSeek` | Read | true |
+| `CanPlay` | Read | Current item exists and MusicKit exposes `play()` |
+| `CanPause` | Read | Current item exists and MusicKit exposes `pause()` |
+| `CanSeek` | Read | False without an item or seek method. True when seekability is known or unknown |
 | `CanControl` | Read | true |
 
 ### Methods
@@ -529,27 +534,42 @@ Full `org.mpris.MediaPlayer2.Player` property and method checklist. All must wor
 |---|---|
 | `Next()` | `mk.skipToNextItem()` |
 | `Previous()` | `mk.skipToPreviousItem()` |
-| `PlayPause()` | Toggle based on `mk.isPlaying` |
-| `Play()` | `mk.play()` |
+| `PlayPause()` | Toggle based on `mk.isPlaying`, or resume after pending Stop |
+| `Play()` | `mk.play()`, after pending Stop completes |
 | `Pause()` | `mk.pause()` |
-| `Stop()` | `window.__sidra.pause()` (not `mk.stop()`, which clears the queue and violates MPRIS spec) |
-| `Seek(Offset)` | `mk.seekToTime(currentTime + offsetMicros / 1e6)` |
-| `SetPosition(id, pos)` | `mk.seekToTime(posMicros / 1e6)` |
+| `Stop()` | Pause, then rewind finite media without clearing the queue. Confirm completion by request ID |
+| `Seek(Offset)` | Add the microsecond offset. Clamp below zero. Skip forward beyond known duration |
+| `SetPosition(id, pos)` | Seek only for the current track ID and a valid position within known duration |
+| `OpenUri(uri)` | Validate an Apple Music service URL, then ask the ready hook to start that media |
 
-MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] result=sent|dropped`. A successful `Volume` command logs at `debug`. A dropped `Volume` command and all other results log at `info`. `LoopStatus`, `Shuffle`, `Volume`, `Next`, `Previous`, `Pause`, `PlayPause`, `Stop`, `Play`, `Seek`, and `SetPosition` include their renderer channel. `Raise` and `OpenUri` can report either result. `Quit` reports `sent`. All three omit `channel`. Rejected values and URIs use generic warnings without request data.
+The hook reports changed capabilities on item and playback changes, and through the existing 250 ms poll. Document replacement clears capabilities and hook readiness.
+Unknown duration does not prove that seeking is unavailable. MPRIS keeps `CanSeek` true when the hook reports unknown seekability.
+Both seek methods respect `CanSeek`. A relative seek beyond known duration skips forward before numeric conversion.
+Other targets must permit safe conversion to seconds. Arithmetic stays in `BigInt` until that check passes.
+
+Stop waits up to five seconds for the rewind and reports success or failure. MPRIS accepts only the current request's success and expires unanswered requests after six seconds.
+Play and Play/Pause wait for a pending Stop. A later Pause cancels deferred resume. Item changes and document replacement invalidate stale commands.
+
+`OpenUri` accepts credential-free HTTPS URLs on `music.apple.com` and `classical.music.apple.com`, with the registered origin and default port.
+An already-ready page on the requested service receives the command directly. Otherwise, `switchService()` navigates and waits up to ten seconds for the matching hook.
+Same-origin redirects update that match. Superseding navigation cancels the pending request.
+The hook serialises `mk.setQueue({ url, startPlaying: true })` calls and bounds each wait to five seconds.
+A timed-out SDK call stays serialised until it settles. Playback still depends on MusicKit accepting the URL.
+
+MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] result=sent|dropped`. A successful `Volume` command logs at `debug`. A dropped `Volume` command and all other results log at `info`. Renderer commands include their channel. `OpenUri` also logs navigation without a channel. `Raise` and `Quit` omit the channel. Rejected values and URIs use generic warnings without request data.
 
 ### Signals
 
 | Signal | Behaviour |
 |---|---|
-| `Seeked` | Emit on user-initiated seeks only. `playbackTimeDidChange` fires every ~250ms. Store the value but only emit `Seeked` when the new position differs from `(lastPosition + elapsed)` by more than ~1s, indicating a real seek. |
+| `Seeked` | Emit on item resets and position discontinuities above approximately one second. Ordinary position updates change the cached value only |
 
 ### Metadata Mapping
 
 | MPRIS property | MusicKit source |
 |---|---|
 | `mpris:trackid` | `/org/sidra/track/{item.id}` |
-| `mpris:length` | `durationInMillis * 1000` (microseconds) |
+| `mpris:length` | Effective finite playback duration in microseconds, with item duration as fallback |
 | `mpris:artUrl` | `artwork.url` (512x512) |
 | `xesam:title` | `attributes.name` |
 | `xesam:album` | `attributes.albumName` |
@@ -557,7 +577,9 @@ MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] 
 | `xesam:genre` | `attributes.genreNames` |
 | `xesam:url` | `getShareUrl()` (`attributes.url` → `/song/{catalogId}` → `/song/{globalId}`) |
 
-Library items never carry `attributes.url`; their `catalogId` is always present, so `getShareUrl()` reconstructs the canonical `/song/{id}` URL. Radio stations and Classical tracks carry neither id, so the field is omitted.
+Library items without `attributes.url` use a catalogue ID to reconstruct `/song/{id}`. Without a URL or catalogue ID, Sidra omits `xesam:url`.
+Timed radio metadata updates title, artist, album and share URL while retaining the station track ID, artwork, duration and position.
+Missing song fields clear the previous song's fields. A missing song URL falls back to the station URL when available.
 
 ---
 
@@ -900,7 +922,8 @@ A committed full-document navigation resets the shared `Player`, which cancels t
 
 ## Track Change Notifications
 
-Track notifications show the current track with localised **Previous** and **Next** controls. A body click shows and focuses the main window, subject to action support on Linux.
+Track notifications show the current track with localised **Play/Pause**, **Previous** and **Next** controls.
+A body click shows and focuses the main window, subject to action support on Linux.
 
 | Platform | Delivery | Action requirements |
 |---|---|---|
@@ -909,7 +932,26 @@ Track notifications show the current track with localised **Previous** and **Nex
 | macOS | Electron `Notification` | A signed app and alert-style notifications |
 
 The macOS package sets `NSUserNotificationAlertStyle` to `alert` through `build.mac.extendInfo` in `package.json`. Current unsigned releases do not meet the signing requirement.
-Both controls use the typed `sendCommand()` bridge. Last.fm and update notifications keep the Electron delivery path and do not gain track controls.
+All controls use the typed `sendCommand()` bridge. Last.fm and update notifications keep the Electron delivery path and do not gain track controls.
+
+The playback button uses the shared playback snapshot. Playing shows Pause, while paused and terminal states show Play.
+Transient states retain the previous label. The action sends explicit Play or Pause, and does nothing if playback already matches the requested state.
+State changes refresh only the current announcement. They do not reopen a notification after the platform reports its dismissal or closure.
+
+Timed radio metadata announces each changed title, artist or album with station artwork. Repeated display fields do not create another announcement.
+Queue-item changes reset that radio display state. Slow artwork and stale actions cannot apply to a newer announcement.
+
+### Replacement and history
+
+| Platform | Playback notification lifecycle |
+|---|---|
+| Linux | Reuse the daemon's notification ID for replacement. Send `transient=true` to request no history retention. Daemon policy controls the result |
+| macOS | Give each native notification a unique ID in the `playback` group. Close previous objects and clear the group at startup and quit |
+| Windows | Give each native notification a unique ID in the `playback` group. Close previous objects on replacement and quit. Startup-history cleanup is unsupported |
+
+Native notifications use a new ID on each delivery, not a shared replacement ID. Pending objects retain their delegates until `show` or `failed` arrives.
+A late `show` for an obsolete announcement closes that object immediately. Closed Windows banners retain their objects for actions and explicit cleanup.
+Playback refresh stops after a native close event, even when Windows retains the announcement in Action Center.
 
 **Do not gate on `Notification.isSupported()`** - in CastLabs Electron this returns `false` even when the platform fully supports notifications. Rely on the `failed` event to surface OS-level rejection instead.
 
@@ -928,16 +970,18 @@ The `failed` listener latches the gate closed on Linux only, as a second line be
 The Electron path still blocks if a daemon owns the name but hangs during `Notify`. Electron waits on `g_dbus_proxy_call_sync` with an infinite timeout.
 Linux track notifications use asynchronous D-Bus calls instead. A failed `Notify` does not fall back to Electron, because that can send a duplicate notification.
 The adapter validates action signals against the daemon sender, notification ID and action. Daemon replacement and quit clear the action state.
+Delivery waits at most five seconds. A missing or failed `Notify` reply blocks further delivery to that daemon until its owner changes.
+An uncertain reply does not prove that the daemon failed to display the announcement. Blocking avoids duplicate delivery without a known replacement ID.
 
 The implementation lives in `src/integrations/notifications/index.ts`:
 
 - **Gate check**: `notificationsAvailable()` is checked before the artwork download, so a daemon-less session does no repeated network and disk work per track
-- **Artwork**: Uses `downloadArtwork()` from `src/artwork.ts`, which fetches via `net.fetch`, writes to a UUID-based cache with atomic writes, and expires files after 7 days
-- **Debounce**: 1500ms debounce on `nowPlayingItemDidChange` to coalesce rapid events
-- **Artwork race timeout**: 500ms - if artwork download takes longer, the notification fires without an icon
+- **Artwork**: `downloadArtwork()` fetches and caches the image. Linux sends its file URL in `image-path` and keeps Sidra's logo as the application icon. Native notifications use `icon`
+- **Debounce**: 1500 ms for queue-item changes and changed radio display metadata
+- **Artwork race timeout**: 500 ms. A slower download leaves the announcement without artwork
 - **Body format**: `artistName - albumName` (fields joined with ` - ` via `filter(Boolean).join(' - ')`)
-- **Controls**: Previous and Next use the existing translated labels. A body click shows and focuses the main window
-- **Silent**: `silent: true` suppresses notification sounds
+- **Controls**: Play/Pause, Previous and Next use existing translated labels. A body click shows and focuses the main window
+- **Silent**: Native notifications use `silent: true`. Linux sends the `suppress-sound` hint
 
 On NixOS, keep `libnotify` in the dev shell's `LD_LIBRARY_PATH` for the Electron notification path. Direct D-Bus track notifications do not use it.
 
@@ -1151,12 +1195,12 @@ electron-updater manifest filenames are hardcoded and cannot be changed:
 | Apple Music web app (DRM) | CastLabs Electron + `music.apple.com` | Widevine CDM auto-installs |
 | Auth | Apple's own web flow | Persistent partition; no developer tokens |
 | MPRIS (Linux) | `dbus-next` D-Bus service | `org.mpris.MediaPlayer2.sidra` |
-| MPRIS primitives | play/pause/next/prev/seek/stop | From MusicKit events via IPC |
-| MPRIS metadata | title/artist/album/artwork/duration/trackId | From `nowPlayingItemDidChange` |
+| MPRIS primitives | play/pause/next/prev/seek/stop/OpenUri | Typed IPC with capability updates, bounded seeking and ordered Stop |
+| MPRIS metadata | title/artist/album/artwork/duration/trackId | Queue-item metadata, effective duration and timed radio songs |
 | MPRIS volume | Two-way with suppression flag | musicKitHook.js + main MPRIS plugin |
 | MPRIS repeat/shuffle | Two-way | `repeatModeDidChange` + `shuffleModeDidChange` |
 | Discord Rich Presence | `@xhayper/discord-rpc` | With debounce + pause timeout + retry |
-| Track change notifications | D-Bus on Linux, Electron `Notification` elsewhere | Artwork and Previous/Next controls where supported, toggleable in Settings |
+| Track change notifications | D-Bus on Linux, Electron `Notification` elsewhere | Tracks and radio songs, artwork, replacement, and Play/Pause/Previous/Next controls where supported |
 | Regional storefront detection | `app.getLocaleCountryCode()` → `/gb/new`, `/ch/new` etc. | Fallback chain: persisted → detected → `us` |
 | Storefront preference persistence | `electron-conf` + `did-navigate` listener | Survives restarts; language parameter preserved |
 | User-agent spoofing | `webRequest.onBeforeSendHeaders` | Standard Chrome UA |

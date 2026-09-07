@@ -23,7 +23,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus a live-reloading custom colour theme
 - 📊 **Last.fm scrobbling** - opt-in, with browser approval
 - 🎮 **Discord Rich Presence** - show what you are listening to
-- 🔔 **Desktop notifications** - track changes with Previous and Next controls where the platform supports notification actions
+- 🔔 **Desktop notifications** - tracks and radio songs with Play/Pause, Previous and Next controls where the platform supports notification actions
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
 - 🎮 **Controller navigation** - use a standard controller to move through and select items in both services
@@ -33,7 +33,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🐧 **Linux**:
   - Widevine DRM via CastLabs Electron
   - Wayland and X11 support
-  - Bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) over D-Bus
+  - Bi-directional MPRIS (`org.mpris.MediaPlayer2.sidra`) over D-Bus, with seeking, queue-preserving Stop, media URL playback and radio song metadata
 - 🍏 **macOS**:
   - Full Widevine DRM with EVS production VMP signing
   - Now Playing widget, Dock menu with playback controls, and Dock progress bar
@@ -57,7 +57,9 @@ With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows,
 The resizable window contains player, start page, style, zoom, close-to-tray, notification, Discord and Last.fm preferences.
 Changes save immediately. The existing tray preferences remain available. [View Settings screenshot](assets/source/sidra-settings.png).
 
-Track notifications let you select **Previous** or **Next** without opening Sidra. Click the notification body to show the player.
+Track notifications show artwork and let you select **Play/Pause**, **Previous** or **Next** without opening Sidra. Click the notification body to show the player.
+The playback button follows the current state. State changes do not reopen a dismissed notification.
+New tracks and radio songs replace the previous playback announcement. On Linux, Sidra requests transient notifications, so history retention depends on the notification service.
 On Linux, the controls and body click require a notification service that supports actions. On macOS, the controls require a signed app and alert-style notifications.
 The current unsigned macOS releases do not meet that requirement.
 
@@ -337,7 +339,7 @@ music.apple.com
                     └── Taskbar toolbar + overlay + progress bar (Windows)
 ```
 
-Controls flow in reverse: MPRIS method calls reach `window.__sidra` via `webContents.executeJavaScript()`, which calls the appropriate MusicKit method directly.
+Controls flow in reverse: MPRIS sends typed IPC commands through the isolated preload to `window.__sidra`, which calls MusicKit.
 
 The codebase is tightly focused and as lean as possible.
 
