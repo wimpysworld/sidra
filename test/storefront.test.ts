@@ -236,6 +236,29 @@ describe('buildAppleMusicURL - classical service', () => {
     const url = buildAppleMusicURL();
     expect(url).toBe('https://classical.music.apple.com/gb');
   });
+
+  // Round trips: what handleLastPageNavigation stored is what the launch resolves.
+  function lastStoredClassicalPath(): string {
+    const calls = mockedSetClassicalLastPageUrl.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    return calls[calls.length - 1][0];
+  }
+
+  it('resolves Home after Browse then Home, not the earlier Browse', () => {
+    mockedGetClassicalStartPage.mockReturnValue('last');
+    handleLastPageNavigation('https://classical.music.apple.com/gb/browse/catalog');
+    handleLastPageNavigation('https://classical.music.apple.com/gb');
+    mockedGetClassicalLastPageUrl.mockReturnValue(lastStoredClassicalPath());
+    expect(buildAppleMusicURL()).toBe('https://classical.music.apple.com/gb');
+  });
+
+  it('resolves Home with its query after a Home visit carrying one', () => {
+    mockedGetClassicalStartPage.mockReturnValue('last');
+    handleLastPageNavigation('https://classical.music.apple.com/gb/browse/catalog');
+    handleLastPageNavigation('https://classical.music.apple.com/gb?l=en-GB');
+    mockedGetClassicalLastPageUrl.mockReturnValue(lastStoredClassicalPath());
+    expect(buildAppleMusicURL()).toBe('https://classical.music.apple.com/gb?l=en-GB');
+  });
 });
 
 describe('buildAppleMusicURL - registry-driven page paths', () => {
@@ -350,6 +373,22 @@ describe('handleLastPageNavigation', () => {
   it('drops the fragment', () => {
     handleLastPageNavigation('https://music.apple.com/gb/search?term=jazz#top');
     expect(mockedSetLastPageUrl).toHaveBeenCalledWith('search?term=jazz');
+  });
+
+  it('stores the empty root path when classical Home is visited', () => {
+    handleLastPageNavigation('https://classical.music.apple.com/gb');
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the query when storing the classical root', () => {
+    handleLastPageNavigation('https://classical.music.apple.com/gb?l=en-GB');
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('?l=en-GB');
+  });
+
+  it('does not store the bare root for the music service', () => {
+    // music.apple.com declares no root start page: its bare root is a redirect stop.
+    handleLastPageNavigation('https://music.apple.com/gb');
+    expect(mockedSetLastPageUrl).not.toHaveBeenCalled();
   });
 
   it('does nothing for an unknown host', () => {

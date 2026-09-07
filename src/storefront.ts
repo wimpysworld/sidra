@@ -58,8 +58,12 @@ export function buildAppleMusicURL(): string {
 
   if (startPage === 'last') {
     const lastPath = getLastPageUrlFor(serviceId);
-    if (lastPath) {
-      return appendLanguage(`${service.origin}/${storefront}/${lastPath}`, language);
+    // Classical's Home is stored as the empty root path, possibly carrying a
+    // query, so only an absent value falls through. Neither form takes the
+    // separator slash: the root must not gain a trailing one.
+    if (lastPath !== undefined) {
+      const separator = lastPath === '' || lastPath.startsWith('?') ? '' : '/';
+      return appendLanguage(`${service.origin}/${storefront}${separator}${lastPath}`, language);
     }
     // fall through: no stored path yet, use the service default
   }
@@ -150,10 +154,14 @@ export function handleLastPageNavigation(url: string): void {
     if (!service) return;
     const segments = parsed.pathname.split('/').filter(Boolean);
     const pageSegments = segments[0] && /^[a-z]{2}$/.test(segments[0]) ? segments.slice(1) : segments;
-    if (pageSegments.length > 0) {
+    const pagePath = pageSegments.join('/');
+    // The storefront root is a real page only on a service whose registry
+    // declares a root start page (Classical's Home). Elsewhere a bare root is
+    // a redirect stop, not a page, and must not displace the stored path.
+    if (pagePath !== '' || service.startPages.some(page => page.path === '')) {
       // Keep the query so a search or a filtered view resumes as it was left.
       // The fragment is dropped: it is renderer state, not a page address.
-      const path = `${pageSegments.join('/')}${parsed.search}`;
+      const path = `${pagePath}${parsed.search}`;
       setLastPageUrlFor(service.id, path);
     }
   } catch {
