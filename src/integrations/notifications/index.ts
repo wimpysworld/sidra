@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
-import { NowPlayingPayload, IntegrationContext } from '../../player';
+import { NowPlayingPayload, TimedMetadataPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
 import { createNotification, notificationsAvailable } from '../../notify';
@@ -152,12 +152,14 @@ export function init(ctx: IntegrationContext): void {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let generation = 0;
   let stopped = false;
+  let radioStation: NowPlayingPayload | null = null;
+  let timedDisplayKey: string | null = null;
   const activeNotifications = new Set<Electron.Notification>();
   let linux: Promise<ReturnType<typeof createLinuxNotifications>> | null = null;
   const getLinuxNotifications = () => linux ??= import('../../linuxNotifications')
     .then(({ createLinuxNotifications }) => createLinuxNotifications());
 
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+  const scheduleNotification = (payload: NowPlayingPayload | null): void => {
     const currentGeneration = ++generation;
     if (!getNotificationsEnabled()) {
       return;
@@ -178,7 +180,27 @@ export function init(ctx: IntegrationContext): void {
     }, NOTIFICATION_DEBOUNCE_MS);
   };
 
+  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+    radioStation = payload?.playParams?.kind === 'radioStation' ? payload : null;
+    timedDisplayKey = null;
+    scheduleNotification(payload);
+  };
+
+  const onTimedMetadataDidChange = (payload: TimedMetadataPayload): void => {
+    if (!radioStation) return;
+    const displayKey = JSON.stringify([payload.name, payload.artistName, payload.albumName ?? '']);
+    if (displayKey === timedDisplayKey) return;
+    timedDisplayKey = displayKey;
+    scheduleNotification({
+      name: payload.name,
+      artistName: payload.artistName,
+      albumName: payload.albumName,
+      artworkUrl: radioStation.artworkUrl,
+    });
+  };
+
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('timedMetadataDidChange', onTimedMetadataDidChange);
 
   app.on('will-quit', () => {
     if (stopped) return;
@@ -191,5 +213,6 @@ export function init(ctx: IntegrationContext): void {
       debounceTimer = null;
     }
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
   });
 }

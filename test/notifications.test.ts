@@ -36,6 +36,13 @@ const TRACK: NowPlayingPayload = {
   albumName: 'Power, Corruption & Lies',
 };
 
+const STATION: NowPlayingPayload = {
+  name: 'Radio Station', albumName: 'Station Album',
+  artworkUrl: 'https://example.com/station.jpg',
+  trackId: 'station', playParams: { kind: 'radioStation' },
+};
+const RADIO_SONG = { name: 'Radio Song', artistName: 'Radio Artist', transition: 'initial' as const };
+
 /** The notification the integration asked for, or undefined if it asked for none. */
 function shown(): FakeNotification | undefined {
   return notifyFake.built[0];
@@ -288,5 +295,99 @@ describe('notifications integration', () => {
     quit();
     await Promise.resolve();
     expect(linuxAdapter.dispose).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, 3600000])('coalesces the station and first radio song with duration %s', async (durationInMillis) => {
+    player.emitNowPlaying({ ...STATION, durationInMillis });
+    await vi.advanceTimersByTimeAsync(500);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built).toHaveLength(1);
+    expect(shown()?.options).toMatchObject({
+      title: 'Radio Song', body: 'Radio Artist', icon: '/tmp/sidra-test/artwork.jpg',
+    });
+    expect(downloadArtwork).toHaveBeenCalledExactlyOnceWith(STATION.artworkUrl);
+  });
+
+  it('ignores duplicate timed display fields and catalogue-only enrichment without delaying delivery', async () => {
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(1000);
+    player.emitTimedMetadata({ ...RADIO_SONG, trackId: 'catalogue-id' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(notifyFake.built).toHaveLength(1);
+    player.emitTimedMetadata({ ...RADIO_SONG, playParams: { kind: 'song', catalogId: 'catalogue-id' } });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built).toHaveLength(1);
+  });
+
+  it('replaces each changed song and clears an absent album', async () => {
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata({ ...RADIO_SONG, albumName: 'Song Album' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(shown()?.options.body).toBe('Radio Artist - Song Album');
+    player.emitTimedMetadata({ ...RADIO_SONG, name: 'Next Song' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built[1].options).toMatchObject({ title: 'Next Song', body: 'Radio Artist' });
+    expect(shown()?.close).toHaveBeenCalledOnce();
+  });
+
+  it('resets timed display deduplication on station change and restores ordinary track metadata', async () => {
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    player.emitNowPlaying({ ...STATION, trackId: 'station-2' });
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built).toHaveLength(2);
+    player.emitNowPlaying(TRACK);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built[2].options.title).toBe(TRACK.name);
+  });
+
+  it('drops pending timed work on document replacement and waits for a new station', async () => {
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata(RADIO_SONG);
+    player.resetForDocumentReplacement();
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built).toHaveLength(0);
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built).toHaveLength(1);
+  });
+
+  it('does not restore an old song when its artwork arrives late', async () => {
+    let resolveArtwork!: (path: string) => void;
+    vi.mocked(downloadArtwork).mockReturnValueOnce(new Promise(resolve => { resolveArtwork = resolve; }));
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    player.emitTimedMetadata({ ...RADIO_SONG, name: 'Latest Song' });
+    resolveArtwork('/tmp/old-artwork.jpg');
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(notifyFake.built).toHaveLength(1);
+    expect(shown()?.options.title).toBe('Latest Song');
+  });
+
+  it('keeps Linux radio actions and detaches the timed listener on quit', async () => {
+    setPlatform('linux');
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitNowPlaying(STATION);
+    player.emitTimedMetadata(RADIO_SONG);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const [notification] = linuxAdapter.show.mock.calls[0];
+    expect(notification).toMatchObject({ title: 'Radio Song', body: 'Radio Artist', icon: '/tmp/sidra-test/artwork.jpg' });
+    notification.onAction('previous');
+    notification.onAction('next');
+    expect(send.mock.calls).toEqual([['player:previous'], ['player:next']]);
+    quit();
+    expect(player.listenerCount('timedMetadataDidChange')).toBe(0);
+    player.emitTimedMetadata({ ...RADIO_SONG, name: 'After Quit' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    expect(linuxAdapter.show).toHaveBeenCalledOnce();
   });
 });
