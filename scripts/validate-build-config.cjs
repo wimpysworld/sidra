@@ -1,26 +1,21 @@
-// Checks the electron-builder configuration before a packaging run. `just
-// validate` runs it locally and the test-config job in builder.yml runs it in
-// CI, so a fault is named here rather than surfacing later as an installer that
-// builds but misbehaves.
+// Check packaging settings through just validate and builder.yml's test-config
+// job, so configuration faults fail before installers reach users.
 const fs = require("fs");
 const path = require("path");
 
 function main() {
   const projectDir = process.cwd();
 
-  // 1. The whole electron-builder config lives in package.json under "build",
-  //    so reading that file reads the whole config. electron-builder exposes no
-  //    public API for loading or schema-validating it, so no schema pass runs.
-  //    Do not reach into app-builder-lib/out/... for its internal validator: a
-  //    compiled internal path breaks on a dependency bump and is then reported
-  //    as a module-not-found error rather than as anything about the config.
+  // package.json holds the complete build configuration. No schema check runs
+  // because electron-builder exposes no public validator. Internal paths under
+  // app-builder-lib/out/ can break on dependency updates with module-not-found
+  // errors instead of configuration errors.
   const pkg = JSON.parse(fs.readFileSync(path.join(projectDir, "package.json"), "utf8"));
   const config = pkg.build ?? {};
   console.log("  \u2713 electron-builder config: read from package.json \"build\" (no schema check; electron-builder exposes no public validator)");
 
-  // 2. Options electron-builder has dropped or renamed. Each error names the
-  //    replacement, because a setting that is no longer read shows up only as
-  //    an installer missing the behaviour it was meant to configure.
+  // Reject obsolete options that electron-builder can otherwise ignore.
+  // Each error names the supported replacement.
   if (config.npmSkipBuildFromSource === false) {
     throw new Error("npmSkipBuildFromSource is deprecated; use buildDependenciesFromSource");
   }
@@ -37,7 +32,7 @@ function main() {
   }
   console.log("  \u2713 no deprecated options detected");
 
-  // 3. Validate package.json author has email (required by RPM/DEB FPM targets)
+  // FPM requires the author's email for the deb/rpm maintainer field.
   const author = pkg.author;
   const emailRegex = /<[^>]+@[^>]+>/;
   if (typeof author === "string") {
@@ -59,11 +54,9 @@ function main() {
   }
   console.log("  \u2713 package.json author email: present");
 
-  // 4. Validate Linux desktop actions used for launcher MPRIS controls.
-  //    Only the D-Bus wiring is pinned; the labels are free to change.
-  //    The MPRIS integration requests "org.mpris.MediaPlayer2." plus
-  //    app.getName() lowercased, and Electron prefers productName over name,
-  //    so the expected bus name is derived the same way and a rename fails here.
+  // Pin the D-Bus commands for launcher controls, not their labels.
+  // Match the MPRIS integration's lowercased app.getName(), which prefers
+  // productName over name, so a product rename requires matching commands.
   const desktop = config.linux?.desktop;
   const busName = `org.mpris.MediaPlayer2.${String(pkg.productName ?? pkg.name).toLowerCase()}`;
   const actionMethods = ["PlayPause", "Next", "Previous", "Stop"];
@@ -78,14 +71,9 @@ function main() {
     if (typeof action.Name !== "string" || action.Name.trim() === "") {
       throw new Error(`Linux desktop action ${method}.Name must be a non-empty string`);
     }
-    //    The Exec is matched token by token rather than as one whole string, so
-    //    extra whitespace or a flag reordered ahead of the member stays
-    //    harmless while the four parts that decide whether the launcher control
-    //    works are all pinned: the command, the destination, the object path
-    //    and the member, which must be the final token. Do not replace this
-    //    with includes() over the whole string, which passes a wrong object
-    //    path, a suffixed member and a trailing argument alike, nor with
-    //    equality against one expected command, which fails on formatting.
+    // Match tokens so whitespace and option order can vary without accepting
+    // a wrong command, destination, object path or member. The member must be
+    // last because dbus-send treats later tokens as message arguments.
     const exec = typeof action.Exec === "string" ? action.Exec : "";
     const tokens = exec.split(/\s+/).filter((token) => token !== "");
     const command = tokens.shift() ?? "";

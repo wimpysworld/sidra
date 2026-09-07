@@ -53,10 +53,8 @@ jobs:
   lint-code:
     name: Lint Code 🧹
     needs: [version-gate]
-    # version-gate runs on tags only, so it is skipped on every other run, and
-    # always() is what lets this job proceed past that skip. lint-actions,
-    # test-config and test-code repeat this line because Actions cannot share
-    # an `if` between jobs. The build job has its own condition, below.
+    # always() permits a skipped version-gate on non-tag runs but the result
+    # check still blocks failures. Each dependent job needs its own condition.
     if: always() && (needs.version-gate.result == 'success' || needs.version-gate.result == 'skipped')
     runs-on: ubuntu-slim
     permissions:
@@ -112,8 +110,7 @@ jobs:
         run: node scripts/validate-build-config.cjs
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-      # The audit gate covers registry dependencies that ship. A package that ships
-      # from devDependencies, as electron does, falls outside it.
+      # The audit excludes devDependencies, including the Electron runtime.
       - name: Audit dependencies
         run: npm audit --omit=dev
 
@@ -160,12 +157,8 @@ jobs:
     # EVS secrets exist only in release-evs, whose deployment policy admits
     # version tags. A pull request uses ci, which carries no EVS secrets.
     environment: ${{ startsWith(github.ref, 'refs/tags/') && 'release-evs' || 'ci' }}
-    # Every part of this is needed. Actions propagates the skipped version-gate
-    # down the needs graph, and the four jobs above override it with their own
-    # always(), so without always() here the skip reaches this job through them.
-    # The four success checks are needed alongside it, because always() also
-    # runs the job when a dependency failed. Do not delete this as redundant:
-    # someone did, and the whole build matrix was skipped and Sentinel failed.
+    # always() overrides the transitive skip from version-gate on non-tag runs.
+    # The success checks still block failed dependencies, which always() permits.
     if: >-
       always()
       && needs.lint-code.result == 'success'
@@ -176,14 +169,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # These flags decide the Linux targets, because a command-line target
-          # overrides the config. The list omits snap, which needs the separate
-          # root invocation below. Without these flags this step would build a
-          # snap unprivileged and the snap step would build it again.
-          # package.json build.linux.target is the fallback for a bare
-          # electron-builder run, which nothing here performs.
-          # `arch` names the artefact bundle and the cache key, so two Linux
-          # entries do not collide.
+          # CLI targets override build.linux.target in package.json. Exclude snap
+          # here because its separate root invocation would otherwise build it twice.
+          # `arch` separates the artefact bundles and caches for the Linux builds.
           - os: linux
             arch: amd64
             runner: ubuntu-24.04
@@ -232,12 +220,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin rpm
-      # The snap is mechanical packaging, unaffected by ordinary code changes,
-      # and its build is the longest step on the critical-path Linux leg. Skip
-      # it on pull requests; the weekly schedule and every tag build keep it
-      # covered, and publish-snap requires this job, so a broken snap still
-      # blocks a release rather than shipping. Both Linux entries build a snap;
-      # the Store holds one revision per arch.
+      # Skip the slow snap build on pull requests. Branch, weekly and tag runs
+      # check packaging, and publish-snap requires this build to pass.
+      # Each Linux architecture needs a separate Snap Store revision.
       - name: Install snapcraft
         if: matrix.os == 'linux' && github.event_name != 'pull_request'
         run: sudo snap install snapcraft --classic
@@ -374,10 +359,8 @@ jobs:
           # shellcheck disable=SC2016
           NIX_VERSION='${version}'
 
-          # The artifactName template in package.json decides these filenames and
-          # nothing in the repository restates it, so the published release is the
-          # only authority on them. Both the prefetch and the URL written into the
-          # Nix files come from the assets it lists.
+          # Read published filenames instead of duplicating package.json's
+          # artifactName template. Prefetch and Nix updates use the same asset URLs.
           assets=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets')
 
           # Resolve one asset download URL, refusing zero matches or several.
@@ -392,16 +375,11 @@ jobs:
             printf '%s' "$urls"
           }
 
-          # Write the URL and its hash together, so the two can never disagree.
-          # The URL goes back version-templated, keeping the Nix files tied to
-          # package.json: a hash left stale then fails loudly instead of serving
-          # an older release under the new version number.
+          # Update each URL and hash together. Preserve ${version} in the URL so
+          # a stale hash fails instead of serving an older release as the new version.
           update_nix() {
             local file="$1" url="$2" hash="$3" key="${4:-}" nix_url range=""
-            # This is the only point at which the Nix files are written, so it
-            # is where a resolution that produced nothing has to stop. Do not
-            # rely on errexit alone to have caught that further up: a job that
-            # runs at release time only is checked by users, not by CI.
+            # Validate at the write boundary because callers can suppress errexit.
             if [[ -z "${url}" || "${hash}" != sha256-* ]]; then
               echo "::error::${file}: refusing to write url '${url}' and hash '${hash}'" >&2
               return 1
@@ -423,10 +401,8 @@ jobs:
             }
           }
 
-          # Two debs are built, one per arch, and nix/linux.nix holds a pair per
-          # system, so each is matched on its arch and written into its own block.
-          # The dmg is built for both arches and nix/darwin.nix covers
-          # aarch64-darwin alone, so that one is matched on its arch.
+          # Match each deb to its system block in nix/linux.nix.
+          # Both DMG architectures ship, but nix/darwin.nix packages only arm64.
           linux_amd64_url=$(asset_url 'linux-amd64\.deb$')
           linux_arm64_url=$(asset_url 'linux-arm64\.deb$')
           darwin_url=$(asset_url 'arm64\.dmg$')

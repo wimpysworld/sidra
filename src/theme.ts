@@ -32,13 +32,8 @@ let themeCssKey: string | null = null;
 // post-load injection cannot interleave and strand a stylesheet on the page.
 let themeCssOp: Promise<void> = Promise.resolve();
 
-// insertCSS applies to whatever document the WebContents holds when the call is
-// made, not the one that queued the work, and the WebContents outlives every
-// document it loads. Work that waits its turn across a navigation would insert
-// into the new page on behalf of the old one, on top of that page's own
-// injection, leaving two theme sheets with only the later key tracked. The
-// counter advances on main-frame did-navigate, which is the commit point, so a
-// captured value that no longer matches means the document is gone.
+// WebContents survives document replacement, so queued insertCSS work can reach a different page.
+// Advance on main-frame did-navigate and reject stale generations to avoid untracked duplicate stylesheets.
 let documentGeneration = 0;
 
 // Every await inside queued work is another point a navigation can commit at,
@@ -65,14 +60,8 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
       }
       return work(generation);
     })
-    // The catch sits at the end, so the promise stored and returned here always
-    // fulfils. applyTheme() discards that promise, and a rejection left on it is
-    // an unhandled rejection in the main process; a fulfilled one also keeps one
-    // failure from deadlocking the queue, because the next operation still runs.
-    // It drops the tracked key because a failed operation leaves it naming a
-    // sheet that either cannot be removed or is already gone, and keeping it
-    // would send every later change down the same rejected removal, so none
-    // would reach its insertion.
+    // Catch after then() so discarded promises cannot reject and later operations still run.
+    // Drop the uncertain key so later changes cannot repeat a failed removal.
     .catch((error: unknown) => {
       themeCssKey = null;
       themeLog.warn('Theme CSS operation failed', error);
@@ -212,9 +201,8 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
 }
 
 /**
- * Bring the theme system to life against a window: document tracking, the real
- * applyTheme implementation, re-application on a system colour-scheme change,
- * and the custom-theme.json watcher. Call once.
+ * Initialise document tracking, theme changes, system colour-scheme updates and the custom-theme.json watcher for one window.
+ * Call once.
  */
 export function initThemeCSS(win: BrowserWindow): void {
   // Commit of a main-frame navigation; did-navigate-in-page keeps the document,
@@ -229,8 +217,7 @@ export function initThemeCSS(win: BrowserWindow): void {
     if (previousKey !== null) {
       await win.webContents.removeInsertedCSS(previousKey);
       themeCssKey = null;
-      // The removal is awaited, so the new document's own injection may already
-      // have run; inserting now would put a second sheet on it.
+      // Navigation can commit during removal, so verify the document before inserting.
       if (documentReplaced(generation)) return;
     }
     if (css === null) {
@@ -265,7 +252,7 @@ function initCustomThemeWatcher(win: BrowserWindow): void {
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
     watcher = fs.watch(userDataPath, { persistent: false }, (eventType, filename) => {
-      // macOS may emit a null filename for directory-level change events.
+      // macOS can emit a null filename for directory-level change events.
       if (filename !== null && filename.toString() !== customThemeFilename) return;
       themeLog.debug(`custom-theme.json watcher event: ${eventType}`);
       // Before the debounce, not inside it: a Settings refresh during the debounce
@@ -308,17 +295,9 @@ function initCustomThemeWatcher(win: BrowserWindow): void {
 }
 
 /**
- * Told by serviceSwitch.ts that a navigation is about to replace the document, so
- * the sheet the tracked key names is about to go with it and the next injection
- * must not remove against that key.
- *
- * The clear is queued rather than written straight to the field, because the field
- * belongs to the chain: an insert already in flight records its own key when it
- * resolves, and a raw write made before that would be overwritten by it. Queueing
- * cannot lose the clear either. Work dropped for a stale generation clears the key
- * on its way out, so both paths through the queue leave nothing tracked, and FIFO
- * order puts this ahead of the next document's own injection, which is queued from
- * that document's load.
+ * Queue a key clear before service-switch navigation so the next document cannot remove the previous document's stylesheet.
+ * Queueing prevents an in-flight insert from overwriting the clear and orders it before the next load's injection.
+ * The stale-generation path also clears the key, so dropped work cannot lose the clear.
  */
 export function notifyDocumentReplacing(): void {
   void enqueueThemeCssOp(() => {

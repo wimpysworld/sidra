@@ -1,7 +1,5 @@
-// src/storefront.ts
-// Builds every URL Sidra navigates to itself, and records where the user has
-// been. Storefront, language and start page are resolved per service through the
-// registry in src/musicService.ts, so neither host is written down here.
+// Build service launch URLs and record navigation preferences.
+// Resolve hosts and start pages through the registry in src/musicService.ts.
 
 import log from 'electron-log/main';
 import { getStorefront, setStorefront, getLanguage, setLanguage, getMusicService, getStartPageFor, getLastPageUrlFor, setLastPageUrlFor } from './config';
@@ -59,7 +57,6 @@ export function buildAppleMusicURL(): string {
   const startPage = getStartPageFor(serviceId);
 
   if (startPage === 'last') {
-    // Read the stored path only in this branch; the getter stays untouched for every other page.
     const lastPath = getLastPageUrlFor(serviceId);
     if (lastPath) {
       return appendLanguage(`${service.origin}/${storefront}/${lastPath}`, language);
@@ -116,8 +113,7 @@ export function extractStorefrontFromURL(url: string): { storefront: string; lan
 }
 
 /**
- * Follow the user: Apple's own region and language switchers navigate, so a
- * changed storefront or language in the URL is persisted as the new preference.
+ * Persist region and explicit language changes from Apple's own navigation controls.
  */
 export function handleStorefrontNavigation(url: string): void {
   const result = extractStorefrontFromURL(url);

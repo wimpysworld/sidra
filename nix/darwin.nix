@@ -11,8 +11,8 @@ stdenvNoCC.mkDerivation {
   pname = "sidra";
   inherit version;
 
-  # The url and hash below are rewritten together by the nix-hash CI job, which
-  # reads the filename off the published release. Do not edit them by hand.
+  # The nix-hash CI job updates the URL and hash together from the published asset.
+  # Do not edit this pair by hand.
   src = fetchurl {
     url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-mac-arm64.dmg";
     hash = "sha256-j17zj7G2eO1RVyFDW2dSsssfnBeHUXBVABtZByP4qxA=";

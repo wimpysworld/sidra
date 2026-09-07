@@ -7,22 +7,17 @@ import { setUpdateReady, showUpdateNotification } from './update';
 const autoUpdateLog = log.scope('autoUpdate');
 
 /**
- * The single load point for electron-updater. It is required here and never
- * imported at module level, so it never loads on a platform that does not
- * support it. The return annotation is a type-only reference that tsc erases,
- * so the emitted JavaScript carries no top-level require of its own and the
- * whole updater surface is still checked against the published types.
+ * Load electron-updater only after the caller checks platform support.
+ * The return type adds compile-time checks without a top-level runtime import.
  */
 function loadAutoUpdater(): typeof import('electron-updater') {
   return require('electron-updater');
 }
 
 /**
- * True only where Sidra owns the install: an AppImage or a packaged Windows
- * NSIS build. Every other target is updated by its package manager, so the
- * updater must stay out of the way there and src/update.ts notifies instead.
- * app-update.yml ships in every packaged build, so this runtime check is what
- * keeps electron-updater from starting on deb, rpm and Nix.
+ * Check the update preference and AppImage or packaged Windows support, excluding Snap.
+ * Other targets use notifications from src/update.ts instead.
+ * app-update.yml ships in all packaged builds, so its presence cannot determine support.
  */
 export function isAutoUpdateSupported(): boolean {
   if (process.env.SIDRA_DISABLE_AUTO_UPDATE === '1') {
@@ -47,7 +42,6 @@ export function isAutoUpdateSupported(): boolean {
     return true;
   }
 
-  // Windows NSIS: packaged win32 app
   if (process.platform === 'win32' && app.isPackaged) {
     autoUpdateLog.info('auto-update supported: Windows NSIS detected');
     return true;
@@ -134,6 +128,7 @@ export async function configureAutoUpdate(
   await autoUpdater.checkForUpdates().catch(() => {});
 }
 
+/** Initialise the updater after a support check, logging setup failures without rejecting. */
 export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
   try {
     await configureAutoUpdate(loadAutoUpdater(), tray, rebuildMenu);

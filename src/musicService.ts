@@ -1,6 +1,5 @@
-// src/musicService.ts
 // Pure music service registry: no imports from electron, electron-log, or config.
-// Kept dependency-free so itms.ts and tests can import without pulling in Electron.
+// The readiness selector is a pure constant, so importing this registry does not start Electron.
 
 import { CONTENT_READY_SELECTOR } from './contentReady';
 
@@ -29,7 +28,7 @@ export interface MusicService<PageId extends string = string> {
   defaultStartPage: PageId;
 }
 
-// PageId is inferred from startPages alone; NoInfer keeps defaultStartPage out of the inference,
+// PageId is inferred from startPages alone. NoInfer keeps defaultStartPage out of the inference,
 // so a typo there fails to compile instead of widening the union.
 function defineService<const PageId extends string>(
   def: Omit<MusicService<PageId>, 'defaultStartPage'> & { defaultStartPage: NoInfer<PageId> },
@@ -90,8 +89,7 @@ export function isMusicServiceId(value: string): value is MusicServiceId {
   return Object.hasOwn(MUSIC_SERVICES, value);
 }
 
-// Total at runtime as well as in the type. An id that escaped validation must not throw here:
-// every dereference is on the path that builds the tray, the app's only settings surface.
+/** Return the registered service, or the default if an unvalidated id reaches a UI caller. */
 export function getService(id: MusicServiceId): MusicService {
   return MUSIC_SERVICES[id] ?? MUSIC_SERVICES[DEFAULT_SERVICE_ID];
 }
@@ -106,18 +104,16 @@ export function allServices(): readonly MusicService[] {
   return Object.values(MUSIC_SERVICES);
 }
 
-// Derived from the registry so a new service or auth host widens the allowlist automatically.
+/** Service and authentication hosts derived from the registry for navigation checks. */
 export const ALLOWED_NAVIGATION_HOSTS: ReadonlySet<string> = new Set(
   allServices().flatMap(svc => [svc.host, ...svc.authFrameHosts]),
 );
 
-// Takes a URL string rather than a hostname so malformed input is rejected in one place.
-// URL.hostname is lowercased, punycoded and port-free, and the match is exact: a subdomain,
-// a suffix or a userinfo prefix of an allowed host is not an allowed host.
-// The scheme is checked too, because hostname alone does not imply a web origin: the parser
-// reads an authority out of any URL carrying '//', so 'javascript://music.apple.com/%0aalert(1)'
-// and 'file://music.apple.com/etc/passwd' both yield an allowed hostname. Apple serves both
-// services and the authentication flow over https, so nothing legitimate needs another scheme.
+/**
+ * Accept HTTPS URLs with an exact registered hostname, after URL normalisation.
+ * Hostname matching rejects subdomains and suffixes, but ignores ports and credentials.
+ * Check the scheme separately because non-web URLs can also contain an allowed hostname.
+ */
 export function isAllowedNavigationUrl(url: string): boolean {
   try {
     const parsed = new URL(url);

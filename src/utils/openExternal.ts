@@ -6,19 +6,9 @@ import { errorMessage } from '../utils';
 type ScopedLog = ReturnType<typeof log.scope>;
 
 /**
- * Hands a URL to the system browser, refusing anything that is not http or
- * https. Every external-link path goes through here, so a hardening change is
- * made once instead of in each caller.
- *
- * The parsed URL reaches the browser, not the string that came in. Chromium
- * re-parses the argument with its own parser, so passing the raw string would
- * open a URL that nothing checked. Normalisation is the cost: percent-encoding
- * is canonicalised, a default port is dropped, an IDN host is punycoded and dot
- * segments are resolved. For an http(s) URL each of those names the same
- * resource.
- *
- * Both refusals are logged. A silent refusal leaves a dead menu item or a
- * notification click that does nothing, with no record of why.
+ * Opens an HTTP(S) URL in the system browser and logs malformed or disallowed URLs.
+ * Passes the parsed URL string, not the raw input, because Chromium parses the
+ * argument again and must receive the URL that passed validation.
  */
 export function openExternalUrl(url: string, scopedLog: ScopedLog): void {
   let parsed: URL;

@@ -8,9 +8,7 @@ vi.mock('../src/config', () => ({
   getMusicService: vi.fn(() => 'music'),
 }));
 
-// Hoisted so the same mock functions survive vi.resetModules(): the
-// watcher-failure test loads a second copy of src/theme.ts and has to drive the
-// same fs.
+// Hoisting keeps the same filesystem mocks across vi.resetModules() when watcher-failure tests load a fresh theme module.
 const fsMock = vi.hoisted(() => ({
   readFileSync: vi.fn(),
   existsSync: vi.fn(),
@@ -50,8 +48,7 @@ describe('theme helpers', () => {
     vi.mocked(fs.readFileSync).mockReturnValue('');
     vi.mocked(fs.readFileSync).mockClear();
     vi.mocked(fs.watch).mockReset();
-    // custom-theme.json contents are cached for the life of the process, so each test
-    // starts from a cold cache.
+    // The cache is module state, so clear it between tests.
     invalidateCustomThemeCache();
   });
 
@@ -60,17 +57,15 @@ describe('theme helpers', () => {
   });
 
   // vi.mocked() resolves fs.watch to its two-argument overload, so the mock is
-  // typed against the three-argument form initThemeCSS() actually calls.
+  // typed against the three-argument form initThemeCSS() calls.
   type WatchWithOptions = (
     filename: fs.PathLike,
     options: fs.WatchOptions,
     listener: fs.WatchListener<string | Buffer>,
   ) => fs.FSWatcher;
 
-  // Fake timers plus a captured fs.watch listener, so a test can drive the
-  // watcher and step past the 150ms debounce.
-  // init defaults to the statically imported module; the cache-disable tests
-  // pass a freshly loaded copy so the flag they flip stays out of other tests.
+  // Captured watcher events and fake timers let tests control the 150ms debounce.
+  // Cache-disable tests supply a fresh module so its permanent flag cannot affect other tests.
   function watcherHarness(options: { isDestroyed?: boolean; init?: typeof initThemeCSS } = {}) {
     vi.useFakeTimers();
     const removeInsertedCSS = vi.fn().mockResolvedValue(undefined);
@@ -127,10 +122,8 @@ describe('theme helpers', () => {
     };
   }
 
-  // A fresh copy of src/theme.ts wired to its own harness, for the tests that
-  // reach disableCustomThemeCache(). The copy is what keeps the disabled flag,
-  // which nothing switches back on, out of every other test.
-  // failToStart makes fs.watch throw, which is the other route to that call.
+  // A fresh module isolates disableCustomThemeCache(), whose flag never resets.
+  // failToStart simulates a watcher setup failure instead of a later watcher error.
   async function loadThemeWithWatcher(options: { failToStart?: boolean } = {}) {
     vi.resetModules();
     const theme = await import('../src/theme');
@@ -149,13 +142,8 @@ describe('theme helpers', () => {
     for (let i = 0; i < 8; i += 1) await Promise.resolve();
   }
 
-  // Leave the module tracking an inserted-CSS key, which is the state the tests
-  // below start from. Nothing writes that key from outside the CSS queue, so a
-  // real theme change against the harness window is the only way to install one:
-  // its insertCSS resolves the key and the module records what it returned.
-  // The clear first means the change inserts without a removal, so a key left by
-  // an earlier test cannot put a call on removeInsertedCSS that a count below
-  // would then read as its own. insertCSS is cleared for the same reason.
+  // Install a tracked key through the real CSS queue, its only writer.
+  // Clear any previous key first to avoid a removal, then clear the setup insert so assertions count only test operations.
   async function trackKey(harness: ReturnType<typeof watcherHarness>, key: string): Promise<void> {
     notifyDocumentReplacing();
     harness.insertCSS.mockResolvedValue(key);
@@ -278,14 +266,10 @@ describe('theme helpers', () => {
     expect(resolveTheme()).toBe('catppuccin');
   });
 
-  // main.ts calls injectThemeCss() from injectContent() on every page load, and
-  // src/main.ts cannot be imported under Vitest, so this is where that path is
-  // covered.
+  // Test the page-load CSS path directly, without running main.ts application startup.
   describe('injectThemeCss', () => {
     beforeEach(() => {
-      // The key outlives the module, so each test starts with none injected. The
-      // clear is queued, and the queue is FIFO, so it lands before anything the
-      // test itself queues.
+      // The module retains its key between tests. Queue the clear first so test operations start without a tracked sheet.
       notifyDocumentReplacing();
     });
 
@@ -735,8 +719,7 @@ describe('theme helpers', () => {
     notifyDocumentReplacing();
     harness.start();
 
-    // custom-theme.json appears while a bundled theme is active: no CSS work, but the
-    // tray still needs the new Style entry.
+    // A custom theme file does not change active bundled CSS, but Settings still needs the new theme entry.
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
     await harness.emit('rename');
     expect(rebuildTray).toHaveBeenCalledTimes(1);

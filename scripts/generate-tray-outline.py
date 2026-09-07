@@ -13,6 +13,7 @@ outline = ET.Element(symbol.tag, symbol.attrib)
 definitions = ET.SubElement(outline, f"{{{namespace}}}defs")
 geometry = ET.SubElement(definitions, f"{{{namespace}}}g", id="tray-symbol")
 geometry.extend(symbol)
+# A white copy covers the inner half of the dark stroke, leaving an outer border.
 ET.SubElement(outline, f"{{{namespace}}}use", {
     "href": "#tray-symbol",
     "fill": "#202124",

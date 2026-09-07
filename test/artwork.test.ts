@@ -1,11 +1,8 @@
-// test/artwork.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Readable, Writable } from 'stream';
 
-// One factory per module, used by the vi.mock below and again by the vi.doMock
-// that re-installs it after each vi.resetModules(). vi.mock is hoisted above the
-// imports, so the factories must be too: vi.hoisted() is the supported way.
-// Each call still builds fresh vi.fn()s, so the two sites stay independent.
+// Hoisted factories work with both vi.mock and vi.doMock after a module reset.
+// Each call creates fresh spies to keep the module instances independent.
 const { fsFactory, fsPromisesFactory } = vi.hoisted(() => ({
   fsFactory: () => ({
     default: {
@@ -25,7 +22,6 @@ const { fsFactory, fsPromisesFactory } = vi.hoisted(() => ({
   }),
 }));
 
-// Mock fs and fs/promises before importing the module under test
 vi.mock('fs', fsFactory);
 vi.mock('fs/promises', fsPromisesFactory);
 
@@ -33,12 +29,11 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { net } from 'electron';
 
-// Helper: create a readable stream from a buffer for use as response.body
+// Response.body uses a Web stream rather than a Node stream.
 function createReadableBody(data: Buffer = Buffer.from('image-data')): ReadableStream<Uint8Array> {
   return Readable.toWeb(Readable.from(data)) as ReadableStream<Uint8Array>;
 }
 
-// Helper: create a mock fetch Response
 function createMockResponse(status: number, ok: boolean, body?: ReadableStream<Uint8Array> | null) {
   return {
     ok,
@@ -47,12 +42,9 @@ function createMockResponse(status: number, ok: boolean, body?: ReadableStream<U
   } as unknown as Response;
 }
 
-// Helper: install a write stream mock that collects the bytes written to it and
-// returns them. The module under test pipes the body with pipeline() from
-// stream/promises, which is left unmocked: it drives a real Writable, so the
-// download resolves only when the whole body has been written and the stream has
-// finished. A fresh Writable per call, because a download after a retry gets its
-// own stream and an already-ended one would reject.
+// Keep pipeline() real so download completion requires a finished Writable.
+// Each attempt needs a fresh stream because an ended stream rejects further writes.
+// Collected bytes let tests check that the complete body reaches the file.
 function mockWriteStream(): Buffer[][] {
   const files: Buffer[][] = [];
   vi.mocked(fs.createWriteStream).mockImplementation(() => {
@@ -68,8 +60,7 @@ function mockWriteStream(): Buffer[][] {
   return files;
 }
 
-// Helper: a successful fetch with a fresh body per call, so a second fetch cannot
-// be hidden by two callers draining one shared stream
+// A fresh body per fetch prevents callers from sharing an already-consumed stream.
 function mockSuccessfulFetch() {
   vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(createMockResponse(200, true, createReadableBody())));
 }
@@ -113,8 +104,7 @@ describe('downloadArtwork', () => {
     const secondResult = await downloadArtwork(url);
     expect(secondResult).toBe(firstResult);
     expect(net.fetch).not.toHaveBeenCalled();
-    // Only the disk-cache branch touches mtime, so this fails if the settled
-    // in-flight promise was replayed instead
+    // Only a disk-cache hit touches mtime. Reusing a settled promise skips it.
     expect(fsPromises.utimes).toHaveBeenCalledWith(firstResult, expect.any(Date), expect.any(Date));
   });
 
@@ -128,8 +118,7 @@ describe('downloadArtwork', () => {
     expect(result).toMatch(/\.jpg$/);
     expect(fs.mkdirSync).toHaveBeenCalled();
     expect(fs.createWriteStream).toHaveBeenCalled();
-    // The whole body reaches the file, so a pipe that resolved early or dropped
-    // the stream would leave truncated artwork renamed onto the cache path.
+    // The complete body must reach disk before the file becomes a cache entry.
     expect(Buffer.concat(files[0]).toString()).toBe('image-data');
     // The download lands on a .tmp path and is renamed onto the cache path, so
     // a half-written file can never be read back as a cache hit.
@@ -145,9 +134,7 @@ describe('downloadArtwork', () => {
 
     const result = await downloadArtwork(url);
     expect(result).toBeNull();
-    // The status is checked before the stream is opened, so an error page body
-    // is never written and renamed onto the cache path, where it would be
-    // served as this track's artwork until the seven day sweep took it.
+    // Reject the status before opening a stream so an error page cannot become cached artwork.
     expect(fs.createWriteStream).not.toHaveBeenCalled();
   });
 
@@ -158,9 +145,7 @@ describe('downloadArtwork', () => {
 
     const result = await downloadArtwork(url);
     expect(result).toBeNull();
-    // The tmp name carries a timestamp, so it is distinct on every attempt and
-    // a failure that skipped the unlink would add a file to the cache
-    // directory each time the network dropped.
+    // Remove the temporary file so failed downloads cannot accumulate in the cache.
     expect(fsPromises.unlink).toHaveBeenCalled();
   });
 

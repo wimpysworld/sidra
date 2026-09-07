@@ -1,3 +1,4 @@
+// Render settings from the isolated preload bridge and serialise user changes.
 (() => {
   'use strict';
 
@@ -12,6 +13,7 @@
   const selects = ['musicService', 'startPage', 'theme', 'zoomFactor'];
   const toggles = ['closeToTray', 'notifications', 'discord', 'lastfmEnabled'];
   let state;
+  // Pushed state supersedes pending replies from getState() and apply().
   let revision = 0;
   let closed = false;
   let queue = Promise.resolve();
@@ -85,6 +87,7 @@
   for (const key of selects) {
     byId(key).addEventListener('change', () => {
       const action = { type: key, value: key === 'zoomFactor' ? Number(byId(key).value) : byId(key).value };
+      // Keep the selection tied to the displayed service while earlier actions wait.
       if (key === 'startPage') action.serviceId = state.musicService;
       apply(action);
     });

@@ -1,8 +1,5 @@
-// src/utils/openExternal.ts is the single gate every external-link path passes
-// through: the tray update item, the update notification click and the
-// setWindowOpenHandler in main.ts all call it. One gate means one place to
-// break, so the protocol allowlist and the argument handed to Chromium are
-// pinned here.
+// The tray update link, update notification and main.ts window-open handler share openExternalUrl().
+// Check its protocol allowlist and the URL that it passes to Chromium.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { shell } from 'electron';
 
@@ -10,11 +7,8 @@ import { openExternalUrl } from '../src/utils/openExternal';
 
 const openExternal = vi.mocked(shell.openExternal);
 
-// The electron-log stand-in in test/setup.ts shares one mock across every scope
-// method, so warn and debug cannot be told apart there. This fake gives each
-// level its own mock, which is what separates a refusal from an open. It is
-// typed off the function under test, so a change to the parameter type fails
-// the build rather than passing through a cast.
+// Separate logging mocks distinguish refusals from successful opens, unlike the shared mock in test/setup.ts.
+// Deriving the type from openExternalUrl() keeps parameter changes checked without a cast.
 type ScopedLog = Parameters<typeof openExternalUrl>[1];
 
 function fakeLog(): ScopedLog {
@@ -66,8 +60,7 @@ describe('openExternalUrl allowed protocols', () => {
 });
 
 describe('openExternalUrl refusals', () => {
-  // A javascript: URL handed to the browser is the payload this gate exists to
-  // stop, so it gets its own case rather than a row in the table below.
+  // The protocol gate must prevent JavaScript execution through external links.
   it('refuses a javascript URL, opens nothing and warns', () => {
     openExternalUrl('javascript:alert(1)', scopedLog);
 
@@ -90,9 +83,7 @@ describe('openExternalUrl refusals', () => {
     expect(warnings()).toEqual([`blocked external URL with disallowed protocol: ${url}`]);
   });
 
-  // The two refusals log different lines and the distinction is what tells a
-  // user reading the log a typo from a blocked scheme. A single "blocked"
-  // assertion would pass with either branch taken.
+  // Distinct warnings tell malformed URLs apart from blocked schemes. Check both so either branch cannot satisfy the other assertion.
   it('refuses a malformed URL with the malformed warning, not the protocol one', () => {
     openExternalUrl('not a url', scopedLog);
 
@@ -104,10 +95,8 @@ describe('openExternalUrl refusals', () => {
 });
 
 describe('openExternalUrl normalisation', () => {
-  // Chromium re-parses whatever string it is given, so the checked URL and the
-  // opened URL must be the same object. Each row is an input whose re-serialised
-  // form differs from the caller's string: if the raw string were passed on, the
-  // assertion reads back the input instead.
+  // Chromium re-parses its argument, so open the parsed URL instead of the unchecked input string.
+  // These inputs change during serialisation, which makes passing the raw string detectable.
   it.each([
     ['drops a default port', 'https://music.apple.com:443/gb/browse', 'https://music.apple.com/gb/browse'],
     ['lowercases the host', 'https://Music.Apple.COM/gb/browse', 'https://music.apple.com/gb/browse'],

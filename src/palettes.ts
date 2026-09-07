@@ -11,8 +11,7 @@
 // - text and subtext0 reach 4.5:1 against base once the template applies
 //   its alpha. Catppuccin Latte holds its shipped 4.37:1 instead.
 //
-// Upstream palettes (colour values only; palettes are not creative
-// works, attribution given as a courtesy):
+// Upstream sources for palette colour values:
 // - Catppuccin (Mocha/Latte)  https://github.com/catppuccin/palette      MIT
 // - Dracula                   https://github.com/dracula/dracula-theme   MIT
 // - Everforest (Dark/Light)   https://github.com/sainnhe/everforest      MIT

@@ -119,8 +119,7 @@ describe('isNewer', () => {
   });
 
   it('returns false for an empty part inside the version', () => {
-    // Number('') is 0, so 2..0 once read as 2.0.0 and offered an update. A part
-    // past the end of a short version still counts as 0; an empty one does not.
+    // Number('') is 0, but an empty version part is invalid. Only omitted trailing parts default to zero.
     expect(isNewer('2..0', '1.0.0')).toBe(false);
     expect(isNewer('1..0', '0.3.0')).toBe(false);
     expect(isNewer('2.0.0', '1..0')).toBe(false);

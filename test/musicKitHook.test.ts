@@ -19,9 +19,7 @@ interface Registration {
 }
 
 /**
- * An element in a fake ancestor chain. It carries only what the hook uses:
- * class tokens, addEventListener/removeEventListener, and closest(), which is
- * how the hook finds the volume control from the pointer's target.
+ * Model ancestor traversal and listener registration so the hook can find the volume control from a pointer target.
  */
 interface FakeElement {
   tokens: string[];
@@ -169,8 +167,7 @@ function createHarness({
       musicKitListeners.set(event, listener);
     },
   );
-  // AMWrapper is optional because bridgeMissing models the preload bridge not
-  // being installed, which is one of the ways the attach used to throw.
+  // bridgeMissing omits AMWrapper to exercise attachment without a preload bridge.
   interface HarnessWindow {
     AMWrapper?: { ipcRenderer: { send: ReturnType<typeof vi.fn> } };
     addEventListener: ReturnType<typeof vi.fn>;
@@ -868,11 +865,8 @@ describe('musicKitHook', () => {
     expect(messageListeners).toHaveLength(1);
   });
 
-  // The 5-second monitor re-attaches whenever __sidraHookedMk does not match
-  // the live instance, so attachToInstance() must claim the marker as its first
-  // statement. Claimed last, anything that throws in between leaves it stale and
-  // every cycle adds another full set of MusicKit listeners. These three pin the
-  // marker being claimed first.
+  // Claim __sidraHookedMk before attachment can throw.
+  // Otherwise the 5-second monitor sees a stale marker and adds another set of listeners on every cycle.
   it('attaches each MusicKit listener once when the IPC bridge is missing', () => {
     const { musicKit, runMonitorCycles } = createHarness({ bridgeMissing: true });
 
@@ -970,10 +964,8 @@ describe('musicKitHook', () => {
   );
 
   it('still forwards playback events over IPC when navigator.mediaSession is unavailable', () => {
-    // Position state is a bonus for OS media controls; the IPC forwarding is
-    // the hook's actual job. A guard that swallowed the whole listener would
-    // leave MPRIS and every integration blind, so assert the sends, not that
-    // the listener merely survived.
+    // Position-state failures must not suppress IPC forwarding to integrations.
+    // Assert the sends because a caught exception alone does not prove that the listener completes.
     const { bridgeSend, musicKitListeners } = createHarness({
       navigatorOverrides: {},
       musicKitOverrides: {
@@ -996,10 +988,8 @@ describe('musicKitHook', () => {
   });
 
   it('still forwards playback events over IPC when setPositionState is missing', () => {
-    // Safari exposes navigator.mediaSession without setPositionState, which is
-    // the arm the object-presence check alone would let through. Both calls sit
-    // in a try/catch, so an unguarded call would not surface as a throw - the
-    // IPC sends are the only observable proof the listeners ran to completion.
+    // A mediaSession object does not guarantee a setPositionState method.
+    // Both calls catch exceptions, so IPC sends establish that a missing method does not interrupt forwarding.
     const { bridgeSend, musicKitListeners } = createHarness({
       navigatorOverrides: { mediaSession: {} },
       musicKitOverrides: {
@@ -1091,10 +1081,7 @@ describe('musicKitHook', () => {
   });
 
   it('forwards a MusicKit volume change over the volumeDidChange IPC channel', () => {
-    // The attach-time send already carries the mock's initial volume of 1, so
-    // a listener bound to an event MusicKit never fires would still leave a
-    // ('volumeDidChange', 1) call behind. Moving the volume first is what makes
-    // the assertion prove the listener ran.
+    // Attachment already sends volume 1. Change the volume so that an attachment send cannot satisfy the listener assertion.
     const { bridgeSend, musicKit, musicKitListeners } = createHarness();
 
     musicKit.volume = 0.42;
@@ -1212,12 +1199,8 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(0.45);
   });
 
-  // The listener has to be non-passive to call preventDefault, and that is
-  // exactly why it must sit on the control. A non-passive wheel listener on
-  // window or document marks the whole document a non-fast-scrollable region,
-  // so Chromium stops scrolling on the compositor thread and every wheel tick
-  // waits behind Apple Music's main thread. Nothing else in the suite notices
-  // that, because the handler still behaves correctly while doing it.
+  // preventDefault requires a non-passive listener. Keep it on the control so only that region needs main-thread scrolling.
+  // A window or document listener moves all scrolling off the compositor thread, even when the handler ignores unrelated wheel events.
   it('registers no wheel listener on window', () => {
     const { globalRegistrations } = createHarness();
 

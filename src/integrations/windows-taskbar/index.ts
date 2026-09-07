@@ -12,8 +12,7 @@ const taskbarLog = log.scope('taskbar');
 const iconsDir = getAssetPath('assets', 'icons');
 const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
 
-// Transient states hold the overlay badge at its last value: each one lasts a
-// moment and clearing the badge for it makes the taskbar icon flicker
+// Keep the previous badge during transient states to prevent taskbar flicker.
 const TRANSIENT_STATES: ReadonlySet<number> = new Set([
   PlaybackState.Loading,
   PlaybackState.Seeking,
@@ -22,10 +21,8 @@ const TRANSIENT_STATES: ReadonlySet<number> = new Set([
 ]);
 
 function loadIcon(baseName: string): Electron.NativeImage | null {
-  // The thumbar and the overlay badge are painted on the taskbar, which follows
-  // the Windows system colour mode. shouldUseDarkColors reports the app colour
-  // mode, a separate setting, and a light app with a dark taskbar is the
-  // default on a fresh install.
+  // Taskbar icons follow the Windows system colour mode, not the separate app
+  // setting that shouldUseDarkColors reports.
   const variant = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
   const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
   const img = nativeImage.createFromPath(iconPath);
@@ -78,7 +75,7 @@ function setOverlayIcon(win: BrowserWindow, state: number): void {
   }
 }
 
-/** Installs the taskbar thumbar buttons, overlay badge and progress bar; no-op off Windows. */
+/** Installs the thumbar buttons, overlay badge and progress bar on Windows only. */
 export function init(ctx: IntegrationContext): void {
   if (process.platform !== 'win32') return;
 
@@ -99,7 +96,7 @@ export function init(ctx: IntegrationContext): void {
     });
   }
 
-  // Named listener references for removeListener in will-quit
+  // Named listeners let will-quit remove the same function references.
   const onThemeUpdated = (): void => {
     const win = getMainWindow?.();
     if (!win) return;

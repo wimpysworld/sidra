@@ -14,10 +14,7 @@ import * as mpris from '../src/integrations/mpris';
 import { FakePlayer } from './mocks/player';
 import { quit } from './mocks/appLifecycle';
 
-// updateNowPlaying() hands every https:// artwork URL to downloadArtwork(),
-// which fetches over the network and writes to the cache directory. Resolving
-// null leaves mpris:artUrl at the value buildMetadata() produced, so the
-// metadata assertions read what the builder wrote and nothing else.
+// Avoid artwork network and cache writes. Resolving null preserves buildMetadata()'s mpris:artUrl for assertions.
 vi.mock('../src/artwork', () => ({
   downloadArtwork: vi.fn(() => Promise.resolve(null)),
 }));
@@ -49,16 +46,12 @@ interface DbusModule {
   interface: { Interface: DbusInterfaceClass };
 }
 
-// src/integrations/mpris/index.ts pulls @holusion/dbus-next in with a bare
-// require, which vi.mock does not intercept. The module loads fine off a bus -
-// only sessionBus() opens a socket - so the real one is loaded and that single
-// entry point is stubbed.
+// vi.mock does not intercept the integration's bare require of @holusion/dbus-next.
+// Load the real module and stub sessionBus(), the entry point that opens a socket.
 const dbus = require('@holusion/dbus-next') as DbusModule;
 
-// Captured before any spy is installed, so the wrapper below calls the real
-// static rather than itself. The real one is worth keeping in the path: it
-// throws on a property that configureMembers() never declared, which turns a
-// misspelled emission into a failure instead of a silent no-op.
+// Capture the real static before spying to avoid recursion.
+// Its validation rejects properties that configureMembers() does not declare.
 const realEmitPropertiesChanged = dbus.interface.Interface.emitPropertiesChanged;
 
 const busStub = {
@@ -117,14 +110,9 @@ interface RootInterface {
 }
 
 /**
- * PropertiesChanged payloads that carried a Position key, never cleared.
- *
- * Position moves on its own, so a PropertiesChanged carrying it would be
- * either a lie or a flood. The MPRIS spec forbids it outright: clients poll
- * the property or follow the Seeked signal. The check lives on the shared spy
- * so it covers every emission the file produces and belongs to no single test.
- * A debounced emission whose timer fires after its own test still fails the
- * next afterEach, which is why this array is never cleared.
+ * Retain every PropertiesChanged payload containing Position, which MPRIS forbids.
+ * Clients poll Position or use Seeked instead.
+ * Never clear this shared record, so a delayed emission still fails the next afterEach.
  */
 const positionBreaches: Array<Record<string, unknown>> = [];
 
@@ -135,10 +123,7 @@ let win: WindowStub;
 let player: FakePlayer;
 
 /**
- * init() exports the root interface first and the player interface second, so
- * the live MediaPlayer2Player instance is the second argument of the second
- * export. Driving the real methods and properties this way needs no production
- * change.
+ * Read the live interfaces from init()'s bus exports, root first and player second.
  */
 function initInterfaces(getMainWindow: () => BrowserWindow | null = () => win as unknown as BrowserWindow): {
   root: RootInterface;
@@ -859,11 +844,7 @@ describe('MPRIS OpenUri', () => {
   });
 });
 
-// MPRIS has three PlaybackStatus values and MusicKit has ten states, so the
-// mapping is lossy by design. Stopped (4) is the row that matters: mapping it
-// to 'Paused' leaves a client showing a pause button for a player that has
-// stopped. AGENTS.md also forbids an early-return guard for the transient
-// states, so those are pinned here rather than left to read as an accident.
+// MusicKit states map to three MPRIS statuses. Stopped and transient states report 'Stopped', never the previous status.
 describe('MPRIS PlaybackStatus mapping', () => {
   const STATUS_TABLE: ReadonlyArray<readonly [number, string]> = [
     [PlaybackState.None, 'Stopped'],
@@ -890,9 +871,7 @@ describe('MPRIS PlaybackStatus mapping', () => {
     expect(STATUS_TABLE.map(([state]) => state).sort()).toEqual(Object.values(PlaybackState).sort());
   });
 
-  // Called out because AGENTS.md names these four: they are momentary, and a
-  // guard that suppressed them would leave MPRIS reporting a state the player
-  // has already left.
+  // Suppressing transient states leaves MPRIS reporting a state that the player no longer holds.
   it('reports the transient states as Stopped', () => {
     const iface = initPlayerInterface();
     for (const state of [PlaybackState.Loading, PlaybackState.Seeking, PlaybackState.Waiting, PlaybackState.Stalled]) {
@@ -923,10 +902,7 @@ describe('MPRIS metadata', () => {
     return Object.fromEntries(Object.entries(metadata).map(([key, variant]) => [key, [variant.signature, variant.value]]));
   }
 
-  // The signature travels with the value on D-Bus, so a wrong one is not a
-  // cosmetic fault: a client reading xesam:artist expects an array of strings
-  // and mpris:length an int64. The exact key set is asserted too, because an
-  // extra key with a made-up name is as wrong as a missing one.
+  // D-Bus clients require the exact keys and signatures, including a string array for xesam:artist and int64 for mpris:length.
   it('builds every field of a full payload with the right signatures', () => {
     const iface = initPlayerInterface();
     player.emitNowPlaying(FULL_TRACK);
@@ -1270,9 +1246,7 @@ describe('MPRIS volume', () => {
     expect(iface.Volume).toBe(0.2);
   });
 
-  // An echo that never arrives would suppress the next in-app change for the
-  // life of the process. The safety timeout drops the whole queue, and the
-  // queue must not have cost that self-healing.
+  // The safety timeout clears pending echoes so a missing echo cannot suppress a later in-app change indefinitely.
   it('stops suppressing once the safety timeout expires', () => {
     const iface = initPlayerInterface();
     iface.Volume = 0.5;
@@ -1344,10 +1318,7 @@ describe('MPRIS position', () => {
     expect(seeked).not.toHaveBeenCalled();
   });
 
-  // Both the Seeked argument and the Position property are int64 fields, and
-  // the dbus-next marshaller converts one with BigInt(data.toString()), which
-  // throws on anything fractional. BigInt(String(value)) is that exact
-  // operation, so it is the honest assertion rather than a proxy for it.
+  // Seeked and Position use int64. BigInt(String(value)) checks the marshaller's conversion, which rejects fractional values.
   it('keeps a fractional position integral for the int64 marshaller', () => {
     const iface = initPlayerInterface();
     const seeked = vi.spyOn(iface, 'Seeked');
@@ -1364,11 +1335,8 @@ describe('MPRIS position', () => {
 });
 
 describe('MPRIS without a session bus', () => {
-  // dbus-next throws synchronously from sessionBus() when
-  // DBUS_SESSION_BUS_ADDRESS is unset and it cannot read the address from the
-  // filesystem. init() is called bare inside the did-finish-load handler in
-  // main.ts, so an escaping throw takes out every integration after it and the
-  // splash screen never closes.
+  // sessionBus() throws synchronously when neither the environment nor the filesystem supplies a bus address.
+  // MPRIS handles this expected absence locally and leaves the player without bus listeners.
   it('does not throw when the bus cannot be opened', () => {
     vi.spyOn(dbus, 'sessionBus').mockImplementation(() => {
       throw new Error('could not get DISPLAY environment variable');

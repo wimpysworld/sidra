@@ -1,16 +1,15 @@
 'use strict';
 
 /**
- * afterPack hook: signs the packaged app with CastLabs EVS production VMP keys.
- * electron-builder runs it from the "build.afterPack" key in package.json.
+ * Sign macOS and Windows packages with CastLabs EVS production VMP keys.
+ * package.json registers this hook through build.afterPack.
  *
- * VMP signing must happen BEFORE macOS code-signing, which is why this is an
- * afterPack hook and not afterSign. Without production VMP keys, Widevine
- * refuses DRM licences on macOS.
- * Linux does not enforce VMP so this hook is a no-op there.
+ * VMP signing must precede macOS code-signing, so this uses afterPack, not
+ * afterSign. Without production VMP keys, Widevine refuses DRM licences on
+ * macOS. Linux does not enforce VMP and needs no signing here.
  *
  * Local builds skip signing when both EVS credentials are absent. Tag builds
- * require both credentials, so an unsigned release cannot be published.
+ * require both credentials, so these packages cannot ship without VMP signing.
  *
  * Setup: read EVS_PACKAGE from build/evs.cjs, then run
  *        uvx --from <package> evs-account signup

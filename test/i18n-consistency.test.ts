@@ -1,4 +1,3 @@
-// test/i18n-consistency.test.ts
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -9,11 +8,8 @@ import * as i18n from '../src/i18n';
 type RecordEntry = [name: string, record: Record<string, string>];
 
 /**
- * The module exports translation records alongside functions, so an object
- * export is a record and a function export is not. Deriving the list this way
- * puts a new record under the guard with no edit to this file. Do not put the
- * names back in a hand-written list: the previous one fell behind the records
- * it was meant to cover and left the whole tray media-control group unchecked.
+ * Object exports are translation records, while function exports are not.
+ * Derive the list from exports so new records receive coverage without a separate list to update.
  */
 function isRecordEntry(entry: [string, unknown]): entry is RecordEntry {
   return typeof entry[1] === 'object' && entry[1] !== null;

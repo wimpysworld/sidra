@@ -1,4 +1,3 @@
-// test/mocks/storefront-deps.ts
 // Shared vi.mock() declarations for test files that import storefront.ts
 // (or main.ts, which re-exports storefront functions).
 //
@@ -6,9 +5,7 @@
 // Global mocks for electron, electron-log/main, and electron-conf/main live in
 // test/setup.ts and are not duplicated here.
 //
-// Vitest hoists vi.mock() calls to the top of the file they appear in and
-// resolves module paths relative to that file. Since this file lives in
-// test/mocks/, paths use ../../src/ instead of ../src/.
+// Vitest hoists vi.mock() within this file and resolves its paths relative to test/mocks/, hence ../../src/.
 //
 // Import this file as a side-effect: import './mocks/storefront-deps';
 import { vi } from 'vitest';

@@ -11,10 +11,7 @@ import { initCommandBridge } from '../src/commandBridge';
 import { FakePlayer } from './mocks/player';
 import { setPlatform, restorePlatform } from './mocks/platform';
 
-// The real i18n module resolves against the ['en-GB', 'en'] the app mock in
-// test/setup.ts reports, so every expectation reads the record the integration
-// reads. A retyped English literal would pass even after the tooltips stopped
-// going through getTrayStrings().
+// Use the real i18n records resolved against test/setup.ts languages ['en-GB', 'en'] so expectations follow translation changes.
 const strings = getTrayStrings();
 
 const TRACK: NowPlayingPayload = {

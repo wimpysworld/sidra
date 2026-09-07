@@ -1,9 +1,6 @@
 /**
- * Typed wrapper around electron-conf and the single place persistent state is
- * read or written; nothing else touches the store directly. Each key gets a
- * getter/setter pair, and the schema carries no defaults: a default lives in
- * the getter that needs one, so keys such as storefront can still report
- * "never set" and drive the fallback chain in src/storefront.ts.
+ * Typed access to persistent state through electron-conf.
+ * Defaults belong to getters, not the schema, so an absent storefront still triggers system-region fallback in src/storefront.ts.
  */
 import { Conf } from 'electron-conf/main';
 import log from 'electron-log/main';
@@ -19,6 +16,7 @@ import {
 
 const configLog = log.scope('config');
 
+/** A play held for later Last.fm submission, with a timestamp in Unix seconds. */
 export interface PendingScrobble {
   artist: string;
   track: string;
@@ -75,68 +73,84 @@ function setConfigValue<K extends keyof StoreSchema>(key: K, value: StoreSchema[
   configLog.info(`${key} set:`, value);
 }
 
+/** Read `storefront`, returning undefined when the key is absent. */
 export function getStorefront(): string | undefined {
   return getConfigValueOptional('storefront');
 }
 
+/** Persist `storefront` without applying the setting to running components. */
 export function setStorefront(code: string): void {
   setConfigValue('storefront', code);
 }
 
+/** Read `language`, returning undefined when the key is absent. */
 export function getLanguage(): string | null | undefined {
   return getConfigValueOptional('language');
 }
 
+/** Persist `language` without applying the setting to running components. */
 export function setLanguage(lang: string | null): void {
   setConfigValue('language', lang);
 }
 
+/** Read `notifications.enabled`, defaulting to `true` when absent. */
 export function getNotificationsEnabled(): boolean {
   return getConfigValue('notifications.enabled', true);
 }
 
+/** Persist `notifications.enabled` without applying the setting to running components. */
 export function setNotificationsEnabled(enabled: boolean): void {
   setConfigValue('notifications.enabled', enabled);
 }
 
+/** Read `closeToTray.enabled`, defaulting to `false` when absent. */
 export function getCloseToTrayEnabled(): boolean {
   return getConfigValue('closeToTray.enabled', false);
 }
 
+/** Persist `closeToTray.enabled` without applying the setting to running components. */
 export function setCloseToTrayEnabled(enabled: boolean): void {
   setConfigValue('closeToTray.enabled', enabled);
 }
 
+/** Read `discord.enabled`, defaulting to `false` when absent. */
 export function getDiscordEnabled(): boolean {
   return getConfigValue('discord.enabled', false);
 }
 
+/** Persist `discord.enabled` without applying the setting to running components. */
 export function setDiscordEnabled(enabled: boolean): void {
   setConfigValue('discord.enabled', enabled);
 }
 
+/** Read `lastfm.enabled`, defaulting to `false` when absent. */
 export function getLastfmEnabled(): boolean {
   return getConfigValue('lastfm.enabled', false);
 }
 
+/** Persist `lastfm.enabled` without applying the setting to running components. */
 export function setLastfmEnabled(enabled: boolean): void {
   setConfigValue('lastfm.enabled', enabled);
 }
 
+/** Read `lastfm.sessionKey`, returning undefined when the key is absent. */
 export function getLastfmSessionKey(): string | null | undefined {
   return getConfigValueOptional('lastfm.sessionKey');
 }
 
+/** Read `lastfm.username`, returning undefined when the key is absent. */
 export function getLastfmUsername(): string | null | undefined {
   return getConfigValueOptional('lastfm.username');
 }
 
+/** Store the Last.fm session and username without logging the session key. */
 export function setLastfmSession(sessionKey: string, username: string): void {
   store.set('lastfm.sessionKey', sessionKey);
   store.set('lastfm.username', username);
   configLog.info('lastfm session set for user:', username);
 }
 
+/** Clear Last.fm credentials without changing the enabled preference or pending queue. */
 export function clearLastfmSession(): void {
   store.set('lastfm.sessionKey', null);
   store.set('lastfm.username', null);
@@ -144,13 +158,9 @@ export function clearLastfmSession(): void {
 }
 
 /**
- * The store is hand-editable JSON on disk, so every field is checked, optional
- * ones included: `flushPendingScrobbles()` stringifies whatever survives into
- * one batch, and Last.fm refuses the batch whole, so a single malformed entry
- * costs every queued play. The ranges match what the integration produces - a
- * Unix second and a rounded track length, both positive integers. A second later
- * than now is refused because Last.fm ignores such a scrobble without an API
- * error, so the flush reads success and drops the batch with the valid plays in it.
+ * Validate every field from the editable store because one malformed play can invalidate a Last.fm batch.
+ * Timestamps and durations are positive whole seconds, matching the integration's output.
+ * Reject future timestamps because Last.fm can ignore them in a successful response, after which the queue drops them.
  */
 function isPendingScrobble(value: unknown): value is PendingScrobble {
   if (typeof value !== 'object' || value === null) return false;
@@ -167,6 +177,7 @@ function isPendingScrobble(value: unknown): value is PendingScrobble {
     && (entry.chosenByUser === undefined || entry.chosenByUser === 0);
 }
 
+/** Read pending plays and discard malformed entries without logging listening history. */
 export function getPendingScrobbles(): PendingScrobble[] {
   const stored: unknown = getConfigValue('lastfm.pendingScrobbles', []);
   if (!Array.isArray(stored)) {
@@ -181,51 +192,63 @@ export function getPendingScrobbles(): PendingScrobble[] {
   return entries;
 }
 
+/** Replace the pending queue and log its length, not its contents. */
 export function setPendingScrobbles(entries: PendingScrobble[]): void {
   store.set('lastfm.pendingScrobbles', entries);
   configLog.info('lastfm.pendingScrobbles set, queued:', entries.length);
 }
 
+/** Read `theme`, defaulting to `'apple-music'` when absent. */
 export function getTheme(): ThemeName {
   return getConfigValue('theme', 'apple-music');
 }
 
+/** Persist `theme` without applying the setting to running components. */
 export function setTheme(name: ThemeName): void {
   setConfigValue('theme', name);
 }
 
+/** Read `autoUpdate.enabled`, defaulting to `true` when absent. */
 export function getAutoUpdateEnabled(): boolean {
   return getConfigValue('autoUpdate.enabled', true);
 }
 
+/** Persist `autoUpdate.enabled` without applying the setting to running components. */
 export function setAutoUpdateEnabled(enabled: boolean): void {
   setConfigValue('autoUpdate.enabled', enabled);
 }
 
+/** Read `lastPageUrl`, returning undefined when the key is absent. */
 export function getLastPageUrl(): string | undefined {
   return getConfigValueOptional('lastPageUrl');
 }
 
+/** Persist `lastPageUrl` without applying the setting to running components. */
 export function setLastPageUrl(url: string): void {
   setConfigValue('lastPageUrl', url);
 }
 
+/** Read `startPage`, defaulting to `'new'` when absent. */
 export function getStartPage(): MusicStartPageId | 'last' {
   return getConfigValue('startPage', 'new');
 }
 
+/** Persist `startPage` without applying the setting to running components. */
 export function setStartPage(page: MusicStartPageId | 'last'): void {
   setConfigValue('startPage', page);
 }
 
+/** Read `zoomFactor`, defaulting to `1.0` when absent. */
 export function getZoomFactor(): number {
   return getConfigValue('zoomFactor', 1.0);
 }
 
+/** Persist `zoomFactor` without applying the setting to running components. */
 export function setZoomFactor(factor: number): void {
   setConfigValue('zoomFactor', factor);
 }
 
+/** Read the stored service, falling back to the default for an unregistered id. */
 export function getMusicService(): MusicServiceId {
   const id = getConfigValue('musicService', DEFAULT_SERVICE_ID);
   if (!isMusicServiceId(id)) {
@@ -235,31 +258,34 @@ export function getMusicService(): MusicServiceId {
   return id;
 }
 
+/** Persist `musicService` without applying the setting to running components. */
 export function setMusicService(id: MusicServiceId): void {
   setConfigValue('musicService', id);
 }
 
+/** Read `classical.startPage`, defaulting to `'home'` when absent. */
 export function getClassicalStartPage(): ClassicalStartPageId | 'last' {
   return getConfigValue('classical.startPage', 'home');
 }
 
+/** Persist `classical.startPage` without applying the setting to running components. */
 export function setClassicalStartPage(page: ClassicalStartPageId | 'last'): void {
   setConfigValue('classical.startPage', page);
 }
 
+/** Read `classical.lastPageUrl`, returning undefined when the key is absent. */
 export function getClassicalLastPageUrl(): string | undefined {
   return getConfigValueOptional('classical.lastPageUrl');
 }
 
+/** Persist `classical.lastPageUrl` without applying the setting to running components. */
 export function setClassicalLastPageUrl(url: string): void {
   setConfigValue('classical.lastPageUrl', url);
 }
 
 /**
- * Service-keyed views of the pairs above, so a caller holding a MusicServiceId
- * reads and writes without branching on it. This table is the only place a
- * service id maps to its stored keys, and the Record annotation makes a new
- * service a compile error here rather than a missed branch at a call site.
+ * Map each service to its stored page accessors without branching at call sites.
+ * The total Record requires an entry for every registered service.
  */
 const SERVICE_PAGE_ACCESSORS: Record<MusicServiceId, {
   getStartPage: () => AnyStartPageId | 'last';
@@ -279,20 +305,19 @@ const SERVICE_PAGE_ACCESSORS: Record<MusicServiceId, {
 };
 
 /**
- * Stored start page for a service. The union covers both services, because the
- * caller's id is a variable: a caller that knows which service it means takes
- * the narrower pair above. Reading wide is safe - the id is matched against the
- * service's own startPages, and one from the wrong service matches nothing and
- * falls back to that service's default.
+ * Read a service's stored start page with a union that covers both services.
+ * Callers must resolve the result against that service's startPages, using its default when no entry matches.
  */
 export function getStartPageFor(id: MusicServiceId): AnyStartPageId | 'last' {
   return SERVICE_PAGE_ACCESSORS[id].getStartPage();
 }
 
+/** Read the last page stored for the requested service. */
 export function getLastPageUrlFor(id: MusicServiceId): string | undefined {
   return SERVICE_PAGE_ACCESSORS[id].getLastPageUrl();
 }
 
+/** Persist the last page under the requested service. */
 export function setLastPageUrlFor(id: MusicServiceId, url: string): void {
   SERVICE_PAGE_ACCESSORS[id].setLastPageUrl(url);
 }

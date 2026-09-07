@@ -19,10 +19,8 @@ interface DbusModule {
   sessionBus: () => DbusBus;
 }
 
-// src/notificationDaemon.ts pulls @holusion/dbus-next in with a bare require,
-// which vi.mock does not intercept. The module loads fine off a bus - only
-// sessionBus() opens a socket - so the real one is loaded and that single entry
-// point is stubbed. Every case here runs against this stub; no live bus.
+// vi.mock cannot intercept the daemon's bare require of @holusion/dbus-next.
+// Loading the real module opens no socket. Stub sessionBus(), its connection entry point, so no test uses a live bus.
 const dbus = require('@holusion/dbus-next') as DbusModule;
 
 const busStub = {
@@ -34,11 +32,8 @@ const busStub = {
 let probeOwner = false;
 
 /**
- * src/notify.ts lazy-requires ./notificationDaemon inside initNotificationProbe.
- * That is a real Node require, so it reaches neither Vitest's module registry
- * nor a .ts file, and vi.mock cannot see it. Patching Module._load hands the
- * real daemon module - freshly imported, running against the bus stub - to the
- * gate, so both modules are exercised together as they are in production.
+ * Routes initNotificationProbe()'s Node require to the real TypeScript daemon module with its stubbed bus.
+ * Module._load needs patching because Node require bypasses Vitest's module registry and cannot resolve the TypeScript file.
  */
 const moduleApi = Module as unknown as {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
@@ -72,10 +67,8 @@ interface Loaded {
 }
 
 /**
- * The gate is module-level state in src/notify.ts, and that module reads
- * process.platform at load, so every case forces the platform, resets the
- * registry and re-imports. Without the reset the previous case's latch leaks
- * into the next one.
+ * Loads a fresh notification gate after setting the platform.
+ * The module reads process.platform at import and retains failure state, so each test needs its own copy.
  */
 async function loadNotify(platform: NodeJS.Platform): Promise<Loaded> {
   setPlatform(platform);
@@ -261,8 +254,7 @@ describe('notification gate on Linux', () => {
     expect(notify.createNotification(OPTIONS)).toBeNull();
   });
 
-  // The gate has its own try/catch, so this asserts the daemon swallows the
-  // throw itself rather than relying on its caller to do it.
+  // Test the daemon directly so the gate's catch cannot hide an escaping error.
   it('does not throw out of the probe when the session bus cannot be opened', async () => {
     await loadNotify('linux');
     vi.mocked(dbus.sessionBus).mockImplementation(() => {
@@ -290,8 +282,7 @@ describe('notification gate off Linux', () => {
     expect(NotificationMock).toHaveBeenCalledTimes(1);
   });
 
-  // NameOwnerChanged is the only way back from a latch, and it exists on Linux
-  // alone; latching here would kill notifications for the rest of the session.
+  // Only Linux receives NameOwnerChanged to clear failure state. Other platforms must keep notifications available after a failure.
   it('does not latch closed when a notification fails', async () => {
     const { notify } = await loadNotify('darwin');
 

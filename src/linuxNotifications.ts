@@ -13,6 +13,7 @@ const BUS_PATH = '/org/freedesktop/DBus';
 const DELIVERY_TIMEOUT_MS = 5000;
 const notificationLog = log.scope('linuxNotifications');
 
+/** Localised track content and actions for one replaceable desktop notification. */
 export interface TrackNotification {
   title: string;
   body: string;
@@ -28,7 +29,7 @@ interface BusInternals {
   _connection?: { stream?: { destroy: () => void } };
 }
 
-/** Linux-only delivery, loaded after the platform check in the integration. */
+/** Create serialised Linux notification delivery and cleanup, loaded only after the integration's platform check. */
 export function createLinuxNotifications() {
   let bus: MessageBus | null = null;
   let owner = '';

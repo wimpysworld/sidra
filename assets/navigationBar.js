@@ -1,14 +1,10 @@
-// Back, forward and reload buttons for the Apple Music sidebar header. The web
-// UI has no need for them; a desktop window with no browser chrome does.
+// Add navigation and Settings buttons to the sidebar because Sidra has no browser toolbar.
 (function () {
-  // The script runs on every page load and on SPA navigation, which can keep
-  // the existing header, so bail out rather than add a second set of buttons.
+  // SPA navigation can retain the header, so repeated injection must not duplicate buttons.
   if (document.getElementById('sidra-nav-buttons')) return;
 
-  // Not standalone-executable JavaScript: loadAssets() in src/main.ts replaces
-  // this bare token with the translated labels as JSON, because the script is
-  // injected with executeJavaScript() and cannot take the query parameters the
-  // splash screen uses. NAV_LABELS_TOKEN in src/i18n.ts is the shared spelling.
+  // loadAssets() in src/main.ts replaces NAV_LABELS_TOKEN from src/i18n.ts with JSON.
+  // executeJavaScript() cannot supply loadFile() query parameters, so the raw asset requires substitution.
   /** @type {{ back: string, forward: string, reload: string, settings: string }} */
   var LABELS = __SIDRA_NAV_LABELS__;
 
@@ -42,11 +38,8 @@
   /**
    * Send to the main process, tolerating an absent bridge.
    *
-   * window.AMWrapper is installed by the preload script. It is normally there
-   * before this runs, but the script is injected into a page it does not
-   * control and cannot assume it. sendToMain() in assets/musicKitHook.js guards
-   * the same bridge for the same reason; an unguarded send here would throw a
-   * TypeError out of a click listener with no catch above it.
+   * The injected script cannot assume that the preload bridge exists.
+   * Guard it as assets/musicKitHook.js does, so clicks cannot throw for an absent bridge.
    *
    * @param {string} channel - IPC channel name
    * @returns {void}
@@ -62,7 +55,7 @@
 
   /**
    * Create an SVG element with the given tag and attributes.
-   * @param {string} tag - SVG element tag name (e.g. 'svg', 'polyline', 'path')
+   * @param {string} tag - SVG element tag name
    * @param {Record<string, string>} attrs - Attribute key-value pairs
    * @returns {SVGElement}
    */
@@ -90,7 +83,7 @@
     'stroke-linejoin': 'round',
   };
 
-  // Icon geometry only; the wrapping svg carries sharedAttrs.
+  // Each icon defines geometry only. Its parent SVG carries sharedAttrs.
   /** @type {Array<{ label: string, channel: string, icon: Array<[string, Record<string, string>]> }>} */
   var BUTTONS = [
     { label: LABELS.back, channel: 'nav:back', icon: [['polyline', { points: '15 20 9 12 15 4' }]] },
@@ -118,9 +111,8 @@
   ];
 
   /**
-   * Paint a button and its icon. The base styles are inline and !important, so a
-   * :hover rule in an injected stylesheet could never beat them; hover has to be
-   * written from JavaScript.
+   * Paint a button and its icon. Inline !important styles override stylesheet
+   * :hover rules, so JavaScript must update the hover styles.
    *
    * @param {HTMLButtonElement} button - Button to paint
    * @param {string} color - Colour for the button and the icon stroke

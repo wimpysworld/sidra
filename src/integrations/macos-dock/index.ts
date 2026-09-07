@@ -59,7 +59,7 @@ function buildDockMenu(
   return Menu.buildFromTemplate(items);
 }
 
-/** Installs the macOS dock menu and progress bar; no-op on every other platform. */
+/** Installs the dock menu and progress bar on macOS only. */
 export function init(ctx: IntegrationContext): void {
   if (process.platform !== 'darwin') return;
 
@@ -92,7 +92,7 @@ export function init(ctx: IntegrationContext): void {
 
   const dockPauseTimer = createPauseEdgeTimer(DOCK_PAUSE_TIMEOUT_MS, clearNowPlaying);
 
-  // Named listener references for removeListener in will-quit
+  // Named listeners let will-quit remove the same function references.
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     dockPauseTimer.cancel();
     currentPayload = payload;
@@ -134,13 +134,11 @@ export function init(ctx: IntegrationContext): void {
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
-    // The 30 second timer outlives the listeners, and clearNowPlaying() calls
-    // app.dock.setMenu(), so a pending one fires into a torn-down dock.
+    // Cancel the timer before clearNowPlaying() can call a torn-down dock.
     dockPauseTimer.destroy();
   });
 
-  // The menu must exist before playback starts, so the dock carries the
-  // Not Playing entry from launch rather than nothing at all
+  // Show Not Playing from launch, before any player event arrives.
   rebuildDock(false);
   dockLog.info('dock menu initialised');
 }

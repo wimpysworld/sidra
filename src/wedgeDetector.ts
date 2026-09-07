@@ -67,12 +67,8 @@ export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow: getWin } = ctx;
   if (!getWin) throw new Error('wedgeDetector requires getMainWindow');
 
-  // All state here is module-scoped, so a second init() attaches a second copy
-  // of all three listeners and a second will-quit handler. The skip path
-  // survives that by luck rather than design: startTimer() returns early when a
-  // timer already exists, and the duplicated writes to lastAdvanceTime and
-  // skipAttempts happen to be idempotent. The caller guards its own re-entry;
-  // this guard means the module does not depend on it.
+  // Module-scoped state requires one set of listeners and one will-quit handler,
+  // regardless of whether the caller guards repeated initialisation.
   if (initialised) {
     wedgeLog.warn('wedge detector already initialised, ignoring repeat init');
     return;

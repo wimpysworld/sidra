@@ -8,7 +8,7 @@ import { getServiceByHost } from '../../musicService';
 import { getMusicService } from '../../config';
 import { switchService } from '../../serviceSwitch';
 
-// @holusion/dbus-next is lazy-required because the MPRIS module only loads on Linux
+// main.ts loads this module only on Linux, keeping dbus-next off other platforms.
 const dbus = require('@holusion/dbus-next');
 const {
   Interface,
@@ -76,32 +76,39 @@ function logCommand(method: MprisMethod, result: 'sent' | 'dropped', channel?: R
 class MediaPlayer2 extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
 
+  /** Creates the root interface with a current-window lookup. */
   constructor(getMainWindow: () => BrowserWindow | null) {
     super('org.mpris.MediaPlayer2');
     this._getMainWindow = getMainWindow;
   }
 
+  /** Returns the application name shown by media clients. */
   get Identity(): string {
     return app.getName();
   }
 
+  /** Returns the desktop entry name without its .desktop suffix. */
   get DesktopEntry(): string {
     return app.getName().toLowerCase();
   }
 
+  /** Reports that clients can quit Sidra. */
   get CanQuit(): boolean {
     return true;
   }
 
+  /** Reports that clients can bring Sidra to the foreground. */
   get CanRaise(): boolean {
     return true;
   }
 
+  /** Reads fullscreen state from the current window. */
   get Fullscreen(): boolean {
     const win = this._getMainWindow();
     return win && !win.isDestroyed() ? win.isFullScreen() : false;
   }
 
+  /** Applies fullscreen state if the window is available. */
   set Fullscreen(value: boolean) {
     const win = this._getMainWindow();
     if (win && !win.isDestroyed()) {
@@ -112,22 +119,27 @@ class MediaPlayer2 extends Interface {
     }
   }
 
+  /** Reports support for changing fullscreen state. */
   get CanSetFullscreen(): boolean {
     return true;
   }
 
+  /** Reports that Sidra exposes no MPRIS TrackList interface. */
   get HasTrackList(): boolean {
     return false;
   }
 
+  /** Reports no MIME-type-based opening support. */
   get SupportedMimeTypes(): string[] {
     return [];
   }
 
+  /** Advertises HTTPS for validated service URLs. */
   get SupportedUriSchemes(): string[] {
     return ['https'];
   }
 
+  /** Shows and focuses the current window. */
   Raise(): void {
     const win = this._getMainWindow();
     if (win) {
@@ -139,6 +151,7 @@ class MediaPlayer2 extends Interface {
     }
   }
 
+  /** Requests application shutdown. */
   Quit(): void {
     app.quit();
     logCommand('Quit', 'sent');
@@ -222,8 +235,7 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
   };
 
   if (payload.durationInMillis != null) {
-    // Convert milliseconds to microseconds (int64); truncated because the 'x'
-    // marshaller throws on a fractional value
+    // Truncate microseconds because the D-Bus 'x' marshaller rejects fractional values.
     metadata['mpris:length'] = new Variant('x', Math.trunc(payload.durationInMillis * MS_TO_US));
   }
 
@@ -321,6 +333,7 @@ class MediaPlayer2Player extends Interface {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingChanges: Record<string, unknown> = {};
 
+  /** Initialises cached capabilities and the ready hook URL. */
   constructor(getMainWindow: () => BrowserWindow | null, capabilities: PlaybackCapabilities, readyUrl: string | null) {
     super('org.mpris.MediaPlayer2.Player');
     this._getMainWindow = getMainWindow;
@@ -368,6 +381,7 @@ class MediaPlayer2Player extends Interface {
 
   // --- Update methods (called by player event handlers) ---
 
+  /** Publishes changed capabilities and refreshes the current track length. */
   updateCapabilities(capabilities: PlaybackCapabilities): void {
     const previous = this._capabilities;
     this._capabilities = capabilities;
@@ -388,6 +402,7 @@ class MediaPlayer2Player extends Interface {
     else this._metadata['mpris:length'] = new Variant('x', lengthUs);
   }
 
+  /** Maps MusicKit state to MPRIS while preserving an acknowledged Stop. */
   updatePlaybackStatus(payload: PlaybackStatePayload): void {
     if (!payload) return;
     if (payload.state === PlaybackState.Playing) {
@@ -395,12 +410,9 @@ class MediaPlayer2Player extends Interface {
       this._stopped = false;
     }
 
-    // Only Playing and Paused have an MPRIS value of their own. Every other
-    // MusicKit state falls through to 'Stopped', the transient ones (loading,
-    // seeking, waiting, stalled) included, so MPRIS always reports the state
-    // the player is in. Do not add early returns for the transient states, and
-    // do not map Stopped to 'Paused', which shows clients a pause button for a
-    // player that has stopped.
+    // An acknowledged Stop stays Stopped until play resumes or the track changes.
+    // All states except Playing and ordinary Paused, including transient states,
+    // map to Stopped so clients do not show controls for the previous state.
     let status: string;
     if (payload.state === PlaybackState.Playing) {
       status = 'Playing';
@@ -473,6 +485,7 @@ class MediaPlayer2Player extends Interface {
     }
   }
 
+  /** Updates radio song labels without replacing station identity or position. */
   updateTimedMetadata(payload: TimedMetadataPayload): void {
     if (!this._radioStation) return;
     const url = getShareUrl({ ...payload, sourceHost: this._radioStation.sourceHost }) ?? getShareUrl(this._radioStation);
@@ -493,6 +506,7 @@ class MediaPlayer2Player extends Interface {
     this._schedulePropertyEmission({ Metadata: metadata });
   }
 
+  /** Maps a recognised MusicKit repeat mode to MPRIS LoopStatus. */
   updateRepeatMode(payload: number | null): void {
     if (payload == null) return;
 
@@ -511,6 +525,7 @@ class MediaPlayer2Player extends Interface {
     this._schedulePropertyEmission({ LoopStatus: loopStatus });
   }
 
+  /** Publishes whether MusicKit shuffle is enabled. */
   updateShuffleMode(payload: number | null): void {
     if (payload == null) return;
 
@@ -519,6 +534,7 @@ class MediaPlayer2Player extends Interface {
     this._schedulePropertyEmission({ Shuffle: shuffle });
   }
 
+  /** Publishes in-app volume changes while suppressing pending control echoes. */
   updateVolume(payload: number | null): void {
     if (payload == null) return;
 
@@ -541,6 +557,7 @@ class MediaPlayer2Player extends Interface {
     this._schedulePropertyEmission({ Volume: rounded });
   }
 
+  /** Caches microseconds and signals seeks without scheduling property emissions. */
   updatePosition(payload: number): void {
     // dbus-next marshals an 'x' field with BigInt(data.toString()), which throws
     // on a fractional value, so truncate once here and let every consumer of the
@@ -582,64 +599,79 @@ class MediaPlayer2Player extends Interface {
 
   // --- Read-only properties ---
 
+  /** Returns the cached MPRIS playback state. */
   get PlaybackStatus(): string {
     return this._playbackStatus;
   }
 
+  /** Returns the cached track metadata as D-Bus variants. */
   get Metadata(): Record<string, InstanceType<typeof Variant>> {
     return this._metadata;
   }
 
+  /** Returns the cached playhead in integer microseconds. */
   get Position(): number {
     return Math.trunc(this._position);
   }
 
+  /** Reports normal speed as the minimum supported rate. */
   get MinimumRate(): number {
     return 1.0;
   }
 
+  /** Reports normal speed as the maximum supported rate. */
   get MaximumRate(): number {
     return 1.0;
   }
 
+  /** Advertises support for the next-track command. */
   get CanGoNext(): boolean {
     return true;
   }
 
+  /** Advertises support for the previous-track command. */
   get CanGoPrevious(): boolean {
     return true;
   }
 
+  /** Returns the latest validated play capability. */
   get CanPlay(): boolean {
     return this._capabilities.canPlay;
   }
 
+  /** Returns the latest validated pause capability. */
   get CanPause(): boolean {
     return this._capabilities.canPause;
   }
 
+  /** Allows seeking unless the renderer explicitly disables it. */
   get CanSeek(): boolean {
     return this._capabilities.canSeek !== false;
   }
 
+  /** Advertises support for player control. */
   get CanControl(): boolean {
     return true;
   }
 
   // --- Read/write properties ---
 
+  /** Reports normal playback speed. */
   get Rate(): number {
     return 1.0;
   }
 
+  /** Treats zero as pause and ignores other rate changes. */
   set Rate(value: number) {
     if (value === 0) this._send('Rate', 'player:pause');
   }
 
+  /** Returns the cached MPRIS repeat mode. */
   get LoopStatus(): string {
     return this._loopStatus;
   }
 
+  /** Maps a valid MPRIS repeat mode to MusicKit. */
   set LoopStatus(value: string) {
     const loopToMusicKit: Record<string, number> = {
       'None': 0,
@@ -655,30 +687,31 @@ class MediaPlayer2Player extends Interface {
     this._send('LoopStatus', 'player:setRepeat', mode);
   }
 
+  /** Returns the cached shuffle setting. */
   get Shuffle(): boolean {
     return this._shuffle;
   }
 
+  /** Sends the shuffle setting to MusicKit. */
   set Shuffle(value: boolean) {
     this._shuffle = value;
     const mode = value ? 1 : 0;
     this._send('Shuffle', 'player:setShuffle', mode);
   }
 
+  /** Returns cached software volume rounded to two decimal places. */
   get Volume(): number {
     return Math.round(this._volume * 100) / 100;
   }
 
+  /** Clamps software volume and records pending echoes before sending it. */
   set Volume(value: number) {
     const clamped = Math.round(Math.max(0.0, Math.min(1.0, value)) * 100) / 100;
     this._volume = clamped;
     this._schedulePropertyEmission({ Volume: clamped });
-    // The queue is bounded, and a full one drops the value being added rather
-    // than the oldest entry. Echoes arrive in order, so the oldest entry is the
-    // one the next echo matches; discarding it makes that echo read as an
-    // in-app change and drag the cached volume back to a value the drag left
-    // behind. An untracked newest value costs nothing instead: its echo matches
-    // nothing and writes the level the player has actually reached.
+    // Preserve old entries when full because echoes arrive in order. Dropping
+    // the oldest makes its echo look like an in-app change and restores stale volume.
+    // An untracked newest echo instead reports the level that the player reached.
     if (this._pendingVolumes.length < MAX_PENDING_VOLUMES) {
       this._pendingVolumes.push(clamped);
     }
@@ -694,22 +727,27 @@ class MediaPlayer2Player extends Interface {
 
   // --- Methods ---
 
+  /** Requests the next queue item. */
   Next(): void {
     this._send('Next', 'player:next');
   }
 
+  /** Requests the previous queue item. */
   Previous(): void {
     this._send('Previous', 'player:previous');
   }
 
+  /** Requests a playback pause. */
   Pause(): void {
     this._send('Pause', 'player:pause');
   }
 
+  /** Requests a play/pause toggle. */
   PlayPause(): void {
     this._send('PlayPause', 'player:playPause');
   }
 
+  /** Requests Stop once and waits for acknowledgement with a bounded timeout. */
   Stop(): void {
     if (this._stopped || this._pendingStopId !== null) return;
     this._pendingStopId = ++this._stopRequestId;
@@ -726,6 +764,7 @@ class MediaPlayer2Player extends Interface {
     this._stopTimer = null;
   }
 
+  /** Publishes Stopped only after the matching successful acknowledgement. */
   updateStopped(payload: PlaybackStopped): void {
     if (payload.requestId !== this._pendingStopId) return;
     this._clearPendingStop();
@@ -735,10 +774,12 @@ class MediaPlayer2Player extends Interface {
     this._schedulePropertyEmission({ PlaybackStatus: 'Stopped' });
   }
 
+  /** Requests playback start or resume. */
   Play(): void {
     this._send('Play', 'player:play');
   }
 
+  /** Seeks by a microsecond offset, advancing tracks when the target exceeds known duration. */
   Seek(offset: bigint): void {
     if (!this.CanSeek || !Number.isSafeInteger(this._position)) return;
     const targetUs = BigInt(this._position) + offset;
@@ -751,6 +792,7 @@ class MediaPlayer2Player extends Interface {
     this._send('Seek', 'player:seek', Number(targetUs < 0n ? 0n : targetUs) / 1_000_000);
   }
 
+  /** Seeks to valid microseconds only when the supplied track ID matches. */
   SetPosition(trackId: string, position: bigint): void {
     if (trackId === NO_TRACK || trackId !== this._currentTrackId) {
       mprisLog.debug('SetPosition trackId mismatch, ignoring');
@@ -768,6 +810,7 @@ class MediaPlayer2Player extends Interface {
     return typeof length === 'number' && Number.isSafeInteger(length) && length >= 0 ? length : undefined;
   }
 
+  /** Opens a validated service URL, navigating first when its hook is not ready. */
   OpenUri(uri: string): void {
     const parsed = parseServiceUri(uri);
     if (!parsed) {
@@ -803,6 +846,7 @@ class MediaPlayer2Player extends Interface {
     this._openUriTimer = null;
   }
 
+  /** Dispatches a pending URL only after its navigation target reports hook readiness. */
   updateHookReady(url: string | null): void {
     this._readyUrl = this._navigating ? null : url;
     const pending = this._pendingOpenUri;
@@ -811,6 +855,7 @@ class MediaPlayer2Player extends Interface {
     this._send('OpenUri', 'player:openUri', pending.url);
   }
 
+  /** Invalidates replaced-document readiness and cancels unrelated pending URL requests. */
   navigationStarted(url: string, sameDocument: boolean): void {
     if (!sameDocument) {
       this._readyUrl = null;
@@ -819,6 +864,7 @@ class MediaPlayer2Player extends Interface {
     if (this._pendingOpenUri && parseServiceUri(url)?.href !== this._pendingOpenUri.navigationUrl) this._clearOpenUri();
   }
 
+  /** Tracks same-service redirects and cancels pending requests that leave the service. */
   navigationRedirected(url: string): void {
     const pending = this._pendingOpenUri;
     if (!pending) return;
@@ -827,11 +873,12 @@ class MediaPlayer2Player extends Interface {
     else this._clearOpenUri();
   }
 
+  /** Marks document navigation complete so hook readiness can be accepted. */
   navigationCommitted(): void {
     this._navigating = false;
   }
 
-  // Signal - declared via configureMembers, calling this method emits on D-Bus
+  /** Emits the D-Bus Seeked signal through configureMembers, with a position in microseconds. */
   Seeked(_position: number): number {
     return _position;
   }
@@ -1006,8 +1053,7 @@ export function init(ctx: IntegrationContext): void {
     }
   };
 
-  // Named wrappers, because `will-quit` has to hand removeListener the same
-  // function reference; an inline handler could never be detached.
+  // Named wrappers let will-quit detach the same function references.
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     playerIface.updatePlaybackStatus(payload);
   };
@@ -1059,13 +1105,9 @@ export function init(ctx: IntegrationContext): void {
 
   mprisLog.info('enabling MPRIS service');
 
-  // A session bus is not guaranteed to exist. dbus-next falls through to
-  // getDbusAddressFromFs(), which throws synchronously when
-  // DBUS_SESSION_BUS_ADDRESS is unset; containers, bare X and su-launched
-  // sessions all hit it. Catching it here reports a missing bus as the ordinary
-  // condition it is, rather than letting an exception stand in for it, and the
-  // return leaves the export and the player subscriptions below undone. Losing
-  // MPRIS is the correct outcome, and the connection is not retried.
+  // Without DBUS_SESSION_BUS_ADDRESS, dbus-next can throw while reading the bus
+  // address from disk. Disable MPRIS without exports, subscriptions or retries
+  // when no session bus exists, as in containers or su-launched sessions.
   try {
     bus = dbus.sessionBus();
   } catch (err: unknown) {

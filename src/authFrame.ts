@@ -1,20 +1,14 @@
-// Constants shared between loadAssets() in src/main.ts and the injected
-// assets/authFrameFix.js. They live here rather than in main.ts so
-// test/authFrameFix.test.ts can import them: main.ts calls app.whenReady() at
-// import and no test can load it. src/i18n.ts exports NAV_LABELS_TOKEN for the
-// same reason.
+// Shared injection constants live outside main.ts so tests can import them
+// without starting Electron through app.whenReady().
 
-// Substituted by loadAssets() in src/main.ts; assets/authFrameFix.js carries
-// the same spelling.
+/** Placeholder that loadAssets() replaces in assets/authFrameFix.js. */
 export const AUTH_FIX_TOKEN = '__SIDRA_AUTH_FIX__';
 
-// Containers that name the passkey or "Sign in with iPhone" option. Both jobs
-// in assets/authFrameFix.js need them: the injected stylesheet hides a match on
-// sight, and closest() walks up to one from a button it has already matched.
-// Only selectors that name the feature belong here. The broad class prefixes
-// and the structural [role="group"] and fieldset entries stay in the script,
-// where the walk starts at a matched button; in the stylesheet they would hide
-// unrelated form groups.
+/**
+ * Feature-specific containers shared by the injected stylesheet and closest() lookup.
+ * Broad selectors stay in assets/authFrameFix.js, where the lookup starts at a matched button.
+ * Used directly in CSS, those selectors would hide unrelated form groups.
+ */
 export const PASSKEY_CONTAINER_SELECTORS = [
   '[class*="passkey-option" i]',
   '[class*="passkey-section" i]',

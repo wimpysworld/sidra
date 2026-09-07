@@ -865,8 +865,7 @@ describe('getShareUrl', () => {
     expect(getShareUrl({ playParams: { kind: 'song', isLibrary: true } })).toBeUndefined();
   });
 
-  // MPRIS OpenUri navigates to either service without calling switchService(),
-  // so the window can sit on Classical while config still names music.
+  // During a service switch, the payload can still describe Classical after config changes to music.
   it('uses the payload host when it names Classical and config names music', () => {
     expect(
       getShareUrl({ sourceHost: 'classical.music.apple.com', playParams: { catalogId: '42' } }),
@@ -882,8 +881,7 @@ describe('getShareUrl', () => {
     ).toBe('https://music.apple.com/song/abc');
   });
 
-  // A payload from a hook older than this field must keep its previous result
-  // rather than losing the URL.
+  // Payloads without sourceHost use the configured service to retain a share URL.
   it('falls back to the persisted service when the payload carries no host', () => {
     state.service = 'classical';
     expect(getShareUrl({ playParams: { catalogId: '42' } })).toBe(

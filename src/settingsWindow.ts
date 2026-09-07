@@ -14,6 +14,7 @@ let refreshSettingsTheme: (() => Promise<void>) | null = null;
 let currentSettingsUrl: string | null = null;
 const settingsLog = log.scope('settings');
 
+// Accept only the current local Settings document in its own main frame.
 function validateSender(event: IpcMainInvokeEvent): void {
   const contents = settingsWindow?.webContents;
   if (!settingsWindow || settingsWindow.isDestroyed() || !contents || contents.isDestroyed()
@@ -23,6 +24,7 @@ function validateSender(event: IpcMainInvokeEvent): void {
   }
 }
 
+/** Focus the existing Settings window or create one for the live main window. */
 export function showSettingsWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -117,6 +119,7 @@ export function showSettingsWindow(): void {
   });
 }
 
+/** Open Settings only for navigation requests from an allowed main-frame document. */
 export function handleSettingsNavigation(event: IpcMainEvent, window: BrowserWindow): void {
   if (window.isDestroyed() || window.webContents.isDestroyed()
     || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
@@ -124,6 +127,7 @@ export function handleSettingsNavigation(event: IpcMainEvent, window: BrowserWin
   showSettingsWindow();
 }
 
+/** Register Settings IPC, updates and the keyboard shortcut, returning an idempotent teardown function. */
 export function initSettingsWindow(window: BrowserWindow): () => void {
   mainWindow = window;
   const contents = window.webContents;

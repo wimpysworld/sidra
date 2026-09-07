@@ -20,10 +20,7 @@ const trayLog = log.scope('tray');
 const iconsDir = getAssetPath('assets', 'icons');
 const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
 
-// Every action a menu item can carry an icon for. Both maps below are typed
-// against it, so a key in one and not the other is either declared as a gap or
-// fails tsc, and a misspelt call site fails at the call rather than rendering
-// an iconless row.
+/** Menu actions accepted by both platform icon maps and checked at call sites. */
 export type MenuIconKey =
   | 'about'
   | 'player'
@@ -137,7 +134,6 @@ export function getMenuIcon(action: MenuIconKey): Electron.NativeImage | undefin
     return img;
   }
 
-  // Linux and Windows: resolve themed PNG
   const baseName = menuIconFileMap[action];
   if (!baseName) return undefined;
 
@@ -191,10 +187,8 @@ export function sanitiseLinuxLabel(text: string): string {
 }
 
 /**
- * Shortens a track, artist or album name for a menu row. The text is first cut
- * at the opening bracket of a trailing qualifier such as "(Remastered 2011)",
- * which carries little for the reader and consumes the whole row, then
- * ellipsised at maxLength so one long title cannot stretch the menu.
+ * Remove text from the first '(' or '[' after the first character, then truncate at maxLength and append an ellipsis.
+ * This removes qualifiers and limits the width of metadata rows.
  */
 export function truncateMenuLabel(text: string, maxLength = 32): string {
   const splitIndex = text.search(/[([]/);
@@ -505,27 +499,24 @@ function buildContextMenu(tray: Tray): Menu {
   return Menu.buildFromTemplate(menuItems);
 }
 
+/** Supply the current main window for tray visibility controls. */
 export function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
   getMainWindowCallback = callback;
 }
 
 /**
- * Merges named fields into the rendered Now Playing state. A partial update is
- * what lets a volume event leave the track and its artwork alone, and the field
- * names are what stop a caller pairing a track with another one's artwork.
+ * Merge only supplied fields so volume and playback updates preserve track metadata and artwork.
  */
 export function updateNowPlayingState(update: Partial<NowPlayingState>): void {
   Object.assign(nowPlayingState, update);
 }
 
+/** Rebuild the menu from current settings and cached Now Playing state. */
 export function rebuildTrayMenu(tray: Tray): void {
   tray.setContextMenu(buildContextMenu(tray));
 }
 
-// Playback, volume and now-playing events arrive in bursts: the hook polls
-// mk.volume every 250ms while the slider moves, and the renderer can emit far
-// faster than that. Each rebuild walks every submenu and
-// resizes the artwork five times, so a burst is collapsed into one rebuild.
+// Coalesce event bursts because each rebuild recreates submenus and resizes artwork.
 const TRAY_REBUILD_COALESCE_MS = 250;
 
 let rebuildTimer: NodeJS.Timeout | null = null;
@@ -544,6 +535,7 @@ function scheduleTrayRebuild(tray: Tray): void {
   }, TRAY_REBUILD_COALESCE_MS);
 }
 
+/** Cancel a pending coalesced rebuild and release its tray reference. */
 export function cancelTrayRebuild(): void {
   if (rebuildTimer) {
     clearTimeout(rebuildTimer);
@@ -552,6 +544,7 @@ export function cancelTrayRebuild(): void {
   pendingRebuildTray = null;
 }
 
+/** Show track details or the product name, escaping Linux tooltip markup. */
 export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null): void {
   const fallback = getProductInfo().productName;
   const text = payload?.name
@@ -563,6 +556,7 @@ export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null)
   tray.setToolTip(escaped);
 }
 
+/** Create the platform tray icon, menu and visibility handlers. */
 export function createTray(): Tray {
   const iconPath = getTrayIconPath();
   trayLog.info('creating tray with icon:', iconPath);
@@ -603,17 +597,12 @@ export function createTray(): Tray {
 }
 
 /**
- * Keeps the tray menu and tooltip in step with playback, and clears Now Playing
- * once a pause has lasted TRAY_PAUSE_TIMEOUT_MS. The caller must register the
- * returned closure on will-quit: it destroys the pause timer, cancels a pending
- * rebuild and removes the three player listeners, all of which otherwise outlive
- * the tray they act on.
+ * Update the menu and tooltip from playback events, clearing Now Playing after TRAY_PAUSE_TIMEOUT_MS of pause.
+ * Register the returned closure on will-quit to destroy the pause timer, cancel pending rebuilds and remove player listeners.
  */
 export function initTrayStateManager(player: Player, tray: Tray): () => void {
   const TRAY_PAUSE_TIMEOUT_MS = 30_000;
-  // The track whose artwork is in flight, held only to date the download. The
-  // rendered payload is not it: that one is committed with its own artwork once
-  // the download lands, so nothing can pair a track with another one's image.
+  // Reject artwork downloads for superseded tracks before committing metadata and artwork together.
   let pendingPayload: NowPlayingPayload | null = null;
 
   // Volume is left as it stands: it belongs to the player, not to the track

@@ -1,4 +1,3 @@
-// test/i18n.test.ts
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { app } from 'electron';
 import { DISCORD_PLAY_ON_TEXT, getLocalizedString, getNavigationStrings, getTrayStrings, LOADING_TEXT } from '../src/i18n';

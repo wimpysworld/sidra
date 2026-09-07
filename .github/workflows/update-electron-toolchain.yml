@@ -32,11 +32,8 @@ jobs:
       - name: Update package metadata
         run: node scripts/update-electron-toolchain.cjs
       - name: Refresh lockfile
-        # Electron is named on its own first. A plain refresh keeps the commit a
-        # git dependency already resolved to, so a changed tag left package.json
-        # on the new release and package-lock.json on the old one, and every pull
-        # request this workflow opened carried the two disagreeing. The spec is
-        # read back from package.json, so the tag is written in one place only.
+        # Name Electron explicitly because a plain refresh retains its resolved
+        # Git commit. Read the spec from package.json to keep both files aligned.
         run: |
           npm install --package-lock-only --ignore-scripts \
             "electron@$(node -p "require('./package.json').devDependencies.electron")"
@@ -62,10 +59,8 @@ jobs:
           git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH" || true
           git push --force-with-lease --set-upstream origin "$BRANCH"
 
-          # Matched on open pull requests only, and edited by number. "gh pr view
-          # <branch>" and "gh pr edit <branch>" both match a merged or closed pull
-          # request for the same branch, so once one merged, every later run edited
-          # that dead pull request and never opened a new one.
+          # Select an open pull request by number. Branch-based lookup can select
+          # a closed or merged pull request and prevent creation of a new one.
           pr_number="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
 
           if [ -n "$pr_number" ]; then

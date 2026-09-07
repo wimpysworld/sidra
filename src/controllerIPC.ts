@@ -12,12 +12,14 @@ const ACTION_KEYS: Readonly<Record<Exclude<ControllerAction, 'back'>, string>> =
   select: 'Enter',
 };
 
+/** Navigate back only when the window has a previous history entry. */
 export function goBackIfPossible(win: BrowserWindow): void {
   if (win.webContents.navigationHistory.canGoBack()) {
     win.webContents.navigationHistory.goBack();
   }
 }
 
+/** Accept fixed controller actions from this window and send native keys only while focused. */
 export function initControllerIPC(win: BrowserWindow): void {
   ipcMain.on(CONTROLLER_ACTION_CHANNEL, (event, payload: unknown) => {
     if (event.sender !== win.webContents) {

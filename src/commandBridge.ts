@@ -13,11 +13,8 @@ export function initCommandBridge(send: (channel: ReceiveChannel, ...args: unkno
 }
 
 /**
- * Sends one command to the renderer. Callers must invoke this from the click
- * handler rather than capturing `sender` at build time: a menu built before
- * initCommandBridge() runs still works, because the sender is read when the
- * item is clicked. The warning covers the remaining case, a click that lands
- * before the window exists, which would otherwise fail in silence.
+ * Send a command through the current renderer sender, warning if none exists.
+ * Call from click handlers so menus built before initCommandBridge() still work once the window exists.
  */
 export function sendCommand(channel: ReceiveChannel, ...args: unknown[]): void {
   if (!sender) {
