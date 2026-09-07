@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
 import { randomBytes } from 'node:crypto';
-import { NowPlayingPayload, TimedMetadataPayload, IntegrationContext } from '../../player';
+import { NowPlayingPayload, TimedMetadataPayload, IntegrationContext, PlaybackState, PlaybackSnapshot } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
 import { createNotification, notificationsAvailable } from '../../notify';
@@ -29,6 +29,7 @@ function closeNotifications(notifications: Set<Electron.Notification>, pending: 
   for (const notification of notifications) {
     notification.removeAllListeners('action');
     notification.removeAllListeners('click');
+    notification.removeAllListeners('close');
     // close() detaches Electron's delegate without cancelling pending artwork.
     // Keep the delegate until show or failed can retire the pending object.
     if (!pending.has(notification)) {
@@ -46,11 +47,13 @@ async function showNotification(
   getLinuxNotifications: () => Promise<ReturnType<typeof createLinuxNotifications>>,
   activeNotifications: Set<Electron.Notification>,
   pendingNotifications: Set<Electron.Notification>,
-): Promise<void> {
+  getPlaybackSnapshot: () => PlaybackSnapshot,
+): Promise<(() => void) | undefined> {
   if (!payload?.name) {
     notifLog.debug('skipping notification: no track name');
     return;
   }
+  const title = payload.name;
 
   // Checked before the artwork download so a daemon-less session does no
   // network and disk work per track
@@ -73,10 +76,21 @@ async function showNotification(
 
   if (!isCurrent()) return;
   const strings = getTrayStrings();
-  const onAction = (action: 'previous' | 'next' | 'default'): void => {
+  const isPlaying = () => getPlaybackSnapshot().isPlaying;
+  let lastKnownPlaying = isPlaying();
+  const playbackAction = (): 'play' | 'pause' => {
+    const { state } = getPlaybackSnapshot();
+    if (state === PlaybackState.Playing) lastKnownPlaying = true;
+    else if (state === PlaybackState.Paused || state === PlaybackState.Stopped || state === PlaybackState.None
+      || state === PlaybackState.Ended || state === PlaybackState.Completed) lastKnownPlaying = false;
+    return lastKnownPlaying ? 'pause' : 'play';
+  };
+  const onAction = (action: 'previous' | 'next' | 'default' | 'play' | 'pause'): void => {
     if (!isCurrent()) return;
     if (action === 'previous') sendCommand('player:previous');
     else if (action === 'next') sendCommand('player:next');
+    else if (action === 'play') { if (!isPlaying()) sendCommand('player:play'); }
+    else if (action === 'pause') { if (isPlaying()) sendCommand('player:pause'); }
     else {
       const win = getMainWindow();
       if (win) {
@@ -88,71 +102,111 @@ async function showNotification(
 
   if (process.platform === 'linux') {
     const linux = await getLinuxNotifications();
-    await linux.show({
-      title: payload.name,
+    let lastAction = playbackAction();
+    const deliver = (refreshOnly: boolean) => linux.show({
+      title,
       body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
       icon: artworkPath ?? undefined,
       previous: strings.previous,
       next: strings.next,
+      playbackAction: lastAction,
+      playbackLabel: strings[lastAction],
       onAction,
-    }, isCurrent);
-    return;
+    }, isCurrent, refreshOnly);
+    await deliver(false);
+    return () => {
+      const action = playbackAction();
+      if (!isCurrent() || action === lastAction) return;
+      lastAction = action;
+      void deliver(true).catch(() => notifLog.warn('playback notification refresh unavailable'));
+    };
   }
 
-  const options: Electron.NotificationConstructorOptions = {
-    id: randomBytes(8).toString('hex'),
-    groupId: PLAYBACK_NOTIFICATION_GROUP,
-    title: payload.name,
-    body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
-    silent: true,
-    actions: [
-      { type: 'button', text: strings.previous },
-      { type: 'button', text: strings.next },
-    ],
+  let currentNotification: Electron.Notification | null = null;
+  let pending = false;
+  let dismissed = false;
+  let lastAction = playbackAction();
+  const refresh = (): void => {
+    const action = playbackAction();
+    if (!isCurrent() || pending || dismissed || lastAction === action) return;
+    try {
+      deliver();
+    } catch {
+      notifLog.warn('playback notification refresh unavailable');
+    }
   };
+  const deliver = (): void => {
+    lastAction = playbackAction();
+    const displayedAction = lastAction;
+    const options: Electron.NotificationConstructorOptions = {
+      id: randomBytes(8).toString('hex'),
+      groupId: PLAYBACK_NOTIFICATION_GROUP,
+      title,
+      body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
+      silent: true,
+      actions: [
+        { type: 'button', text: strings[displayedAction] },
+        { type: 'button', text: strings.previous },
+        { type: 'button', text: strings.next },
+      ],
+    };
 
-  if (artworkPath) {
-    options.icon = artworkPath;
-  }
+    if (artworkPath) {
+      options.icon = artworkPath;
+    }
 
-  const notification = createNotification(options);
+    const notification = createNotification(options);
 
-  if (!notification) {
-    return;
-  }
-
-  closeNotifications(activeNotifications, pendingNotifications);
-  // A closed Windows banner can remain in Action Center. Keep its object for
-  // actions and explicit removal until the next track or quit.
-  activeNotifications.add(notification);
-  pendingNotifications.add(notification);
-
-  notification.on('show', () => {
-    pendingNotifications.delete(notification);
-    if (!isCurrent() || !activeNotifications.has(notification)) {
-      notification.removeAllListeners();
-      notification.close();
-      activeNotifications.delete(notification);
+    if (!notification) {
       return;
     }
-    notifLog.debug('notification displayed:', payload.name);
-  });
 
-  notification.on('failed', (_event, error) => {
-    pendingNotifications.delete(notification);
-    activeNotifications.delete(notification);
-    notification.removeAllListeners();
-    notifLog.error('notification failed:', payload.name, error);
-  });
+    closeNotifications(activeNotifications, pendingNotifications);
+    currentNotification = notification;
+    pending = true;
+    dismissed = false;
+    // A closed Windows banner can remain in Action Center. Keep its object for
+    // actions and explicit removal until the next track or quit.
+    activeNotifications.add(notification);
+    pendingNotifications.add(notification);
 
-  notification.on('action', (event) => {
-    if (event.actionIndex === 0) onAction('previous');
-    else if (event.actionIndex === 1) onAction('next');
-  });
-  notification.on('click', () => onAction('default'));
+    notification.on('show', () => {
+      pendingNotifications.delete(notification);
+      if (!isCurrent() || !activeNotifications.has(notification)) {
+        notification.removeAllListeners();
+        notification.close();
+        activeNotifications.delete(notification);
+        return;
+      }
+      pending = false;
+      notifLog.debug('notification displayed:', payload.name);
+      refresh();
+    });
 
-  notification.show();
-  notifLog.debug('notification requested:', payload.name);
+    notification.on('close', () => {
+      if (currentNotification === notification) dismissed = true;
+    });
+
+    notification.on('failed', (_event, error) => {
+      pendingNotifications.delete(notification);
+      activeNotifications.delete(notification);
+      notification.removeAllListeners();
+      if (currentNotification === notification) dismissed = true;
+      notifLog.error('notification failed:', payload.name, error);
+    });
+
+    notification.on('action', (event) => {
+      if (event.actionIndex === 0) onAction(displayedAction);
+      else if (event.actionIndex === 1) onAction('previous');
+      else if (event.actionIndex === 2) onAction('next');
+    });
+    notification.on('click', () => onAction('default'));
+
+    notification.show();
+    notifLog.debug('notification requested:', payload.name);
+  };
+  deliver();
+  return refresh;
 }
 
 /**
@@ -170,6 +224,7 @@ export function init(ctx: IntegrationContext): void {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let generation = 0;
   let stopped = false;
+  let refreshPlayback: (() => void) | undefined;
   let radioStation: NowPlayingPayload | null = null;
   let timedDisplayKey: string | null = null;
   const activeNotifications = new Set<Electron.Notification>();
@@ -179,6 +234,7 @@ export function init(ctx: IntegrationContext): void {
     .then(({ createLinuxNotifications }) => createLinuxNotifications());
 
   const scheduleNotification = (payload: NowPlayingPayload | null): void => {
+    refreshPlayback = undefined;
     const currentGeneration = ++generation;
     if (!getNotificationsEnabled()) {
       return;
@@ -193,10 +249,22 @@ export function init(ctx: IntegrationContext): void {
       const isCurrent = () => !stopped && generation === currentGeneration
         && getNotificationsEnabled() && notificationsAvailable();
       if (!isCurrent()) return;
-      showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications, pendingNotifications).catch((error: unknown) =>
+      showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications, pendingNotifications,
+        () => player.playbackSnapshot()).then((refresh) => {
+        if (!isCurrent()) return;
+        refreshPlayback = refresh;
+        refreshPlayback?.();
+      }).catch((error: unknown) =>
         notifLog.warn('notification error:', errorMessage(error)),
       );
     }, NOTIFICATION_DEBOUNCE_MS);
+  };
+
+  const onPlaybackStateDidChange = (): void => {
+    const { state } = player.playbackSnapshot();
+    if (state === PlaybackState.None) refreshPlayback = undefined;
+    else if (state === PlaybackState.Playing || state === PlaybackState.Paused || state === PlaybackState.Stopped
+      || state === PlaybackState.Ended || state === PlaybackState.Completed) refreshPlayback?.();
   };
 
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
@@ -220,6 +288,7 @@ export function init(ctx: IntegrationContext): void {
 
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   player.on('timedMetadataDidChange', onTimedMetadataDidChange);
+  player.on('playbackStateDidChange', onPlaybackStateDidChange);
 
   app.on('will-quit', () => {
     if (stopped) return;
@@ -234,5 +303,6 @@ export function init(ctx: IntegrationContext): void {
     }
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
+    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
   });
 }
