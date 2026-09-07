@@ -19,6 +19,7 @@
  */
 type SendChannel =
   | 'playbackCapabilitiesDidChange'
+  | 'playbackStopped'
   | 'playbackStateDidChange'
   | 'nowPlayingItemDidChange'
   | 'timedMetadataDidChange'
@@ -39,6 +40,7 @@ type SendChannel =
 type ReceiveChannel =
   | 'player:play'
   | 'player:pause'
+  | 'player:stop'
   | 'player:playPause'
   | 'player:next'
   | 'player:previous'
@@ -59,6 +61,7 @@ type ReceiveChannel =
 interface SidraHook {
   play(): Promise<void>;
   pause(): Promise<void>;
+  stop(requestId: number): Promise<void>;
   playPause(): Promise<void>;
   next(): Promise<void>;
   previous(): Promise<void>;

@@ -345,7 +345,7 @@ const COMMAND_CASES: ReadonlyArray<{
   { method: 'Previous', channel: 'player:previous', args: [], invoke: (iface) => iface.Previous() },
   { method: 'Pause', channel: 'player:pause', args: [], invoke: (iface) => iface.Pause() },
   { method: 'PlayPause', channel: 'player:playPause', args: [], invoke: (iface) => iface.PlayPause() },
-  { method: 'Stop', channel: 'player:pause', args: [], invoke: (iface) => iface.Stop() },
+  { method: 'Stop', channel: 'player:stop', args: [1], invoke: (iface) => iface.Stop() },
   { method: 'Play', channel: 'player:play', args: [], invoke: (iface) => iface.Play() },
   { method: 'Seek', channel: 'player:seek', args: [2.5], invoke: (iface) => iface.Seek(2_500_000n) },
   {
@@ -450,6 +450,76 @@ describe('MPRIS command provenance', () => {
     expect(mprisLogText()).not.toContain('method=SetPosition');
     expect(mprisLogText()).not.toContain(rejectedTrackId);
     expect(mprisLogText()).not.toContain('98765432');
+  });
+});
+
+describe('MPRIS Stop', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  it('reports Stopped only after completion and keeps it through paused reports', () => {
+    const iface = initPlayerInterface();
+    player.emitPlaybackState(PlaybackState.Playing);
+    iface.Stop();
+    expect(iface.PlaybackStatus).toBe('Playing');
+    player.emitPlaybackState(PlaybackState.Paused);
+    expect(iface.PlaybackStatus).toBe('Paused');
+    player.handlePlaybackStopped({ requestId: 1, success: true });
+    expect(iface.PlaybackStatus).toBe('Stopped');
+    player.emitPlaybackState(PlaybackState.Paused);
+    expect(iface.PlaybackStatus).toBe('Stopped');
+    iface.Play();
+    expect(iface.PlaybackStatus).toBe('Stopped');
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitPlaybackState(PlaybackState.Paused);
+    expect(iface.PlaybackStatus).toBe('Paused');
+  });
+
+  it('coalesces pending and completed Stop requests', () => {
+    const iface = initPlayerInterface();
+    iface.Stop();
+    iface.Stop();
+    player.handlePlaybackStopped({ requestId: 1, success: true });
+    iface.Stop();
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:stop', 1);
+  });
+
+  it('accepts another Stop after a failed or unacknowledged request', () => {
+    const iface = initPlayerInterface();
+    player.emitPlaybackState(PlaybackState.Paused);
+    iface.Stop();
+    player.handlePlaybackStopped({ requestId: 1, success: false });
+    expect(iface.PlaybackStatus).toBe('Paused');
+    iface.Stop();
+    vi.advanceTimersByTime(6000);
+    player.handlePlaybackStopped({ requestId: 2, success: true });
+    expect(iface.PlaybackStatus).toBe('Paused');
+    iface.Stop();
+    expect(win.webContents.send.mock.calls).toEqual([
+      ['player:stop', 1], ['player:stop', 2], ['player:stop', 3],
+    ]);
+  });
+
+  it.each(['item', 'document', 'playing'])('ignores stale completion after %s changes', (change) => {
+    const iface = initPlayerInterface();
+    iface.Stop();
+    if (change === 'item') player.emitNowPlaying({ trackId: 'new' });
+    else if (change === 'document') player.resetForDocumentReplacement();
+    else player.emitPlaybackState(PlaybackState.Playing);
+    player.emitPlaybackState(PlaybackState.Paused);
+    iface.Stop();
+    player.handlePlaybackStopped({ requestId: 1, success: true });
+    expect(iface.PlaybackStatus).toBe('Paused');
+    player.handlePlaybackStopped({ requestId: 2, success: true });
+    expect(iface.PlaybackStatus).toBe('Stopped');
+  });
+
+  it('clears the completion timer and listener on quit', () => {
+    const iface = initPlayerInterface();
+    iface.Stop();
+    quit();
+    vi.advanceTimersByTime(6000);
+    expect(player.listenerCount('playbackStopped')).toBe(0);
+    expect(log.scope('mpris').warn).not.toHaveBeenCalledWith('Stop completion timed out');
   });
 });
 

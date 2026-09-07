@@ -87,6 +87,7 @@ describe('PlayerEvents', () => {
   it('keys match Player handler event names', () => {
     type EventKeys = keyof PlayerEvents;
     type ExpectedKeys =
+      | 'playbackStopped'
       | 'playbackCapabilitiesDidChange'
       | 'playbackStateDidChange'
       | 'nowPlayingItemDidChange'
@@ -132,6 +133,28 @@ describe('Player playback capabilities', () => {
     player.handlePlaybackCapabilitiesDidChange(payload);
     expect(listener).not.toHaveBeenCalled();
     expect(player.capabilitiesSnapshot()).toEqual(capabilities);
+  });
+});
+
+describe('Player Stop completion', () => {
+  it.each([true, false])('forwards validated completion with success=%s', (success) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackStopped', listener);
+    player.handlePlaybackStopped({ requestId: 1, success });
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ requestId: 1, success });
+  });
+
+  it.each([
+    null, {}, [], { requestId: 1, success: true, extra: true },
+    { requestId: 1, success: 1 },
+    ...[0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1'].map(requestId => ({ requestId, success: true })),
+  ])('rejects invalid completion %#', (payload) => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackStopped', listener);
+    player.handlePlaybackStopped(payload);
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 
@@ -660,6 +683,7 @@ describe('SidraHook contract', () => {
     type ExpectedKeys =
       | 'play'
       | 'pause'
+      | 'stop'
       | 'playPause'
       | 'next'
       | 'previous'
@@ -683,6 +707,7 @@ describe('SidraHook contract', () => {
       play: true,
       pause: true,
       playPause: true,
+      stop: true,
       next: true,
       previous: true,
       seek: true,
@@ -729,6 +754,7 @@ describe('SidraHook contract', () => {
 describe('Channel contract', () => {
   it('SendChannel matches expected renderer-to-main channels', () => {
     type ExpectedSend =
+      | 'playbackStopped'
       | 'playbackCapabilitiesDidChange'
       | 'playbackStateDidChange'
       | 'nowPlayingItemDidChange'
@@ -749,6 +775,7 @@ describe('Channel contract', () => {
     type ExpectedReceive =
       | 'player:play'
       | 'player:pause'
+      | 'player:stop'
       | 'player:playPause'
       | 'player:next'
       | 'player:previous'

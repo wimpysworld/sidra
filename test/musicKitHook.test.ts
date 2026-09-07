@@ -147,6 +147,8 @@ function createHarness({
   volumeThrows?: boolean;
 } = {}) {
   const intervals: Array<{ callback: () => void; delay: number }> = [];
+  const timeouts = new Map<number, () => void>();
+  let nextTimeoutId = 0;
   const intervalCallbacks: Array<() => void> = [];
   const messageListeners: Array<(event: unknown) => void> = [];
   const pointerOverListeners: Array<(event: unknown) => void> = [];
@@ -191,6 +193,12 @@ function createHarness({
     window.AMWrapper = { ipcRenderer: { send: vi.fn() } };
   }
   const context = vm.createContext({
+    setTimeout: (callback: () => void) => {
+      const id = ++nextTimeoutId;
+      timeouts.set(id, callback);
+      return id;
+    },
+    clearTimeout: (id: number) => { timeouts.delete(id); },
     clearInterval: vi.fn(),
     console,
     navigator,
@@ -278,6 +286,12 @@ function createHarness({
     runVolumePoll: () => {
       for (const { callback } of intervals.filter(({ delay }) => delay === 250)) callback();
     },
+    runTimeouts: () => {
+      for (const [id, callback] of timeouts) {
+        timeouts.delete(id);
+        callback();
+      }
+    },
     // Runs the script again against the same window, then drains only the
     // timers that second run added. The message listener is installed inside
     // the waitForMK callback rather than the script body, so a re-run that
@@ -291,6 +305,138 @@ function createHarness({
     window,
   };
 }
+
+describe('MusicKit Stop', () => {
+  function pendingSeekHarness() {
+    let resolveSeek!: () => void;
+    let rejectSeek!: (error: Error) => void;
+    const seek = new Promise<void>((resolve, reject) => {
+      resolveSeek = resolve;
+      rejectSeek = reject;
+    });
+    const engineStop = vi.fn();
+    const harness = createHarness({ musicKitOverrides: {
+      nowPlayingItem: { id: 'song' }, currentPlaybackDuration: 120,
+      seekToTime: vi.fn(() => seek), stop: engineStop,
+    } });
+    return { ...harness, resolveSeek, rejectSeek, engineStop };
+  }
+
+  it.each(['play', 'playPause'])('waits for rewind before %s and preserves the queue', async (command) => {
+    const { window, bridgeSend, musicKit, resolveSeek, engineStop } = pendingSeekHarness();
+    const queue = musicKit.queue;
+    const stopping = window.__sidra!.stop(1);
+    const playing = window.__sidra![command]();
+    await Promise.resolve();
+    expect(musicKit.pause).toHaveBeenCalledOnce();
+    expect(musicKit.seekToTime).toHaveBeenCalledExactlyOnceWith(0);
+    expect(musicKit.pause.mock.invocationCallOrder[0]).toBeLessThan(musicKit.seekToTime.mock.invocationCallOrder[0]);
+    expect(musicKit.play).not.toHaveBeenCalled();
+    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackStopped')).toBe(false);
+
+    resolveSeek();
+    await Promise.all([stopping, playing]);
+    expect(musicKit.play).toHaveBeenCalledOnce();
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true });
+    expect(engineStop).not.toHaveBeenCalled();
+    expect(musicKit.queue).toBe(queue);
+  });
+
+  it('coalesces repeated Stop calls and does not rewind an already stopped item', async () => {
+    const { window, musicKit, resolveSeek } = pendingSeekHarness();
+    const stopping = window.__sidra!.stop(1);
+    expect(window.__sidra!.stop(1)).toBe(stopping);
+    await Promise.resolve();
+    resolveSeek();
+    await stopping;
+    await window.__sidra!.stop(2);
+    expect(musicKit.pause).toHaveBeenCalledOnce();
+    expect(musicKit.seekToTime).toHaveBeenCalledOnce();
+  });
+
+  it.each(['item', 'navigation', 'playing'])('clears completed Stop intent after %s changes', async (change) => {
+    const { window, musicKit, musicKitListeners, globalRegistrations, resolveSeek } = pendingSeekHarness();
+    const stopping = window.__sidra!.stop(1);
+    resolveSeek();
+    await stopping;
+    if (change === 'item') musicKitListeners.get('nowPlayingItemDidChange')?.({ item: { id: 'other' } });
+    else if (change === 'playing') musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
+    else {
+      globalRegistrations.find(({ type }) => type === 'pagehide')?.listener({});
+      globalRegistrations.find(({ type }) => type === 'pageshow')?.listener({});
+    }
+    await window.__sidra!.stop(2);
+    expect(musicKit.pause).toHaveBeenCalledTimes(2);
+    expect(musicKit.seekToTime).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports seek failure and releases a waiting Play', async () => {
+    const { window, bridgeSend, musicKit, rejectSeek } = pendingSeekHarness();
+    const stopping = window.__sidra!.stop(1);
+    const playing = window.__sidra!.play();
+    await Promise.resolve();
+    rejectSeek(new Error('seek failed'));
+    await Promise.all([stopping, playing]);
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false });
+    expect(musicKit.play).toHaveBeenCalledOnce();
+  });
+
+  it('releases a waiting Play when the seek never settles and ignores late completion', async () => {
+    const { window, bridgeSend, musicKit, runTimeouts, resolveSeek } = pendingSeekHarness();
+    const stopping = window.__sidra!.stop(1);
+    const playing = window.__sidra!.play();
+    await Promise.resolve();
+    runTimeouts();
+    await Promise.all([stopping, playing]);
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false });
+    expect(musicKit.play).toHaveBeenCalledOnce();
+    bridgeSend.mockClear();
+    resolveSeek();
+    await Promise.resolve();
+    expect(bridgeSend).not.toHaveBeenCalled();
+  });
+
+  it.each(['item', 'navigation', 'instance', 'playing'])('discards a pending stop and Play after %s changes', async (change) => {
+    const { window, bridgeSend, musicKit, musicKitListeners, globalRegistrations, replaceInstance, runMonitorCycles, resolveSeek } = pendingSeekHarness();
+    const stopping = window.__sidra!.stop(1);
+    const playing = window.__sidra!.play();
+    await Promise.resolve();
+    if (change === 'item') {
+      musicKitListeners.get('nowPlayingItemDidChange')?.({ item: { id: 'other' } });
+    } else if (change === 'navigation') {
+      globalRegistrations.find(({ type }) => type === 'pagehide')?.listener({});
+      globalRegistrations.find(({ type }) => type === 'pageshow')?.listener({});
+    } else if (change === 'playing') {
+      musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
+    } else {
+      replaceInstance();
+      runMonitorCycles(1);
+    }
+    resolveSeek();
+    await Promise.all([stopping, playing]);
+    expect(musicKit.play).not.toHaveBeenCalled();
+    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackStopped')).toBe(false);
+  });
+
+  it.each([undefined, Infinity, 0])('pauses without an invented seek when duration is %s', async (duration) => {
+    const { window, bridgeSend, musicKit } = createHarness({ musicKitOverrides: {
+      nowPlayingItem: { id: 'radio' }, currentPlaybackDuration: duration,
+    } });
+    await window.__sidra!.stop(1);
+    expect(musicKit.pause).toHaveBeenCalledOnce();
+    expect(musicKit.seekToTime).not.toHaveBeenCalled();
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true });
+  });
+
+  it('keeps the position for ordinary Pause followed by Play', async () => {
+    const { window, musicKit } = createHarness();
+    window.__sidra!.pause();
+    await window.__sidra!.play();
+    expect(musicKit.pause).toHaveBeenCalledOnce();
+    expect(musicKit.play).toHaveBeenCalledOnce();
+    expect(musicKit.seekToTime).not.toHaveBeenCalled();
+  });
+});
 
 describe('MusicKit initial state and capabilities', () => {
   const item = { id: 'episode', attributes: { name: 'Episode', playParams: { kind: 'radioStation' } } };

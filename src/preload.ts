@@ -153,6 +153,7 @@ function channelSet<C extends string>(
 const SEND_CHANNELS = channelSet<SendChannel>({
   playbackStateDidChange: true,
   playbackCapabilitiesDidChange: true,
+  playbackStopped: true,
   nowPlayingItemDidChange: true,
   timedMetadataDidChange: true,
   playbackTimeDidChange: true,
@@ -171,6 +172,7 @@ const SEND_CHANNELS = channelSet<SendChannel>({
 const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
   'player:play': true,
   'player:pause': true,
+  'player:stop': true,
   'player:playPause': true,
   'player:next': true,
   'player:previous': true,
