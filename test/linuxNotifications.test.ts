@@ -178,6 +178,7 @@ describe('Linux track notifications', () => {
       return original(message);
     });
     await adapter.show(track(), current);
+    await adapter.show(track(), current);
     expect(notifyCalls()).toHaveLength(1);
     signal('ActionInvoked', [1, 'next']);
     expect(onAction).not.toHaveBeenCalled();
@@ -220,6 +221,69 @@ describe('Linux track notifications', () => {
     await adapter.show(track(), current);
     signal('ActionInvoked', [1, 'next']);
     expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('releases a hung Notify on daemon replacement, after timeout: %s', async (expire) => {
+    let resolveNotify!: (reply: { body: unknown[] }) => void;
+    const oldAction = vi.fn();
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation((message: Message) => {
+      if (message.member === 'Notify' && message.destination === ':1.42') {
+        return new Promise(resolve => { resolveNotify = resolve; });
+      }
+      return original(message);
+    });
+    vi.useFakeTimers();
+    try {
+      const first = adapter.show({ ...track(), onAction: oldAction }, current);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(notifyCalls()).toHaveLength(1);
+      if (expire) {
+        await vi.advanceTimersByTimeAsync(5000);
+        await first;
+        await adapter.show(track(), current);
+        expect(notifyCalls()).toHaveLength(1);
+      }
+      replaceOwner(':1.43');
+      nextId = 7;
+      await first;
+      await adapter.show(track(), current);
+      expect(notifyCalls()).toHaveLength(2);
+      expect(notifyCalls()[1]).toMatchObject({ destination: ':1.43' });
+      expect(notifyCalls()[1].body[1]).toBe(0);
+
+      resolveNotify({ body: [7] });
+      await vi.advanceTimersByTimeAsync(0);
+      signal('ActionInvoked', [7, 'next'], ':1.42');
+      signal('ActionInvoked', [7, 'previous']);
+      expect(oldAction).not.toHaveBeenCalled();
+      expect(onAction).toHaveBeenCalledExactlyOnceWith('previous');
+      await adapter.show(track(), current);
+      expect(notifyCalls()[2].body[1]).toBe(7);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not unblock uncertain delivery when its timed-out reply arrives late', async () => {
+    let resolveNotify!: (reply: { body: unknown[] }) => void;
+    const original = bus.call.getMockImplementation()!;
+    bus.call.mockImplementation((message: Message) => message.member === 'Notify'
+      ? new Promise(resolve => { resolveNotify = resolve; }) : original(message));
+    vi.useFakeTimers();
+    try {
+      const sending = adapter.show(track(), current);
+      await vi.advanceTimersByTimeAsync(5000);
+      await sending;
+      resolveNotify({ body: [1] });
+      await vi.advanceTimersByTimeAsync(0);
+      await adapter.show(track(), current);
+      signal('ActionInvoked', [1, 'next']);
+      expect(notifyCalls()).toHaveLength(1);
+      expect(onAction).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps actions on a notification already sent when the track changes', async () => {

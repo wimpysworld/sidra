@@ -82,8 +82,9 @@ vi.mock('../../src/notify', async () => {
         },
         show: vi.fn(),
         close: vi.fn(),
-        removeAllListeners: vi.fn(() => {
-          for (const event of Object.keys(handlers)) delete handlers[event];
+        removeAllListeners: vi.fn((event?: string) => {
+          if (event) delete handlers[event];
+          else for (const name of Object.keys(handlers)) delete handlers[name];
         }),
       };
       notifyFake.built.push(notification);

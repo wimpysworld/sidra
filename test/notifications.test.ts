@@ -88,7 +88,7 @@ describe('notifications integration', () => {
 
     expect(vi.mocked(createNotification)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createNotification)).toHaveBeenCalledWith({
-      id: 'playback',
+      id: expect.any(String),
       groupId: 'playback',
       title: 'Blue Monday',
       body: 'New Order - Power, Corruption & Lies',
@@ -193,6 +193,7 @@ describe('notifications integration', () => {
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     const notification = shown();
+    notification?.handlers.show();
     quit();
     expect(notification?.close).toHaveBeenCalledOnce();
     expect(notification?.handlers).toEqual({});
@@ -203,11 +204,15 @@ describe('notifications integration', () => {
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     const previous = shown()!;
+    previous.handlers.show();
     player.emitNowPlaying({ ...TRACK, name: 'Ceremony' });
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(previous.close).toHaveBeenCalledOnce();
     expect(previous.handlers).toEqual({});
-    expect(notifyFake.built[1].options).toMatchObject({ id: 'playback', groupId: 'playback' });
+    expect(notifyFake.built[1].options).toMatchObject({ id: expect.any(String), groupId: 'playback' });
+    expect(previous.options.id).toMatch(/^[0-9a-f]{16}$/);
+    expect(notifyFake.built[1].options.id).toMatch(/^[0-9a-f]{16}$/);
+    expect(notifyFake.built[1].options.id).not.toBe(previous.options.id);
     expect(notifyFake.built[1].show).toHaveBeenCalledOnce();
   });
 
@@ -217,11 +222,62 @@ describe('notifications integration', () => {
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     const notification = shown()!;
+    notification.handlers.show();
     notification.handlers.close?.();
     notification.handlers.action({ actionIndex: 0 });
     expect(send).toHaveBeenCalledExactlyOnceWith('player:previous');
     quit();
     expect(notification.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(['win32', 'darwin'])('closes only a retired notification when it displays late on %s', async (platform) => {
+    setPlatform(platform);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const previous = shown()!;
+    player.emitNowPlaying({ ...TRACK, name: 'Newer Track' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const latest = notifyFake.built[1];
+    latest.handlers.show();
+    expect(previous.handlers.action).toBeUndefined();
+    expect(previous.handlers.click).toBeUndefined();
+    expect(previous.options.id).not.toBe(latest.options.id);
+    expect(previous.close).not.toHaveBeenCalled();
+    previous.handlers.show();
+    expect(previous.close).toHaveBeenCalledOnce();
+    expect(previous.handlers).toEqual({});
+    expect(latest.close).not.toHaveBeenCalled();
+    expect(latest.handlers.action).toBeTypeOf('function');
+  });
+
+  it('keeps retired pending objects for quit cleanup and closes a display after quit', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const previous = shown()!;
+    player.emitNowPlaying({ ...TRACK, name: 'Newer Track' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const latest = notifyFake.built[1];
+    quit();
+    expect(previous.close).not.toHaveBeenCalled();
+    expect(latest.close).not.toHaveBeenCalled();
+    expect(previous.handlers.action).toBeUndefined();
+    previous.handlers.show();
+    expect(previous.close).toHaveBeenCalledOnce();
+    expect(previous.handlers).toEqual({});
+    latest.handlers.show();
+    expect(latest.close).toHaveBeenCalledOnce();
+  });
+
+  it('releases a retired notification after display failure', async () => {
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const previous = shown()!;
+    player.emitNowPlaying({ ...TRACK, name: 'Newer Track' });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    previous.handlers.failed({}, 'Unavailable');
+    expect(previous.handlers).toEqual({});
+    quit();
+    expect(previous.close).not.toHaveBeenCalled();
   });
 
   it('removes only the playback group on macOS startup and quit, even while disabled', () => {
@@ -326,6 +382,7 @@ describe('notifications integration', () => {
     player.emitTimedMetadata({ ...RADIO_SONG, albumName: 'Song Album' });
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(shown()?.options.body).toBe('Radio Artist - Song Album');
+    shown()?.handlers.show();
     player.emitTimedMetadata({ ...RADIO_SONG, name: 'Next Song' });
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
     expect(notifyFake.built[1].options).toMatchObject({ title: 'Next Song', body: 'Radio Artist' });
