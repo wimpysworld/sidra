@@ -18,6 +18,7 @@
  * there fails the type check rather than being silently discarded at runtime.
  */
 type SendChannel =
+  | 'playbackCapabilitiesDidChange'
   | 'playbackStateDidChange'
   | 'nowPlayingItemDidChange'
   | 'timedMetadataDidChange'

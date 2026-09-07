@@ -67,6 +67,15 @@
       }
     }
 
+    function effectiveDuration(mk) {
+      const itemDurationMs = mk.nowPlayingItem?.attributes?.durationInMillis;
+      const duration = Number.isFinite(mk.currentPlaybackDuration) && mk.currentPlaybackDuration > 0
+        ? mk.currentPlaybackDuration
+        : Number.isFinite(itemDurationMs) ? itemDurationMs / 1000 : null;
+      return Number.isFinite(duration) && duration > 0 && duration <= Number.MAX_SAFE_INTEGER / 1_000_000
+        ? duration : null;
+    }
+
     /**
      * Report explicit media session position state for OS media controls.
      *
@@ -86,17 +95,10 @@
       // An unresolvable duration or position clears the state rather than
       // reporting duration: Infinity, because the hook cannot tell genuinely
       // unbounded media (a radio station) from a duration not yet resolved.
-      let duration;
-      if (Number.isFinite(mk.currentPlaybackDuration) &&
-          mk.currentPlaybackDuration > 0) {
-        duration = mk.currentPlaybackDuration;
-      } else {
-        const durationInMillis = mk.nowPlayingItem?.attributes?.durationInMillis;
-        if (!Number.isFinite(durationInMillis) || durationInMillis <= 0) {
-          clearPositionState();
-          return;
-        }
-        duration = durationInMillis / 1000;
+      const duration = effectiveDuration(mk);
+      if (duration === null) {
+        clearPositionState();
+        return;
       }
 
       const position = mk.currentPlaybackTime;
@@ -124,26 +126,44 @@
      * Called once per attach, so a replaced instance receives its own set.
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
-     * @returns {void}
+     * @returns {() => void} Refreshes changed playback capabilities
      */
     function attachPlaybackListeners(mk) {
+      let lastCapabilities;
+      function reportCapabilities(item = mk.nowPlayingItem) {
+        if (window.__sidraHookedMk !== mk) return;
+        const duration = item ? effectiveDuration(mk) : null;
+        const capabilities = {
+          canPlay: !!item && typeof mk.play === 'function',
+          canPause: !!item && typeof mk.pause === 'function',
+          canSeek: !item || typeof mk.seekToTime !== 'function' ? false : duration === null ? null : true,
+          durationUs: duration === null ? null : Math.trunc(duration * 1_000_000),
+        };
+        const serialised = JSON.stringify(capabilities);
+        if (serialised === lastCapabilities) return;
+        lastCapabilities = serialised;
+        sendToMain('playbackCapabilitiesDidChange', capabilities);
+      }
       /**
        * Forward playback state changes to the main process.
        * @param {{ state: number }} event - MusicKit playbackStateDidChange event
        */
-      mk.addEventListener('playbackStateDidChange', ({ state }) => {
+      function reportPlaybackState({ state }) {
         sendToMain('playbackStateDidChange', {
           status: state === MusicKit.PlaybackStates.playing,
           state,
         });
-      });
+        reportCapabilities();
+      }
+      mk.addEventListener('playbackStateDidChange', reportPlaybackState);
 
       /**
        * Forward now-playing metadata to the main process.
        * Sends null when no item is playing (e.g. queue cleared).
        * @param {{ item: object | null }} event - MusicKit nowPlayingItemDidChange event
        */
-      mk.addEventListener('nowPlayingItemDidChange', ({ item }) => {
+      function reportNowPlaying({ item }) {
+        reportCapabilities(item);
         if (!item) {
           sendToMain('nowPlayingItemDidChange', null);
           clearPositionState();
@@ -175,7 +195,8 @@
           // built from config can name a host the track was never on.
           sourceHost: window.location.hostname,
         });
-      });
+      }
+      mk.addEventListener('nowPlayingItemDidChange', reportNowPlaying);
 
       /**
        * Forward complete songs embedded in a radio station or archived show.
@@ -239,6 +260,12 @@
       mk.addEventListener('shuffleModeDidChange', () => {
         sendToMain('shuffleModeDidChange', mk.shuffleMode);
       });
+      reportNowPlaying({ item: mk.nowPlayingItem ?? null });
+      reportPlaybackState({ state: mk.playbackState ?? (mk.isPlaying ? MusicKit.PlaybackStates.playing : 0) });
+      sendToMain('playbackTimeDidChange', mk.currentPlaybackTime * 1_000_000);
+      sendToMain('repeatModeDidChange', mk.repeatMode);
+      sendToMain('shuffleModeDidChange', mk.shuffleMode);
+      return reportCapabilities;
     }
 
     /**
@@ -260,9 +287,10 @@
      * poll. Called once per attach, after stopVolumePoll().
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
+     * @param {() => void} reportCapabilities - Refreshes changed playback capabilities
      * @returns {void}
      */
-    function attachVolume(mk) {
+    function attachVolume(mk, reportCapabilities) {
       /**
        * Last value sent over the volumeDidChange IPC channel, so the poll
        * below does not re-send a value the listener already reported.
@@ -285,6 +313,7 @@
       // volume control writes has never been confirmed, so this stays as the
       // second of the only two paths reporting volume.
       volumePollTimer = setInterval(() => {
+        reportCapabilities();
         const v = mk.volume;
         if (v !== lastVolume) {
           lastVolume = v;
@@ -313,8 +342,8 @@
       // Stopping the previous poll comes first, so a throw in either attach
       // below cannot leave a second timer polling the replaced instance.
       stopVolumePoll();
-      attachPlaybackListeners(mk);
-      attachVolume(mk);
+      const reportCapabilities = attachPlaybackListeners(mk);
+      attachVolume(mk, reportCapabilities);
 
       /**
        * Control methods exposed to the preload script via window.postMessage.

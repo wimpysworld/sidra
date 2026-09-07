@@ -79,7 +79,7 @@ function hasValidFields(value: Record<string, unknown>, validators: Record<strin
     Object.entries(validators).every(([field, validate]) => value[field] === undefined || validate(value[field]));
 }
 
-function isNonNegativeSafeInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER): boolean {
+function isNonNegativeSafeInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
 }
 
@@ -210,6 +210,7 @@ export function isTerminalPlaybackState(state: number): boolean {
 export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
 export interface PlayerEvents {
+  playbackCapabilitiesDidChange: [payload: PlaybackCapabilities];
   playbackStateDidChange: [payload: PlaybackStatePayload];
   nowPlayingItemDidChange: [payload: NowPlayingPayload | null];
   timedMetadataDidChange: [payload: TimedMetadataPayload];
@@ -274,6 +275,17 @@ export interface PlaybackSnapshot {
   state: number;
 }
 
+export interface PlaybackCapabilities {
+  canPlay: boolean;
+  canPause: boolean;
+  canSeek: boolean | null;
+  durationUs: number | null;
+}
+
+const EMPTY_CAPABILITIES: PlaybackCapabilities = {
+  canPlay: false, canPause: false, canSeek: false, durationUs: null,
+};
+
 /**
  * Main-process hub for the renderer's MusicKit events. Each handle* method is
  * wired to one IPC channel in initPlayerIPC() (src/main.ts), validates the
@@ -281,6 +293,7 @@ export interface PlaybackSnapshot {
  * Invalid metadata fields are logged and dropped rather than forwarded.
  */
 export class Player extends TypedEmitter<PlayerEvents> {
+  private _capabilities: PlaybackCapabilities = { ...EMPTY_CAPABILITIES };
   private lastTimeLogAt = 0;
   private _isPlaying = false;
   private _positionUs = 0;
@@ -371,12 +384,34 @@ export class Player extends TypedEmitter<PlayerEvents> {
     return { isPlaying: this._isPlaying, positionUs: this._positionUs, state: this._state };
   }
 
+  capabilitiesSnapshot(): PlaybackCapabilities {
+    return { ...this._capabilities };
+  }
+
+  handlePlaybackCapabilitiesDidChange(payload: unknown): void {
+    if (!isRecord(payload) || Object.keys(payload).length !== 4 ||
+      typeof payload.canPlay !== 'boolean' || typeof payload.canPause !== 'boolean' ||
+      (payload.canSeek !== null && typeof payload.canSeek !== 'boolean') ||
+      (payload.durationUs !== null && !isNonNegativeSafeInteger(payload.durationUs))) {
+      playerLog.warn('playbackCapabilitiesDidChange: invalid payload');
+      return;
+    }
+    this._capabilities = {
+      canPlay: payload.canPlay,
+      canPause: payload.canPause,
+      canSeek: payload.canSeek,
+      durationUs: payload.durationUs,
+    };
+    this.emit('playbackCapabilitiesDidChange', this.capabilitiesSnapshot());
+  }
+
   resetForDocumentReplacement(): void {
     this._state = PlaybackState.None;
     this._isPlaying = false;
     this._positionUs = 0;
     this._isRadioStation = false;
     this.resetTimedMetadata();
+    this.handlePlaybackCapabilitiesDidChange(EMPTY_CAPABILITIES);
     this.emit('playbackStateDidChange', { status: false, state: PlaybackState.None });
     this.emit('nowPlayingItemDidChange', null);
   }

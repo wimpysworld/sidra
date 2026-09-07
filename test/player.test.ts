@@ -87,6 +87,7 @@ describe('PlayerEvents', () => {
   it('keys match Player handler event names', () => {
     type EventKeys = keyof PlayerEvents;
     type ExpectedKeys =
+      | 'playbackCapabilitiesDidChange'
       | 'playbackStateDidChange'
       | 'nowPlayingItemDidChange'
       | 'timedMetadataDidChange'
@@ -96,6 +97,41 @@ describe('PlayerEvents', () => {
       | 'volumeDidChange';
 
     expectTypeOf<EventKeys>().toEqualTypeOf<ExpectedKeys>();
+  });
+});
+
+describe('Player playback capabilities', () => {
+  const capabilities = { canPlay: true, canPause: true, canSeek: null, durationUs: 123_456 };
+
+  it('stores a validated copy, emits it and clears it on navigation', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('playbackCapabilitiesDidChange', listener);
+    player.handlePlaybackCapabilitiesDidChange(capabilities);
+    expect(listener).toHaveBeenCalledWith(capabilities);
+    const snapshot = player.capabilitiesSnapshot();
+    snapshot.canPlay = false;
+    expect(player.capabilitiesSnapshot()).toEqual(capabilities);
+
+    player.resetForDocumentReplacement();
+    expect(listener).toHaveBeenLastCalledWith({ canPlay: false, canPause: false, canSeek: false, durationUs: null });
+    expect(player.capabilitiesSnapshot()).toEqual({ canPlay: false, canPause: false, canSeek: false, durationUs: null });
+  });
+
+  it.each([
+    null, [], {}, { ...capabilities, extra: true },
+    { ...capabilities, canPlay: 1 }, { ...capabilities, canPause: 'true' },
+    { ...capabilities, canSeek: undefined }, { ...capabilities, canSeek: 'unknown' },
+    ...[-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, '1000', undefined]
+      .map(durationUs => ({ ...capabilities, durationUs })),
+  ])('rejects invalid capability input %#', (payload) => {
+    const player = new Player();
+    player.handlePlaybackCapabilitiesDidChange(capabilities);
+    const listener = vi.fn();
+    player.on('playbackCapabilitiesDidChange', listener);
+    player.handlePlaybackCapabilitiesDidChange(payload);
+    expect(listener).not.toHaveBeenCalled();
+    expect(player.capabilitiesSnapshot()).toEqual(capabilities);
   });
 });
 
@@ -693,6 +729,7 @@ describe('SidraHook contract', () => {
 describe('Channel contract', () => {
   it('SendChannel matches expected renderer-to-main channels', () => {
     type ExpectedSend =
+      | 'playbackCapabilitiesDidChange'
       | 'playbackStateDidChange'
       | 'nowPlayingItemDidChange'
       | 'timedMetadataDidChange'

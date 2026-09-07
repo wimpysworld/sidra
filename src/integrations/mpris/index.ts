@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext, getShareUrl } from '../../player';
+import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, IntegrationContext, getShareUrl } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 import { getServiceByHost } from '../../musicService';
@@ -266,6 +266,8 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
  */
 class MediaPlayer2Player extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
+  private _capabilities: PlaybackCapabilities;
+  private _itemLengthUs: number | undefined;
 
   // Cached D-Bus property values
   private _playbackStatus = 'Stopped';
@@ -297,9 +299,10 @@ class MediaPlayer2Player extends Interface {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingChanges: Record<string, unknown> = {};
 
-  constructor(getMainWindow: () => BrowserWindow | null) {
+  constructor(getMainWindow: () => BrowserWindow | null, capabilities: PlaybackCapabilities) {
     super('org.mpris.MediaPlayer2.Player');
     this._getMainWindow = getMainWindow;
+    this._capabilities = capabilities;
   }
 
   private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): void {
@@ -340,6 +343,26 @@ class MediaPlayer2Player extends Interface {
 
   // --- Update methods (called by player event handlers) ---
 
+  updateCapabilities(capabilities: PlaybackCapabilities): void {
+    const previous = this._capabilities;
+    this._capabilities = capabilities;
+    const changed: Record<string, unknown> = {};
+    if (previous.canPlay !== capabilities.canPlay) changed.CanPlay = this.CanPlay;
+    if (previous.canPause !== capabilities.canPause) changed.CanPause = this.CanPause;
+    if ((previous.canSeek !== false) !== this.CanSeek) changed.CanSeek = this.CanSeek;
+    if (previous.durationUs !== capabilities.durationUs && this._currentTrackId !== NO_TRACK) {
+      this._updateMetadataLength();
+      changed.Metadata = this._metadata;
+    }
+    if (Object.keys(changed).length > 0) this._schedulePropertyEmission(changed);
+  }
+
+  private _updateMetadataLength(): void {
+    const lengthUs = this._trackLengthUs;
+    if (lengthUs === undefined) delete this._metadata['mpris:length'];
+    else this._metadata['mpris:length'] = new Variant('x', lengthUs);
+  }
+
   updatePlaybackStatus(payload: PlaybackStatePayload): void {
     if (!payload) return;
 
@@ -377,6 +400,7 @@ class MediaPlayer2Player extends Interface {
         'mpris:trackid': new Variant('o', NO_TRACK),
       };
       this._metadata = emptyMetadata;
+      this._itemLengthUs = undefined;
       this._currentTrackId = NO_TRACK;
       this._schedulePropertyEmission({ Metadata: emptyMetadata });
       this._lastPositionUs = 0;
@@ -390,6 +414,8 @@ class MediaPlayer2Player extends Interface {
     const trackId = buildTrackId(payload.trackId ?? 'unknown');
 
     this._metadata = metadata;
+    this._itemLengthUs = metadata['mpris:length']?.value;
+    this._updateMetadataLength();
     this._currentTrackId = trackId;
     this._schedulePropertyEmission({ Metadata: metadata });
 
@@ -531,15 +557,15 @@ class MediaPlayer2Player extends Interface {
   }
 
   get CanPlay(): boolean {
-    return true;
+    return this._capabilities.canPlay;
   }
 
   get CanPause(): boolean {
-    return true;
+    return this._capabilities.canPause;
   }
 
   get CanSeek(): boolean {
-    return true;
+    return this._capabilities.canSeek !== false;
   }
 
   get CanControl(): boolean {
@@ -665,7 +691,7 @@ class MediaPlayer2Player extends Interface {
   }
 
   private get _trackLengthUs(): number | undefined {
-    const length: unknown = this._metadata['mpris:length']?.value;
+    const length: unknown = this._capabilities.durationUs ?? this._itemLengthUs;
     return typeof length === 'number' && Number.isSafeInteger(length) && length >= 0 ? length : undefined;
   }
 
@@ -851,7 +877,7 @@ export function init(ctx: IntegrationContext): void {
   mprisLog.info('MPRIS module initialised');
 
   const rootIface = new MediaPlayer2(getMainWindow);
-  const playerIface = new MediaPlayer2Player(getMainWindow);
+  const playerIface = new MediaPlayer2Player(getMainWindow, player.capabilitiesSnapshot());
   let fullscreenWindow: BrowserWindow | null = null;
   const onFullscreenChanged = (): void => {
     if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
@@ -867,6 +893,9 @@ export function init(ctx: IntegrationContext): void {
   // function reference; an inline handler could never be detached.
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     playerIface.updatePlaybackStatus(payload);
+  };
+  const onPlaybackCapabilitiesDidChange = (payload: PlaybackCapabilities): void => {
+    playerIface.updateCapabilities(payload);
   };
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     playerIface.updateNowPlaying(payload);
@@ -888,6 +917,7 @@ export function init(ctx: IntegrationContext): void {
     fullscreenWindow?.removeListener('enter-full-screen', onFullscreenChanged);
     fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('repeatModeDidChange', onRepeatModeDidChange);
     player.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
@@ -936,6 +966,7 @@ export function init(ctx: IntegrationContext): void {
   // Subscribed after the bus, so the return on a missing bus leaves no
   // listener attached to update an interface no client can reach.
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   player.on('repeatModeDidChange', onRepeatModeDidChange);
   player.on('shuffleModeDidChange', onShuffleModeDidChange);
