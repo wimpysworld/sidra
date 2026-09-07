@@ -31,6 +31,7 @@ const MPRIS_PATH = '/org/mpris/MediaPlayer2';
 
 type MprisMethod =
   | 'LoopStatus'
+  | 'Rate'
   | 'Shuffle'
   | 'Volume'
   | 'Next'
@@ -505,10 +506,6 @@ class MediaPlayer2Player extends Interface {
     return this._playbackStatus;
   }
 
-  get Rate(): number {
-    return 1.0;
-  }
-
   get Metadata(): Record<string, InstanceType<typeof Variant>> {
     return this._metadata;
   }
@@ -550,6 +547,14 @@ class MediaPlayer2Player extends Interface {
   }
 
   // --- Read/write properties ---
+
+  get Rate(): number {
+    return 1.0;
+  }
+
+  set Rate(value: number) {
+    if (value === 0) this._send('Rate', 'player:pause');
+  }
 
   get LoopStatus(): string {
     return this._loopStatus;
@@ -636,20 +641,32 @@ class MediaPlayer2Player extends Interface {
   }
 
   Seek(offset: bigint): void {
-    // offset is in microseconds; dbus-next delivers int64 as BigInt
-    const targetUs = this._position + Number(offset);
-    const targetSeconds = Math.max(0, targetUs) / 1_000_000;
-    this._send('Seek', 'player:seek', targetSeconds);
+    if (!this.CanSeek || !Number.isSafeInteger(this._position)) return;
+    const targetUs = BigInt(this._position) + offset;
+    const lengthUs = this._trackLengthUs;
+    if (lengthUs !== undefined && targetUs > BigInt(lengthUs)) {
+      this._send('Seek', 'player:next');
+      return;
+    }
+    if (targetUs > BigInt(Number.MAX_SAFE_INTEGER)) return;
+    this._send('Seek', 'player:seek', Number(targetUs < 0n ? 0n : targetUs) / 1_000_000);
   }
 
   SetPosition(trackId: string, position: bigint): void {
-    // position is in microseconds; dbus-next delivers int64 as BigInt
-    if (trackId !== this._currentTrackId) {
+    if (trackId === NO_TRACK || trackId !== this._currentTrackId) {
       mprisLog.debug('SetPosition trackId mismatch, ignoring');
       return;
     }
+    const lengthUs = this._trackLengthUs;
+    if (!this.CanSeek || position < 0n || position > BigInt(Number.MAX_SAFE_INTEGER)
+      || (lengthUs !== undefined && position > BigInt(lengthUs))) return;
     const targetSeconds = Number(position) / 1_000_000;
     this._send('SetPosition', 'player:seek', targetSeconds);
+  }
+
+  private get _trackLengthUs(): number | undefined {
+    const length: unknown = this._metadata['mpris:length']?.value;
+    return typeof length === 'number' && Number.isSafeInteger(length) && length >= 0 ? length : undefined;
   }
 
   /**
@@ -697,7 +714,7 @@ MediaPlayer2Player.configureMembers({
     },
     Rate: {
       signature: 'd',
-      access: ACCESS_READ,
+      access: ACCESS_READWRITE,
     },
     Shuffle: {
       signature: 'b',

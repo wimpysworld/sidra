@@ -81,6 +81,10 @@ interface PlayerInterface {
   SetPosition(trackId: string, position: bigint): void;
   Seeked(position: number): number;
   Volume: number;
+  Rate: number;
+  readonly MinimumRate: number;
+  readonly MaximumRate: number;
+  $introspect(): { property: Array<{ $: { name: string; type: string; access: string } }> };
   readonly PlaybackStatus: string;
   LoopStatus: string;
   Shuffle: boolean;
@@ -445,6 +449,135 @@ describe('MPRIS command provenance', () => {
     expect(mprisLogText()).not.toContain('method=SetPosition');
     expect(mprisLogText()).not.toContain(rejectedTrackId);
     expect(mprisLogText()).not.toContain('98765432');
+  });
+});
+
+describe('MPRIS seek bounds', () => {
+  const trackId = '/org/sidra/track/track_1';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it.each([0n, 10_000_000n])('accepts SetPosition at boundary %s', (position) => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
+
+    iface.SetPosition(trackId, position);
+
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:seek', Number(position) / 1_000_000);
+  });
+
+  it.each([-1n, 10_000_001n, 9_223_372_036_854_775_807n])('ignores invalid SetPosition %s', (position) => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
+
+    iface.SetPosition(trackId, position);
+
+    expect(win.webContents.send).not.toHaveBeenCalled();
+  });
+
+  it('ignores NoTrack before playback and after a document replacement', () => {
+    const iface = initPlayerInterface();
+    iface.SetPosition('/org/mpris/MediaPlayer2/TrackList/NoTrack', 0n);
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
+    player.resetForDocumentReplacement();
+    iface.SetPosition('/org/mpris/MediaPlayer2/TrackList/NoTrack', 0n);
+    iface.SetPosition(trackId, 0n);
+
+    expect(win.webContents.send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [-9_223_372_036_854_775_808n, 'player:seek', [0]],
+    [-3_000_000n, 'player:seek', [1]],
+    [6_000_000n, 'player:seek', [10]],
+    [6_000_001n, 'player:next', []],
+    [9_223_372_036_854_775_807n, 'player:next', []],
+  ] as const)('routes Seek %s to %s', (offset, channel, args) => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
+    player.setPositionUs(4_000_000);
+
+    iface.Seek(offset);
+
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith(channel, ...args);
+    expect(log.scope('mpris').info).toHaveBeenCalledWith(`source=mpris method=Seek channel=${channel} result=sent`);
+  });
+
+  it('uses the replacement track length and forgets an absent length', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 20_000 });
+    iface.SetPosition(trackId, 15_000_000n);
+    player.emitNowPlaying({ trackId: 'track-1' });
+    iface.SetPosition(trackId, 30_000_000n);
+    iface.Seek(30_000_000n);
+
+    expect(win.webContents.send.mock.calls).toEqual([
+      ['player:seek', 15], ['player:seek', 30], ['player:seek', 30],
+    ]);
+  });
+
+  it('uses the advertised truncated length for fractional durations', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000.0007 });
+    iface.SetPosition(trackId, 10_000_001n);
+    iface.Seek(10_000_001n);
+
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
+  });
+
+  it('rejects unsafe targets when the duration is unknown', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1' });
+    iface.SetPosition(trackId, BigInt(Number.MAX_SAFE_INTEGER) + 1n);
+    player.setPositionUs(1);
+    iface.Seek(BigInt(Number.MAX_SAFE_INTEGER));
+
+    expect(win.webContents.send).not.toHaveBeenCalled();
+  });
+
+  it('treats a zero duration as a known bound', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 0 });
+    iface.SetPosition(trackId, 1n);
+    iface.Seek(1n);
+
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
+  });
+});
+
+describe('MPRIS fixed Rate', () => {
+  it('exports writable Rate and read-only limits at normal speed', () => {
+    const iface = initPlayerInterface();
+
+    expect(iface.$introspect().property).toEqual(expect.arrayContaining([
+      { $: { name: 'Rate', type: 'd', access: 'readwrite' } },
+      { $: { name: 'MinimumRate', type: 'd', access: 'read' } },
+      { $: { name: 'MaximumRate', type: 'd', access: 'read' } },
+    ]));
+    expect([iface.Rate, iface.MinimumRate, iface.MaximumRate]).toEqual([1, 1, 1]);
+  });
+
+  it.each([1, 0.5, 2, -1, NaN, Infinity])('keeps normal speed after setting %s', (rate) => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+    expect(() => { iface.Rate = rate; }).not.toThrow();
+    vi.advanceTimersByTime(250);
+
+    expect(iface.Rate).toBe(1);
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(emissions).toEqual([]);
+  });
+
+  it('pauses when Rate is set to zero without changing the speed', () => {
+    const iface = initPlayerInterface();
+    iface.Rate = 0;
+
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:pause');
+    expect(iface.Rate).toBe(1);
+    expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Rate channel=player:pause result=sent');
   });
 });
 
