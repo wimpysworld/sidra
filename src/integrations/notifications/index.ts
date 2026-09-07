@@ -89,8 +89,8 @@ async function showNotification(
     if (!isCurrent()) return;
     if (action === 'previous') sendCommand('player:previous');
     else if (action === 'next') sendCommand('player:next');
-    else if (action === 'play') { if (!isPlaying()) sendCommand('player:play'); }
-    else if (action === 'pause') { if (isPlaying()) sendCommand('player:pause'); }
+    else if (action === 'play') { if (playbackAction() === 'play') sendCommand('player:play'); }
+    else if (action === 'pause') { if (playbackAction() === 'pause') sendCommand('player:pause'); }
     else {
       const win = getMainWindow();
       if (win) {
