@@ -71,6 +71,7 @@ const bootstrap = vi.hoisted(() => {
     integrations,
     resetForDocumentReplacement,
     handleHookReady: vi.fn(),
+    handlePlaybackCapabilitiesDidChange: vi.fn(),
     browserWindow: vi.fn(),
     ipcOn: vi.fn(),
     appQuit: vi.fn(),
@@ -160,6 +161,7 @@ vi.mock('../src/paths', () => ({ getAssetPath: vi.fn((...parts: string[]) => par
 vi.mock('../src/player', () => ({
   Player: class {
     handleHookReady = bootstrap.handleHookReady;
+    handlePlaybackCapabilitiesDidChange = bootstrap.handlePlaybackCapabilitiesDidChange;
     resetForDocumentReplacement = bootstrap.resetForDocumentReplacement;
   },
 }));
@@ -364,18 +366,38 @@ describe('main bootstrap', () => {
     await startMain();
     const ready = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'hookReady')?.[1];
     const event = { sender: bootstrap.webContents, senderFrame: bootstrap.webContents.mainFrame };
-    ready?.({ ...event, sender: {} }, 0);
-    ready?.({ ...event, senderFrame: { url: event.senderFrame.url } }, 0);
-    ready?.(event, '0');
+    ready?.({ ...event, sender: {} }, 0, 0);
+    ready?.({ ...event, senderFrame: { url: event.senderFrame.url } }, 0, 0);
+    ready?.(event, '0', 0);
     expect(bootstrap.handleHookReady).not.toHaveBeenCalled();
-    ready?.(event, 0);
+    ready?.(event, 0, 0);
     expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(event.senderFrame.url);
     bootstrap.handleHookReady.mockClear();
     bootstrap.mainWebListeners.get('did-navigate')?.({}, event.senderFrame.url);
-    ready?.(event, 0);
+    ready?.(event, 0, 0);
     expect(bootstrap.handleHookReady).not.toHaveBeenCalled();
-    ready?.(event, 1);
+    ready?.(event, 1, 1);
     expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(event.senderFrame.url);
+  });
+
+  it('rejects stale capabilities after document replacement, including a same-frame reload', async () => {
+    await startMain();
+    const capabilities = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'playbackCapabilitiesDidChange')?.[1];
+    const event = { sender: bootstrap.webContents, senderFrame: bootstrap.webContents.mainFrame };
+    const payload = { canPlay: true, canPause: true, canSeek: true, durationUs: 60_000_000 };
+    capabilities?.(event, payload, 0);
+    expect(bootstrap.handlePlaybackCapabilitiesDidChange).toHaveBeenCalledExactlyOnceWith(payload);
+    bootstrap.handlePlaybackCapabilitiesDidChange.mockClear();
+    bootstrap.mainWebListeners.get('did-navigate')?.({}, event.senderFrame.url);
+    capabilities?.(event, payload, 0);
+    capabilities?.(event, payload);
+    capabilities?.(event, payload, '1');
+    capabilities?.({ ...event, sender: {} }, payload, 1);
+    capabilities?.({ ...event, senderFrame: { url: event.senderFrame.url } }, payload, 1);
+    capabilities?.({ ...event, senderFrame: null }, payload, 1);
+    expect(bootstrap.handlePlaybackCapabilitiesDidChange).not.toHaveBeenCalled();
+    capabilities?.(event, payload, 1);
+    expect(bootstrap.handlePlaybackCapabilitiesDidChange).toHaveBeenCalledExactlyOnceWith(payload);
   });
 
   it('defers early SPA injection until integrations register and preserves later injection', async () => {

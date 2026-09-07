@@ -264,9 +264,14 @@ type SendListener = Parameters<typeof ipcMain.on>[1];
 
 // Object.keys() preserves insertion order, so listeners register in the order
 // the table lists them.
-function onSendChannels<C extends SendChannel>(listeners: Record<C, SendListener>): void {
+function onSendChannels<C extends SendChannel>(
+  listeners: Record<C, SendListener>,
+  accepts?: (event: Electron.IpcMainEvent, data: unknown, generation: unknown) => boolean,
+): void {
   for (const channel of Object.keys(listeners) as C[]) {
-    ipcMain.on(channel, listeners[channel]);
+    ipcMain.on(channel, accepts ? (event, data, generation) => {
+      if (accepts(event, data, generation)) listeners[channel](event, data);
+    } : listeners[channel]);
   }
 }
 
@@ -287,7 +292,8 @@ function initPlayerIPC(): Player {
     repeatModeDidChange: (_event, data) => player.handleRepeatModeDidChange(data),
     shuffleModeDidChange: (_event, data) => player.handleShuffleModeDidChange(data),
     volumeDidChange: (_event, data) => player.handleVolumeDidChange(data),
-  });
+  }, (event, _data, generation) => generation === rendererDocumentGeneration &&
+    event.sender === win?.webContents && event.senderFrame === win.webContents.mainFrame);
   return player;
 }
 
