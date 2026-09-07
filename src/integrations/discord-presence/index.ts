@@ -2,7 +2,7 @@ import { app } from 'electron';
 import log from 'electron-log/main';
 import { Client, SetActivity, StatusDisplayType } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext } from '../../player';
+import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext, getShareUrl } from '../../player';
 import { getDiscordEnabled, getMusicService } from '../../config';
 import { getService } from '../../musicService';
 import { createPauseTimer } from '../../pauseTimer';
@@ -293,7 +293,9 @@ export function init(ctx: IntegrationContext): void {
       albumName = payload.albumName ?? null;
       artworkUrl = payload.artworkUrl;
       durationMs = payload.durationInMillis ?? 0;
-      trackUrl = payload.url;
+      // getShareUrl() rebuilds the link from the catalogue id when payload.url
+      // is absent, which it always is on a library item.
+      trackUrl = getShareUrl(payload);
     }
 
     // A track change supersedes an earlier pause, so the pending clear-activity

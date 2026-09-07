@@ -270,6 +270,28 @@ describe('discord presence integration', () => {
     });
   });
 
+  // MusicKit never populates url on a library item, so the button URL must come
+  // from getShareUrl(), which rebuilds it from the catalogue id.
+  it('keeps the service button for a library track with a catalogue id and no url', () => {
+    player.emitNowPlaying({ ...TRACK, url: undefined, playParams: { catalogId: '1440833098' } });
+    vi.advanceTimersByTime(DEBOUNCE_MS);
+
+    expect(activity()).toMatchObject({
+      buttons: expect.arrayContaining([
+        { label: 'Play on Apple Music', url: 'https://music.apple.com/song/1440833098' },
+      ]),
+    });
+  });
+
+  it('omits the service button when the payload yields no share URL', () => {
+    player.emitNowPlaying({ ...TRACK, url: undefined });
+    vi.advanceTimersByTime(DEBOUNCE_MS);
+
+    expect(activity().buttons).toEqual([
+      { label: expect.any(String), url: 'https://github.com/wimpysworld/sidra' },
+    ]);
+  });
+
   it('sends no timestamps while paused but keeps the status display', () => {
     player.setPlaybackState(PlaybackState.Paused);
     player.emitNowPlaying(TRACK);
