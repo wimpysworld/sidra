@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Notification } from 'electron';
 import log from 'electron-log/main';
+import { randomBytes } from 'node:crypto';
 import { NowPlayingPayload, TimedMetadataPayload, IntegrationContext } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { getNotificationsEnabled } from '../../config';
@@ -11,7 +12,6 @@ import type { createLinuxNotifications } from '../../linuxNotifications';
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
 const ARTWORK_RACE_TIMEOUT_MS = 500;
-const PLAYBACK_NOTIFICATION_ID = 'playback';
 const PLAYBACK_NOTIFICATION_GROUP = 'playback';
 
 const notifLog = log.scope('notifications');
@@ -25,10 +25,16 @@ function clearPlaybackHistory(): void {
   }
 }
 
-function closeNotifications(notifications: Set<Electron.Notification>): void {
+function closeNotifications(notifications: Set<Electron.Notification>, pending: Set<Electron.Notification>): void {
   for (const notification of notifications) {
-    notification.removeAllListeners();
-    notification.close();
+    notification.removeAllListeners('action');
+    notification.removeAllListeners('click');
+    // close() detaches Electron's delegate without cancelling pending artwork.
+    // Keep the delegate until show or failed can retire the pending object.
+    if (!pending.has(notification)) {
+      notification.removeAllListeners();
+      notification.close();
+    }
   }
   notifications.clear();
 }
@@ -39,6 +45,7 @@ async function showNotification(
   isCurrent: () => boolean,
   getLinuxNotifications: () => Promise<ReturnType<typeof createLinuxNotifications>>,
   activeNotifications: Set<Electron.Notification>,
+  pendingNotifications: Set<Electron.Notification>,
 ): Promise<void> {
   if (!payload?.name) {
     notifLog.debug('skipping notification: no track name');
@@ -93,7 +100,7 @@ async function showNotification(
   }
 
   const options: Electron.NotificationConstructorOptions = {
-    id: PLAYBACK_NOTIFICATION_ID,
+    id: randomBytes(8).toString('hex'),
     groupId: PLAYBACK_NOTIFICATION_GROUP,
     title: payload.name,
     body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
@@ -114,16 +121,27 @@ async function showNotification(
     return;
   }
 
-  closeNotifications(activeNotifications);
+  closeNotifications(activeNotifications, pendingNotifications);
   // A closed Windows banner can remain in Action Center. Keep its object for
   // actions and explicit removal until the next track or quit.
   activeNotifications.add(notification);
+  pendingNotifications.add(notification);
 
   notification.on('show', () => {
+    pendingNotifications.delete(notification);
+    if (!isCurrent() || !activeNotifications.has(notification)) {
+      notification.removeAllListeners();
+      notification.close();
+      activeNotifications.delete(notification);
+      return;
+    }
     notifLog.debug('notification displayed:', payload.name);
   });
 
   notification.on('failed', (_event, error) => {
+    pendingNotifications.delete(notification);
+    activeNotifications.delete(notification);
+    notification.removeAllListeners();
     notifLog.error('notification failed:', payload.name, error);
   });
 
@@ -155,6 +173,7 @@ export function init(ctx: IntegrationContext): void {
   let radioStation: NowPlayingPayload | null = null;
   let timedDisplayKey: string | null = null;
   const activeNotifications = new Set<Electron.Notification>();
+  const pendingNotifications = new Set<Electron.Notification>();
   let linux: Promise<ReturnType<typeof createLinuxNotifications>> | null = null;
   const getLinuxNotifications = () => linux ??= import('../../linuxNotifications')
     .then(({ createLinuxNotifications }) => createLinuxNotifications());
@@ -174,7 +193,7 @@ export function init(ctx: IntegrationContext): void {
       const isCurrent = () => !stopped && generation === currentGeneration
         && getNotificationsEnabled() && notificationsAvailable();
       if (!isCurrent()) return;
-      showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications).catch((error: unknown) =>
+      showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications, pendingNotifications).catch((error: unknown) =>
         notifLog.warn('notification error:', errorMessage(error)),
       );
     }, NOTIFICATION_DEBOUNCE_MS);
@@ -206,7 +225,8 @@ export function init(ctx: IntegrationContext): void {
     if (stopped) return;
     stopped = true;
     if (linux) void linux.then((adapter) => adapter.dispose()).catch(() => {});
-    closeNotifications(activeNotifications);
+    closeNotifications(new Set([...activeNotifications, ...pendingNotifications]), pendingNotifications);
+    activeNotifications.clear();
     clearPlaybackHistory();
     if (debounceTimer) {
       clearTimeout(debounceTimer);
