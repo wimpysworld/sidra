@@ -94,17 +94,17 @@
                 nodejs # Node.js for npm and TypeScript builds
                 playwrightMcpChromium
               ]
-              ++ lib.optionals stdenv.isDarwin [
+              ++ lib.optionals stdenv.hostPlatform.isDarwin [
                 uv # required for EVS VMP signing via uvx
               ]
-              ++ lib.optionals stdenv.isLinux [
+              ++ lib.optionals stdenv.hostPlatform.isLinux [
                 gsettings-desktop-schemas
               ];
 
             # CastLabs Electron (installed via npm) is a prebuilt binary that
             # expects libraries in standard FHS paths. On NixOS we must set
             # LD_LIBRARY_PATH explicitly for the libraries it links against.
-            LD_LIBRARY_PATH = pkgs.lib.optionalString pkgs.stdenv.isLinux (
+            LD_LIBRARY_PATH = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux (
               with pkgs; lib.makeLibraryPath [
                 alsa-lib
                 at-spi2-atk
@@ -135,7 +135,7 @@
             );
 
             # Use the NixOS system GPU drivers without pinning a GPU vendor.
-            shellHook = (pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+            shellHook = (pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
               if [ -d "/run/opengl-driver/lib" ]; then
                 if [ -z "$LD_LIBRARY_PATH" ]; then
                   export LD_LIBRARY_PATH="/run/opengl-driver/lib"
