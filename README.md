@@ -360,6 +360,10 @@ Sign in on first launch; your session persists across relaunches. Run `just` wit
 Run `just generate-assets` to regenerate application icons, the logo, DMG backgrounds, tray icons and menu icons from SVG sources.
 The command also composes the README image from screenshots.
 
+### NixOS
+
+The dev shell puts the libraries CastLabs Electron needs on `LD_LIBRARY_PATH`, but the host must supply the ELF interpreter. The npm-installed Electron is a prebuilt binary that requests `/lib64/ld-linux-x86-64.so.2`, a path plain NixOS does not provide. Enable [nix-ld](https://github.com/nix-community/nix-ld) (`programs.nix-ld.enable = true;`) or an equivalent compatibility loader before running `just run`. Do not patch the Electron binary with `patchelf`: it is EVS-signed, and patching invalidates the signature.
+
 ### Widevine VMP signing
 
 Widevine enforces VMP (Verified Media Path) production signing on macOS and Windows - without it, Apple Music returns "Something went wrong" after login. CastLabs ECS ships with development keys; production signing requires a free [CastLabs EVS](https://github.com/castlabs/electron-releases/wiki/EVS) account.
