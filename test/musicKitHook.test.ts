@@ -368,6 +368,69 @@ describe('MusicKit OpenUri', () => {
       [{ url: 'https://music.apple.com/album/3', startPlaying: true }],
     ]);
   });
+
+  it.each(['resolve', 'reject'])('bounds queue waits without overlapping a timed-out operation that later %ss', async (settlement) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      let resolveQueue!: () => void;
+      let rejectQueue!: (error: Error) => void;
+      const { window, musicKit, runTimeouts } = createHarness();
+      musicKit.setQueue.mockReturnValueOnce(new Promise<void>((resolve, reject) => {
+        resolveQueue = resolve;
+        rejectQueue = reject;
+      }));
+      const first = window.__sidra!.openUri('https://music.apple.com/album/1');
+      await Promise.resolve();
+      const queued = window.__sidra!.openUri('https://music.apple.com/album/2');
+      runTimeouts();
+      await Promise.all([first, queued]);
+      await window.__sidra!.openUri('https://music.apple.com/album/3');
+      expect(musicKit.setQueue).toHaveBeenCalledOnce();
+      expect(musicKit.play).not.toHaveBeenCalled();
+      expect(warn.mock.calls).toEqual(Array(3).fill(['[Sidra] failed to open requested media']));
+
+      if (settlement === 'resolve') resolveQueue();
+      else rejectQueue(new Error('private request data'));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(musicKit.setQueue).toHaveBeenCalledOnce();
+      await window.__sidra!.openUri('https://music.apple.com/album/4');
+      expect(musicKit.setQueue.mock.calls).toEqual([
+        [{ url: 'https://music.apple.com/album/1', startPlaying: true }],
+        [{ url: 'https://music.apple.com/album/4', startPlaying: true }],
+      ]);
+      expect(musicKit.play).not.toHaveBeenCalled();
+      expect(warn.mock.calls.every(([message]) => message === '[Sidra] failed to open requested media')).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('clears a completed queue timeout before another request', async () => {
+    const { window, musicKit, runTimeouts } = createHarness();
+    await window.__sidra!.openUri('https://music.apple.com/album/1');
+    runTimeouts();
+    await window.__sidra!.openUri('https://music.apple.com/album/2');
+    expect(musicKit.setQueue).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['navigation', 'instance'])('discards a waiting queue request after %s changes', async (change) => {
+    let resolveQueue!: () => void;
+    const { window, musicKit, globalRegistrations, replaceInstance, runMonitorCycles } = createHarness();
+    musicKit.setQueue.mockReturnValueOnce(new Promise<void>(resolve => { resolveQueue = resolve; }));
+    const first = window.__sidra!.openUri('https://music.apple.com/album/1');
+    await Promise.resolve();
+    const queued = window.__sidra!.openUri('https://music.apple.com/album/2');
+    if (change === 'navigation') {
+      globalRegistrations.find(({ type }) => type === 'pagehide')?.listener({});
+      globalRegistrations.find(({ type }) => type === 'pageshow')?.listener({});
+    } else {
+      replaceInstance();
+      runMonitorCycles(1);
+    }
+    resolveQueue();
+    await Promise.all([first, queued]);
+    expect(musicKit.setQueue).toHaveBeenCalledOnce();
+  });
 });
 
 describe('MusicKit Stop', () => {
@@ -416,6 +479,22 @@ describe('MusicKit Stop', () => {
     await window.__sidra!.stop(2);
     expect(musicKit.pause).toHaveBeenCalledOnce();
     expect(musicKit.seekToTime).toHaveBeenCalledOnce();
+  });
+
+  it.each(['play', 'playPause'])('cancels a waiting %s on Pause without losing Stop completion', async (command) => {
+    const { window, bridgeSend, musicKit, resolveSeek } = pendingSeekHarness();
+    const stopping = window.__sidra!.stop(1);
+    const playing = window.__sidra![command]();
+    await Promise.resolve();
+    window.__sidra!.pause();
+    resolveSeek();
+    await Promise.all([stopping, playing]);
+    expect(musicKit.play).not.toHaveBeenCalled();
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true });
+    await window.__sidra!.stop(2);
+    expect(musicKit.seekToTime).toHaveBeenCalledOnce();
+    await window.__sidra!.play();
+    expect(musicKit.play).toHaveBeenCalledOnce();
   });
 
   it.each(['item', 'navigation', 'playing'])('clears completed Stop intent after %s changes', async (change) => {
