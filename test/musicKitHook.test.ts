@@ -149,10 +149,10 @@ function createHarness({
   repeatInjection?: boolean;
   volumeThrows?: boolean;
 } = {}) {
-  const intervals: Array<{ callback: () => void; delay: number }> = [];
+  const intervals = new Map<number, { callback: () => void; delay: number }>();
+  let nextIntervalId = 0;
   const timeouts = new Map<number, () => void>();
   let nextTimeoutId = 0;
-  const intervalCallbacks: Array<() => void> = [];
   const messageListeners: Array<(event: unknown) => void> = [];
   const pointerOverListeners: Array<(event: unknown) => void> = [];
   // Registrations the hook made on window. The wheel listener must never appear
@@ -202,13 +202,13 @@ function createHarness({
       return id;
     },
     clearTimeout: (id: number) => { timeouts.delete(id); },
-    clearInterval: vi.fn(),
+    clearInterval: (id: number) => { intervals.delete(id); },
     console,
     navigator,
     setInterval: vi.fn((callback: () => void, delay: number) => {
-      intervals.push({ callback, delay });
-      intervalCallbacks.push(callback);
-      return intervalCallbacks.length;
+      const id = ++nextIntervalId;
+      intervals.set(id, { callback, delay });
+      return id;
     }),
     window,
   });
@@ -239,13 +239,13 @@ function createHarness({
   // Fire the first 500ms poll while getInstance() still throws. The hook must
   // leave the poll running, so the later run below can attach.
   if (musicKitThrowsAtFirstPoll) {
-    for (const callback of intervalCallbacks.slice()) callback();
+    for (const { callback } of [...intervals.values()]) callback();
   }
 
   getInstanceThrows = false;
   Object.assign(context, { MusicKit: musicKitApi });
   Object.assign(window, { MusicKit: musicKitApi });
-  for (const callback of intervalCallbacks.slice()) callback();
+  for (const { callback } of [...intervals.values()]) callback();
 
   return {
     // Non-optional handle on the bridge send mock. window.AMWrapper is optional
@@ -288,13 +288,13 @@ function createHarness({
     // Fires only the 5-second instance monitor. The 250ms volume poll and the
     // 500ms waitForMK share the same mock, so they are filtered out by delay.
     runMonitorCycles: (count: number) => {
-      const monitors = intervals.filter(({ delay }) => delay === 5000);
       for (let cycle = 0; cycle < count; cycle++) {
+        const monitors = [...intervals.values()].filter(({ delay }) => delay === 5000);
         for (const { callback } of monitors) callback();
       }
     },
     runVolumePoll: () => {
-      for (const { callback } of intervals.filter(({ delay }) => delay === 250)) callback();
+      for (const { callback } of [...intervals.values()].filter(({ delay }) => delay === 250)) callback();
     },
     runTimeouts: () => {
       for (const [id, callback] of timeouts) {
@@ -307,9 +307,11 @@ function createHarness({
     // the waitForMK callback rather than the script body, so a re-run that
     // slipped past the injection guard would go unnoticed without the drain.
     reinject: () => {
-      const alreadyRun = intervalCallbacks.length;
+      const alreadyRun = nextIntervalId;
       vm.runInContext(hookScript, context);
-      for (const callback of intervalCallbacks.slice(alreadyRun)) callback();
+      for (const [id, { callback }] of [...intervals]) {
+        if (id > alreadyRun) callback();
+      }
     },
     pointerOverListeners,
     window,
