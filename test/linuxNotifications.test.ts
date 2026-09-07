@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { Message, MessageFlag, MessageType, sessionBus } from '@holusion/dbus-next';
 import { createLinuxNotifications } from '../src/linuxNotifications';
+import { getAssetPath } from '../src/paths';
 
 vi.mock('@holusion/dbus-next', async (importOriginal) => ({
   ...await importOriginal<typeof import('@holusion/dbus-next')>(),
@@ -72,11 +73,29 @@ describe('Linux track notifications', () => {
     expect(message.signature).toBe('susssasa{sv}i');
     expect(message.flags).toBe(MessageFlag.NO_AUTO_START);
     expect(message.body.slice(0, 6)).toEqual([
-      'Sidra', 0, '/tmp/art.jpg', 'Song', 'Artist &amp; &lt;Album&gt;',
+      'Sidra', 0, getAssetPath('assets', 'sidra-logo.png'), 'Song', 'Artist &amp; &lt;Album&gt;',
       ['default', '', 'previous', 'Zurück', 'next', 'Weiter'],
     ]);
     expect(message.body[6]['suppress-sound'].value).toBe(true);
     expect(message.body[6]['desktop-entry'].value).toBe('sidra');
+    expect(message.body[6]['image-path'].signature).toBe('s');
+    expect(message.body[6]['image-path'].value).toBe('file:///tmp/art.jpg');
+  });
+
+  it('encodes artwork paths with spaces, non-ASCII characters and URI delimiters', async () => {
+    await adapter.show({ ...track(), icon: '/tmp/Album art/Björk #1%.jpg' }, current);
+    expect(notifyCalls()[0].body[6]['image-path'].value)
+      .toBe('file:///tmp/Album%20art/Bj%C3%B6rk%20%231%25.jpg');
+  });
+
+  it('keeps the application icon without an artwork hint when artwork is absent', async () => {
+    await adapter.show({ ...track(), icon: undefined }, current);
+    const [message] = notifyCalls();
+    expect(message.body[2]).toBe(getAssetPath('assets', 'sidra-logo.png'));
+    expect(message.body[6]).not.toHaveProperty('image-path');
+    expect(message.body[6]['desktop-entry'].value).toBe('sidra');
+    signal('ActionInvoked', [1, 'next']);
+    expect(onAction).toHaveBeenCalledExactlyOnceWith('next');
   });
 
   it('routes only known actions for an active id from the current daemon', async () => {
