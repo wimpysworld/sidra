@@ -14,15 +14,12 @@ const RECONNECT_BASE_MS = 2000;
 const RECONNECT_CAP_MS = 60_000;
 const CLEAR_ACTIVITY_TIMEOUT_MS = 2000;
 
-// How a scripted connect attempt ends. 'timeout' clears the cached connection
-// promise, 'transport' leaves it set; the two failures differ in the library
-// and the source has to survive both.
+// 'timeout' clears the cached connection promise, while 'transport' retains it.
+// The integration must recover from both library failure paths.
 type ConnectOutcome = 'connected' | 'timeout' | 'transport';
 
-// What a test may read back off a constructed client. The class itself lives
-// inside the vi.mock factory, which is hoisted above every declaration here, so
-// the registry is typed structurally: a type annotation is erased, a reference
-// to the class would not be.
+// Use a structural type because the client class lives inside the hoisted vi.mock factory.
+// Type annotations disappear at runtime, unlike a reference to that class.
 interface ClientHandle {
   isConnected: boolean;
   connectAttempts: number;
@@ -30,15 +27,9 @@ interface ClientHandle {
   listenerCount(event: string): number;
 }
 
-// The RPC client talks to a Discord socket that no test has. Every method the
-// module calls returns a promise: production chains .then().catch() onto
-// setActivity() and .catch() onto clearActivity(), so a bare vi.fn() throws
-// inside them. The spies live in a hoisted holder because each test loads a
-// fresh module instance, which builds a fresh Client. setActivity is typed with
-// its argument so mock.calls carries the activity object; an untyped vi.fn()
-// gives an empty call tuple and indexing it fails. outcome is the per-test
-// script, and instances records every client built so a test can tell which one
-// is live.
+// Promise-returning spies replace Discord socket calls and support production .then()/.catch() chains.
+// The hoisted holder survives fresh module imports. Typed setActivity arguments let tests inspect recorded activities.
+// outcome controls connection results, while instances records clients so tests can identify the live one.
 const rpc = vi.hoisted(() => ({
   setActivity: vi.fn((_activity: SetActivity) => Promise.resolve({})),
   clearActivity: vi.fn(() => Promise.resolve()),
@@ -53,14 +44,9 @@ const rpc = vi.hoisted(() => ({
 vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@xhayper/discord-rpc')>();
 
-  // Reproduces Client.connect() as @xhayper/discord-rpc 1.3.4 writes it, defect
-  // included: it registers a once('connected') listener on every attempt and
-  // removes it only when that event arrives, so each failure leaves one behind.
-  // The timeout path clears connectionPromise and the transport-rejection path
-  // does not, which is why a reused instance can hand back the same rejected
-  // promise forever without a fresh connect. destroy() closes the transport and
-  // nothing else: no listener is removed, no promise cleared. A stand-in that
-  // cannot fail this way passes whether or not the source discards the client.
+  // Model @xhayper/discord-rpc 1.3.4: failed connections retain once('connected') listeners.
+  // Transport rejection also retains connectionPromise, so reuse returns the same rejected promise without connecting.
+  // destroy() closes only the transport. Keeping both failure modes makes client replacement observable.
   class FakeClient {
     isConnected = false;
     connectAttempts = 0;
@@ -382,9 +368,7 @@ describe('discord presence reconnect', () => {
   });
 
   it('reads the playhead through the replacement client, so a reconnected session still carries timestamps', async () => {
-    // The snapshot read is what once sat behind a non-null assertion. The
-    // client that makes it here is the one scheduleReconnect() built, not the
-    // one init() did, so it proves the player reaches a client init() never saw.
+    // A replacement client's ready handler must read the player snapshot, even though init() did not create that client.
     rpc.outcome = (attempt) => (attempt === 1 ? 'transport' : 'connected');
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
@@ -430,10 +414,8 @@ describe('discord presence reconnect', () => {
     expect(rpc.setActivity).toHaveBeenCalledTimes(2);
   });
 
-  // clearActivity() settles only when Discord answers the nonce, so a live
-  // socket behind a Discord that answers no RPC never settles it. The destroy
-  // has to run anyway, or the socket leaks and the stale activity stays on the
-  // user's profile.
+  // clearActivity() waits for Discord's nonce reply, which can remain pending on a live socket.
+  // Teardown must still destroy the transport to release the socket and stale activity.
   it('destroys a retired client whose activity clear never answers, and destroys it once', async () => {
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });

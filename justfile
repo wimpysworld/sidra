@@ -22,19 +22,15 @@ _fix-frameworks:
         if [ -d "$fw/Versions/A" ] && [ ! -L "$fw/Versions/Current" ]; then
             ln -sf A "$fw/Versions/Current"
             name=$(basename "$fw" .framework)
-            # Symlink the main binary
             if [ -e "$fw/Versions/A/$name" ] && [ ! -L "$fw/$name" ]; then
                 ln -sf "Versions/Current/$name" "$fw/$name"
             fi
-            # Symlink Resources if present
             if [ -d "$fw/Versions/A/Resources" ] && [ ! -L "$fw/Resources" ]; then
                 ln -sf "Versions/Current/Resources" "$fw/Resources"
             fi
-            # Symlink Libraries if present
             if [ -d "$fw/Versions/A/Libraries" ] && [ ! -L "$fw/Libraries" ]; then
                 ln -sf "Versions/Current/Libraries" "$fw/Libraries"
             fi
-            # Symlink Helpers if present
             if [ -d "$fw/Versions/A/Helpers" ] && [ ! -L "$fw/Helpers" ]; then
                 ln -sf "Versions/Current/Helpers" "$fw/Helpers"
             fi
@@ -270,13 +266,11 @@ release VERSION:
         exit 1
     fi
 
-    # Check if tag already exists
     if git rev-parse --verify --quiet "refs/tags/$version" >/dev/null; then
         echo "Error: Tag $version already exists" >&2
         exit 1
     fi
 
-    # Bump package.json version if needed
     current_version=$(node -p "require('./package.json').version")
     if [[ "$current_version" != "$version" ]]; then
         npm version "$version" --no-git-tag-version

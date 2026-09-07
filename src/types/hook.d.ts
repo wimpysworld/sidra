@@ -1,12 +1,7 @@
-// Ambient type declarations for the renderer-injected hook scripts.
-// assets/musicKitHook.js defines window.__sidra, window.__sidraHookedMk, and
-// window.AMWrapper at runtime. These declarations formalise that contract so
-// TypeScript can reference the shapes from preload and test code.
-//
-// One of three artefacts that define the same contract, with the hook itself and
-// src/preload.ts. The preload builds both allowlists from the unions below, so
-// tsc holds those two together. The hook is plain JavaScript and is never type
-// checked, so the contract tests read it off disk instead.
+// Shared contract for assets/musicKitHook.js and src/preload.ts. The hook defines
+// window.__sidra and window.__sidraHookedMk, and the preload exposes window.AMWrapper.
+// TypeScript checks the preload allowlists against these unions. Contract tests
+// read the plain JavaScript hook because TypeScript does not check that file.
 
 // ---------------------------------------------------------------------------
 // IPC channel string literal types
@@ -56,21 +51,31 @@ type ReceiveChannel =
 // ---------------------------------------------------------------------------
 
 /**
- * Methods exposed on window.__sidra by assets/musicKitHook.js. Each key answers
- * one ReceiveChannel; the contract test reads the hook off disk and compares its
- * command table to this interface, which is the only thing tying the two.
+ * Commands exposed on window.__sidra by assets/musicKitHook.js.
+ * Contract tests compare the hook command table with this interface.
  */
 interface SidraHook {
+  /** Replaces the queue with the supplied URL and starts playback. */
   openUri(uri: string): Promise<void>;
+  /** Starts or resumes playback. */
   play(): Promise<void>;
+  /** Pauses playback without clearing the queue. */
   pause(): Promise<void>;
+  /** Stops playback and reports completion with the supplied request ID. */
   stop(requestId: number): Promise<void>;
+  /** Toggles between playing and paused. */
   playPause(): Promise<void>;
+  /** Advances to the next queue item. */
   next(): Promise<void>;
+  /** Returns to the previous queue item. */
   previous(): Promise<void>;
+  /** Moves the playhead to an absolute position in seconds. */
   seek(seconds: number): Promise<void>;
+  /** Sets MusicKit software volume between zero and one. */
   setVolume(volume: number): void;
+  /** Sets the MusicKit repeat mode. */
   setRepeat(mode: number): void;
+  /** Sets the MusicKit shuffle mode. */
   setShuffle(mode: number): void;
 }
 
@@ -80,7 +85,9 @@ interface SidraHook {
  * payload untyped and this declaration is otherwise checked against nothing.
  */
 interface AMWrapperBridge {
+  /** Allow-listed renderer-to-main event forwarding. */
   ipcRenderer: {
+    /** Sends an event with its optional payload and document generation. */
     send(channel: SendChannel, data?: unknown, generation?: number): void;
   };
 }
@@ -100,6 +107,7 @@ interface SidraCommandMessage {
 // Global window augmentation
 // ---------------------------------------------------------------------------
 
+/** Hook state and the isolated preload bridge exposed to the main world. */
 interface Window {
   /** The command surface, assigned last so a part-attached hook leaves it unset. */
   __sidra: SidraHook;
@@ -114,5 +122,6 @@ interface Window {
    * replaced instance and re-attach.
    */
   __sidraHookedMk: unknown;
+  /** IPC bridge exposed by src/preload.ts, not by the hook. */
   AMWrapper: AMWrapperBridge;
 }

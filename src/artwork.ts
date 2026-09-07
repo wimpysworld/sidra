@@ -48,15 +48,9 @@ function artworkCachePath(url: string): string {
 const inFlight = new Map<string, Promise<string | null>>();
 
 /**
- * Download artwork into the cache directory and resolve its local path, or null
- * when the download fails.
- *
- * Callers in flight for the same URL share one promise. Notifications, MPRIS and
- * the tray all ask for the same artwork on a track change and all three run at
- * once on Linux, so without this each change costs three fetches, three temp
- * files and three renames onto one destination; on Windows a later rename can
- * fail with EPERM while the tray holds the destination open. The key is the URL,
- * not the cache path, because the URL is what the callers share.
+ * Resolve a cached artwork path, or null for a failed download.
+ * Concurrent callers share one promise per URL, avoiding duplicate downloads and competing renames.
+ * A competing rename can fail with EPERM on Windows while the tray holds the destination open.
  */
 export function downloadArtwork(url: string): Promise<string | null> {
   const existing = inFlight.get(url);
@@ -64,9 +58,8 @@ export function downloadArtwork(url: string): Promise<string | null> {
     return existing;
   }
 
-  // The .finally() is attached before any caller sees the promise, so the entry
-  // is deleted ahead of every continuation: a failure is never cached, and a
-  // call made after an await refetches instead of replaying a settled promise
+  // Delete the in-flight entry before caller continuations run, so later calls
+  // check the disk cache again and can retry failed downloads.
   const pending = fetchArtwork(url).finally(() => {
     inFlight.delete(url);
   });
@@ -79,9 +72,8 @@ async function fetchArtwork(url: string): Promise<string | null> {
 
   if (fs.existsSync(filepath)) {
     artworkLog.debug('cache hit: %s', filepath);
-    // Touching mtime keeps the seven day sweep in cleanArtworkCache() from
-    // evicting artwork in daily use. Never awaited: a notification is waiting
-    // on the other end of this call
+    // Refresh mtime so cleanup preserves artwork in daily use.
+    // Do not await the timestamp write because notification delivery needs the path.
     const now = new Date();
     fsPromises.utimes(filepath, now, now).catch(() => {});
     return filepath;
@@ -150,7 +142,7 @@ export async function cleanArtworkCache(): Promise<void> {
         removed++;
       }
     } catch {
-      // File may have been removed between readdir and stat/unlink
+      // Concurrent removal or an inaccessible entry must not stop the remaining cleanup.
     }
   }
 

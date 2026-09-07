@@ -1,12 +1,12 @@
 
-  /* "Open in Music" CTA — hide just the button and its container, not the wrapper */
+  /* Hide the "Open in Music" button and container, but keep the shared wrapper. */
   [data-testid="native-cta"],
   [data-testid="native-cta-button"],
   [class*="native-upsell"] {
     display: none !important;
   }
 
-  /* Re-expose the user profile row (Apple nests account-menu inside the same wrapper as the CTA) */
+  /* Keep the account menu visible inside the shared "Open in Music" wrapper. */
   #navigation > div.navigation__native-cta {
     display: block !important;
   }

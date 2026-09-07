@@ -1,7 +1,5 @@
-// src/itms.ts
 // Pure parser for itms:// URLs delivered via OS protocol handler or argv.
-// No imports from electron, electron-log, or config: keep this module
-// dependency-free so it is trivially unit-testable.
+// Only the pure service registry is imported, so tests need no Electron runtime.
 
 import { MUSIC_SERVICES } from './musicService';
 
@@ -55,7 +53,6 @@ export function transformItmsUrl(input: string): ItmsTarget | null {
     return { kind: 'route', token };
   }
 
-  // Catalogue URL: rebuild as https, strip the `app` parameter.
   const rebuilt = new URL(`${MUSIC_SERVICES['music'].origin}/`);
   rebuilt.pathname = parsed.pathname;
   const params = new URLSearchParams(parsed.searchParams);

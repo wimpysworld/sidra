@@ -49,13 +49,10 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          # Sidra uses Chromium only, so the Playwright MCP server ships
-          # Chromium only. The stock package wraps PLAYWRIGHT_BROWSERS_PATH
-          # with Chromium, the headless shell, Firefox, and WebKit (2.5 GB).
-          # Swapping the browser set in both the driver and playwright-test
-          # cuts the closure to 0.9 GB. The headless shell is not needed: the
-          # wrapper defaults PLAYWRIGHT_MCP_BROWSER to the chromium channel,
-          # which launches the full Chrome for Testing even in headless mode.
+          # Sidra needs only Chromium. Override both browser references to exclude
+          # Firefox, WebKit and the headless shell from the dependency closure.
+          # PLAYWRIGHT_MCP_BROWSER defaults to the chromium channel, which uses
+          # full Chrome for Testing even in headless mode.
           playwrightMcpChromium =
             let
               browsers = pkgs.playwright-driver.browsers-chromium;
@@ -94,7 +91,7 @@
                 just
                 librsvg # rsvg-convert for tray menu icon generation
                 optipng # PNG optimisation for tray menu icons
-                nodejs # 24.x Active LTS, matches Electron 40's bundled Node
+                nodejs # Node.js for npm and TypeScript builds
                 playwrightMcpChromium
               ]
               ++ lib.optionals stdenv.isDarwin [
@@ -137,9 +134,7 @@
               ]
             );
 
-            # GPU drivers: use NixOS system drivers from /run/opengl-driver/lib
-            # This works across GPU vendors (Intel, AMD, NVIDIA) without listing
-            # individual driver packages. Same pattern as jivefire.
+            # Use the NixOS system GPU drivers without pinning a GPU vendor.
             shellHook = (pkgs.lib.optionalString pkgs.stdenv.isLinux ''
               if [ -d "/run/opengl-driver/lib" ]; then
                 if [ -z "$LD_LIBRARY_PATH" ]; then

@@ -46,14 +46,8 @@ export interface PauseEdgeTimer extends PauseTimer {
 }
 
 /**
- * Build a timer that arms on the playing-to-paused edge only. Paused states
- * repeat, and start() discards the run in progress, so arming on each report
- * would push the clear-down further away every time and a paused player would
- * keep its Now Playing entries for ever.
- *
- * Every caller builds its own, because the retained previous value belongs to
- * that surface. One value shared between the tray and the dock would let a
- * report to either consume the edge the other was waiting for.
+ * Arm only on a playing-to-paused transition, so repeated pause reports cannot postpone expiry.
+ * Each caller needs its own timer because playback history belongs to that UI surface.
  */
 export function createPauseEdgeTimer(timeoutMs: number, onExpiry: () => void): PauseEdgeTimer {
   const timer = createPauseTimer(timeoutMs, onExpiry);

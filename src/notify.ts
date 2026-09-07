@@ -28,9 +28,8 @@ export function notificationsAvailable(): boolean {
 }
 
 /**
- * Open the gate on Linux once a notification daemon is confirmed, and follow it
- * for the rest of the session. Called once from app.whenReady(); a no-op on
- * every other platform.
+ * On Linux, follow notification-daemon ownership for the session.
+ * Call once from app.whenReady(). Other platforms need no probe.
  */
 export function initNotificationProbe(): void {
   if (process.platform !== 'linux') {

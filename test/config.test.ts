@@ -1,11 +1,8 @@
 import { describe, it, expect, expectTypeOf, beforeEach } from 'vitest';
 import type { ThemeName } from '../src/theme';
 
-// No mock of ../src/config here, deliberately. A hand-written stand-in would
-// sit at this point in the file and every runtime assertion below would read
-// that stand-in's own defaults back out, so a real defect in src/config.ts
-// would pass. electron-conf/main is mocked globally in test/setup.ts, so the
-// real module loads and runs unmodified.
+// Test the real config module. A self-mock checks its own defaults and hides production defects.
+// test/setup.ts mocks electron-conf/main so the real module can load.
 import {
   getStorefront, setStorefront,
   getLanguage, setLanguage,
@@ -31,11 +28,8 @@ import { Conf } from 'electron-conf/main';
 import { DEFAULT_SERVICE_ID } from '../src/musicService';
 import type { AnyStartPageId, ClassicalStartPageId, MusicServiceId } from '../src/musicService';
 
-// Each assertion pins a getter return type or a setter parameter type against
-// its StoreSchema key type, so a key whose type drifts fails at the boundary
-// rather than at whichever caller happens to read it. expectTypeOf checks
-// nothing at run time: Vitest transpiles without type-checking, so these only
-// fail under `npx tsc -p tsconfig.test.json --noEmit`, which `just lint` runs.
+// Compare accessors with StoreSchema so type drift fails at the config boundary.
+// Vitest does not type-check. `npx tsc -p tsconfig.test.json --noEmit`, run by `just lint`, enforces expectTypeOf assertions.
 
 describe('Config store type assertions', () => {
   it('getStorefront returns string | undefined', () => {
@@ -243,7 +237,7 @@ describe('Config store runtime behaviour', () => {
   it('setClassicalStartPage rejects a music start page at compile time', () => {
     // @ts-expect-error 'radio' is a music start page, not a Classical one
     setClassicalStartPage('radio');
-    // The union is the only guard; the write itself is unchecked at runtime.
+    // The union is the only guard. The write itself is unchecked at runtime.
     expect(store.get('classical.startPage')).toBe('radio');
   });
 
@@ -281,7 +275,7 @@ describe('Config store runtime behaviour', () => {
   });
 
   it('setLanguage persists null and reads back as null', () => {
-    // The signature allows null, meaning "no override"; a stored null must stay
+    // The signature allows null, meaning "no override". A stored null must stay
     // distinguishable from a key that was never written.
     setLanguage(null);
     expect(getLanguage()).toBeNull();
@@ -430,9 +424,8 @@ describe('Config store runtime behaviour', () => {
   });
 
   it('getPendingScrobbles drops an entry timestamped in the future and keeps the valid one', () => {
-    // Last.fm ignores a future scrobble without an API error, so the flush reads
-    // success and drops the whole batch, taking the valid plays beside it. The
-    // millisecond value is what a hand-edited store most often holds.
+    // Last.fm can ignore a future timestamp without an API error, so reject it before submission.
+    // A millisecond timestamp must not be mistaken for seconds.
     store.set('lastfm.pendingScrobbles', [
       { artist: 'Orbital', track: 'Halcyon', timestamp: 1700000600 },
       { artist: 'Orbital', track: 'Chime', timestamp: 4102444800 },

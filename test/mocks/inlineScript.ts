@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
 
-// Extracts the single, literal script block in repository fixtures, not arbitrary HTML.
+/** Extracts the single, literal script block in repository fixtures, not arbitrary HTML. */
 export function extractInlineScript(html: string): string {
   const openingTag = '<script>';
   const closingTag = '</script>';

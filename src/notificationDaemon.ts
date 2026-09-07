@@ -31,7 +31,7 @@ interface DbusMessage {
   body?: unknown[];
 }
 
-// Module-level bus reference for graceful shutdown
+// Retain the bus so will-quit can release its socket.
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
 // dbus-next exposes no public API to fully close its socket, so the internal
@@ -74,10 +74,8 @@ function dbusCall(member: string, argument: string): Promise<DbusMessage | null>
 }
 
 /**
- * Report whether a notification daemon owns the name, once for the probe reply
- * and again on every later owner change. A session bus that cannot be opened,
- * which happens in containers and in su-launched sessions, leaves notifications
- * off for the session; the connection is not retried.
+ * Report notification-daemon ownership from the initial probe and subsequent owner changes.
+ * If the session bus cannot open, notifications remain off without a retry.
  */
 export function initDaemonProbe(onOwnerChange: (hasOwner: boolean) => void): void {
   try {

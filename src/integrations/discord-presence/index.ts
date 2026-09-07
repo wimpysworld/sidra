@@ -52,9 +52,8 @@ function clearTrackMetadata(): void {
   trackUrl = undefined;
 }
 
-// Playback state. init() assigns playerRef before it builds the only client, so
-// nothing can reach the send path without one. Every call below enable()/disable()
-// carries the Player as an argument, so tsc checks it rather than an assertion.
+// init() assigns playerRef before creating a client. Internal request functions
+// take Player directly so only enable()/disable() need a nullable reference.
 let playerRef: Player | null = null;
 let previousState = 0;
 
@@ -91,28 +90,12 @@ function createClient(player: Player): Client {
   return created;
 }
 
-// Ends a client that is being discarded. removeAllListeners() must run before
-// destroy(): destroy() closes the transport, whose close handler emits
-// 'disconnected' on the old client, and that stray event would arm a second
-// backoff chain.
-//
-// clearActivity() is an RPC round trip on the transport destroy() closes, and
-// destroy() neither flushes the socket nor waits for Discord's reply, so the
-// destroy waits on the clear rather than running beside it. That wait is
-// bounded, because the clear can hang for good: it settles only when Discord
-// answers the SET_ACTIVITY nonce, IPCTransport.send() is a silent no-op once
-// the socket has gone, and the library's rejection path is a one-shot 'close'
-// listener that has already fired and been removed by the time a toggle-off
-// reaches here. A socket that is open while Discord answers no RPC hangs the
-// same way, and that is the case that costs something: the socket leaks and
-// the stale activity outlives Discord's own recovery. So the clear races
-// CLEAR_ACTIVITY_TIMEOUT_MS and whichever settles first destroys. The flag
-// keeps that to one destroy, whether or not the loser settles later.
-//
-// The try/catch covers a synchronous throw from destroy(). It is async in
-// @xhayper/discord-rpc 1.3.4 and cannot throw synchronously today, so this
-// guards a later non-async destroy(); it costs nothing, and a bare .catch()
-// on the call would miss that throw.
+// Remove listeners before destroy(), whose transport close emits 'disconnected'
+// and can otherwise start another reconnect timer.
+// Wait for clearActivity() before closing its transport, but bound the wait:
+// a silent peer or closed socket can leave that RPC unresolved after the one-shot close listener expires.
+// destroyOnce() prevents duplicate destruction when the timeout and RPC both settle.
+// The try/catch also contains synchronous destroy() failures.
 function retireClient(retiring: Client, clearActivity: boolean): void {
   retiring.removeAllListeners();
 
@@ -125,7 +108,7 @@ function retireClient(retiring: Client, clearActivity: boolean): void {
     try {
       retiring.destroy().catch(() => {});
     } catch {
-      // A destroy that fails has nothing left to clean up.
+      // Keep client disposal failures from interrupting the caller.
     }
   };
 
@@ -150,11 +133,8 @@ function replaceClient(player: Player, clearActivity = false): Client {
   return client;
 }
 
-// One failure policy for every login attempt: warn with the site that made it,
-// then hand the retry to the backoff chain. The client is a parameter because
-// the reconnect path logs in on a fresh one while the other sites use the live
-// one, and logging in twice on the same instance is what replaceClient() exists
-// to prevent.
+// Share login failure handling. Reconnect supplies a fresh client, while other
+// callers supply the current one, so a failed instance is not reused for retries.
 function loginOrRetry(player: Player, target: Client, context: string): void {
   target.login().catch((err: Error) => {
     discordLog.warn(`${context} failed:`, err.message);
@@ -162,12 +142,8 @@ function loginOrRetry(player: Player, target: Client, context: string): void {
   });
 }
 
-// Every request for an activity arrives here, so this is where the connection
-// is answered for: a disabled toggle arms no timer, and a client that is down is
-// asked to log in rather than given a debounce whose expiry would find it down
-// anyway. Its 'ready' handler schedules the update the login was for, so nothing
-// is lost. An armed reconnect already owns the retry, so the login is skipped
-// there instead of running a second one on the same instance.
+// Schedule activity only for a connected, enabled client. Otherwise log in and
+// let 'ready' schedule the update, unless a reconnect timer already owns the attempt.
 function scheduleUpdate(player: Player): void {
   if (!getDiscordEnabled() || !client) return;
 
@@ -204,9 +180,8 @@ function disconnectClient(player: Player): void {
   discordLog.info('disconnected from Discord (disabled via toggle)');
 }
 
-// Builds the activity and sends it. The connection is scheduleUpdate()'s
-// business: only a live client is ever given a debounce, and disable() clears a
-// pending one, so this cannot run behind a toggle that has gone off.
+// scheduleUpdate() checks the connection before arming the debounce.
+// disable() cancels pending work so it cannot send after the toggle turns off.
 function sendActivity(player: Player): void {
   if (!client) return;
 
@@ -279,7 +254,7 @@ function scheduleReconnect(player: Player): void {
   }, delay);
 }
 
-/** Turns presence on from the tray toggle; connects if the client is idle. */
+/** Connects an idle presence client when the tray toggle turns on. */
 export function enable(): void {
   const player = playerRef;
   if (!player || !client) return;
@@ -289,7 +264,7 @@ export function enable(): void {
   }
 }
 
-/** Turns presence off from the tray toggle; clears the activity and drops every timer. */
+/** Clears presence and cancels activity and reconnect timers when the tray toggle turns off. */
 export function disable(): void {
   const player = playerRef;
   if (!player || !client) return;
@@ -308,7 +283,7 @@ export function init(ctx: IntegrationContext): void {
     loginOrRetry(player, client, 'initial login');
   }
 
-  // Named listener references for removeListener in will-quit
+  // Named listeners let will-quit remove the same function references.
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     if (!payload) {
       clearTrackMetadata();
@@ -358,9 +333,7 @@ export function init(ctx: IntegrationContext): void {
       reconnectTimer = null;
     }
 
-    // Quitting removes the presence anyway, so the activity is not cleared: that
-    // is an RPC round trip the destroy would have to wait on, and the process is
-    // ending underneath it.
+    // Quitting removes presence. Destroy immediately without waiting for a clearActivity() RPC.
     if (client) {
       retireClient(client, false);
       client = undefined;

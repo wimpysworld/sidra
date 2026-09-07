@@ -1,18 +1,13 @@
-// Writes assets/lastfm-credentials.json from the SIDRA_LASTFM_API_KEY and
-// SIDRA_LASTFM_API_SECRET environment variables. It runs from npm's `prebuild`
-// hook and from the `build` recipe in the justfile, because `npx tsc` fires no
-// npm hook. In CI the env vars come from repository secrets.
+// Write assets/lastfm-credentials.json from SIDRA_LASTFM_API_KEY and
+// SIDRA_LASTFM_API_SECRET. npm's prebuild hook and the justfile build recipe
+// both call this script, because npx tsc runs no npm hook.
 //
-// Local builds with no env set write an empty file rather than leaving it
-// absent, because packaging fails when an asarUnpack entry is missing. Tag
-// builds require both values, so official packages cannot lose Last.fm.
+// Without environment credentials, local builds keep a populated file or write
+// empty values. Packaging needs the file for its asarUnpack entry.
+// Tag builds require both values, so official packages include Last.fm.
 //
-// An existing file that already holds credentials is left alone in a local
-// build when the env is unset, so building without the vars does not blank a
-// working setup.
-//
-// The output file is gitignored - the shared secret must never be committed to
-// the source tree. The real secret ends up only in official build artefacts.
+// CI reads repository secrets. The output is gitignored because the shared
+// secret belongs in build artefacts, never in the source tree.
 const fs = require("fs");
 const path = require("path");
 const { isOfficialBuild, validateCredentialPair } = require("./release-credentials.cjs");

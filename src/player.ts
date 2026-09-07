@@ -6,6 +6,7 @@ import { getService, getServiceByHost, isAllowedNavigationUrl } from './musicSer
 
 const playerLog = log.scope('player');
 
+/** MusicKit identifiers used to resolve catalogue links from library items. */
 export interface PlayParams {
   catalogId?: string;
   globalId?: string;
@@ -13,6 +14,7 @@ export interface PlayParams {
   isLibrary?: boolean;
 }
 
+/** Queue-item metadata that the main process validates before forwarding to integrations. */
 export interface NowPlayingPayload {
   name?: string;
   artistName?: string;
@@ -31,13 +33,16 @@ export interface NowPlayingPayload {
   sourceHost?: string;
 }
 
+/** Classification of a delivered radio song relative to the previous identity. */
 export type RadioMetadataTransition = 'initial' | 'clean' | 'ambiguous';
 
+/** Catalogue identity for a song announced within a radio stream. */
 export interface TimedPlayParams {
   catalogId: string;
   kind: 'song';
 }
 
+/** Radio song fields accepted from the renderer. */
 export interface TimedMetadataInput {
   name: string;
   artistName: string;
@@ -46,6 +51,7 @@ export interface TimedMetadataInput {
   playParams?: TimedPlayParams;
 }
 
+/** Validated radio metadata with the main process's transition classification. */
 export interface TimedMetadataPayload extends TimedMetadataInput {
   transition: RadioMetadataTransition;
   /** Main-process receipt time for the delivered candidate. */
@@ -158,10 +164,8 @@ function sanitiseNowPlayingPayload(value: unknown): NowPlayingPayload | null {
  */
 export function getShareUrl(payload: NowPlayingPayload): string | undefined {
   if (payload.url) return payload.url;
-  // The origin comes from the document that announced the track, not from the
-  // persisted service: the two can disagree, and config would then name a host
-  // the track was never on. An absent or unknown host falls back to config, so
-  // an older hook and an unexpected host both degrade to the previous result.
+  // Service switching can persist the new service before the previous track clears.
+  // Use the payload's host, falling back to config only when that host is absent or unknown.
   const sourceService = payload.sourceHost ? getServiceByHost(payload.sourceHost) : undefined;
   const origin = (sourceService ?? getService(getMusicService())).origin;
   const catalogId = payload.playParams?.catalogId;
@@ -203,12 +207,15 @@ const TERMINAL_PLAYBACK_STATES: ReadonlySet<number> = new Set([
   PlaybackState.Completed,
 ]);
 
+/** True when tray, dock and taskbar Now Playing entries must clear. */
 export function isTerminalPlaybackState(state: number): boolean {
   return TERMINAL_PLAYBACK_STATES.has(state);
 }
 
+/** Renderer playback report, or null when no state is available. */
 export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
+/** Typed events forwarded from Player to native integrations. */
 export interface PlayerEvents {
   hookReady: [url: string | null];
   playbackStopped: [payload: PlaybackStopped];
@@ -223,6 +230,7 @@ export interface PlayerEvents {
   volumeDidChange: [payload: number | null];
 }
 
+/** Player and optional window accessor supplied to integration initialisers. */
 export interface IntegrationContext {
   player: Player;
   getMainWindow?: () => BrowserWindow | null;
@@ -250,33 +258,40 @@ const PLAYBACK_STATES: Record<number, string> = Object.fromEntries(
  * reaching an integration as a listener that never fires.
  */
 export class TypedEmitter<Events extends { [K in keyof Events]: unknown[] }> extends EventEmitter {
+  /** Emit an event with its declared payload tuple. */
   override emit<K extends keyof Events & string>(event: K, ...args: Events[K]): boolean {
     return super.emit(event, ...args);
   }
 
+  /** Register a listener with the event's declared payload types. */
   override on<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
     return super.on(event, listener as (...args: unknown[]) => void);
   }
 
+  /** Register a typed listener that runs at most once. */
   override once<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
     return super.once(event, listener as (...args: unknown[]) => void);
   }
 
+  /** Remove a listener while preserving its event's payload contract. */
   override removeListener<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
     return super.removeListener(event, listener as (...args: unknown[]) => void);
   }
 
+  /** Typed alias for removeListener(). */
   override off<K extends keyof Events & string>(event: K, listener: (...args: Events[K]) => void): this {
     return super.off(event, listener as (...args: unknown[]) => void);
   }
 }
 
+/** Cached playback state with position in microseconds. */
 export interface PlaybackSnapshot {
   isPlaying: boolean;
   positionUs: number;
   state: number;
 }
 
+/** Current controls and duration, with null for unknown seek support or duration. */
 export interface PlaybackCapabilities {
   canPlay: boolean;
   canPause: boolean;
@@ -284,6 +299,7 @@ export interface PlaybackCapabilities {
   durationUs: number | null;
 }
 
+/** Result of a Stop command, correlated with its request ID. */
 export interface PlaybackStopped {
   requestId: number;
   success: boolean;
@@ -392,14 +408,17 @@ export class Player extends TypedEmitter<PlayerEvents> {
     return { isPlaying: this._isPlaying, positionUs: this._positionUs, state: this._state };
   }
 
+  /** Return a copy so integrations cannot mutate cached capabilities. */
   capabilitiesSnapshot(): PlaybackCapabilities {
     return { ...this._capabilities };
   }
 
+  /** Return the last validated ready document URL, or null after document replacement. */
   hookReadyUrl(): string | null {
     return this._hookReadyUrl;
   }
 
+  /** Accept readiness only for a registered service origin without URL credentials. */
   handleHookReady(value: unknown): void {
     if (typeof value !== 'string') return;
     try {
@@ -412,6 +431,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     }
   }
 
+  /** Validate and forward a Stop acknowledgement with a positive request ID. */
   handlePlaybackStopped(payload: unknown): void {
     if (!isRecord(payload) || Object.keys(payload).length !== 2 ||
       !isNonNegativeSafeInteger(payload.requestId) || payload.requestId === 0 ||
@@ -422,6 +442,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('playbackStopped', { requestId: payload.requestId, success: payload.success });
   }
 
+  /** Validate, cache and forward control capabilities without collapsing unknown values. */
   handlePlaybackCapabilitiesDidChange(payload: unknown): void {
     if (!isRecord(payload) || Object.keys(payload).length !== 4 ||
       typeof payload.canPlay !== 'boolean' || typeof payload.canPause !== 'boolean' ||
@@ -439,6 +460,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('playbackCapabilitiesDidChange', this.capabilitiesSnapshot());
   }
 
+  /** Clear document-owned state, emitting stopped playback before clearing track metadata. */
   resetForDocumentReplacement(): void {
     this._hookReadyUrl = null;
     this.emit('hookReady', null);
@@ -452,6 +474,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('nowPlayingItemDidChange', null);
   }
 
+  /** Validate playback reports and derive playing status from the MusicKit state. */
   handlePlaybackStateDidChange(payload: PlaybackStatePayload): void {
     if (payload != null) {
       if (typeof payload !== 'object' || Array.isArray(payload)) {
@@ -477,6 +500,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('playbackStateDidChange', payload);
   }
 
+  /** Reset radio identity and forward a queue item with invalid metadata fields removed. */
   handleNowPlayingItemDidChange(payload: unknown): void {
     this._isRadioStation = false;
     this.resetTimedMetadata();
@@ -495,6 +519,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit('nowPlayingItemDidChange', sanitised);
   }
 
+  /** Validate radio song candidates and coalesce them before classifying transitions. */
   handleTimedMetadataDidChange(payload: unknown): void {
     if (!this._isRadioStation) {
       playerLog.warn('timedMetadataDidChange: ignored outside radio playback');
@@ -521,6 +546,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.dispatchTimedMetadata(input);
   }
 
+  /** Cache and forward finite positions in microseconds, limiting only diagnostic log frequency. */
   handlePlaybackTimeDidChange(payload: number): void {
     if (typeof payload !== 'number' || !isFinite(payload)) {
       playerLog.warn('playbackTimeDidChange: invalid payload, expected finite number');
@@ -554,14 +580,17 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.emit(event, payload);
   }
 
+  /** Forward repeat mode changes through the shared numeric validator. */
   handleRepeatModeDidChange(payload: number | null): void {
     this.handleModeChange('repeatModeDidChange', payload, REPEAT_MODES);
   }
 
+  /** Forward shuffle mode changes through the shared numeric validator. */
   handleShuffleModeDidChange(payload: number | null): void {
     this.handleModeChange('shuffleModeDidChange', payload, SHUFFLE_MODES);
   }
 
+  /** Forward numeric volume reports or null without changing their scale. */
   handleVolumeDidChange(payload: number | null): void {
     if (payload != null && typeof payload !== 'number') {
       playerLog.warn('volumeDidChange: invalid payload, expected number or null');

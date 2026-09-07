@@ -1,9 +1,7 @@
 // Pure module: no electron imports so tests can exercise it directly.
 //
-// Renders a complete Apple Music override stylesheet from a 12-slot
-// palette. Catppuccin renders byte for byte to the values the retired
-// hand-written catppuccin.css asset shipped, which test/themes.test.ts
-// pins, so the emitted form is not free to drift.
+// Render an Apple Music override stylesheet from a 12-slot palette.
+// test/themes.test.ts checks the generated Catppuccin values and output format.
 //
 // Everything inside the template literals below is output, comments included:
 // the string ships to the renderer with insertCSS() on every page load. A
@@ -60,8 +58,7 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex)},${alpha})`;
 }
 
-// The side-panel block alone emits spaced rgba(). test/themes.test.ts pins that
-// form against the values the retired catppuccin.css asset shipped.
+// The side-panel block uses spaced rgba(), as required by test/themes.test.ts.
 function rgbaSpaced(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex).split(',').join(', ')}, ${alpha})`;
 }
@@ -83,8 +80,7 @@ function rgbaSpaced(hex: string, alpha: number): string {
 //
 // The scheme block carries no ::-webkit-scrollbar-* rules. From Chrome 121
 // Chromium ignores that pseudo-element on any element carrying a non-auto
-// scrollbar-color, and the block sets one on every element; Sidra runs
-// Chromium 144, so such rules could never apply.
+// scrollbar-color, which the block sets on every element.
 function schemeBlock(c: SchemeColours): string {
   const playerBG = rgba(c.mantle, 0.88);
   return `  :root {

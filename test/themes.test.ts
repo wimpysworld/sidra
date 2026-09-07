@@ -21,10 +21,8 @@ const CSS_RGBA_RE = /^rgba\((\d+),(\d+),(\d+),([0-9.]+)\)$/;
 /** WCAG 2.x AA floor for body text. */
 const CONTRAST_FLOOR = 4.5;
 
-// Catppuccin Latte ships subtext0 at #6c6f85, which lands at 4.37:1. It is the
-// one documented exception to the floor: the Catppuccin values are Catppuccin's
-// own and are kept byte for byte, and Latte was checked on screen. A new palette
-// gets no entry here.
+// Catppuccin Latte's unchanged subtext0 (#6c6f85) has 4.37:1 contrast, the sole permitted exception to the floor.
+// New palettes must meet the floor without an exception.
 const SECONDARY_FLOORS: Record<string, number> = {
   'catppuccin light': 4.37,
 };
@@ -124,8 +122,7 @@ describe('palettes', () => {
     }
   });
 
-  // themeLabel takes a ThemeName, so a misspelt name fails tsc rather than
-  // rendering as Apple Music; there is no unknown-name case left to check.
+  // themeLabel takes a ThemeName, so tsc rejects misspelt names before they reach the label resolver.
   it('resolves labels for bundled, custom, and apple-music names', () => {
     expect(themeLabel('catppuccin')).toBe('Catppuccin');
     expect(themeLabel('rose-pine')).toBe('Ros\u00e9 Pine');
@@ -216,12 +213,8 @@ describe('buildThemeCss', () => {
         }
       });
 
-      // The generated stylesheet ships to the renderer, so a comment in it is
-      // output. Section labels stay; why a rule exists belongs in a TypeScript
-      // comment in src/themeTemplate.ts, outside the template literals. A label
-      // fits on one line and an explanation does not, so this is the mechanical
-      // form of that boundary. The leading banner is skipped: it identifies the
-      // sheet rather than explaining a rule.
+      // Generated CSS comments reach the renderer. Keep section labels on one line and put explanations outside the template in src/themeTemplate.ts.
+      // Exclude the leading banner because it identifies the stylesheet.
       it('emits section labels only, past the banner', () => {
         const body = css.slice(css.indexOf('*/') + 2);
         for (const comment of body.match(/\/\*[\s\S]*?\*\//g) ?? []) {
@@ -242,11 +235,8 @@ describe('buildThemeCss', () => {
   }
 });
 
-// buildThemeCss() renders one template and schemeBlock() takes a SchemeColours
-// record with no theme name in it, so every palette emits the same selectors,
-// properties, and section labels; only the values differ. The checks below read
-// selectors and property names alone, so one generated stylesheet answers for
-// all of them. Anything reading a palette value stays in the loop above.
+// Every palette uses one template, so one generated stylesheet covers shared selectors, properties and labels.
+// Keep checks of palette values in the per-theme loop above.
 describe('buildThemeCss emitted structure', () => {
   const css = buildThemeCss(BUNDLED_THEMES[0]);
   const darkCss = mediaBlock(css, 'prefers-color-scheme: dark');
@@ -286,8 +276,7 @@ describe('buildThemeCss emitted structure', () => {
     }
   });
 
-  // A scope hash changes on any Apple rebuild, so a selector carrying one is
-  // dead the next time they ship.
+  // Apple rebuilds can change scope hashes, so overrides must not depend on them.
   it('emits no Svelte scope hash', () => {
     expect(css).not.toMatch(/svelte-[a-z0-9]/);
   });

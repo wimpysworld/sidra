@@ -10,11 +10,8 @@ const navBarSource = fs.readFileSync(
   'utf-8',
 );
 
-// The asset is not standalone-executable JavaScript: loadAssets() in src/main.ts
-// substitutes the label token when it reads the file, so this test has to do the
-// same before it runs it. These labels are deliberately not English, so a label
-// that reaches a button proves it came from here and not from a default in the
-// asset.
+// Substitute the label token as main.ts loadAssets() does before executing the asset.
+// Non-English labels distinguish injected translations from asset defaults.
 const LABELS = { back: 'Zurück', forward: 'Vorwärts', reload: 'Neu laden', settings: 'Einstellungen' };
 
 const navBarScript = navBarSource.replace(NAV_LABELS_TOKEN, () => JSON.stringify(LABELS));
@@ -61,7 +58,7 @@ class StubElement {
     for (const listener of this.listeners.get(type) ?? []) listener.call(this);
   }
 
-  // Only tag-name selectors are needed; the script queries its own 'svg' child.
+  // Only tag-name selectors are needed because the script queries its own 'svg' child.
   querySelector(selector: string): StubElement | null {
     return this.descendants().find((element) => element.tagName === selector) ?? null;
   }

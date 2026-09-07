@@ -20,6 +20,7 @@ for tool in ("rsvg-convert", "optipng"):
     if shutil.which(tool) is None:
         raise SystemExit(f"Required tool not found: {tool}")
 
+# The SVG renders at twice its viewBox size, so half-size layers retain native pixels.
 layers = []
 for name, x, y, width, height in screenshots:
     data = (root / "assets/source" / name).read_bytes()

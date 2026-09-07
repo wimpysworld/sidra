@@ -7,7 +7,9 @@ import { applyTheme, hasCustomTheme, resolveTheme } from './theme';
 import { enable as enableDiscord, disable as disableDiscord } from './integrations/discord-presence';
 import * as lastfm from './integrations/lastfm';
 
+/** Zoom levels that Settings accepts. */
 export type ZoomFactor = 1 | 1.25 | 1.5 | 1.75 | 2;
+/** Validated actions shared by Settings and tray controls. */
 export type SettingsAction =
   | { type: 'musicService'; value: MusicServiceId }
   | { type: 'startPage'; serviceId: 'music'; value: MusicStartPageId | 'last' }
@@ -17,7 +19,9 @@ export type SettingsAction =
   | { type: 'closeToTray' | 'notifications' | 'discord' | 'lastfmEnabled'; value: boolean }
   | { type: 'lastfmConnect' | 'lastfmDisconnect' };
 
+/** A stored option value paired with its display label. */
 export interface SettingsOption<T> { value: T; label: string }
+/** Current settings, available choices and translated labels for the renderer. */
 export interface SettingsState {
   musicService: MusicServiceId;
   startPage: AnyStartPageId | 'last';
@@ -37,9 +41,13 @@ export interface SettingsState {
   lang: string;
 }
 
+/** Isolated preload API for the local Settings page. */
 export interface SettingsBridge {
+  /** Read the current settings and available choices. */
   getState(): Promise<SettingsState>;
+  /** Apply a validated action and return the resulting state. */
   apply(action: SettingsAction): Promise<SettingsState>;
+  /** Subscribe to state changes and return an unsubscribe function. */
   onState(listener: (state: SettingsState) => void): () => void;
 }
 
@@ -53,6 +61,7 @@ interface SettingsRuntime {
 let runtime: SettingsRuntime | null = null;
 const listeners = new Set<(state: SettingsState) => void>();
 
+/** Connect application callbacks and Last.fm updates, returning their teardown function. */
 export function initSettingsActions(callbacks: SettingsRuntime): () => void {
   runtime = callbacks;
   lastfm.setStateChangedCallback(() => {
@@ -67,6 +76,7 @@ export function initSettingsActions(callbacks: SettingsRuntime): () => void {
   };
 }
 
+/** Map every service's start-page IDs to translated labels. */
 export function startPageLabels(strings: TrayStrings): Record<AnyStartPageId | 'last', string> {
   return {
     home: strings.startPageHome, new: strings.startPageNew, radio: strings.startPageRadio,
@@ -75,6 +85,7 @@ export function startPageLabels(strings: TrayStrings): Record<AnyStartPageId | '
   };
 }
 
+/** Resolve stored settings against the active service and currently available options. */
 export function getSettingsState(): SettingsState {
   const labels = getTrayStrings();
   const storedService = config.getMusicService();
@@ -111,11 +122,13 @@ export function getSettingsState(): SettingsState {
   };
 }
 
+/** Register a state listener and return its unsubscribe function. */
 export function subscribeSettingsChanges(listener: (state: SettingsState) => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
 
+/** Send one freshly resolved state to all registered listeners. */
 export function notifySettingsChanged(): void {
   if (!listeners.size) return;
   const state = getSettingsState();
@@ -141,6 +154,7 @@ function isSettingsAction(action: unknown, state: SettingsState): action is Sett
   }
 }
 
+/** Validate an action against available choices, apply it and refresh the tray and Settings. */
 export function applySettingsAction(action: unknown): SettingsState {
   const state = getSettingsState();
   if (!isSettingsAction(action, state)) throw new Error('Invalid settings action');

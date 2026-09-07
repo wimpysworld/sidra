@@ -20,6 +20,7 @@ function parseScheme(value: unknown): SchemeColours | null {
   return colours;
 }
 
+/** Parse complete hex-colour schemes, using dark for omitted light and returning null for invalid JSON or colours. */
 export function parseCustomTheme(json: string): ThemeDefinition | null {
   let value: unknown;
   try {

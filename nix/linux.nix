@@ -50,10 +50,8 @@
 let
   pname = "sidra";
 
-  # Both pairs below are rewritten together by the nix-hash CI job, which
-  # reads the filename off the published release. Do not edit them by hand.
-  # aarch64-linux carries the fake hash until the first arm64 deb is released;
-  # the job replaces it then, and `nix build` on aarch64-linux fails before that.
+  # The nix-hash CI job updates each URL and hash together from published assets.
+  # Do not edit these pairs by hand.
   sources = {
     x86_64-linux = {
       url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";

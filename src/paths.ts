@@ -20,6 +20,7 @@ interface PackageJson {
   license?: string;
 }
 
+/** Product details shared by the About window and tray. */
 export interface ProductInfo {
   productName: string;
   description: string;
@@ -30,14 +31,9 @@ export interface ProductInfo {
 let cachedProductInfo: ProductInfo | null = null;
 
 /**
- * Product details taken from package.json, which is the single source for the
- * About window and the tray. The author field keeps only the text before the
- * first '<', because the npm author form is 'Name <email> (url)' and the About
- * window shows the name alone. Cutting at the delimiter rather than deleting a
- * '<...>' match cannot leave part of a bracketed segment behind, which is what
- * CodeQL's incomplete-sanitization check flags about a single-pass replace. require() reads through the asar archive, so
- * package.json is loaded relative to the compiled output and needs no
- * asarUnpack entry, unlike everything getAssetPath() resolves.
+ * Read and cache product details from package.json and Electron's application name.
+ * Keep only author text before '<' so bracketed contact details cannot remain after a partial replacement.
+ * require() reads package.json through the asar archive, so it needs no asarUnpack entry.
  */
 export function getProductInfo(): ProductInfo {
   if (cachedProductInfo) {

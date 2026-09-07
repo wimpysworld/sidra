@@ -1,6 +1,4 @@
-// src/serviceSwitch.ts
-// The one service-switch sequence. Both the tray Player submenu and itms:// routing
-// go through switchService(), so the order below is the only order that ships.
+// Shared service-switch sequence for the tray, itms:// routing and MPRIS OpenUri.
 
 import type { Tray } from 'electron';
 import { getMusicService, setMusicService } from './config';
@@ -10,8 +8,7 @@ import { notifyDocumentReplacing } from './theme';
 import { rebuildTrayMenu } from './tray';
 import { reset as resetWedgeDetector } from './wedgeDetector';
 
-// main.ts owns the window and the tray but cannot be imported (it runs app.whenReady()
-// at import), so it supplies both here, as it does for setGetMainWindowCallback and friends.
+// main.ts supplies accessors because importing it would run app.whenReady().
 let getTrayCallback: (() => Tray | null) | null = null;
 let loadURLCallback: ((url: string) => void) | null = null;
 
@@ -40,8 +37,7 @@ export function switchService(id: MusicServiceId, targetUrl?: string): void {
   loadURLCallback?.(url);
 }
 
-// itms:// links always target the music service. Passing the link to switchService()
-// rather than navigating after it keeps the switch to one navigation.
+/** Route an itms:// target to music with one navigation, switching services when needed. */
 export function routeToMusicService(url: string): void {
   if (getMusicService() !== 'music') {
     switchService('music', url);

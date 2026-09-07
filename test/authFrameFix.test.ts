@@ -10,11 +10,8 @@ const authFixSource = fs.readFileSync(
   'utf-8',
 );
 
-// The asset is not standalone-executable JavaScript: loadAssets() in src/main.ts
-// substitutes the config token when it reads the file, so this test has to do
-// the same before it runs it. The payload is deliberately not the production
-// one, so a value that reaches the injected stylesheet or the log line proves it
-// came from here and not from a default in the asset.
+// Substitute the config token before execution, as loadAssets() does in src/main.ts.
+// Distinct fixture values show that the stylesheet and log use the supplied payload, not asset defaults.
 const CONFIG = {
   css: '.stub-passkey { display: none !important; }\n',
   containerSelectors: PASSKEY_CONTAINER_SELECTORS,

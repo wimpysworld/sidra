@@ -1,10 +1,5 @@
-// test/integrationCleanup.test.ts
-//
-// Enforces the AGENTS.md claim that every listener is cleaned up on will-quit.
-// Nothing else in the suite notices when it breaks, and it breaks quietly:
-// anonymous listeners cannot be removed at all, a module can stop its timer
-// and leave its listeners attached, and a teardown closure is discarded by
-// calling the function that returns it as a bare statement.
+// Check that player listeners have named references and removals inside cleanup blocks.
+// Timer cleanup alone leaves listeners attached. A returned teardown closure also needs a caller.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -20,7 +15,7 @@ import { setPlatform, restorePlatform } from './mocks/platform';
 const SRC_DIR = path.join(__dirname, '..', 'src');
 const INTEGRATIONS_DIR = path.join(SRC_DIR, 'integrations');
 
-/** Every module that takes a Player and may register listeners on it. */
+/** Integration entry points and other known modules that register Player listeners. */
 function playerConsumerFiles(): string[] {
   const integrations = fs
     .readdirSync(INTEGRATIONS_DIR, { withFileTypes: true })
@@ -28,23 +23,20 @@ function playerConsumerFiles(): string[] {
     .map((entry) => path.join(INTEGRATIONS_DIR, entry.name, 'index.ts'))
     .filter((file) => fs.existsSync(file));
 
-  // wedgeDetector and tray are not under integrations/ but register on the
-  // same Player and are bound by the same claim.
+  // wedgeDetector and tray need the same cleanup checks despite living outside integrations/.
   return [...integrations, path.join(SRC_DIR, 'wedgeDetector.ts'), path.join(SRC_DIR, 'tray.ts')];
 }
 
 /**
- * The two cleanup forms this tree uses: the `will-quit` handler an integration
- * registers, and the teardown closure `initTrayStateManager` returns. A
- * separate test in this file checks main.ts wires that closure to `will-quit`.
+ * Match integration `will-quit` handlers and returned teardown closures.
+ * A separate test checks that main.ts registers the tray closure on `will-quit`.
  */
 const CLEANUP_OPENER =
   /app\.on\(\s*'will-quit'\s*,\s*(?:async\s*)?\(\s*\)\s*=>\s*\{|return\s*(?:async\s*)?\(\s*\)\s*=>\s*\{/;
 
 /**
- * The index of the quote that closes the string literal starting at
- * `openIndex`, or -1 when it never closes. A `${}` expression inside a template is skipped whole; the
- * braces in it balance, so passing over them costs the brace count nothing.
+ * Find the closing quote, or return -1 for an unterminated literal.
+ * Template contents are skipped as text, without parsing interpolation or nested templates.
  */
 function endOfString(source: string, openIndex: number): number {
   const quote = source[openIndex];
@@ -61,11 +53,8 @@ function endOfString(source: string, openIndex: number): number {
 }
 
 /**
- * The body of the block whose `{` sits at `openIndex`, found by balancing
- * braces forward, or `null` when the balance never returns to zero. Comments
- * and string literals are stepped over so a brace inside either is not counted.
- * Returning `null` fails the sweep rather than passing it: a block this scanner
- * cannot read is a block whose removals it cannot see.
+ * Find the block body by balancing braces outside comments and string literals.
+ * Return `null` for unreadable blocks so the cleanup check fails instead of assuming that removals exist.
  */
 function balancedBody(source: string, openIndex: number): string | null {
   let depth = 0;
@@ -115,27 +104,15 @@ function cleanupRegions(source: string): { bodies: string[]; unbalanced: number 
 }
 
 /**
- * What is wrong with one module's listener cleanup; empty means nothing is.
- * Pure, so the on-disk sweep and the fixtures below exercise the same code.
- *
- * The removal has to sit inside a cleanup block, not merely somewhere in the
- * file. A removal parked in a function nothing calls at teardown reads exactly
- * like a real one to a whole-file search, and leaves the listener attached for
- * the life of the process - the failure this file exists to catch. Position is
- * not checked: mpris registers its `will-quit` handler above its `player.on`
- * calls, and that order is fine.
+ * Return listener-cleanup faults, using the same pure check for source files and fixtures.
+ * Require removals inside cleanup blocks because a removal elsewhere does not establish teardown.
+ * Registration order is unrestricted because MPRIS declares cleanup before attaching its listeners.
  */
 function findCleanupFaults(source: string): string[] {
   const faults: string[] = [];
 
-  // Only a named reference can be removed later, so an inline listener is a
-  // failure whatever else the file does.
-  //
-  // `once` is held to the same rule as `on`: it detaches itself only after it
-  // fires, so until then it is a live listener and quitting has to remove it.
-  // Node stores the wrapper with `.listener` set to the original function, so
-  // `removeListener` takes the same reference the registration used, and it is
-  // a harmless no-op when the listener has already fired.
+  // Named references let teardown remove listeners, including `once` listeners that do not fire before quit.
+  // Node exposes the original callback through the once wrapper's `.listener`, so removeListener accepts that reference even after delivery.
   const named = [
     ...source.matchAll(
       /player\.(?:on|once|addListener)\(\s*'([^']+)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
@@ -168,10 +145,8 @@ function findCleanupFaults(source: string): string[] {
 }
 
 describe('player listener cleanup', () => {
-  // A source sweep rather than a per-module behavioural test, so a new
-  // integration directory is covered the moment it is added. Reaching every
-  // module behaviourally would mean mocking dbus, discord-rpc and three
-  // platforms; this catches the omission the same way and cannot go stale.
+  // Discover integration directories automatically so new modules receive the same structural cleanup check.
+  // This check needs no D-Bus, Discord or platform mocks, but does not prove that teardown runs.
   describe('every registration has a matching removal', () => {
     for (const file of playerConsumerFiles()) {
       const relative = path.relative(path.join(__dirname, '..'), file);
@@ -271,9 +246,7 @@ describe('player listener cleanup', () => {
       ]);
     });
 
-    // `addListener` is the same registration under another name, so a sweep
-    // matching `player.on(` alone passes a module that registers this way
-    // while reading as coverage.
+    // addListener aliases on, so matching only player.on misses valid registrations.
     it('rejects an addListener registration with no removal', () => {
       const source = `
         export function init(): void {

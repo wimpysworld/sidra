@@ -46,6 +46,8 @@ function createPadState(): PadState {
   };
 }
 
+// Keep controller runtime code here: a sandboxed preload can require only electron.
+// Reset samples suppress held buttons until release, preventing input across document and focus changes.
 class ControllerState {
   private readonly pads = new Map<number, PadState>();
   private lastFrameAt: number | null = null;
@@ -133,12 +135,8 @@ class ControllerState {
 }
 
 /**
- * Builds a channel allowlist from a record keyed by the channel union, so the
- * allowlist and the union cannot drift: a missing key and an unknown key are
- * both compile errors. Object.keys() is typed string[], so the cast lives here
- * rather than at the two call sites. allows() takes a string because the value
- * it checks arrives from the main world, where nothing is typed; the predicate
- * narrows it to C for the caller.
+ * Build an exhaustive channel allowlist, making missing and unknown keys compile errors.
+ * Keep the Object.keys() cast here, while allows() narrows untrusted main-world strings to the channel union.
  */
 function channelSet<C extends string>(
   channels: Record<C, true>,
@@ -296,12 +294,8 @@ for (const channel of RECEIVE_CHANNELS.all) {
 }
 
 /**
- * The renderer-to-main half of the bridge, exposed as window.AMWrapper and used
- * by sendToMain() in assets/musicKitHook.js. Sending is the only capability the
- * renderer gets, and an unlisted channel is dropped with a warning rather than
- * forwarded. The satisfies clause is what type-checks the payload at all:
- * exposeInMainWorld() takes it untyped, so the declaration in
- * src/types/hook.d.ts would otherwise be checked against nothing.
+ * Expose only allowlisted sends through window.AMWrapper for the hook's sendToMain().
+ * satisfies checks the bridge contract because exposeInMainWorld() does not type-check its payload.
  */
 contextBridge.exposeInMainWorld('AMWrapper', {
   ipcRenderer: {

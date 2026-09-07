@@ -1,9 +1,9 @@
-// Module augmentation for CastLabs Electron type gaps. CastLabs ECS exposes
-// these APIs at runtime but omits them from its bundled electron.d.ts. They are
-// declared once here rather than cast at each call site, so every use is still
-// checked against a signature and a genuine mistake is not hidden by a cast.
+// CastLabs ECS exposes these APIs but omits their types. Shared declarations
+// keep call sites type-checked without casts.
 
+/** Runtime APIs missing from the bundled CastLabs Electron declarations. */
 declare namespace Electron {
+  /** CastLabs additions to the Electron application API. */
   interface App {
     /**
      * Set the XDG desktop filename (Linux). It sets CHROME_DESKTOP, which is

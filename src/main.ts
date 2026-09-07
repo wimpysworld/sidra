@@ -111,11 +111,8 @@ if (process.platform === 'darwin') process.env.TMPDIR = app.getPath('temp');
 // Use a platform-accurate Chrome UA, stripping Electron identifiers that
 // Apple Music detects and blocks. The platform component must be truthful
 // to match Sec-CH-UA-Platform Client Hints sent on every request.
-// The Chrome version is read from process.versions.chrome, so a CastLabs ECS bump
-// carries the UA with it and the two cannot drift; a hardcoded version stayed on
-// 144 while the pinned build moved to Chromium 148. Only the major is used, and
-// the other three components are always 0: Chrome's reduced UA freezes them there,
-// so this is the form real Chrome sends rather than a truncation of it.
+// Read the Chrome major from process.versions.chrome so CastLabs ECS updates
+// also update the UA. Chrome's reduced UA fixes the other components at 0.
 function chromeUA(): string {
   const version = `${process.versions.chrome.split('.')[0]}.0.0.0`;
   const webkit = 'AppleWebKit/537.36 (KHTML, like Gecko)';
@@ -139,8 +136,7 @@ let appTray: Tray | null = null;
 let isQuitting = false;
 app.on('before-quit', () => { isQuitting = true; });
 
-// Promoted to module scope so second-instance and pending-target handlers can
-// access the main window without threading it through closures.
+// Shared by second-instance and pending-target handlers.
 let win: BrowserWindow | null = null;
 let rendererDocumentGeneration = 0;
 
@@ -180,6 +176,7 @@ function routeItmsTarget(target: ItmsTarget | null): void {
   mainLog.info(`itms target routed: kind=${target.kind}`);
 }
 
+/** Local styles and scripts prepared for injection into service pages and authentication frames. */
 export interface Assets {
   STYLE_FIX_CSS: string;
   authFrameScript: string;
@@ -434,14 +431,9 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
   });
 }
 
-// Injects the MusicKit hook and then the navigation bar. Called from
-// did-finish-load and from did-navigate-in-page, which is why it never rejects:
-// in did-finish-load an escaping rejection skips markCssReady(), and that is the
-// only thing that dismisses the splash, so the app would show it for the life of
-// the process. Every await sits in its own try/catch, and the gate's getURL()
-// read is inside the first one because a destroyed webContents throws there.
-// A hook failure still injects the nav bar: back and forward buttons that work
-// beat none at all on a page whose media controls are already dead.
+// Contain injection failures in both full-load and in-page navigation handlers.
+// The URL read can throw after WebContents destruction, so it stays inside the catch.
+// Separate catches let navigation controls load even when the MusicKit hook fails.
 async function injectRendererScripts(win: BrowserWindow, assets: Assets, context: string): Promise<void> {
   try {
     const currentUrl = win.webContents.getURL();
@@ -464,9 +456,8 @@ async function injectRendererScripts(win: BrowserWindow, assets: Assets, context
 }
 
 function setupNavigationHandlers(win: BrowserWindow, player: Player): void {
-  // Keeps the main frame on Apple's hosts, so the preload command bridge and the
-  // injected hook can only ever reach Apple Music. Main-process loadURL() calls do
-  // not raise this event, so launch, service switching and itms:// routing are unaffected.
+  // Keep page-initiated main-frame navigation on registered service and authentication hosts.
+  // Main-process loadURL() calls bypass this event and need their own validated targets.
   win.webContents.on('will-navigate', (event, url) => {
     if (!isAllowedNavigationUrl(url)) {
       event.preventDefault();
@@ -554,9 +545,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
     event.preventDefault();
   });
 
-  // A single did-fail-load handler covers both error logging and splash
-  // dismissal. The first-fire markCssReady() call prevents the splash screen
-  // from hanging indefinitely when Apple Music fails to load.
+  // Release the CSS readiness wait on load failure without waiting for its timeout.
   let cssMarked = false;
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     if (!cssMarked) {
@@ -568,7 +557,7 @@ function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
 
   // Apple Music registers a beforeunload handler while audio plays. Electron
   // shows no confirmation dialog, so the handler silently blocks close() and
-  // app.quit() with no error; overriding it here is what lets Sidra exit.
+  // app.quit() with no error. Overriding it here lets Sidra exit.
   win.webContents.on('will-prevent-unload', (event) => {
     event.preventDefault();
   });
@@ -614,10 +603,8 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     initialized = true;
 
     if (firstLoad) {
-      // Integration failures are contained for the same reason: markCssReady()
-      // below is the only thing that dismisses the splash. Each initialiser is
-      // its own step, so a throw from one cannot cancel the rest for the
-      // lifetime of the process.
+      // Isolate initialisers so one failure cannot skip the others or delay
+      // markCssReady() until the splash timeout.
       runSteps([
         ['notifications', () => initNotifications({ player, getMainWindow: () => win })],
         ['discord', () => initDiscordPresence({ player })],
@@ -632,9 +619,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
         ['wedgeDetector', () => initWedgeDetector({ player, getMainWindow: () => win })],
         ['trayState', () => {
           if (!appTray) return;
-          // The returned closure is the teardown for all four resources it
-          // holds, so it must reach will-quit; called as a bare statement it
-          // would be discarded and every one of them would stay attached.
+          // Register teardown so the tray timers and player listeners end on quit.
           const teardownTrayState = initTrayStateManager(player, appTray);
           app.on('will-quit', teardownTrayState);
         }],

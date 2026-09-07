@@ -55,15 +55,13 @@ async function showNotification(
   }
   const title = payload.name;
 
-  // Checked before the artwork download so a daemon-less session does no
-  // network and disk work per track
+  // Check availability before downloading artwork to avoid unused network and disk work.
   if (!notificationsAvailable()) {
     notifLog.debug('skipping notification: no notification daemon');
     return;
   }
 
-  // A slow artwork fetch must not hold the notification past the track it
-  // announces, so the download races a timeout and loses its icon on expiry
+  // Bound the artwork wait so a slow fetch cannot delay the track notification indefinitely.
   const artworkPath = payload.artworkUrl
     ? await Promise.race([
         downloadArtwork(payload.artworkUrl).catch((error: unknown) => {
@@ -210,8 +208,8 @@ async function showNotification(
 }
 
 /**
- * Announces each new track as a desktop notification. The debounce keeps a
- * queue jump or a burst of metadata updates to a single notification.
+ * Announces tracks and radio song labels, coalescing bursts through a debounce.
+ * Refreshes playback actions from player state and retires notifications on shutdown.
  */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;

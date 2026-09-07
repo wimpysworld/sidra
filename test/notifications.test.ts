@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-// The notify stand-in mirrors the D-Bus daemon gate; 'record' mode is what this
-// file needs, because the integration attaches listeners and calls show() on
-// the object it gets back, and the tests read both.
+// The notify fake models the D-Bus daemon gate. Record mode exposes listeners and show() calls for these assertions.
 import { FakeNotification, notifyFake, resetNotifyFake } from './mocks/notify';
 
 import { downloadArtwork } from '../src/artwork';

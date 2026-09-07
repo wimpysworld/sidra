@@ -5,6 +5,6 @@ result/
 release/
 *.log
 
-# Generated at build time by scripts/inject-lastfm-credentials.cjs - contains the
-# Last.fm API secret, must never be committed.
+# scripts/inject-lastfm-credentials.cjs generates this file at build time.
+# It contains the Last.fm API secret and must never be committed.
 assets/lastfm-credentials.json

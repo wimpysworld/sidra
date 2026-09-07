@@ -30,6 +30,7 @@ const lastfmLog = log.scope('lastfm');
 
 let stateChangedCallback: (() => void) | null = null;
 
+/** Sets or clears the UI refresh callback for authentication and disconnects. */
 export function setStateChangedCallback(callback: (() => void) | null): void {
   stateChangedCallback = callback;
 }
@@ -38,17 +39,10 @@ const API_ROOT = 'https://ws.audioscrobbler.com/2.0/';
 const AUTH_URL = 'https://www.last.fm/api/auth/';
 
 /**
- * Resolves the app-level Last.fm API credentials. These identify the Sidra
- * application to Last.fm (not the user - each user authenticates their own
- * account via the browser flow). Resolution order:
- *
- * 1. `SIDRA_LASTFM_API_KEY` / `SIDRA_LASTFM_API_SECRET` env vars - for local dev.
- * 2. `assets/lastfm-credentials.json` - written at build time by
- *    `scripts/inject-lastfm-credentials.cjs` from CI secrets, so the real secret
- *    ships only in official builds and never lives in the public source tree.
- *
- * Absent both, the credentials are empty and the integration stays inert (the
- * tray hides the Last.fm menu via `isConfigured()`).
+ * Reads application credentials from SIDRA_LASTFM_API_KEY/SIDRA_LASTFM_API_SECRET,
+ * then assets/lastfm-credentials.json, which scripts/inject-lastfm-credentials.cjs generates at build time.
+ * These identify Sidra, not the user, and stay outside the public source tree.
+ * Missing credentials disable the integration and hide its menu through isConfigured().
  */
 function loadCredentials(): { apiKey: string; apiSecret: string } {
   const envKey = process.env.SIDRA_LASTFM_API_KEY;
@@ -88,8 +82,7 @@ const MAX_PENDING_SCROBBLES = 50;
 // scrobble or hold a queued-scrobble drain open for the life of the session.
 const REQUEST_TIMEOUT_MS = 30_000;
 
-// Authentication poll: Last.fm has no callback, so poll auth.getSession until the
-// user approves the token in their browser, then give up.
+// Last.fm has no desktop auth callback. Poll until approval or the timeout.
 const AUTH_POLL_INTERVAL_MS = 4000;
 const AUTH_POLL_TIMEOUT_MS = 120_000;
 
@@ -134,17 +127,9 @@ function toCount(value: number | string | undefined): number {
 }
 
 /**
- * Reads what Last.fm actually stored out of a track.scrobble body, or null when
- * the body carries no `scrobbles` field at all.
- *
- * Filtering is not an error. A batch Last.fm kept nothing from still answers
- * `status: ok` with no `error` field, so it settles on the success path and
- * cannot be told from a batch stored whole unless the body is read. That is the
- * only reason this exists.
- *
- * The null return is what keeps a body without the field reported exactly as it
- * always was: reading an absent field as zero accepted would report a loss for
- * every response that merely does not carry the counts.
+ * Reads accepted and filtered counts from a successful track.scrobble response.
+ * Filtering carries no API error, so only these fields reveal rejected plays.
+ * Returns null for an absent `scrobbles` field, because missing counts do not mean zero accepted plays.
  */
 function readScrobbleOutcome(res: LastfmResponse): ScrobbleOutcome | null {
   const scrobbles = res.scrobbles;
@@ -172,31 +157,10 @@ function readScrobbleOutcome(res: LastfmResponse): ScrobbleOutcome | null {
 // account's Applications settings looks like. No retry can recover it.
 const INVALID_SESSION_ERROR = 9;
 
-// The Last.fm codes that answer about something other than the play. Two
-// classes sit here. The state of the service: 8 "Operation failed - Most likely
-// the backend service failed. Please try again.", 11 "Service Offline - This
-// service is temporarily offline. Try again later.", 16 "The service is
-// temporarily unavailable, please try again." and 29 "Rate Limit Exceded". The
-// state of Sidra's own application credential: 10 "Invalid API key - You must
-// be granted a valid key by last.fm" and 26 "API Key Suspended - This
-// application is not allowed to make requests to the web services", which the
-// track.scrobble page words as "Suspended API key - Access for your account has
-// been suspended, please contact Last.fm". Neither is anything the user can
-// fix, and Last.fm can restore a rejected key server-side exactly as it can
-// lift a suspension: `active()` gates every request on `isConfigured()`, so a
-// build shipped without credentials never makes a request at all and code 10
-// can only mean a key that is present was rejected. None of the six means the
-// play was seen and refused, so the play is held exactly as one the network
-// never delivered is. Every other code answers about this play and is final.
-//
-// None of them can be provoked by the contents of a batch either, which is what
-// keeps a held batch from blocking the queue: the condition belongs to the
-// service or to the credential, and it clears when that does. While the
-// credential is rejected no request can succeed, so the queue neither drains
-// nor blocks anything; `queueScrobble()` evicts oldest-first, so it stays a
-// rolling window of the newest 50 plays. No timer retries either: a drain only
-// rides on the success path of a request the user's playback triggered. See
-// `flushPendingScrobbles()`.
+// Service failures (8, 11, 16, 29) and rejected application keys (10, 26) do not
+// refuse the play itself, and Last.fm can restore service or keys without user action.
+// Batch contents cannot cause these failures, so retain plays in the bounded queue
+// until a successful playback request calls flushPendingScrobbles(), never a retry timer.
 const RETRIABLE_ERRORS = new Set([8, 10, 11, 16, 26, 29]);
 
 /** An error the Last.fm API reported in its response body, with its code intact. */
@@ -242,8 +206,8 @@ export function signParams(params: Record<string, string>, secret: string): stri
 }
 
 /**
- * Returns the play time after which a track should be scrobbled, or null if the
- * track is too short to ever scrobble.
+ * Returns the required play time in milliseconds, or null for tracks of 30 seconds or less.
+ * A non-positive duration is unknown and uses the four-minute fallback.
  */
 export function scrobbleThresholdMs(durationMs: number): number | null {
   if (durationMs > 0 && durationMs <= MIN_TRACK_LENGTH_MS) return null;
@@ -374,9 +338,8 @@ function clearScrobbleTimer(): void {
 }
 
 /**
- * Banks the time played since the last resume. Every path that stops counting
- * play time goes through this, so the running total survives a pause and a
- * disable alike and the scrobble threshold is measured against real listening.
+ * Adds elapsed time since resume for normal tracks before a pause or disable.
+ * Radio time comes from position advances, so wall time never increases its total.
  */
 function foldPlayTime(): void {
   if (lastResumeAt === null) return;
@@ -403,7 +366,7 @@ function cancelAuth(): void {
   authInProgress = false;
 }
 
-/** The session and the track a request path may use, once `active()` has passed. */
+/** Validated session and track fields for a playback request. */
 interface ActiveTrack {
   sessionKey: string;
   artist: string;
@@ -413,14 +376,8 @@ interface ActiveTrack {
 }
 
 /**
- * The single gate every request path checks: credentials in the build, the
- * feature on, an account connected, and a track worth naming. A build without
- * credentials therefore never reaches Last.fm at all.
- *
- * The session key and the track fields are handed back rather than left for the
- * caller to read again, because tsc cannot see through a boolean gate: every
- * call site carried a non-null assertion on the very values this had just
- * checked. Returning them makes the check and the narrowing one thing.
+ * Allows playback requests only with application credentials, an enabled integration, a session and named track metadata.
+ * Returns the validated fields so callers need no non-null assertions.
  */
 function active(): ActiveTrack | null {
   if (!isConfigured() || !getLastfmEnabled()) return null;
@@ -430,26 +387,9 @@ function active(): ActiveTrack | null {
 }
 
 /**
- * Disconnects the account when Last.fm rejects the session key, and reports it.
- * Returns true once the error is handled, so callers skip their own logging.
- *
- * Without this the session stays set, nothing retries, and the tray still shows
- * the account as connected: scrobbling is dead and the UI says otherwise.
- *
- * The rejection only counts against the session the request went out under,
- * which is why the caller passes in the generation it captured rather than
- * reading anything stored again here. A second request in flight when the first
- * is refused belongs to a session that is already gone, so it settles here
- * silently and the user sees one notification. A refusal that arrives after the
- * user has reconnected belongs to the old session too, so it cannot tear down
- * the session that replaced it.
- *
- * The generation is the gate rather than the session key because Last.fm hands
- * back the same key when the same account reconnects. Comparing keys let such a
- * refusal pass as current: it disconnected the session the user had just
- * established and emptied the queue with it. The generation moves at both
- * writers of the stored key, so an equal generation means the session that sent
- * the request is still the one connected.
+ * Disconnects and reports an invalid current session, returning true to prevent duplicate logging.
+ * Ignores stale refusals so concurrent failures notify once and cannot disconnect a replacement session.
+ * Compares generations because Last.fm can return the same key when an account reconnects.
  */
 function handleInvalidSession(err: unknown, generation: number): boolean {
   if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR) return false;
@@ -461,16 +401,8 @@ function handleInvalidSession(err: unknown, generation: number): boolean {
 }
 
 /**
- * Holds a play the network stopped from reaching Last.fm. The queue is
- * persisted, so it survives the restart that a dropped connection often ends
- * in, and the newest entries win once it is full: an old play is the one the
- * user is least likely to miss.
- *
- * A trim made while a drain is in flight is counted, because it takes an entry
- * off the head that the drain has already submitted and is about to remove
- * again. Only a drain from the session still connected counts: one from an
- * account that has gone removes nothing, so a trim against it would be
- * subtracted from a batch that is never dropped.
+ * Persists an undelivered play, retaining the newest MAX_PENDING_SCROBBLES entries across restarts.
+ * Counts head trims during the current session's drain so dropSubmitted() does not remove newer plays twice.
  */
 function queueScrobble(entry: PendingScrobble): void {
   const queued = [...getPendingScrobbles(), entry];
@@ -492,32 +424,10 @@ function dropSubmitted(count: number): void {
 }
 
 /**
- * Runs every check a drain must pass, in the order it must pass them, and
- * returns the batch to submit or null when one of them stops it. Nothing is
- * claimed here: the caller marks the drain, so the checks stay free of side
- * effects.
- *
- * Off is an instruction to stop sending. Nothing cancels a request already out,
- * so one that left while the feature was on can settle after the toggle and
- * carry the whole queue to Last.fm from here. The check belongs in the drain
- * rather than at its callers, so every path into it is covered. The plays stay
- * queued: the user consented to them when they played them, and they go out if
- * the feature is turned back on.
- *
- * A drain from a generation that has moved on is left where it is: it never
- * reaches `dropSubmitted()`, so it cannot collide with this one, and `null`
- * never matches a generation.
- *
- * The batch is capped at the 50 Last.fm accepts in a single track.scrobble
- * request. Anything past that stays on the queue and goes out with the next
- * drain: nothing here is scheduled, so a longer queue clears over as many
- * requests as the user's own playback triggers. Sending it whole would be
- * refused, losing the backlog to a final error and resending the same over-long
- * batch forever when the request never reached Last.fm at all.
- *
- * The session key is passed in by the caller and checked against the stored one
- * because a drain signed with a key the user has since replaced belongs to
- * nobody.
+ * Returns an eligible batch without claiming the drain or changing the queue.
+ * Requires an enabled integration and matching session key, since an earlier request can settle after disable or reconnect.
+ * Only a current-generation drain blocks another batch, because stale drains cannot remove current entries.
+ * Caps each request at Last.fm's 50-play limit, leaving any excess for later playback-triggered drains.
  */
 function drainGuard(sessionKey: string): PendingScrobble[] | null {
   if (!getLastfmEnabled()) return null;
@@ -595,8 +505,7 @@ function onDrainFailed(err: Error, batch: PendingScrobble[], generation: number)
     if (!handleInvalidSession(err, generation)) {
       lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
     }
-    // `handleInvalidSession()` may have disconnected, which empties the
-    // queue and moves the generation on; either way the batch is gone.
+    // An invalid session clears the queue and advances the generation.
     if (generation === sessionGeneration) dropSubmitted(batch.length);
     return;
   }
@@ -667,29 +576,10 @@ function sendNowPlaying(): void {
 }
 
 /**
- * True when live playback confirms the track really reached its scrobble
- * threshold.
- *
- * A committed document navigation resets `Player`, which cancels the timer
- * through its playback-state event. This check remains a defence against a
- * missing or malformed renderer event. If playback stops without a valid state
- * event, the wall-clock timer stays armed and `Player` keeps its last snapshot.
- * Re-reading that snapshot prevents a track abandoned before its threshold
- * from earning play time while idle.
- *
- * The playhead belongs to the player, not to the track held here, so it is only
- * trusted once a position report has arrived for this track: `positionReported`
- * is cleared with the rest of the track state. Without it, a metadata event can
- * announce a new track while a missing or malformed position event leaves the
- * previous track's playhead cached. A short track could then scrobble without
- * playing. The stale value does not count until the new track reports a valid
- * position.
- *
- * The comparison is absolute rather than a delta against the position sampled
- * when the timer was armed. A delta cannot work: a track abandoned after some
- * real playback has moved its playhead, and repeat-one re-arms on the play
- * transition that precedes the first position report of the new loop, so the
- * baseline would be the end of the previous loop.
+ * Requires live playback and position evidence before a timer can submit a play.
+ * Normal tracks need a position report for this track, excluding cached positions from the previous item.
+ * Their threshold uses absolute position, because repeat-one can arm before the new loop's first position report.
+ * Radio instead requires recent continuous advances and enough accumulated play time, never the station's absolute playhead or stalled wall time.
  */
 function playbackReachedThreshold(): boolean {
   const snapshot = playerRef?.playbackSnapshot();
@@ -757,21 +647,9 @@ function doScrobble(): void {
   if (current.durationMs > 0) entry.durationSec = Math.round(current.durationMs / 1000);
   if (isRadioSong) entry.chosenByUser = 0;
 
-  // A refusal is final for this track. `scrobbled` stays set, so the track is
-  // submitted once and once only. Clearing it re-opened the submission without
-  // re-arming anything, so the only way back to a request was the user pausing
-  // and resuming; a retry that fires on a failed submission is a retry loop,
-  // and the remaining time it would wait comes from `accumulatedMs`, which is
-  // only folded at pause and so means nothing mid-play.
-  //
-  // A transport failure says nothing about the track: Last.fm never saw it. So
-  // does a temporary service error, which answers about the service and leaves
-  // the play unrecorded. The play goes on the queue instead, and leaves with the
-  // next request playback triggers. `scrobbled` still stays set, because a
-  // queued play counts as submitted and nothing here re-arms. It is only queued
-  // while the account that listened is still connected: the queue is drained
-  // under whichever key is stored when it goes out, so queuing past a
-  // disconnect would hand this play to the next account.
+  // Keep scrobbled set after submission, including failures, to prevent resubmission on resume.
+  // submitScrobble() queues non-final failures only for the same session.
+  // A later playback request drains the queue without a retry timer.
   submitScrobble(entry, sessionKey, generation);
 }
 
@@ -976,8 +854,7 @@ export function startAuth(onComplete?: () => void): void {
       if (generation !== authGeneration) return;
       const token = res.token;
       if (!token) throw new Error('no token returned');
-      // URLSearchParams percent-encodes both values. Interpolating them left a
-      // token carrying `&` or `#` to rewrite or truncate the query.
+      // Percent-encode both values so token characters cannot change the query structure.
       const url = new URL(AUTH_URL);
       url.searchParams.set('api_key', API_KEY);
       url.searchParams.set('token', token);
@@ -1061,9 +938,8 @@ export function disconnect(): void {
 }
 
 /**
- * Subscribes to the three player events scrobbling needs, and releases them on
- * `will-quit`. The module runs on every platform and stays inert without
- * credentials, so no gate keeps it out of a build.
+ * Subscribes to track, radio metadata, playback state and position events on every platform.
+ * Releases listeners on will-quit and makes no requests without application credentials.
  */
 export function init(ctx: IntegrationContext): void {
   playerRef = ctx.player;
@@ -1111,8 +987,8 @@ export function init(ctx: IntegrationContext): void {
     }
   };
 
-  // Stores a flag only, and starts nothing: a debounced send from this event
-  // would reset its own timer on every position report and never expire.
+  // Normal tracks mark the playhead as current. Radio counts continuous advances
+  // and confirms song boundaries here, since wall time cannot prove stream playback.
   const onPlaybackTimeDidChange = (positionUs: number): void => {
     positionReported = true;
     const now = Date.now();

@@ -8,9 +8,7 @@ import type { IntegrationContext } from '../src/player';
 type WedgeDetector = typeof import('../src/wedgeDetector');
 type ScopedLog = ReturnType<typeof electronLog.scope>;
 
-// Every listener and counter in the module is module-scoped, and init() now
-// refuses a second call, so a shared instance cannot be re-initialised between
-// tests. Each test takes its own copy instead.
+// init() refuses repeat calls and keeps module-level state, so each test needs a fresh module.
 async function loadWedgeDetector(): Promise<WedgeDetector> {
   vi.resetModules();
   return import('../src/wedgeDetector');
@@ -94,7 +92,6 @@ describe('wedgeDetector', () => {
   it('does not fire skip when position advances', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Simulate position advancing every second
     for (let i = 1; i <= 8; i++) {
       vi.advanceTimersByTime(1000);
       player.handlePlaybackTimeDidChange(i * 1000);
@@ -106,8 +103,7 @@ describe('wedgeDetector', () => {
   it('respects MAX_SKIP_ATTEMPTS (3)', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Each skip resets lastAdvanceTime, so the stall has to build up again and
-    // every attempt costs another 6000ms.
+    // Each skip resets lastAdvanceTime, so the next attempt needs another full stall interval.
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(1);
 
@@ -125,12 +121,12 @@ describe('wedgeDetector', () => {
   it('reset() clears state and stops timer', () => {
     player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
 
-    // Advance a bit but not past threshold
+    // Keep the timer active without reaching the stall threshold.
     vi.advanceTimersByTime(3000);
 
     wedgeDetector.reset();
 
-    // Advance well past threshold - should not fire because reset stopped timer
+    // reset() stops the timer, so elapsed time alone cannot trigger another skip.
     vi.advanceTimersByTime(10000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
@@ -186,11 +182,7 @@ describe('wedgeDetector', () => {
   });
 
   it('ignores a second init so each listener is attached once', () => {
-    // Asserted on the emitter rather than through behaviour. The visible
-    // symptoms of a duplicate init are masked: startTimer() returns early when
-    // a timer already exists, and the duplicated writes to lastAdvanceTime and
-    // skipAttempts are idempotent. Counting registrations is what actually
-    // distinguishes one init from two.
+    // Count registrations because timer reuse and idempotent state writes hide duplicate listeners from playback assertions.
     const events = [
       'playbackStateDidChange',
       'nowPlayingItemDidChange',

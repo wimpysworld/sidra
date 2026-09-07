@@ -19,7 +19,7 @@ import { BrowserWindow, app } from 'electron';
 import { showAboutWindow } from '../src/aboutWindow';
 import { getZoomFactor } from '../src/config';
 
-// Helpers to build a mock BrowserWindow with event support
+// Event handlers stay accessible so tests can drive the window lifecycle.
 interface MockWebContents {
   setZoomFactor: ReturnType<typeof vi.fn>;
 }
@@ -55,7 +55,6 @@ function createMockBrowserWindow(): MockBrowserWindowInstance {
   };
 }
 
-// Track the latest mock instance so the constructor function can return it.
 let latestMockInstance: MockBrowserWindowInstance;
 
 describe('showAboutWindow', () => {
@@ -69,10 +68,7 @@ describe('showAboutWindow', () => {
     vi.mocked(BrowserWindow).mockClear();
   });
 
-  // The module holds its window in a module-scoped variable that only the
-  // 'closed' handler clears, so firing that handler is the only reset it has.
-  // The handler closes over module scope, so the window the test finished with
-  // is the one to close.
+  // Only the latest window's 'closed' handler clears the module-scoped window reference.
   afterEach(() => {
     latestMockInstance._listeners['closed']?.[0]?.();
   });
@@ -149,9 +145,7 @@ describe('showAboutWindow', () => {
     expect(closedHandlers.length).toBeGreaterThan(0);
     closedHandlers[0]();
 
-    // The module holds one window reference, so a closed window that is not
-    // cleared leaves the About item dead for the rest of the session: focus()
-    // would be called on a destroyed window and nothing would be shown.
+    // Clearing the reference lets About create a window instead of calling focus() on the destroyed one.
     const newMockInstance = createMockBrowserWindow();
     latestMockInstance = newMockInstance;
     vi.mocked(BrowserWindow).mockClear();

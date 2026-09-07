@@ -1,7 +1,4 @@
-// test/itms.test.ts
-// Covers the pure itms:// parser only. buildItmsRouteURL, which turns a route
-// token into a URL, belongs to test/storefront.test.ts along with the rest of
-// that module.
+// Test the pure itms:// parser here. test/storefront.test.ts covers buildItmsRouteURL and its storefront resolution.
 import { describe, it, expect } from 'vitest';
 
 import { transformItmsUrl, extractItmsUrlFromArgv, type ItmsRouteToken } from '../src/itms';

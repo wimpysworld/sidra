@@ -26,11 +26,7 @@ function loadLocaleFile(filename: string): TranslationFile {
   }
 }
 
-// Read synchronously at module load, because the splash screen needs its string
-// before the first window renders and there is no point at which these files are
-// not wanted. The four together are a few kilobytes. The lazy-require rule in
-// AGENTS.md covers platform modules that must never load at all, which is a
-// different problem.
+// Load synchronously because the splash needs its translation before the first window renders.
 const loadingData = loadLocaleFile('loading.json');
 const trayData = loadLocaleFile('tray.json');
 const aboutData = loadLocaleFile('about.json');
@@ -38,63 +34,118 @@ const updateData = loadLocaleFile('update.json');
 
 // --- Translation records, re-exported so importers name a record, not a file ---
 
+/** Translations for loading, keyed by BCP 47 language tag. */
 export const LOADING_TEXT: Record<string, string> = loadingData.LOADING_TEXT;
 
+/** Translations for about, keyed by BCP 47 language tag. */
 export const ABOUT_TEXT: Record<string, string> = trayData.ABOUT_TEXT;
+/** Translations for quit, keyed by BCP 47 language tag. */
 export const QUIT_TEXT: Record<string, string> = trayData.QUIT_TEXT;
+/** Translations for notifications, keyed by BCP 47 language tag. */
 export const NOTIFICATIONS_TEXT: Record<string, string> = trayData.NOTIFICATIONS_TEXT;
+/** Translations for discord, keyed by BCP 47 language tag. */
 export const DISCORD_TEXT: Record<string, string> = trayData.DISCORD_TEXT;
+/** Translations for discord play on, keyed by BCP 47 language tag. */
 export const DISCORD_PLAY_ON_TEXT: Record<string, string> = trayData.DISCORD_PLAY_ON_TEXT;
+/** Translations for discord by artist, keyed by BCP 47 language tag. */
 export const DISCORD_BY_ARTIST_TEXT: Record<string, string> = trayData.DISCORD_BY_ARTIST_TEXT;
+/** Translations for unknown artist, keyed by BCP 47 language tag. */
 export const UNKNOWN_ARTIST_TEXT: Record<string, string> = trayData.UNKNOWN_ARTIST_TEXT;
+/** Translations for lastfm connect, keyed by BCP 47 language tag. */
 export const LASTFM_CONNECT_TEXT: Record<string, string> = trayData.LASTFM_CONNECT_TEXT;
+/** Translations for lastfm connected, keyed by BCP 47 language tag. */
 export const LASTFM_CONNECTED_TEXT: Record<string, string> = trayData.LASTFM_CONNECTED_TEXT;
+/** Translations for lastfm connect failed, keyed by BCP 47 language tag. */
 export const LASTFM_CONNECT_FAILED_TEXT: Record<string, string> = trayData.LASTFM_CONNECT_FAILED_TEXT;
+/** Translations for lastfm disconnect, keyed by BCP 47 language tag. */
 export const LASTFM_DISCONNECT_TEXT: Record<string, string> = trayData.LASTFM_DISCONNECT_TEXT;
+/** Translations for start page, keyed by BCP 47 language tag. */
 export const START_PAGE_TEXT: Record<string, string> = trayData.START_PAGE_TEXT;
+/** Translations for start page home, keyed by BCP 47 language tag. */
 export const START_PAGE_HOME_TEXT: Record<string, string> = trayData.START_PAGE_HOME_TEXT;
+/** Translations for start page new, keyed by BCP 47 language tag. */
 export const START_PAGE_NEW_TEXT: Record<string, string> = trayData.START_PAGE_NEW_TEXT;
+/** Translations for start page radio, keyed by BCP 47 language tag. */
 export const START_PAGE_RADIO_TEXT: Record<string, string> = trayData.START_PAGE_RADIO_TEXT;
+/** Translations for start page all playlists, keyed by BCP 47 language tag. */
 export const START_PAGE_ALL_PLAYLISTS_TEXT: Record<string, string> = trayData.START_PAGE_ALL_PLAYLISTS_TEXT;
+/** Translations for start page last, keyed by BCP 47 language tag. */
 export const START_PAGE_LAST_TEXT: Record<string, string> = trayData.START_PAGE_LAST_TEXT;
+/** Translations for on, keyed by BCP 47 language tag. */
 export const ON_TEXT: Record<string, string> = trayData.ON_TEXT;
+/** Translations for off, keyed by BCP 47 language tag. */
 export const OFF_TEXT: Record<string, string> = trayData.OFF_TEXT;
+/** Translations for style, keyed by BCP 47 language tag. */
 export const STYLE_TEXT: Record<string, string> = trayData.STYLE_TEXT;
+/** Translations for style custom, keyed by BCP 47 language tag. */
 export const STYLE_CUSTOM_TEXT: Record<string, string> = trayData.STYLE_CUSTOM_TEXT;
+/** Translations for zoom, keyed by BCP 47 language tag. */
 export const ZOOM_TEXT: Record<string, string> = trayData.ZOOM_TEXT;
+/** Translations for previous, keyed by BCP 47 language tag. */
 export const PREVIOUS_TEXT: Record<string, string> = trayData.PREVIOUS_TEXT;
+/** Translations for play, keyed by BCP 47 language tag. */
 export const PLAY_TEXT: Record<string, string> = trayData.PLAY_TEXT;
+/** Translations for pause, keyed by BCP 47 language tag. */
 export const PAUSE_TEXT: Record<string, string> = trayData.PAUSE_TEXT;
+/** Translations for next, keyed by BCP 47 language tag. */
 export const NEXT_TEXT: Record<string, string> = trayData.NEXT_TEXT;
+/** Translations for volume, keyed by BCP 47 language tag. */
 export const VOLUME_TEXT: Record<string, string> = trayData.VOLUME_TEXT;
+/** Translations for mute, keyed by BCP 47 language tag. */
 export const MUTE_TEXT: Record<string, string> = trayData.MUTE_TEXT;
+/** Translations for share, keyed by BCP 47 language tag. */
 export const SHARE_TEXT: Record<string, string> = trayData.SHARE_TEXT;
+/** Translations for hide window, keyed by BCP 47 language tag. */
 export const HIDE_WINDOW_TEXT: Record<string, string> = trayData.HIDE_WINDOW_TEXT;
+/** Translations for show window, keyed by BCP 47 language tag. */
 export const SHOW_WINDOW_TEXT: Record<string, string> = trayData.SHOW_WINDOW_TEXT;
+/** Translations for close to tray, keyed by BCP 47 language tag. */
 export const CLOSE_TO_TRAY_TEXT: Record<string, string> = trayData.CLOSE_TO_TRAY_TEXT;
+/** Translations for player, keyed by BCP 47 language tag. */
 export const PLAYER_TEXT: Record<string, string> = trayData.PLAYER_TEXT;
+/** Translations for start page browse, keyed by BCP 47 language tag. */
 export const START_PAGE_BROWSE_TEXT: Record<string, string> = trayData.START_PAGE_BROWSE_TEXT;
+/** Translations for start page library, keyed by BCP 47 language tag. */
 export const START_PAGE_LIBRARY_TEXT: Record<string, string> = trayData.START_PAGE_LIBRARY_TEXT;
+/** Translations for start page playlists, keyed by BCP 47 language tag. */
 export const START_PAGE_PLAYLISTS_TEXT: Record<string, string> = trayData.START_PAGE_PLAYLISTS_TEXT;
+/** Translations for start page search, keyed by BCP 47 language tag. */
 export const START_PAGE_SEARCH_TEXT: Record<string, string> = trayData.START_PAGE_SEARCH_TEXT;
+/** Translations for not playing, keyed by BCP 47 language tag. */
 export const NOT_PLAYING_TEXT: Record<string, string> = trayData.NOT_PLAYING_TEXT;
+/** Translations for back, keyed by BCP 47 language tag. */
 export const BACK_TEXT: Record<string, string> = trayData.BACK_TEXT;
+/** Translations for forward, keyed by BCP 47 language tag. */
 export const FORWARD_TEXT: Record<string, string> = trayData.FORWARD_TEXT;
+/** Translations for reload, keyed by BCP 47 language tag. */
 export const RELOAD_TEXT: Record<string, string> = trayData.RELOAD_TEXT;
+/** Translations for settings, keyed by BCP 47 language tag. */
 export const SETTINGS_TEXT: Record<string, string> = trayData.SETTINGS_TEXT;
+/** Translations for integrations, keyed by BCP 47 language tag. */
 export const INTEGRATIONS_TEXT: Record<string, string> = trayData.INTEGRATIONS_TEXT;
+/** Translations for settings error, keyed by BCP 47 language tag. */
 export const SETTINGS_ERROR_TEXT: Record<string, string> = trayData.SETTINGS_ERROR_TEXT;
 
+/** Translations for update available, keyed by BCP 47 language tag. */
 export const UPDATE_AVAILABLE_TEXT: Record<string, string> = updateData.UPDATE_AVAILABLE_TEXT;
+/** Translations for up to date, keyed by BCP 47 language tag. */
 export const UP_TO_DATE_TEXT: Record<string, string> = updateData.UP_TO_DATE_TEXT;
+/** Translations for update ready, keyed by BCP 47 language tag. */
 export const UPDATE_READY_TEXT: Record<string, string> = updateData.UPDATE_READY_TEXT;
+/** Translations for restart now, keyed by BCP 47 language tag. */
 export const RESTART_NOW_TEXT: Record<string, string> = updateData.RESTART_NOW_TEXT;
+/** Translations for later, keyed by BCP 47 language tag. */
 export const LATER_TEXT: Record<string, string> = updateData.LATER_TEXT;
 
+/** Translations for close, keyed by BCP 47 language tag. */
 export const CLOSE_TEXT: Record<string, string> = aboutData.CLOSE_TEXT;
+/** Translations for about description, keyed by BCP 47 language tag. */
 export const ABOUT_DESCRIPTION_TEXT: Record<string, string> = aboutData.ABOUT_DESCRIPTION_TEXT;
+/** Translations for version prefix, keyed by BCP 47 language tag. */
 export const VERSION_PREFIX: Record<string, string> = aboutData.VERSION_PREFIX;
+/** Translations for copyright suffix, keyed by BCP 47 language tag. */
 export const COPYRIGHT_SUFFIX: Record<string, string> = aboutData.COPYRIGHT_SUFFIX;
+/** Translations for license prefix, keyed by BCP 47 language tag. */
 export const LICENSE_PREFIX: Record<string, string> = aboutData.LICENSE_PREFIX;
 
 // --- Cached system language list ---
@@ -109,9 +160,9 @@ function getSystemLanguages(): string[] {
 // --- Generic locale resolution ---
 
 /**
- * Resolve one record against the caller's ordered language list: an exact BCP 47
- * tag first, then the base language, so en-GB falls to en. English is the last
- * resort, which every record must therefore carry.
+ * Resolve preferred languages in order, checking exact and normalised tags before base languages.
+ * Chinese script matching precedes base-language fallback.
+ * Use English only when no preferred language matches, so every record needs an en entry.
  */
 export function getLocalizedString(
   record: Record<string, string>,
@@ -174,6 +225,7 @@ export function getLoadingText(): { text: string; lang: string } {
   return { text, lang };
 }
 
+/** Resolved labels shared by tray and settings controls. */
 export interface TrayStrings {
   settings: string;
   integrations: string;
@@ -300,30 +352,36 @@ export function getTrayStrings(): TrayStrings {
   return strings;
 }
 
+/** Format the localised Discord service label. */
 export function getDiscordPlayOnText(service: string): string {
   return getLocalizedString(DISCORD_PLAY_ON_TEXT, getSystemLanguages()).replace('{service}', () => service);
 }
 
+/** Format the localised Discord artist label, using the unknown-artist translation for null. */
 export function getDiscordArtistText(artist: string | null): string {
   const langs = getSystemLanguages();
   const name = artist ?? getLocalizedString(UNKNOWN_ARTIST_TEXT, langs);
   return getLocalizedString(DISCORD_BY_ARTIST_TEXT, langs).replace('{artist}', () => name);
 }
 
+/** Format the connected Last.fm account label. */
 export function getLastfmConnectedText(name: string): string {
   const langs = getSystemLanguages();
   return getLocalizedString(LASTFM_CONNECTED_TEXT, langs).replace('{name}', name);
 }
 
+/** Resolve the Last.fm connection failure message. */
 export function getLastfmConnectFailedText(): string {
   return getLocalizedString(LASTFM_CONNECT_FAILED_TEXT, getSystemLanguages());
 }
 
-// Replaced with a JSON label object when assets/navigationBar.js is read in
-// src/main.ts. That script is injected with executeJavaScript(), so the
-// loadFile() query parameters the splash screen uses are not available.
+/**
+ * Placeholder for JSON labels in assets/navigationBar.js.
+ * executeJavaScript() injection has no loadFile() query parameters, so loadAssets() substitutes labels before injection.
+ */
 export const NAV_LABELS_TOKEN = '__SIDRA_NAV_LABELS__';
 
+/** Resolve the labels for the injected navigation bar. */
 export function getNavigationStrings(): {
   settings: string;
   back: string;
@@ -339,6 +397,7 @@ export function getNavigationStrings(): {
   };
 }
 
+/** Resolve the About window text and metadata labels. */
 export function getAboutStrings(): {
   description: string;
   close: string;
@@ -356,6 +415,7 @@ export function getAboutStrings(): {
   };
 }
 
+/** Resolve update availability messages. */
 export function getUpdateStrings(): {
   updateAvailable: string;
   upToDate: string;
@@ -367,6 +427,7 @@ export function getUpdateStrings(): {
   };
 }
 
+/** Resolve the downloaded-update prompt and its action labels. */
 export function getAutoUpdateStrings(): {
   ready: string;
   restartNow: string;

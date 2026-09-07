@@ -4,11 +4,8 @@ import { BrowserWindow } from 'electron';
 const US_PER_SEC = 1_000_000;
 
 /**
- * Show playback position on the taskbar or dock progress bar: the macOS dock,
- * the Windows taskbar and the Linux Unity launcher. Media with no known
- * duration, such as a radio stream, clears the bar rather than showing an empty
- * one, and the fraction is clamped so a position past the reported duration
- * cannot overfill it.
+ * Shows clamped playback progress on the macOS dock, Windows taskbar or Linux Unity launcher.
+ * Clears the bar when the duration is absent or non-positive, as for a radio stream.
  */
 export function updateProgressBar(win: BrowserWindow, positionUs: number, durationMs: number | undefined): void {
   if (!durationMs || durationMs <= 0) {
@@ -22,10 +19,7 @@ export function updateProgressBar(win: BrowserWindow, positionUs: number, durati
   win.setProgressBar(progress);
 }
 
-/**
- * Remove the progress bar. A negative value is how Electron expresses "no
- * progress" on every platform.
- */
+/** Removes the progress bar with Electron's negative-value sentinel. */
 export function clearProgressBar(win: BrowserWindow): void {
   win.setProgressBar(-1);
 }

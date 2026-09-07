@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-// The notify stand-in mirrors the D-Bus daemon gate; 'construct' mode is what
-// this file needs, because every assertion here counts the notifications that
-// reached the user, and the electron constructor mock is where the freeze this
-// gate exists to prevent would begin.
+// 'construct' mode exposes notification construction to assertions while preserving the D-Bus daemon gate.
+// Constructing a notification without a daemon can freeze Electron on Linux.
 import { resetNotifyFake, notifyFake } from './mocks/notify';
 
 import { createHash } from 'crypto';
@@ -717,10 +715,8 @@ describe('now playing request', () => {
   });
 
   it('sends a duration of 0 for a track under half a second', async () => {
-    // This request reports a duration for any track that has one, while
-    // trackParams() omits it once the rounded seconds are 0. That difference is
-    // the whole reason the two build their bodies apart, and 400ms is the only
-    // input that shows it: applying the helper here would drop the parameter.
+    // Now-playing retains a duration that rounds to zero, while trackParams() omits it for scrobbles.
+    // A 400ms track distinguishes the two request formats.
     const params = await nowPlayingFor({ ...TRACK, durationInMillis: 400 });
 
     expect(params.get('duration')).toBe('0');
@@ -839,7 +835,7 @@ describe('revoked session', () => {
     playPastThreshold(player);
     expect(pending).toHaveLength(2);
 
-    // The first refusal disconnects the account, as it should.
+    // The first refusal disconnects the account before the other request settles.
     pending[0](apiError(9));
     await flush();
     expect(session.key).toBeNull();
@@ -872,7 +868,7 @@ describe('revoked session', () => {
     playPastThreshold(player);
     expect(pending).toHaveLength(2);
 
-    // The first refusal disconnects the account, as it should.
+    // The first refusal disconnects the account before the other request settles.
     pending[0](apiError(9));
     await flush();
     expect(session.key).toBeNull();
@@ -895,9 +891,8 @@ describe('revoked session', () => {
     await flush();
     expect(queue.pending).toHaveLength(1);
 
-    // Only now does the request from before the disconnect fail. It carries the
-    // key the reconnected session holds, so the key tells them apart from
-    // nothing; the generation it went out under is what does.
+    // The stale request carries the same key as the reconnected session.
+    // Only its captured generation distinguishes the sessions.
     pending[1](apiError(9));
     await flush();
 
@@ -1364,9 +1359,7 @@ describe('queued scrobbles', () => {
       await flush();
     }
 
-    // 50 is the batch maximum Last.fm accepts, so one request always empties
-    // the queue. Past it the oldest play goes, being the one the user is least
-    // likely to miss.
+    // Last.fm accepts at most 50 plays per batch. The queue keeps the newest 50 by dropping the oldest play on overflow.
     expect(queue.pending).toHaveLength(50);
     expect(queue.pending[0].track).toBe('Track 1');
     expect(queue.pending[49].track).toBe('Track 50');
@@ -1685,8 +1678,8 @@ describe('queued scrobbles', () => {
     // Each distinct code once, however many entries carried it.
     expect(logged).toContain('ignored codes: 1, 5');
 
-    // None of those codes clears on a resend, so the batch goes as it always
-    // did and the log is the only place the loss is visible.
+    // Filtered plays are not retained. The daily limit can clear later, but retrying it needs a different queue policy.
+    // The outcome log records the loss.
     expect(batches()).toHaveLength(1);
     expect(queue.pending).toHaveLength(0);
   });
@@ -1775,12 +1768,7 @@ function respondToAuth(sessionResponse: () => Response): void {
   );
 }
 
-/**
- * These tests import the module through loadLastfm() for the same reason the
- * scrobble tests do: API_KEY and API_SECRET are resolved once at module load,
- * and the statically imported copy has neither, so every request path
- * short-circuits before it reaches the network.
- */
+/** Load through loadLastfm() so credentials exist before module-level initialisation. */
 describe('authentication', () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
@@ -1815,7 +1803,7 @@ describe('authentication', () => {
     lastfm.startAuth();
     await flush();
 
-    // Interpolated, the `&` added a parameter and the `#` truncated the query.
+    // Raw interpolation treats `&` as a parameter separator and `#` as the end of the query.
     const opened = new URL(String(vi.mocked(shell.openExternal).mock.calls[0][0]));
     expect(opened.searchParams.get('token')).toBe('tok&foo=bar#frag');
     expect(opened.hash).toBe('');

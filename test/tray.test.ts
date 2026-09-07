@@ -155,13 +155,8 @@ afterEach(restorePlatform);
 afterEach(() => vi.unstubAllEnvs());
 
 /**
- * Puts every mock and every piece of tray module state the menu reads back to
- * the state this file builds a menu in, and drops the recorded calls on the
- * `nativeImage` factories that several tests assert were never called.
- * vitest.config.mts turns on neither `clearMocks` nor `mockReset`, so without a
- * reset of its own a block that moves one of these values, or that paints an
- * icon, leaves that behind for every block that follows, and the order of the
- * describes becomes part of the contract.
+ * Resets menu state and recorded nativeImage calls so tests do not depend on execution order.
+ * vitest.config.mts enables neither clearMocks nor mockReset, so this fixture must reset them explicitly.
  */
 function resetTrayMocks(): void {
   initSettingsActions({ getMainWindow: () => getSettingsMainWindow(), applyZoom: () => {}, switchService: id => switchSettingsService(id), refreshTray: () => {} });
@@ -728,9 +723,7 @@ describe('createTray - menu template inspection', () => {
     });
 
     it('falls back to Home when a stored library page is no longer offered', () => {
-      // Classical has no library route on the web, so the type no longer admits
-      // the id. A store written by an older build still holds it, and the menu
-      // must tick Home rather than ticking nothing at all.
+      // Classical has no web library route. A legacy stored id must select Home instead of leaving every item unchecked.
       vi.mocked(getClassicalStartPage).mockReturnValue('library' as string as ClassicalStartPageId);
       createTray();
       const template = getLastTemplate();
@@ -776,8 +769,7 @@ describe('createTray - menu template inspection', () => {
   });
 
   describe('Style submenu usable on both services', () => {
-    // The item carries no `enabled` key, so `not.toBe(false)` is the assertion:
-    // a restored gate sets it to false and fails here whatever the default is.
+    // An omitted enabled key leaves the item selectable, so reject only an explicit false.
     beforeEach(() => {
       setPlatform('linux');
       vi.mocked(getMusicService).mockReturnValue('classical');

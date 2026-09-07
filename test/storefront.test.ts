@@ -199,16 +199,14 @@ describe('buildAppleMusicURL - classical service', () => {
   });
 
   it('falls back to home when a removed library start page is still persisted', () => {
-    // Classical has no library route on the web, so the type no longer admits the id.
-    // A store written by an older build still holds it, and it must resolve to home
-    // rather than building a URL that 404s.
+    // Classical has no web library route. Legacy stored ids must resolve to Home instead of an unavailable route.
     mockedGetClassicalStartPage.mockReturnValue('library' as ClassicalStartPageId);
     const url = buildAppleMusicURL();
     expect(url).toBe('https://classical.music.apple.com/gb');
   });
 
   it('builds a probed URL for every declared classical start page id', () => {
-    // Every URL here returned 200 unauthenticated; a new id must be probed before it is added.
+    // Start-page routes must work without authentication. Check new routes against the service before adding them here.
     const expected: Record<string, string> = {
       'home': 'https://classical.music.apple.com/gb',
       'browse': 'https://classical.music.apple.com/gb/browse/catalog',
@@ -236,7 +234,6 @@ describe('buildAppleMusicURL - classical service', () => {
     mockedGetClassicalStartPage.mockReturnValue('last');
     mockedGetClassicalLastPageUrl.mockReturnValue(undefined);
     const url = buildAppleMusicURL();
-    // falls through to default (home), which has empty path
     expect(url).toBe('https://classical.music.apple.com/gb');
   });
 });

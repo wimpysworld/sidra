@@ -1,23 +1,13 @@
-// Apple's sign-in iframe offers passkey and "Sign in with iPhone" alongside
-// password sign-in, plus captions naming an iOS version requirement. This
-// hides them so password sign-in is the visible route.
-//
-// The script runs in the iframe's main world via executeJavaScript, so it must
-// be self-contained: nothing here can close over a main-process variable.
+// Hide passkey, "Sign in with iPhone" and iOS requirement captions to leave password sign-in visible.
+// executeJavaScript() runs this script in the iframe's main world, without access to main-process variables.
 (() => {
-  // Not standalone-executable JavaScript: loadAssets() in src/main.ts replaces
-  // this bare token with the stylesheet and the log prefix as JSON, because the
-  // script is injected with executeJavaScript() and cannot take the query
-  // parameters the splash screen uses. AUTH_FIX_TOKEN in src/authFrame.ts is
-  // the shared spelling, and test/authFrameFix.test.ts holds the two together.
+  // loadAssets() in src/main.ts replaces AUTH_FIX_TOKEN from src/authFrame.ts with JSON.
+  // executeJavaScript() cannot supply loadFile() query parameters, so the raw asset requires substitution.
   /** @type {{ css: string, containerSelectors: string[], logPrefix: string }} */
   var CONFIG = __SIDRA_AUTH_FIX__;
 
-  // PASSKEY_CONTAINER_SELECTORS in src/authFrame.ts, shared by the two jobs below:
-  // the stylesheet hides a match on sight, and closest() walks up to one from a
-  // matched button. The extras are script-only. A broad class prefix or a bare
-  // [role="group"] is safe for the walk, which starts at a button whose text
-  // named passkey or iPhone, and would hide unrelated form groups in the sheet.
+  // PASSKEY_CONTAINER_SELECTORS in src/authFrame.ts supplies CSS and ancestor matches.
+  // Broad selectors stay script-only: they start at a matched button, but CSS would hide unrelated form groups.
   const sharedContainers = CONFIG.containerSelectors;
   const SCRIPT_ONLY_CONTAINERS = ['[class*="passkey" i]', '[class*="iphone" i]', '[role="group"]', 'fieldset'];
 
@@ -48,9 +38,8 @@
   }
 
   function hideContainerFor(btn) {
-    // Prefer a structural container matched by class/role; fall back to a
-    // shallow parent walk (max 2 levels) whose textContent matches the
-    // caption regex. Strictly capped so we never collapse the whole form.
+    // Prefer a matching container. Limit the caption fallback to two parents
+    // to avoid hiding the whole form.
     const container = btn.closest(CONTAINER_SELECTOR);
     if (container && container !== document.body && container !== document.documentElement) {
       hideEl(container);
@@ -85,9 +74,8 @@
   }
 
   function hideCaptionElements() {
-    // Standalone caption scan: the helper text may sit outside any passkey
-    // container. Skip elements that wrap interactive controls so legitimate
-    // form rows survive.
+    // Captions can sit outside passkey containers. Keep elements that contain
+    // interactive controls so other form rows remain visible.
     let count = 0;
     const candidates = document.querySelectorAll(CAPTION_TAGS);
     for (const el of candidates) {
@@ -121,8 +109,8 @@
     }
   }
 
-  // console is the only channel out of a frame the main process has not
-  // preloaded; setupAuthFrameInjection() reads the line back off the prefix.
+  // Without a preload, the frame reports through console.
+  // setupAuthFrameInjection() recognises the log prefix.
   const cssRuleCount = css.split('}').length - 1;
   console.info(CONFIG.logPrefix + ' ' + cssRuleCount + ' CSS rules injected, ' + result.buttonsHidden + ' buttons hidden, ' + result.captionsHidden + ' captions hidden, ' + result.containersHidden + ' containers hidden');
 })();

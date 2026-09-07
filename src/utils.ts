@@ -6,9 +6,10 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// Run named steps in order, each isolated so one failure cannot cancel the steps
-// after it. The reporter is a parameter to keep this module free of
-// electron-log.
+/**
+ * Run named steps in order, continuing after each reported failure.
+ * The caller supplies the reporter to keep this module independent of electron-log.
+ */
 export function runSteps(
   steps: readonly (readonly [string, () => void])[],
   report: (name: string, err: unknown) => void,
