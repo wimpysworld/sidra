@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, PlaybackStopped, IntegrationContext, getShareUrl } from '../../player';
+import { NowPlayingPayload, TimedMetadataPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, PlaybackStopped, IntegrationContext, getShareUrl } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 import { getServiceByHost } from '../../musicService';
@@ -268,6 +268,8 @@ class MediaPlayer2Player extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
   private _capabilities: PlaybackCapabilities;
   private _itemLengthUs: number | undefined;
+  private _itemGeneration = 0;
+  private _radioStation: NowPlayingPayload | null = null;
   private _stopRequestId = 0;
   private _pendingStopId: number | null = null;
   private _stopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -405,6 +407,8 @@ class MediaPlayer2Player extends Interface {
    * the only way a client learns the playhead has moved without it asking.
    */
   updateNowPlaying(payload: NowPlayingPayload | null): void {
+    const itemGeneration = ++this._itemGeneration;
+    this._radioStation = payload?.playParams?.kind === 'radioStation' ? payload : null;
     this._clearPendingStop();
     this._stopped = false;
     if (!payload) {
@@ -441,16 +445,35 @@ class MediaPlayer2Player extends Interface {
         if (!localPath) return;
         // The download outlives a fast track change, and a late one would
         // otherwise put the previous cover on the track now playing.
-        if (this._currentTrackId !== trackId) return;
+        if (this._itemGeneration !== itemGeneration) return;
         const fileUri = `file://${localPath}`;
-        metadata['mpris:artUrl'] = new Variant('s', fileUri);
-        this._metadata = metadata;
-        this._schedulePropertyEmission({ Metadata: metadata });
+        this._metadata = { ...this._metadata, 'mpris:artUrl': new Variant('s', fileUri) };
+        this._schedulePropertyEmission({ Metadata: this._metadata });
         mprisLog.debug('mpris:artUrl updated to local file:', fileUri);
       }).catch((err: unknown) => {
         mprisLog.warn('artwork caching failed:', errorMessage(err));
       });
     }
+  }
+
+  updateTimedMetadata(payload: TimedMetadataPayload): void {
+    if (!this._radioStation) return;
+    const url = getShareUrl({ ...payload, sourceHost: this._radioStation.sourceHost }) ?? getShareUrl(this._radioStation);
+    const values = [payload.name, [payload.artistName], payload.albumName ?? null, url ?? null];
+    const current = ['xesam:title', 'xesam:artist', 'xesam:album', 'xesam:url']
+      .map(key => this._metadata[key]?.value ?? null);
+    if (JSON.stringify(values) === JSON.stringify(current)) return;
+    const metadata: Record<string, InstanceType<typeof Variant>> = {
+      ...this._metadata,
+      'xesam:title': new Variant('s', payload.name),
+      'xesam:artist': new Variant('as', [payload.artistName]),
+    };
+    if (payload.albumName === undefined) delete metadata['xesam:album'];
+    else metadata['xesam:album'] = new Variant('s', payload.albumName);
+    if (url === undefined) delete metadata['xesam:url'];
+    else metadata['xesam:url'] = new Variant('s', url);
+    this._metadata = metadata;
+    this._schedulePropertyEmission({ Metadata: metadata });
   }
 
   updateRepeatMode(payload: number | null): void {
@@ -935,6 +958,9 @@ export function init(ctx: IntegrationContext): void {
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     playerIface.updateNowPlaying(payload);
   };
+  const onTimedMetadataDidChange = (payload: TimedMetadataPayload): void => {
+    playerIface.updateTimedMetadata(payload);
+  };
   const onRepeatModeDidChange = (payload: number | null): void => {
     playerIface.updateRepeatMode(payload);
   };
@@ -955,6 +981,7 @@ export function init(ctx: IntegrationContext): void {
     player.removeListener('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
     player.removeListener('playbackStopped', onPlaybackStopped);
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+    player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
     player.removeListener('repeatModeDidChange', onRepeatModeDidChange);
     player.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
     player.removeListener('volumeDidChange', onVolumeDidChange);
@@ -1005,6 +1032,7 @@ export function init(ctx: IntegrationContext): void {
   player.on('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
   player.on('playbackStopped', onPlaybackStopped);
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
+  player.on('timedMetadataDidChange', onTimedMetadataDidChange);
   player.on('repeatModeDidChange', onRepeatModeDidChange);
   player.on('shuffleModeDidChange', onShuffleModeDidChange);
   player.on('volumeDidChange', onVolumeDidChange);

@@ -5,8 +5,9 @@ import type { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
 import { setMusicService } from '../src/config';
+import { downloadArtwork } from '../src/artwork';
 import { PlaybackState } from '../src/player';
-import type { IntegrationContext, NowPlayingPayload } from '../src/player';
+import type { IntegrationContext, NowPlayingPayload, TimedMetadataPayload } from '../src/player';
 import * as mpris from '../src/integrations/mpris';
 import { FakePlayer } from './mocks/player';
 import { quit } from './mocks/appLifecycle';
@@ -931,6 +932,138 @@ describe('MPRIS metadata', () => {
       CanSeek: iface.CanSeek,
       CanControl: iface.CanControl,
     }).toEqual({ ...persistentProperties, CanPlay: false, CanPause: false, CanSeek: false });
+  });
+});
+
+describe('MPRIS radio song metadata', () => {
+  const station: NowPlayingPayload = {
+    trackId: 'ra.123', name: 'Station', artistName: 'Station host', albumName: 'Station album',
+    artworkUrl: 'https://example.com/station.jpg', url: 'https://music.apple.com/gb/station/example/ra.123',
+    sourceHost: 'music.apple.com', playParams: { kind: 'radioStation' },
+  };
+  const song: TimedMetadataPayload = {
+    name: 'Song', artistName: 'Artist', albumName: 'Album', trackId: '123',
+    playParams: { kind: 'song', catalogId: '123' }, transition: 'clean',
+  };
+
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  it.each([null, 7_200_000_000])('updates song details without changing stream state for duration %s', (durationUs) => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: durationUs === null ? null : true, durationUs });
+    player.setPositionUs(120_000_000);
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    const seeked = vi.spyOn(iface, 'Seeked');
+    setMusicService('classical');
+
+    player.emitTimedMetadata(song);
+    vi.advanceTimersByTime(250);
+
+    expect(iface.Metadata).toMatchObject({
+      'mpris:trackid': { signature: 'o', value: '/org/sidra/track/ra_123' },
+      'xesam:title': { signature: 's', value: 'Song' },
+      'xesam:artist': { signature: 'as', value: ['Artist'] },
+      'xesam:album': { signature: 's', value: 'Album' },
+      'xesam:url': { signature: 's', value: 'https://music.apple.com/song/123' },
+      'mpris:artUrl': { signature: 's', value: station.artworkUrl },
+    });
+    expect(iface.Metadata['mpris:length']?.value ?? null).toBe(durationUs);
+    expect(iface.Position).toBe(120_000_000);
+    expect(seeked).not.toHaveBeenCalled();
+    expect(downloadArtwork).toHaveBeenCalledOnce();
+    expect(emissions).toEqual([{ Metadata: iface.Metadata }]);
+  });
+
+  it('clears absent song album and catalogue data while retaining the station URL', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.emitTimedMetadata(song);
+    player.emitTimedMetadata({ name: 'Next song', artistName: 'Next artist', transition: 'clean' });
+    expect(iface.Metadata['xesam:title'].value).toBe('Next song');
+    expect(iface.Metadata['xesam:album']).toBeUndefined();
+    expect(iface.Metadata['xesam:url'].value).toBe(station.url);
+    expect(iface.Metadata['mpris:artUrl'].value).toBe(station.artworkUrl);
+  });
+
+  it('removes a previous song URL when neither the next song nor station has one', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ ...station, url: undefined });
+    player.emitTimedMetadata(song);
+    player.emitTimedMetadata({ name: 'Next song', artistName: 'Next artist', transition: 'clean' });
+    expect(iface.Metadata['xesam:url']).toBeUndefined();
+  });
+
+  it('deduplicates unchanged display fields regardless of transition and receipt time', () => {
+    initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.emitTimedMetadata(song);
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    player.emitTimedMetadata({ ...song, transition: 'ambiguous', observedAtMs: Date.now() });
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([]);
+  });
+
+  it('publishes catalogue enrichment even when the song title and artist stay unchanged', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.emitTimedMetadata({ ...song, trackId: undefined, playParams: undefined });
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    player.emitTimedMetadata(song);
+    vi.advanceTimersByTime(250);
+    expect(iface.Metadata['xesam:url'].value).toBe('https://music.apple.com/song/123');
+    expect(emissions).toEqual([{ Metadata: iface.Metadata }]);
+  });
+
+  it('restores station and normal item metadata and ignores timed songs outside radio', () => {
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.emitTimedMetadata(song);
+    player.emitNowPlaying({ ...station, name: 'Other station', trackId: 'ra.456' });
+    expect(iface.Metadata['xesam:title'].value).toBe('Other station');
+    expect(iface.Metadata['xesam:album'].value).toBe('Station album');
+    player.emitNowPlaying({ trackId: 'normal', name: 'Normal track' });
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    player.emitTimedMetadata(song);
+    vi.advanceTimersByTime(250);
+    expect(iface.Metadata['xesam:title'].value).toBe('Normal track');
+    expect(emissions).toEqual([]);
+    player.resetForDocumentReplacement();
+    player.emitTimedMetadata(song);
+    expect(Object.keys(iface.Metadata)).toEqual(['mpris:trackid']);
+  });
+
+  it('applies downloaded station artwork without restoring stale song metadata', async () => {
+    let resolveArtwork!: (path: string) => void;
+    vi.mocked(downloadArtwork).mockReturnValueOnce(new Promise(resolve => { resolveArtwork = resolve; }));
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.emitTimedMetadata(song);
+    player.emitTimedMetadata({ name: 'Newest song', artistName: 'Newest artist', transition: 'clean' });
+    resolveArtwork('/tmp/station.jpg');
+    await Promise.resolve();
+    expect(iface.Metadata['mpris:artUrl'].value).toBe('file:///tmp/station.jpg');
+    expect(iface.Metadata['xesam:title'].value).toBe('Newest song');
+    expect(iface.Metadata['xesam:artist'].value).toEqual(['Newest artist']);
+    expect(iface.Metadata['xesam:album']).toBeUndefined();
+  });
+
+  it('ignores old artwork after returning to the same station ID', async () => {
+    let resolveArtwork!: (path: string) => void;
+    vi.mocked(downloadArtwork).mockReturnValueOnce(new Promise(resolve => { resolveArtwork = resolve; }));
+    const iface = initPlayerInterface();
+    player.emitNowPlaying(station);
+    player.resetForDocumentReplacement();
+    player.emitNowPlaying({ ...station, artworkUrl: 'https://example.com/new-station.jpg' });
+    player.emitTimedMetadata(song);
+    resolveArtwork('/tmp/old-station.jpg');
+    await Promise.resolve();
+    expect(iface.Metadata['mpris:artUrl'].value).toBe('https://example.com/new-station.jpg');
+    expect(iface.Metadata['xesam:title'].value).toBe('Song');
   });
 });
 
