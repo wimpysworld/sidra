@@ -12,6 +12,15 @@
 
     /** @type {number | null} Timer ID for the volume polling fallback. */
     let volumePollTimer = null;
+    let documentGeneration = 0;
+    let documentActive = true;
+    let resetStopForDocument = () => {};
+    window.addEventListener('pagehide', () => {
+      documentGeneration += 1;
+      documentActive = false;
+      resetStopForDocument();
+    });
+    window.addEventListener('pageshow', () => { documentActive = true; });
     const unsafeTimedText = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
     /**
@@ -126,9 +135,10 @@
      * Called once per attach, so a replaced instance receives its own set.
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
+     * @param {() => void} resetStop - Invalidates stopped intent and pending commands
      * @returns {() => void} Refreshes changed playback capabilities
      */
-    function attachPlaybackListeners(mk) {
+    function attachPlaybackListeners(mk, resetStop) {
       let lastCapabilities;
       function reportCapabilities(item = mk.nowPlayingItem) {
         if (window.__sidraHookedMk !== mk) return;
@@ -149,6 +159,7 @@
        * @param {{ state: number }} event - MusicKit playbackStateDidChange event
        */
       function reportPlaybackState({ state }) {
+        if (state === MusicKit.PlaybackStates.playing) resetStop();
         sendToMain('playbackStateDidChange', {
           status: state === MusicKit.PlaybackStates.playing,
           state,
@@ -163,6 +174,7 @@
        * @param {{ item: object | null }} event - MusicKit nowPlayingItemDidChange event
        */
       function reportNowPlaying({ item }) {
+        resetStop();
         reportCapabilities(item);
         if (!item) {
           sendToMain('nowPlayingItemDidChange', null);
@@ -339,10 +351,78 @@
       // part-attached instance is the lesser fault, and attachSafely() logs it.
       window.__sidraHookedMk = mk;
 
+      let generation = 0;
+      let pendingStop = null;
+      let stopped = false;
+      function resetStop() {
+        generation += 1;
+        pendingStop = null;
+        stopped = false;
+      }
+      resetStopForDocument = resetStop;
+      function current(operationGeneration, pageGeneration) {
+        return documentActive && window.__sidraHookedMk === mk &&
+          generation === operationGeneration && documentGeneration === pageGeneration;
+      }
+      function stop(requestId) {
+        if (!Number.isSafeInteger(requestId) || requestId <= 0) return Promise.resolve();
+        if (pendingStop) return pendingStop;
+        const operationGeneration = generation;
+        const pageGeneration = documentGeneration;
+        const task = Promise.resolve().then(async () => {
+          if (!current(operationGeneration, pageGeneration)) return;
+          if (!stopped) {
+            mk.pause();
+            if (mk.nowPlayingItem && effectiveDuration(mk) !== null && typeof mk.seekToTime === 'function') {
+              let timeout;
+              try {
+                await Promise.race([
+                  mk.seekToTime(0),
+                  new Promise((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error('Stop seek timed out')), 5000);
+                  }),
+                ]);
+              } finally {
+                clearTimeout(timeout);
+              }
+            }
+          }
+          if (!current(operationGeneration, pageGeneration)) return;
+          stopped = true;
+          sendToMain('playbackStopped', { requestId, success: true });
+        }).catch(() => {
+          console.warn('[Sidra] failed to stop playback');
+          if (current(operationGeneration, pageGeneration)) {
+            sendToMain('playbackStopped', { requestId, success: false });
+          }
+        }).finally(() => {
+          if (pendingStop === task) pendingStop = null;
+        });
+        pendingStop = task;
+        return task;
+      }
+      function resume(toggle) {
+        const operationGeneration = generation;
+        const pageGeneration = documentGeneration;
+        const afterStop = pendingStop;
+        const run = () => {
+          if (!current(operationGeneration, pageGeneration)) return;
+          return toggle && !afterStop && !stopped && mk.isPlaying ? mk.pause() : mk.play();
+        };
+        try {
+          return (afterStop ? afterStop.then(run) : Promise.resolve(run())).catch(() => {
+            console.warn('[Sidra] failed to resume playback');
+          });
+        } catch (_) {
+          console.warn('[Sidra] failed to resume playback');
+          return Promise.resolve();
+        }
+      }
+
       // Stopping the previous poll comes first, so a throw in either attach
       // below cannot leave a second timer polling the replaced instance.
       stopVolumePoll();
-      const reportCapabilities = attachPlaybackListeners(mk);
+      const reportCapabilities = attachPlaybackListeners(mk, resetStop);
       attachVolume(mk, reportCapabilities);
 
       /**
@@ -356,9 +436,10 @@
        * @see {SidraHook} in src/types/hook.d.ts
        */
       window.__sidra = {
-        play:       () => mk.play(),
+        play:       () => resume(false),
         pause:      () => mk.pause(),
-        playPause:  () => mk.isPlaying ? mk.pause() : mk.play(),
+        stop,
+        playPause:  () => resume(true),
         next:       () => mk.skipToNextItem(),
         previous:   () => mk.skipToPreviousItem(),
         seek:       (secs) => mk.seekToTime(secs),
@@ -398,7 +479,7 @@
      * @type {Set<string>}
      */
     const COMMANDS = new Set([
-      'play', 'pause', 'playPause', 'next', 'previous',
+      'play', 'pause', 'stop', 'playPause', 'next', 'previous',
       'seek', 'setVolume', 'setRepeat', 'setShuffle',
     ]);
 

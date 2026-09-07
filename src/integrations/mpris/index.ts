@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 
-import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, IntegrationContext, getShareUrl } from '../../player';
+import { NowPlayingPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, PlaybackStopped, IntegrationContext, getShareUrl } from '../../player';
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 import { getServiceByHost } from '../../musicService';
@@ -268,6 +268,10 @@ class MediaPlayer2Player extends Interface {
   private _getMainWindow: () => BrowserWindow | null;
   private _capabilities: PlaybackCapabilities;
   private _itemLengthUs: number | undefined;
+  private _stopRequestId = 0;
+  private _pendingStopId: number | null = null;
+  private _stopTimer: ReturnType<typeof setTimeout> | null = null;
+  private _stopped = false;
 
   // Cached D-Bus property values
   private _playbackStatus = 'Stopped';
@@ -305,13 +309,15 @@ class MediaPlayer2Player extends Interface {
     this._capabilities = capabilities;
   }
 
-  private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): void {
+  private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): boolean {
     const win = this._getMainWindow();
     if (win) {
       win.webContents.send(channel, ...args);
       logCommand(method, 'sent', channel);
+      return true;
     } else {
       logCommand(method, 'dropped', channel);
+      return false;
     }
   }
 
@@ -365,6 +371,10 @@ class MediaPlayer2Player extends Interface {
 
   updatePlaybackStatus(payload: PlaybackStatePayload): void {
     if (!payload) return;
+    if (payload.state === PlaybackState.Playing) {
+      this._clearPendingStop();
+      this._stopped = false;
+    }
 
     // Only Playing and Paused have an MPRIS value of their own. Every other
     // MusicKit state falls through to 'Stopped', the transient ones (loading,
@@ -375,7 +385,7 @@ class MediaPlayer2Player extends Interface {
     let status: string;
     if (payload.state === PlaybackState.Playing) {
       status = 'Playing';
-    } else if (payload.state === PlaybackState.Paused) {
+    } else if (payload.state === PlaybackState.Paused && !this._stopped) {
       status = 'Paused';
     } else {
       status = 'Stopped';
@@ -395,6 +405,8 @@ class MediaPlayer2Player extends Interface {
    * the only way a client learns the playhead has moved without it asking.
    */
   updateNowPlaying(payload: NowPlayingPayload | null): void {
+    this._clearPendingStop();
+    this._stopped = false;
     if (!payload) {
       const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
         'mpris:trackid': new Variant('o', NO_TRACK),
@@ -512,6 +524,7 @@ class MediaPlayer2Player extends Interface {
    * nothing fires into a bus that has already been disconnected.
    */
   cleanup(): void {
+    this._clearPendingStop();
     if (this._volumeSafetyTimer) {
       clearTimeout(this._volumeSafetyTimer);
       this._volumeSafetyTimer = null;
@@ -657,9 +670,28 @@ class MediaPlayer2Player extends Interface {
   }
 
   Stop(): void {
-    // Pause, never MusicKit's stop(): stop() clears the queue, and the MPRIS
-    // spec requires Play() after Stop() to resume from the start of the track.
-    this._send('Stop', 'player:pause');
+    if (this._stopped || this._pendingStopId !== null) return;
+    this._pendingStopId = ++this._stopRequestId;
+    this._stopTimer = setTimeout(() => {
+      this._clearPendingStop();
+      mprisLog.warn('Stop completion timed out');
+    }, 6000);
+    if (!this._send('Stop', 'player:stop', this._pendingStopId)) this._clearPendingStop();
+  }
+
+  private _clearPendingStop(): void {
+    this._pendingStopId = null;
+    if (this._stopTimer) clearTimeout(this._stopTimer);
+    this._stopTimer = null;
+  }
+
+  updateStopped(payload: PlaybackStopped): void {
+    if (payload.requestId !== this._pendingStopId) return;
+    this._clearPendingStop();
+    if (!payload.success) return;
+    this._stopped = true;
+    this._playbackStatus = 'Stopped';
+    this._schedulePropertyEmission({ PlaybackStatus: 'Stopped' });
   }
 
   Play(): void {
@@ -897,6 +929,9 @@ export function init(ctx: IntegrationContext): void {
   const onPlaybackCapabilitiesDidChange = (payload: PlaybackCapabilities): void => {
     playerIface.updateCapabilities(payload);
   };
+  const onPlaybackStopped = (payload: PlaybackStopped): void => {
+    playerIface.updateStopped(payload);
+  };
   const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
     playerIface.updateNowPlaying(payload);
   };
@@ -918,6 +953,7 @@ export function init(ctx: IntegrationContext): void {
     fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
     player.removeListener('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
+    player.removeListener('playbackStopped', onPlaybackStopped);
     player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
     player.removeListener('repeatModeDidChange', onRepeatModeDidChange);
     player.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
@@ -967,6 +1003,7 @@ export function init(ctx: IntegrationContext): void {
   // listener attached to update an interface no client can reach.
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
   player.on('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
+  player.on('playbackStopped', onPlaybackStopped);
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
   player.on('repeatModeDidChange', onRepeatModeDidChange);
   player.on('shuffleModeDidChange', onShuffleModeDidChange);

@@ -210,6 +210,7 @@ export function isTerminalPlaybackState(state: number): boolean {
 export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
 export interface PlayerEvents {
+  playbackStopped: [payload: PlaybackStopped];
   playbackCapabilitiesDidChange: [payload: PlaybackCapabilities];
   playbackStateDidChange: [payload: PlaybackStatePayload];
   nowPlayingItemDidChange: [payload: NowPlayingPayload | null];
@@ -280,6 +281,11 @@ export interface PlaybackCapabilities {
   canPause: boolean;
   canSeek: boolean | null;
   durationUs: number | null;
+}
+
+export interface PlaybackStopped {
+  requestId: number;
+  success: boolean;
 }
 
 const EMPTY_CAPABILITIES: PlaybackCapabilities = {
@@ -386,6 +392,16 @@ export class Player extends TypedEmitter<PlayerEvents> {
 
   capabilitiesSnapshot(): PlaybackCapabilities {
     return { ...this._capabilities };
+  }
+
+  handlePlaybackStopped(payload: unknown): void {
+    if (!isRecord(payload) || Object.keys(payload).length !== 2 ||
+      !isNonNegativeSafeInteger(payload.requestId) || payload.requestId === 0 ||
+      typeof payload.success !== 'boolean') {
+      playerLog.warn('playbackStopped: invalid payload');
+      return;
+    }
+    this.emit('playbackStopped', { requestId: payload.requestId, success: payload.success });
   }
 
   handlePlaybackCapabilitiesDidChange(payload: unknown): void {

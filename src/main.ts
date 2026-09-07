@@ -273,6 +273,7 @@ function initPlayerIPC(): Player {
   const player = new Player();
   onSendChannels<PlayerSendChannel>({
     playbackCapabilitiesDidChange: (_event, data) => player.handlePlaybackCapabilitiesDidChange(data),
+    playbackStopped: (_event, data) => player.handlePlaybackStopped(data),
     playbackStateDidChange: (_event, data) => player.handlePlaybackStateDidChange(data),
     nowPlayingItemDidChange: (_event, data) => player.handleNowPlayingItemDidChange(data),
     timedMetadataDidChange: (_event, data) => player.handleTimedMetadataDidChange(data),
