@@ -30,16 +30,38 @@ export function createLinuxNotifications() {
   let bus: MessageBus | null = null;
   let owner = '';
   let generation = 0;
-  const notifications = new Map<number, TrackNotification['onAction']>();
+  let notificationId = 0;
+  let onAction: TrackNotification['onAction'] | null = null;
+  let pending = Promise.resolve();
 
-  const dispose = (): void => {
+  const dispose = async (): Promise<void> => {
     generation++;
+    const previousOwner = owner;
+    const previousId = notificationId;
     owner = '';
-    notifications.clear();
+    notificationId = 0;
+    onAction = null;
     if (!bus) return;
     const connection = bus;
     bus = null;
     (connection as unknown as EventEmitter).removeListener('message', onMessage);
+    if (previousOwner && previousId) {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          connection.call(new Message({
+            destination: previousOwner, path: PATH, interface: NAME,
+            member: 'CloseNotification', signature: 'u', body: [previousId],
+            flags: MessageFlag.NO_AUTO_START,
+          })),
+          new Promise<void>((resolve) => { timeout = setTimeout(resolve, 500); }),
+        ]);
+      } catch {
+        notificationLog.warn('track notification cleanup unavailable');
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
     connection.disconnect();
     // disconnect() only half-closes the socket in dbus-next 0.11.2.
     (connection as unknown as BusInternals)._connection?.stream?.destroy();
@@ -48,7 +70,8 @@ export function createLinuxNotifications() {
   const onError = (): void => {
     if (!bus) return;
     notificationLog.warn('notification bus unavailable');
-    dispose();
+    notificationId = 0;
+    void dispose();
   };
 
   const onMessage = (message: Message): void => {
@@ -58,18 +81,22 @@ export function createLinuxNotifications() {
       && message.body[0] === NAME) {
       generation++;
       owner = typeof message.body[2] === 'string' ? message.body[2] : '';
-      notifications.clear();
+      notificationId = 0;
+      onAction = null;
       return;
     }
     if (!owner || message.sender !== owner || message.interface !== NAME || message.path !== PATH) return;
     const id: unknown = message.body[0];
     if (typeof id !== 'number') return;
     if (message.member === 'NotificationClosed') {
-      notifications.delete(id);
+      if (id === notificationId) {
+        notificationId = 0;
+        onAction = null;
+      }
     } else if (message.member === 'ActionInvoked') {
       const action: unknown = message.body[1];
       if (action === 'previous' || action === 'next' || action === 'default') {
-        notifications.get(id)?.(action);
+        if (id === notificationId) onAction?.(action);
       }
     }
   };
@@ -98,11 +125,11 @@ export function createLinuxNotifications() {
       ]);
     } catch {
       notificationLog.warn('notification bus unavailable');
-      dispose();
+      void dispose();
     }
   })();
 
-  const show = async (notification: TrackNotification, isCurrent: () => boolean): Promise<void> => {
+  const deliver = async (notification: TrackNotification, isCurrent: () => boolean): Promise<void> => {
     await ready;
     if (!bus || !isCurrent()) return;
     const currentGeneration = generation;
@@ -111,18 +138,23 @@ export function createLinuxNotifications() {
       const currentOwner: unknown = reply?.body[0];
       if (typeof currentOwner !== 'string' || !currentOwner.startsWith(':')) return;
       if (!bus || generation !== currentGeneration || !isCurrent()) return;
-      if (owner !== currentOwner) notifications.clear();
+      if (owner !== currentOwner) {
+        notificationId = 0;
+        onAction = null;
+      }
       owner = currentOwner;
       const capabilities = await call(owner, 'GetCapabilities');
       if (!bus || generation !== currentGeneration || !isCurrent()) return;
       const actions = Array.isArray(capabilities?.body[0]) && capabilities.body[0].includes('actions');
       const hints: Record<string, Variant> = {
         'suppress-sound': new Variant('b', true),
+        transient: new Variant('b', true),
         'desktop-entry': new Variant('s', app.getName().toLowerCase()),
       };
       if (notification.icon) hints['image-path'] = new Variant('s', pathToFileURL(notification.icon).href);
+      onAction = null;
       const result = await call(owner, 'Notify', 'susssasa{sv}i', [
-        app.getName(), 0, getAssetPath('assets', 'sidra-logo.png'), notification.title,
+        app.getName(), notificationId, getAssetPath('assets', 'sidra-logo.png'), notification.title,
         Array.isArray(capabilities?.body[0]) && capabilities.body[0].includes('body-markup')
           ? notification.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           : notification.body,
@@ -131,13 +163,19 @@ export function createLinuxNotifications() {
       ]);
       if (!bus || generation !== currentGeneration) return;
       const id: unknown = result?.body[0];
-      if (actions && typeof id === 'number' && Number.isInteger(id) && id > 0) {
-        notifications.set(id, notification.onAction);
+      if (typeof id === 'number' && Number.isInteger(id) && id > 0) {
+        notificationId = id;
+        onAction = actions ? notification.onAction : null;
       }
     } catch {
       // A failed reply does not prove that Notify failed to display the track.
       notificationLog.warn('track notification unavailable');
     }
+  };
+
+  const show = (notification: TrackNotification, isCurrent: () => boolean): Promise<void> => {
+    pending = pending.then(() => deliver(notification, isCurrent));
+    return pending;
   };
 
   return { show, dispose };
