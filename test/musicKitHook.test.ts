@@ -135,6 +135,7 @@ function createMusicKit(
 function createHarness({
   bridgeMissing = false,
   musicKitOverrides = {},
+  musicKitThrowsAtFirstPoll = false,
   musicKitThrowsAtInjection = false,
   navigatorOverrides,
   repeatInjection = false,
@@ -142,6 +143,7 @@ function createHarness({
 }: {
   bridgeMissing?: boolean;
   musicKitOverrides?: Record<string, unknown>;
+  musicKitThrowsAtFirstPoll?: boolean;
   musicKitThrowsAtInjection?: boolean;
   navigatorOverrides?: Record<string, unknown>;
   repeatInjection?: boolean;
@@ -213,8 +215,9 @@ function createHarness({
 
   // MusicKit can be present but mid-initialisation when the script is injected,
   // so getInstance() throws until it settles. Clearing the flag after the
-  // injection run models it settling before the 500ms poll first fires.
-  let getInstanceThrows = musicKitThrowsAtInjection;
+  // injection run models it settling before the 500ms poll first fires, and
+  // musicKitThrowsAtFirstPoll keeps it throwing through the first poll instead.
+  let getInstanceThrows = musicKitThrowsAtInjection || musicKitThrowsAtFirstPoll;
   // Held in a variable so replaceInstance() can swap what getInstance() hands
   // back, which is what the 5-second monitor watches for.
   let liveInstance = musicKit;
@@ -225,13 +228,19 @@ function createHarness({
     },
     PlaybackStates: { playing: 2 },
   };
-  if (musicKitThrowsAtInjection) {
+  if (musicKitThrowsAtInjection || musicKitThrowsAtFirstPoll) {
     Object.assign(context, { MusicKit: musicKitApi });
     Object.assign(window, { MusicKit: musicKitApi });
   }
 
   vm.runInContext(hookScript, context);
   if (repeatInjection) vm.runInContext(hookScript, context);
+
+  // Fire the first 500ms poll while getInstance() still throws. The hook must
+  // leave the poll running, so the later run below can attach.
+  if (musicKitThrowsAtFirstPoll) {
+    for (const callback of intervalCallbacks.slice()) callback();
+  }
 
   getInstanceThrows = false;
   Object.assign(context, { MusicKit: musicKitApi });
@@ -853,6 +862,19 @@ describe('musicKitHook', () => {
     const { musicKitListeners } = createHarness({ musicKitThrowsAtInjection: true });
 
     expect(musicKitListeners.has('playbackStateDidChange')).toBe(true);
+  });
+
+  it('keeps polling and attaches after getInstance() throws on the first poll', () => {
+    // window.MusicKit exists at the first poll, but getInstance() still throws.
+    // The poll must survive that lookup, because __sidraHookInjected blocks
+    // re-injection and a cleared poll would leave native controls dead.
+    const { bridgeSend, musicKit, musicKitListeners, window } = createHarness({
+      musicKitThrowsAtFirstPoll: true,
+    });
+
+    expect(musicKitListeners.has('playbackStateDidChange')).toBe(true);
+    expect(window.__sidraHookedMk).toBe(musicKit);
+    expect(bridgeSend).toHaveBeenCalledWith('hookReady', 1, 1);
   });
 
   it('installs no second message listener when the script is injected again', () => {
