@@ -944,6 +944,39 @@ describe('musicKitHook', () => {
     expect(musicKit.addEventListener.mock.calls.length).toBe(before);
   });
 
+  it('ignores every event from a replaced instance while the replacement still reports', () => {
+    const { bridgeSend, musicKit, musicKitListeners, replaceInstance, runMonitorCycles } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+    const stale = new Map(musicKitListeners);
+    const replacement = replaceInstance();
+    runMonitorCycles(1);
+    bridgeSend.mockClear();
+
+    // The old instance keeps its listeners after re-attachment, and its events
+    // carry the current document generation, so only the hook can reject them.
+    // A delayed empty-item event from it must not clear the replacement's track.
+    Object.assign(musicKit, { volume: 0.2, repeatMode: 1, shuffleMode: 1, currentPlaybackTime: 9 });
+    stale.get('nowPlayingItemDidChange')?.({ item: null });
+    stale.get('playbackStateDidChange')?.({ state: 0 });
+    stale.get('playbackTimeDidChange')?.();
+    stale.get('repeatModeDidChange')?.();
+    stale.get('shuffleModeDidChange')?.();
+    stale.get('playbackVolumeDidChange')?.();
+    stale.get('timedMetadataDidChange')?.(timedSong);
+    expect(bridgeSend).not.toHaveBeenCalled();
+
+    const fresh = new Map(replacement.addEventListener.mock.calls);
+    Object.assign(replacement, { volume: 0.3 });
+    fresh.get('playbackVolumeDidChange')?.();
+    fresh.get('nowPlayingItemDidChange')?.({ item: { id: 'next-song', attributes: { name: 'Next' } } });
+    expect(bridgeSend).toHaveBeenCalledWith('volumeDidChange', 0.3, 1);
+    expect(bridgeSend).toHaveBeenCalledWith(
+      'nowPlayingItemDidChange',
+      expect.objectContaining({ trackId: 'next-song' }), 1,
+    );
+  });
+
   it('reports explicit media session position state on playback time changes', () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {

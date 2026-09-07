@@ -128,6 +128,24 @@
     }
 
     /**
+     * Wrap an instance-owned listener so events from a replaced instance are ignored.
+     *
+     * The monitor attaches to a replacement without detaching the old instance's
+     * listeners, and the old instance keeps emitting under the same document
+     * generation, so the main process cannot reject its events.
+     *
+     * @param {object} mk - The instance the listener is attached to
+     * @param {(...args: unknown[]) => void} listener - The instance-owned listener
+     * @returns {(...args: unknown[]) => void} The guarded listener
+     */
+    function whileHooked(mk, listener) {
+      return (...args) => {
+        if (window.__sidraHookedMk !== mk) return;
+        listener(...args);
+      };
+    }
+
+    /**
      * Register the playback listeners that forward state, metadata, position,
      * repeat and shuffle to the main process.
      *
@@ -165,7 +183,7 @@
         });
         reportCapabilities();
       }
-      mk.addEventListener('playbackStateDidChange', reportPlaybackState);
+      mk.addEventListener('playbackStateDidChange', whileHooked(mk, reportPlaybackState));
 
       /**
        * Forward now-playing metadata to the main process.
@@ -206,13 +224,13 @@
           sourceHost: window.location.hostname,
         });
       }
-      mk.addEventListener('nowPlayingItemDidChange', reportNowPlaying);
+      mk.addEventListener('nowPlayingItemDidChange', whileHooked(mk, reportNowPlaying));
 
       /**
        * Forward complete songs embedded in a radio station or archived show.
        * @param {object} metadata - MusicKit timedMetadataDidChange payload
        */
-      mk.addEventListener('timedMetadataDidChange', (metadata) => {
+      mk.addEventListener('timedMetadataDidChange', whileHooked(mk, (metadata) => {
         if (mk.nowPlayingItem?.attributes?.playParams?.kind !== 'radioStation') return;
 
         const title = typeof metadata?.title === 'string' ? metadata.title.trim() : '';
@@ -248,28 +266,28 @@
           trackId: catalogId ?? undefined,
           playParams: catalogId ? { catalogId, kind: 'song' } : undefined,
         });
-      });
+      }));
 
       /**
        * Forward playback position (in microseconds) to the main process and
        * refresh the media session position state.
        */
-      mk.addEventListener('playbackTimeDidChange', () => {
+      mk.addEventListener('playbackTimeDidChange', whileHooked(mk, () => {
         sendToMain('playbackTimeDidChange',
           mk.currentPlaybackTime * 1_000_000
         );
         reportPositionState(mk);
-      });
+      }));
 
       /** Forward repeat mode changes to the main process. */
-      mk.addEventListener('repeatModeDidChange', () => {
+      mk.addEventListener('repeatModeDidChange', whileHooked(mk, () => {
         sendToMain('repeatModeDidChange', mk.repeatMode);
-      });
+      }));
 
       /** Forward shuffle mode changes to the main process. */
-      mk.addEventListener('shuffleModeDidChange', () => {
+      mk.addEventListener('shuffleModeDidChange', whileHooked(mk, () => {
         sendToMain('shuffleModeDidChange', mk.shuffleMode);
-      });
+      }));
       reportNowPlaying({ item: mk.nowPlayingItem ?? null });
       reportPlaybackState({ state: mk.playbackState ?? (mk.isPlaying ? MusicKit.PlaybackStates.playing : 0) });
       sendToMain('playbackTimeDidChange', mk.currentPlaybackTime * 1_000_000);
@@ -312,10 +330,10 @@
       sendToMain('volumeDidChange', lastVolume);
       // MusicKit publishes playbackVolumeDidChange, not volumeDidChange.
       // Sidra's separate IPC channel keeps the volumeDidChange name.
-      mk.addEventListener('playbackVolumeDidChange', () => {
+      mk.addEventListener('playbackVolumeDidChange', whileHooked(mk, () => {
         lastVolume = mk.volume;
         sendToMain('volumeDidChange', mk.volume);
-      });
+      }));
       // Poll every 250 ms for volume changes that do not reach the listener.
       // The player bar's write path is unknown, so both reporting paths are necessary.
       volumePollTimer = setInterval(() => {
