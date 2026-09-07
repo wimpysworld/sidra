@@ -8,6 +8,16 @@
 
   const waitForMK = setInterval(() => {
     if (!window.MusicKit) return;
+    // MusicKit can be present while getInstance() still throws during its own
+    // initialisation. Resolve the instance before clearing the poll: a throw
+    // after the clear would end setup for the document lifetime, because
+    // __sidraHookInjected blocks re-injection.
+    let mk;
+    try {
+      mk = MusicKit.getInstance();
+    } catch (_) {
+      return;
+    }
     clearInterval(waitForMK);
 
     /** @type {number | null} Timer ID for the volume polling fallback. */
@@ -491,8 +501,6 @@
         console.error('[Sidra] failed to attach to the MusicKit instance', err);
       }
     }
-
-    const mk = MusicKit.getInstance();
 
     /**
      * Allowed commands dispatched via window.postMessage from the
