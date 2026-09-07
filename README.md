@@ -19,7 +19,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 
 ## Features
 
-- 🎧 **Untouched audio** - no `AudioContext`, no DSP, no resampling; lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
+- 🎧 **Untouched audio** - Sidra adds no `AudioContext`, DSP, or resampling of its own (Chromium and the OS can still resample); lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus a live-reloading custom colour theme
 - 📊 **Last.fm scrobbling** - opt-in, with browser approval
 - 🎮 **Discord Rich Presence** - show what you are listening to
