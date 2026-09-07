@@ -467,6 +467,35 @@ describe('notifications integration', () => {
     expect(send).toHaveBeenCalledExactlyOnceWith('player:pause');
   });
 
+  it.each(['win32', 'darwin', 'linux'])('keeps explicit actions tied to stable playback during transient states on %s', async (platform) => {
+    setPlatform(platform);
+    const send = vi.fn();
+    initCommandBridge(send);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+    const pause = platform === 'linux'
+      ? () => linuxAdapter.show.mock.calls[0][0].onAction('pause')
+      : () => shown()!.handlers.action({ actionIndex: 0 });
+    for (const state of [PlaybackState.Seeking, PlaybackState.Waiting]) {
+      player.emitPlaybackState(state);
+      pause();
+    }
+    expect(send.mock.calls).toEqual([['player:pause'], ['player:pause']]);
+    send.mockClear();
+    if (platform !== 'linux') shown()!.handlers.show();
+    player.emitPlaybackState(PlaybackState.Paused);
+    const play = platform === 'linux'
+      ? () => linuxAdapter.show.mock.calls[1][0].onAction('play')
+      : () => notifyFake.built[1].handlers.action({ actionIndex: 0 });
+    for (const state of [PlaybackState.Seeking, PlaybackState.Waiting]) {
+      player.emitPlaybackState(state);
+      play();
+      if (platform === 'linux') pause();
+    }
+    expect(send.mock.calls).toEqual([['player:play'], ['player:play']]);
+  });
+
   it('refreshes state with cached artwork and ignores repeated or transient state events', async () => {
     player.emitPlaybackState(PlaybackState.Playing);
     player.emitNowPlaying({ ...TRACK, artworkUrl: STATION.artworkUrl });
