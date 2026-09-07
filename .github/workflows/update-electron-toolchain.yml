@@ -39,6 +39,11 @@ jobs:
             "electron@$(node -p "require('./package.json').devDependencies.electron")"
           npm install --package-lock-only --ignore-scripts
       - name: Create pull request
+        # The default GITHUB_TOKEN creates this pull request. GitHub does not
+        # trigger workflow runs on pushes made with this token, and runs on the
+        # pull request need manual approval, so its checks stay pending until a
+        # maintainer approves them. If unattended checks become necessary, use
+        # a narrowly scoped GitHub App token instead.
         env:
           BRANCH: ci/update-electron-toolchain
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
