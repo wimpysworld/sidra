@@ -5,6 +5,8 @@
   // duplicate set of message and pointerover listeners.
   if (window.__sidraHookInjected) return;
   window.__sidraHookInjected = true;
+  const injectedDocumentGeneration = __SIDRA_DOCUMENT_GENERATION__;
+  const serviceHosts = new Set(__SIDRA_SERVICE_HOSTS__);
 
   const waitForMK = setInterval(() => {
     if (!window.MusicKit) return;
@@ -354,6 +356,8 @@
       let generation = 0;
       let pendingStop = null;
       let stopped = false;
+      let queueRequest = 0;
+      let queueTask = Promise.resolve();
       function resetStop() {
         generation += 1;
         pendingStop = null;
@@ -436,6 +440,27 @@
        * @see {SidraHook} in src/types/hook.d.ts
        */
       window.__sidra = {
+        openUri: async (uri) => {
+          try {
+            const url = new URL(uri);
+            if (url.protocol !== 'https:' || !serviceHosts.has(url.hostname) ||
+                url.origin !== window.location.origin || url.username || url.password ||
+                !documentActive || window.__sidraHookedMk !== mk) return;
+            const request = ++queueRequest;
+            const pageGeneration = documentGeneration;
+            queueTask = queueTask.then(async () => {
+              if (request !== queueRequest || pageGeneration !== documentGeneration ||
+                  !documentActive || window.__sidraHookedMk !== mk) return;
+              resetStop();
+              await mk.setQueue({ url: url.href, startPlaying: true });
+            }).catch(() => {
+              console.warn('[Sidra] failed to open requested media');
+            });
+            await queueTask;
+          } catch (_) {
+            console.warn('[Sidra] failed to open requested media');
+          }
+        },
         play:       () => resume(false),
         pause:      () => mk.pause(),
         stop,
@@ -447,6 +472,7 @@
         setRepeat:  (m) => { mk.repeatMode = m; },
         setShuffle: (m) => { mk.shuffleMode = m; },
       };
+      sendToMain('hookReady', injectedDocumentGeneration);
     }
 
     /**
@@ -470,7 +496,6 @@
     }
 
     const mk = MusicKit.getInstance();
-    attachSafely(mk);
 
     /**
      * Allowed commands that may be dispatched via window.postMessage from the
@@ -479,7 +504,7 @@
      * @type {Set<string>}
      */
     const COMMANDS = new Set([
-      'play', 'pause', 'stop', 'playPause', 'next', 'previous',
+      'play', 'pause', 'stop', 'playPause', 'next', 'previous', 'openUri',
       'seek', 'setVolume', 'setRepeat', 'setShuffle',
     ]);
 
@@ -507,6 +532,7 @@
         window.__sidra[method](...(args || []));
       }
     });
+    attachSafely(mk);
 
     /**
      * Volume change applied per wheel notch. The step is fixed and never scaled

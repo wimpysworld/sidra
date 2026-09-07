@@ -5,6 +5,8 @@ import { NowPlayingPayload, TimedMetadataPayload, PlaybackState, PlaybackStatePa
 import { downloadArtwork } from '../../artwork';
 import { errorMessage } from '../../utils';
 import { getServiceByHost } from '../../musicService';
+import { getMusicService } from '../../config';
+import { switchService } from '../../serviceSwitch';
 
 // @holusion/dbus-next is lazy-required because the MPRIS module only loads on Linux
 const dbus = require('@holusion/dbus-next');
@@ -28,6 +30,16 @@ const MS_TO_US = 1000;
 const mprisLog = log.scope('mpris');
 
 const MPRIS_PATH = '/org/mpris/MediaPlayer2';
+
+function parseServiceUri(uri: string): URL | null {
+  try {
+    const url = new URL(uri);
+    const service = getServiceByHost(url.hostname);
+    return service?.origin === url.origin && !url.username && !url.password ? url : null;
+  } catch {
+    return null;
+  }
+}
 
 type MprisMethod =
   | 'LoopStatus'
@@ -270,6 +282,10 @@ class MediaPlayer2Player extends Interface {
   private _itemLengthUs: number | undefined;
   private _itemGeneration = 0;
   private _radioStation: NowPlayingPayload | null = null;
+  private _readyUrl: string | null;
+  private _navigating = false;
+  private _pendingOpenUri: { url: string; navigationUrl: string } | null = null;
+  private _openUriTimer: ReturnType<typeof setTimeout> | null = null;
   private _stopRequestId = 0;
   private _pendingStopId: number | null = null;
   private _stopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -305,10 +321,11 @@ class MediaPlayer2Player extends Interface {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingChanges: Record<string, unknown> = {};
 
-  constructor(getMainWindow: () => BrowserWindow | null, capabilities: PlaybackCapabilities) {
+  constructor(getMainWindow: () => BrowserWindow | null, capabilities: PlaybackCapabilities, readyUrl: string | null) {
     super('org.mpris.MediaPlayer2.Player');
     this._getMainWindow = getMainWindow;
     this._capabilities = capabilities;
+    this._readyUrl = readyUrl;
   }
 
   private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): boolean {
@@ -547,6 +564,7 @@ class MediaPlayer2Player extends Interface {
    * nothing fires into a bus that has already been disconnected.
    */
   cleanup(): void {
+    this._clearOpenUri();
     this._clearPendingStop();
     if (this._volumeSafetyTimer) {
       clearTimeout(this._volumeSafetyTimer);
@@ -750,31 +768,67 @@ class MediaPlayer2Player extends Interface {
     return typeof length === 'number' && Number.isSafeInteger(length) && length >= 0 ? length : undefined;
   }
 
-  /**
-   * Opens a service URL a client hands over. The window navigates directly and
-   * the persisted `musicService` is left alone, so after an OpenUri the window
-   * can sit on one service's host while config still names the other.
-   */
   OpenUri(uri: string): void {
-    try {
-      const parsed = new URL(uri);
-      if (getServiceByHost(parsed.hostname) === undefined || parsed.protocol !== 'https:') {
-        mprisLog.warn('OpenUri rejected');
-        return;
-      }
-    } catch {
-      mprisLog.warn('OpenUri rejected malformed URI');
+    const parsed = parseServiceUri(uri);
+    if (!parsed) {
+      mprisLog.warn('OpenUri rejected');
       return;
     }
     const win = this._getMainWindow();
-    if (win) {
-      win.loadURL(uri).catch(() => {
-        mprisLog.warn('failed to open accepted URI');
-      });
-      logCommand('OpenUri', 'sent');
-    } else {
+    if (!win || win.isDestroyed()) {
       logCommand('OpenUri', 'dropped');
+      return;
     }
+    this._clearOpenUri();
+    const service = getServiceByHost(parsed.hostname)!;
+    if (!this._navigating && this._readyUrl && getMusicService() === service.id &&
+      parseServiceUri(this._readyUrl)?.origin === parsed.origin && parseServiceUri(win.webContents.getURL())?.origin === parsed.origin) {
+      this._send('OpenUri', 'player:openUri', parsed.href);
+      return;
+    }
+    this._readyUrl = null;
+    this._pendingOpenUri = { url: parsed.href, navigationUrl: parsed.href };
+    this._navigating = true;
+    this._openUriTimer = setTimeout(() => {
+      this._clearOpenUri();
+      mprisLog.warn('OpenUri hook readiness timed out');
+    }, 10_000);
+    switchService(service.id, parsed.href);
+    logCommand('OpenUri', 'sent');
+  }
+
+  private _clearOpenUri(): void {
+    this._pendingOpenUri = null;
+    if (this._openUriTimer) clearTimeout(this._openUriTimer);
+    this._openUriTimer = null;
+  }
+
+  updateHookReady(url: string | null): void {
+    this._readyUrl = this._navigating ? null : url;
+    const pending = this._pendingOpenUri;
+    if (!pending || this._readyUrl !== pending.navigationUrl) return;
+    this._clearOpenUri();
+    this._send('OpenUri', 'player:openUri', pending.url);
+  }
+
+  navigationStarted(url: string, sameDocument: boolean): void {
+    if (!sameDocument) {
+      this._readyUrl = null;
+      this._navigating = true;
+    }
+    if (this._pendingOpenUri && parseServiceUri(url)?.href !== this._pendingOpenUri.navigationUrl) this._clearOpenUri();
+  }
+
+  navigationRedirected(url: string): void {
+    const pending = this._pendingOpenUri;
+    if (!pending) return;
+    const redirected = parseServiceUri(url);
+    if (redirected?.origin === parseServiceUri(pending.url)?.origin) pending.navigationUrl = redirected!.href;
+    else this._clearOpenUri();
+  }
+
+  navigationCommitted(): void {
+    this._navigating = false;
   }
 
   // Signal - declared via configureMembers, calling this method emits on D-Bus
@@ -932,7 +986,15 @@ export function init(ctx: IntegrationContext): void {
   mprisLog.info('MPRIS module initialised');
 
   const rootIface = new MediaPlayer2(getMainWindow);
-  const playerIface = new MediaPlayer2Player(getMainWindow, player.capabilitiesSnapshot());
+  const playerIface = new MediaPlayer2Player(getMainWindow, player.capabilitiesSnapshot(), player.hookReadyUrl());
+  const navigationWindow = getMainWindow();
+  const onNavigationStarted = (details: { isMainFrame: boolean; isSameDocument: boolean; url: string }): void => {
+    if (details.isMainFrame) playerIface.navigationStarted(details.url, details.isSameDocument);
+  };
+  const onNavigationRedirected = (details: { isMainFrame: boolean; url: string }): void => {
+    if (details.isMainFrame) playerIface.navigationRedirected(details.url);
+  };
+  const onNavigationCommitted = (): void => { playerIface.navigationCommitted(); };
   let fullscreenWindow: BrowserWindow | null = null;
   const onFullscreenChanged = (): void => {
     if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
@@ -949,6 +1011,7 @@ export function init(ctx: IntegrationContext): void {
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     playerIface.updatePlaybackStatus(payload);
   };
+  const onHookReady = (url: string | null): void => { playerIface.updateHookReady(url); };
   const onPlaybackCapabilitiesDidChange = (payload: PlaybackCapabilities): void => {
     playerIface.updateCapabilities(payload);
   };
@@ -975,6 +1038,10 @@ export function init(ctx: IntegrationContext): void {
   };
 
   app.on('will-quit', () => {
+    navigationWindow?.webContents.removeListener('did-start-navigation', onNavigationStarted);
+    navigationWindow?.webContents.removeListener('will-redirect', onNavigationRedirected);
+    navigationWindow?.webContents.removeListener('did-navigate', onNavigationCommitted);
+    player.removeListener('hookReady', onHookReady);
     fullscreenWindow?.removeListener('enter-full-screen', onFullscreenChanged);
     fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
     player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
@@ -1012,6 +1079,9 @@ export function init(ctx: IntegrationContext): void {
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
+  navigationWindow?.webContents.on('did-start-navigation', onNavigationStarted);
+  navigationWindow?.webContents.on('will-redirect', onNavigationRedirected);
+  navigationWindow?.webContents.on('did-navigate', onNavigationCommitted);
 
   fullscreenWindow = getMainWindow();
   if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
@@ -1029,6 +1099,7 @@ export function init(ctx: IntegrationContext): void {
   // Subscribed after the bus, so the return on a missing bus leaves no
   // listener attached to update an interface no client can reach.
   player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on('hookReady', onHookReady);
   player.on('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
   player.on('playbackStopped', onPlaybackStopped);
   player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);

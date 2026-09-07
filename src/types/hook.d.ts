@@ -18,6 +18,7 @@
  * there fails the type check rather than being silently discarded at runtime.
  */
 type SendChannel =
+  | 'hookReady'
   | 'playbackCapabilitiesDidChange'
   | 'playbackStopped'
   | 'playbackStateDidChange'
@@ -38,6 +39,7 @@ type SendChannel =
  * of reaching the preload allowlist, which would drop it without a trace.
  */
 type ReceiveChannel =
+  | 'player:openUri'
   | 'player:play'
   | 'player:pause'
   | 'player:stop'
@@ -59,6 +61,7 @@ type ReceiveChannel =
  * command table to this interface, which is the only thing tying the two.
  */
 interface SidraHook {
+  openUri(uri: string): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   stop(requestId: number): Promise<void>;

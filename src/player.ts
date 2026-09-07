@@ -210,6 +210,7 @@ export function isTerminalPlaybackState(state: number): boolean {
 export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
 export interface PlayerEvents {
+  hookReady: [url: string | null];
   playbackStopped: [payload: PlaybackStopped];
   playbackCapabilitiesDidChange: [payload: PlaybackCapabilities];
   playbackStateDidChange: [payload: PlaybackStatePayload];
@@ -299,6 +300,7 @@ const EMPTY_CAPABILITIES: PlaybackCapabilities = {
  * Invalid metadata fields are logged and dropped rather than forwarded.
  */
 export class Player extends TypedEmitter<PlayerEvents> {
+  private _hookReadyUrl: string | null = null;
   private _capabilities: PlaybackCapabilities = { ...EMPTY_CAPABILITIES };
   private lastTimeLogAt = 0;
   private _isPlaying = false;
@@ -394,6 +396,22 @@ export class Player extends TypedEmitter<PlayerEvents> {
     return { ...this._capabilities };
   }
 
+  hookReadyUrl(): string | null {
+    return this._hookReadyUrl;
+  }
+
+  handleHookReady(value: unknown): void {
+    if (typeof value !== 'string') return;
+    try {
+      const url = new URL(value);
+      if (getServiceByHost(url.hostname)?.origin !== url.origin || url.username || url.password) return;
+      this._hookReadyUrl = url.href;
+      this.emit('hookReady', url.href);
+    } catch {
+      playerLog.warn('hookReady: invalid document URL');
+    }
+  }
+
   handlePlaybackStopped(payload: unknown): void {
     if (!isRecord(payload) || Object.keys(payload).length !== 2 ||
       !isNonNegativeSafeInteger(payload.requestId) || payload.requestId === 0 ||
@@ -422,6 +440,8 @@ export class Player extends TypedEmitter<PlayerEvents> {
   }
 
   resetForDocumentReplacement(): void {
+    this._hookReadyUrl = null;
+    this.emit('hookReady', null);
     this._state = PlaybackState.None;
     this._isPlaying = false;
     this._positionUs = 0;

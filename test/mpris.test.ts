@@ -6,6 +6,8 @@ import log from 'electron-log/main';
 
 import { setMusicService } from '../src/config';
 import { downloadArtwork } from '../src/artwork';
+import { switchService } from '../src/serviceSwitch';
+import type { MusicServiceId } from '../src/musicService';
 import { PlaybackState } from '../src/player';
 import type { IntegrationContext, NowPlayingPayload, TimedMetadataPayload } from '../src/player';
 import * as mpris from '../src/integrations/mpris';
@@ -18,6 +20,12 @@ import { quit } from './mocks/appLifecycle';
 // metadata assertions read what the builder wrote and nothing else.
 vi.mock('../src/artwork', () => ({
   downloadArtwork: vi.fn(() => Promise.resolve(null)),
+}));
+vi.mock('../src/serviceSwitch', () => ({
+  switchService: vi.fn((id: MusicServiceId, url: string) => {
+    setMusicService(id);
+    win.loadURL(url);
+  }),
 }));
 
 interface DbusBus {
@@ -63,11 +71,11 @@ const busStub = {
 interface WindowStub extends EventEmitter {
   show: ReturnType<typeof vi.fn>;
   focus: ReturnType<typeof vi.fn>;
-  loadURL: ReturnType<typeof vi.fn>;
+  loadURL: ReturnType<typeof vi.fn<(url: string) => Promise<void>>>;
   isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
   isFullScreen: ReturnType<typeof vi.fn<() => boolean>>;
   setFullScreen: ReturnType<typeof vi.fn<(value: boolean) => void>>;
-  webContents: { send: ReturnType<typeof vi.fn> };
+  webContents: EventEmitter & { send: ReturnType<typeof vi.fn>; getURL: ReturnType<typeof vi.fn<() => string>> };
 }
 
 interface PlayerInterface {
@@ -185,11 +193,11 @@ beforeEach(() => {
   win = Object.assign(new EventEmitter(), {
     show: vi.fn(),
     focus: vi.fn(),
-    loadURL: vi.fn(() => Promise.resolve()),
+    loadURL: vi.fn<(url: string) => Promise<void>>(() => Promise.resolve()),
     isDestroyed: vi.fn(() => false),
     isFullScreen: vi.fn(() => false),
     setFullScreen: vi.fn<(value: boolean) => void>(),
-    webContents: { send: vi.fn() },
+    webContents: Object.assign(new EventEmitter(), { send: vi.fn(), getURL: vi.fn(() => 'https://music.apple.com/gb/new') }),
   });
   player = new FakePlayer();
   player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: true, durationUs: null });
@@ -696,6 +704,88 @@ describe('MPRIS fixed Rate', () => {
 });
 
 describe('MPRIS OpenUri', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  function commitAndReady(url: string): void {
+    win.webContents.getURL.mockReturnValue(url);
+    win.webContents.emit('did-navigate', {}, url);
+    player.handleHookReady(url);
+  }
+
+  it('queues media immediately on a ready active service without navigation', () => {
+    player.handleHookReady('https://music.apple.com/gb/new');
+    initPlayerInterface().OpenUri('https://music.apple.com/gb/album/123');
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', 'https://music.apple.com/gb/album/123');
+    expect(switchService).not.toHaveBeenCalled();
+    expect(win.loadURL).not.toHaveBeenCalled();
+  });
+
+  it('switches service first and waits for hook readiness rather than load completion', () => {
+    const url = 'https://classical.music.apple.com/gb/album/123';
+    initPlayerInterface().OpenUri(url);
+    expect(switchService).toHaveBeenCalledExactlyOnceWith('classical', url);
+    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
+    win.webContents.emit('did-finish-load');
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    commitAndReady(url);
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', url);
+    expect(vi.mocked(switchService).mock.invocationCallOrder[0]).toBeLessThan(win.webContents.send.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the original media request through a same-service storefront redirect', () => {
+    const url = 'https://classical.music.apple.com/album/123';
+    const redirected = 'https://classical.music.apple.com/gb/album/123';
+    initPlayerInterface().OpenUri(url);
+    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
+    win.webContents.emit('will-redirect', { isMainFrame: true, url: redirected });
+    commitAndReady(redirected);
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', url);
+  });
+
+  it('keeps only the latest request while readiness is delayed', () => {
+    const iface = initPlayerInterface();
+    const first = 'https://classical.music.apple.com/album/1';
+    const latest = 'https://classical.music.apple.com/album/2';
+    iface.OpenUri(first);
+    iface.OpenUri(latest);
+    commitAndReady(first);
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: latest });
+    commitAndReady(latest);
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', latest);
+  });
+
+  it.each([false, true])('cancels pending media on unrelated navigation with sameDocument=%s', (isSameDocument) => {
+    const target = 'https://classical.music.apple.com/album/1';
+    initPlayerInterface().OpenUri(target);
+    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument, url: 'https://classical.music.apple.com/search' });
+    commitAndReady(target);
+    expect(win.webContents.send).not.toHaveBeenCalled();
+  });
+
+  it('expires a pending request and removes readiness listeners on quit', () => {
+    const target = 'https://classical.music.apple.com/album/1';
+    const iface = initPlayerInterface();
+    iface.OpenUri(target);
+    vi.advanceTimersByTime(10_000);
+    commitAndReady(target);
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    player.resetForDocumentReplacement();
+    iface.OpenUri(target);
+    quit();
+    expect(player.listenerCount('hookReady')).toBe(0);
+    expect(win.webContents.listenerCount('did-start-navigation')).toBe(0);
+    expect(win.webContents.listenerCount('will-redirect')).toBe(0);
+    expect(win.webContents.listenerCount('did-navigate')).toBe(0);
+    vi.advanceTimersByTime(10_000);
+    expect(log.scope('mpris').warn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['https://music.apple.com.evil.test/album/1', 'https://user@music.apple.com/album/1', 'https://music.apple.com:1234/album/1'])('rejects a URI outside the service origin %#', (uri) => {
+    initPlayerInterface().OpenUri(uri);
+    expect(switchService).not.toHaveBeenCalled();
+    expect(win.webContents.send).not.toHaveBeenCalled();
+  });
   it('advertises HTTPS URI support', () => {
     initPlayerInterface();
     const rootIface = busStub.export.mock.calls[0][1] as { SupportedUriSchemes: string[] };
