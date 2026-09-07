@@ -347,7 +347,7 @@ describe('MusicKit OpenUri', () => {
     const { window, bridgeSend } = createHarness();
     const listenerIndex = window.addEventListener.mock.calls.findIndex(([event]) => event === 'message');
     const readyIndex = bridgeSend.mock.calls.findIndex(([channel]) => channel === 'hookReady');
-    expect(bridgeSend.mock.calls[readyIndex]).toEqual(['hookReady', 1]);
+    expect(bridgeSend.mock.calls[readyIndex]).toEqual(['hookReady', 1, 1]);
     expect(window.addEventListener.mock.invocationCallOrder[listenerIndex]).toBeLessThan(bridgeSend.mock.invocationCallOrder[readyIndex]);
     expect(typeof window.__sidra!.openUri).toBe('function');
   });
@@ -464,7 +464,7 @@ describe('MusicKit Stop', () => {
     resolveSeek();
     await Promise.all([stopping, playing]);
     expect(musicKit.play).toHaveBeenCalledOnce();
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true }, 1);
     expect(engineStop).not.toHaveBeenCalled();
     expect(musicKit.queue).toBe(queue);
   });
@@ -490,7 +490,7 @@ describe('MusicKit Stop', () => {
     resolveSeek();
     await Promise.all([stopping, playing]);
     expect(musicKit.play).not.toHaveBeenCalled();
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true }, 1);
     await window.__sidra!.stop(2);
     expect(musicKit.seekToTime).toHaveBeenCalledOnce();
     await window.__sidra!.play();
@@ -520,7 +520,7 @@ describe('MusicKit Stop', () => {
     await Promise.resolve();
     rejectSeek(new Error('seek failed'));
     await Promise.all([stopping, playing]);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false }, 1);
     expect(musicKit.play).toHaveBeenCalledOnce();
   });
 
@@ -531,7 +531,7 @@ describe('MusicKit Stop', () => {
     await Promise.resolve();
     runTimeouts();
     await Promise.all([stopping, playing]);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false }, 1);
     expect(musicKit.play).toHaveBeenCalledOnce();
     bridgeSend.mockClear();
     resolveSeek();
@@ -568,7 +568,7 @@ describe('MusicKit Stop', () => {
     await window.__sidra!.stop(1);
     expect(musicKit.pause).toHaveBeenCalledOnce();
     expect(musicKit.seekToTime).not.toHaveBeenCalled();
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true }, 1);
   });
 
   it('keeps the position for ordinary Pause followed by Play', async () => {
@@ -592,12 +592,12 @@ describe('MusicKit initial state and capabilities', () => {
 
     expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
       canPlay: true, canPause: true, canSeek: true, durationUs: 600_000_000,
-    });
-    expect(bridgeSend).toHaveBeenCalledWith('nowPlayingItemDidChange', expect.objectContaining({ trackId: 'episode', name: 'Episode' }));
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStateDidChange', { status: false, state: 3 });
-    expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 42_000_000);
-    expect(bridgeSend).toHaveBeenCalledWith('repeatModeDidChange', 2);
-    expect(bridgeSend).toHaveBeenCalledWith('shuffleModeDidChange', 1);
+    }, 1);
+    expect(bridgeSend).toHaveBeenCalledWith('nowPlayingItemDidChange', expect.objectContaining({ trackId: 'episode', name: 'Episode' }), 1);
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStateDidChange', { status: false, state: 3 }, 1);
+    expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 42_000_000, 1);
+    expect(bridgeSend).toHaveBeenCalledWith('repeatModeDidChange', 2, 1);
+    expect(bridgeSend).toHaveBeenCalledWith('shuffleModeDidChange', 1, 1);
   });
 
   it('keeps radio seekability unknown without duration and refreshes through the existing poll', () => {
@@ -606,7 +606,7 @@ describe('MusicKit initial state and capabilities', () => {
     });
     expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
       canPlay: true, canPause: true, canSeek: null, durationUs: null,
-    });
+    }, 1);
     bridgeSend.mockClear();
     Object.assign(musicKit, { currentPlaybackDuration: 123.456789 });
     musicKitListeners.get('playbackTimeDidChange')?.();
@@ -614,13 +614,13 @@ describe('MusicKit initial state and capabilities', () => {
     runVolumePoll();
     runVolumePoll();
     expect(bridgeSend.mock.calls.filter(([channel]) => channel === 'playbackCapabilitiesDidChange')).toEqual([
-      ['playbackCapabilitiesDidChange', { canPlay: true, canPause: true, canSeek: true, durationUs: 123_456_789 }],
+      ['playbackCapabilitiesDidChange', { canPlay: true, canPause: true, canSeek: true, durationUs: 123_456_789 }, 1],
     ]);
     Object.assign(musicKit, { currentPlaybackDuration: Infinity });
     runVolumePoll();
     expect(bridgeSend).toHaveBeenLastCalledWith('playbackCapabilitiesDidChange', {
       canPlay: true, canPause: true, canSeek: null, durationUs: null,
-    });
+    }, 1);
   });
 
   it('disables capabilities when the item clears and restores them on item change', () => {
@@ -629,7 +629,7 @@ describe('MusicKit initial state and capabilities', () => {
     musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
     expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
       canPlay: false, canPause: false, canSeek: false, durationUs: null,
-    });
+    }, 1);
     Object.assign(musicKit, { nowPlayingItem: item });
     musicKitListeners.get('nowPlayingItemDidChange')?.({ item });
     expect(bridgeSend.mock.calls.filter(([channel]) => channel === 'playbackCapabilitiesDidChange')).toHaveLength(3);
@@ -641,7 +641,7 @@ describe('MusicKit initial state and capabilities', () => {
     } });
     expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
       canPlay: false, canPause: false, canSeek: false, durationUs: 600_000_000,
-    });
+    }, 1);
   });
 
   it('publishes the replacement instance and ignores capability reports from the old instance', () => {
@@ -653,7 +653,7 @@ describe('MusicKit initial state and capabilities', () => {
     runMonitorCycles(1);
     expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
       canPlay: false, canPause: false, canSeek: false, durationUs: null,
-    });
+    }, 1);
     bridgeSend.mockClear();
     Object.assign(musicKit, { currentPlaybackDuration: 20 });
     musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
@@ -689,7 +689,7 @@ describe('musicKitHook', () => {
       albumName: 'Power, Corruption & Lies',
       trackId: '12345',
       playParams: { catalogId: '12345', kind: 'song' },
-    });
+    }, 1);
   });
 
   it('omits an unsafe catalogue identity from timed metadata', () => {
@@ -708,7 +708,7 @@ describe('musicKitHook', () => {
       albumName: 'Power, Corruption & Lies',
       trackId: undefined,
       playParams: undefined,
-    });
+    }, 1);
   });
 
   it.each([
@@ -723,7 +723,7 @@ describe('musicKitHook', () => {
 
     expect(bridgeSend).toHaveBeenCalledWith(
       'timedMetadataDidChange',
-      expect.objectContaining({ albumName: expected }),
+      expect.objectContaining({ albumName: expected }), 1,
     );
   });
 
@@ -763,7 +763,7 @@ describe('musicKitHook', () => {
 
     musicKitListeners.get('timedMetadataDidChange')?.(timedSong);
 
-    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything());
+    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything(), 1);
   });
 
   it('forwards incomplete and repeated radio metadata for main-process classification', () => {
@@ -829,7 +829,7 @@ describe('musicKitHook', () => {
       links: [timedSong.links[0], timedSong.links[0]],
     });
 
-    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything());
+    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything(), 1);
   });
 
   it('handles one player command after repeated injection before MusicKit loads', () => {
@@ -987,11 +987,11 @@ describe('musicKitHook', () => {
 
     expect(bridgeSend).toHaveBeenCalledWith(
       'playbackTimeDidChange',
-      42 * 1_000_000,
+      42 * 1_000_000, 1,
     );
     expect(bridgeSend).toHaveBeenCalledWith(
       'nowPlayingItemDidChange',
-      null,
+      null, 1,
     );
   });
 
@@ -1013,11 +1013,11 @@ describe('musicKitHook', () => {
 
     expect(bridgeSend).toHaveBeenCalledWith(
       'playbackTimeDidChange',
-      42 * 1_000_000,
+      42 * 1_000_000, 1,
     );
     expect(bridgeSend).toHaveBeenCalledWith(
       'nowPlayingItemDidChange',
-      null,
+      null, 1,
     );
   });
 
@@ -1100,7 +1100,7 @@ describe('musicKitHook', () => {
     musicKit.volume = 0.42;
     musicKitListeners.get('playbackVolumeDidChange')?.();
 
-    expect(bridgeSend).toHaveBeenCalledWith('volumeDidChange', 0.42);
+    expect(bridgeSend).toHaveBeenCalledWith('volumeDidChange', 0.42, 1);
   });
 
   it.each([

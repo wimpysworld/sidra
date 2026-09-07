@@ -321,7 +321,7 @@ describe('controller polling in the preload', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const exposed = vi.mocked(harness.contextBridge.exposeInMainWorld).mock.calls
       .find(([key]) => key === 'AMWrapper')?.[1] as {
-        ipcRenderer: { send(channel: string, data?: unknown): void };
+        ipcRenderer: { send(channel: string, data?: unknown, generation?: number): void };
       };
 
     exposed.ipcRenderer.send(CONTROLLER_ACTION_CHANNEL, 'up');
@@ -330,8 +330,8 @@ describe('controller polling in the preload', () => {
       'AMWrapper: blocked send on unlisted channel "controller:action"',
     );
 
-    exposed.ipcRenderer.send('playbackStateDidChange', true);
-    expect(harness.ipcRenderer.send).toHaveBeenCalledWith('playbackStateDidChange', true);
+    exposed.ipcRenderer.send('playbackStateDidChange', true, 7);
+    expect(harness.ipcRenderer.send).toHaveBeenCalledWith('playbackStateDidChange', true, 7);
   });
 
   it('allows only the Settings entry point, not private Settings channels', async () => {
@@ -346,7 +346,7 @@ describe('controller polling in the preload', () => {
     }
     expect(harness.ipcRenderer.send).not.toHaveBeenCalled();
     exposed.ipcRenderer.send('nav:settings');
-    expect(harness.ipcRenderer.send).toHaveBeenCalledWith('nav:settings', undefined);
+    expect(harness.ipcRenderer.send).toHaveBeenCalledWith('nav:settings', undefined, undefined);
   });
 
   it('installs one polling loop for each isolated preload setup', async () => {

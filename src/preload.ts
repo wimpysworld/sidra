@@ -305,12 +305,12 @@ for (const channel of RECEIVE_CHANNELS.all) {
  */
 contextBridge.exposeInMainWorld('AMWrapper', {
   ipcRenderer: {
-    send: (channel: string, data: unknown) => {
+    send: (channel: string, data: unknown, generation?: number) => {
       if (!SEND_CHANNELS.allows(channel)) {
         console.warn(`AMWrapper: blocked send on unlisted channel "${channel}"`);
         return;
       }
-      ipcRenderer.send(channel, data);
+      ipcRenderer.send(channel, data, generation);
     },
   },
 } satisfies AMWrapperBridge);

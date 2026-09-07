@@ -41,7 +41,7 @@
     function sendToMain(channel, payload) {
       const bridge = window.AMWrapper;
       if (!bridge || !bridge.ipcRenderer) return;
-      bridge.ipcRenderer.send(channel, payload);
+      bridge.ipcRenderer.send(channel, payload, injectedDocumentGeneration);
     }
 
     /**
