@@ -356,6 +356,47 @@ describe('main bootstrap', () => {
     expect(goBackIfPossible).toHaveBeenCalledWith(bootstrap.mainWindow);
   });
 
+  it('defers early SPA injection until integrations register and preserves later injection', async () => {
+    const { handleStorefrontNavigation, handleLastPageNavigation } = await import('../src/storefront');
+    await startMain();
+    const navigate = bootstrap.mainWebListeners.get('did-navigate-in-page');
+    const finish = bootstrap.mainWebListeners.get('did-finish-load');
+
+    await navigate?.({}, 'https://music.apple.com/gb/home');
+    expect(handleStorefrontNavigation).toHaveBeenCalledWith('https://music.apple.com/gb/home');
+    expect(handleLastPageNavigation).toHaveBeenCalledWith('https://music.apple.com/gb/home');
+    expect(bootstrap.webContents.executeJavaScript).not.toHaveBeenCalled();
+
+    await finish?.();
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    for (const initialise of Object.values(bootstrap.integrations)) {
+      expect(initialise.mock.invocationCallOrder[0]).toBeLessThan(
+        bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
+      );
+    }
+
+    await navigate?.({}, 'https://music.apple.com/gb/new');
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    for (const initialise of Object.values(bootstrap.integrations)) expect(initialise).toHaveBeenCalledOnce();
+  });
+
+  it('permits later SPA injection after initial integration and hook failures', async () => {
+    bootstrap.integrations.notifications.mockImplementationOnce(() => { throw new Error('integration unavailable'); });
+    bootstrap.webContents.executeJavaScript.mockRejectedValueOnce(new Error('hook unavailable'));
+    await startMain();
+    const navigate = bootstrap.mainWebListeners.get('did-navigate-in-page');
+    await navigate?.({}, 'https://music.apple.com/gb/home');
+    await expect(Promise.resolve(bootstrap.mainWebListeners.get('did-finish-load')?.())).resolves.toBeUndefined();
+
+    expect(bootstrap.log.error).toHaveBeenCalledWith('integration initialisation failed: notifications:', expect.any(Error));
+    expect(bootstrap.log.warn).toHaveBeenCalledWith('failed to inject hookScript on load:', expect.any(Error));
+    expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    await navigate?.({}, 'https://music.apple.com/gb/new');
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
+  });
+
   it('waits for Settings and its dependencies before creating the tray', async () => {
     const { components } = await import('electron');
     const { initSettingsActions } = await import('../src/settings');

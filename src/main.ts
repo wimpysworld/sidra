@@ -449,7 +449,7 @@ async function injectRendererScripts(win: BrowserWindow, assets: Assets, context
   }
 }
 
-function setupNavigationHandlers(win: BrowserWindow, player: Player, assets: Assets): void {
+function setupNavigationHandlers(win: BrowserWindow, player: Player): void {
   // Keeps the main frame on Apple's hosts, so the preload command bridge and the
   // injected hook can only ever reach Apple Music. Main-process loadURL() calls do
   // not raise this event, so launch, service switching and itms:// routing are unaffected.
@@ -469,11 +469,6 @@ function setupNavigationHandlers(win: BrowserWindow, player: Player, assets: Ass
     player.resetForDocumentReplacement();
     mainLog.debug('did-navigate:', url);
     handleStorefrontNavigation(url);
-  });
-  win.webContents.on('did-navigate-in-page', async (_event, url) => {
-    handleStorefrontNavigation(url);
-    handleLastPageNavigation(url);
-    await injectRendererScripts(win, assets, 'on SPA navigation');
   });
 }
 
@@ -590,6 +585,12 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
   }
 
   let initialized = false;
+  let integrationsReady = false;
+  win.webContents.on('did-navigate-in-page', async (_event, url) => {
+    handleStorefrontNavigation(url);
+    handleLastPageNavigation(url);
+    if (integrationsReady) await injectRendererScripts(win, assets, 'on SPA navigation');
+  });
   win.webContents.on('did-finish-load', async () => {
     // Claimed before the await, not after. injectContent() yields on every call,
     // so two did-finish-load events inside one round trip would both pass a
@@ -623,6 +624,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
           app.on('will-quit', teardownTrayState);
         }],
       ], (name, e) => mainLog.error(`integration initialisation failed: ${name}:`, e));
+      integrationsReady = true;
     }
 
     // Register integrations before the hook sends its initial playback state.
@@ -704,7 +706,7 @@ if (gotLock) {
     setupSessionHeaders(ses);
     setupContentHandlers(win, player, markCssReady, assets);
     setupWindowEvents(win, markCssReady);
-    setupNavigationHandlers(win, player, assets);
+    setupNavigationHandlers(win, player);
     setupAuthFrameInjection(win, assets.authFrameScript);
     appTray = createTray();
     if (process.env.SIDRA_DEVTOOLS === '1') {
