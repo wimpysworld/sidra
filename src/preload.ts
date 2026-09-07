@@ -152,6 +152,7 @@ function channelSet<C extends string>(
 // Extend this list and SendChannel in src/types/hook.d.ts together.
 const SEND_CHANNELS = channelSet<SendChannel>({
   playbackStateDidChange: true,
+  playbackCapabilitiesDidChange: true,
   nowPlayingItemDidChange: true,
   timedMetadataDidChange: true,
   playbackTimeDidChange: true,

@@ -335,6 +335,11 @@ describe('main bootstrap', () => {
     expect(bootstrap.integrations.windowsTaskbar).toHaveBeenCalledOnce();
     expect(bootstrap.integrations.wedgeDetector).toHaveBeenCalledOnce();
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
+    for (const initialise of Object.values(bootstrap.integrations)) {
+      expect(initialise.mock.invocationCallOrder[0]).toBeLessThan(
+        bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
+      );
+    }
     expect(bootstrap.appOn).toHaveBeenCalledWith('will-quit', expect.any(Function));
   });
 

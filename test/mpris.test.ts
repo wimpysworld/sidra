@@ -191,6 +191,7 @@ beforeEach(() => {
     webContents: { send: vi.fn() },
   });
   player = new FakePlayer();
+  player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: true, durationUs: null });
 });
 
 // The volume and position blocks install fake timers. Leaving them installed
@@ -449,6 +450,48 @@ describe('MPRIS command provenance', () => {
     expect(mprisLogText()).not.toContain('method=SetPosition');
     expect(mprisLogText()).not.toContain(rejectedTrackId);
     expect(mprisLogText()).not.toContain('98765432');
+  });
+});
+
+describe('MPRIS playback capabilities', () => {
+  it('starts with the cached snapshot and clears capabilities on navigation', () => {
+    vi.useFakeTimers();
+    player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: null, durationUs: null });
+    const iface = initPlayerInterface();
+    expect([iface.CanPlay, iface.CanPause, iface.CanSeek]).toEqual([true, true, true]);
+    player.resetForDocumentReplacement();
+    expect([iface.CanPlay, iface.CanPause, iface.CanSeek]).toEqual([false, false, false]);
+    expect([iface.CanGoNext, iface.CanGoPrevious]).toEqual([true, true]);
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([expect.objectContaining({ CanPlay: false, CanPause: false, CanSeek: false })]);
+  });
+
+  it('does not seek without a capability or when it is explicitly unavailable', () => {
+    player = new FakePlayer();
+    const iface = initPlayerInterface();
+    iface.Seek(1_000_000n);
+    player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
+    iface.SetPosition('/org/sidra/track/track_1', 1_000_000n);
+    expect(win.webContents.send).not.toHaveBeenCalled();
+    player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: null, durationUs: null });
+    iface.SetPosition('/org/sidra/track/track_1', 1_000_000n);
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:seek', 1);
+  });
+
+  it('uses effective duration for metadata and seek bounds, then clears the bound', () => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+    player.emitNowPlaying({ trackId: 'radio', playParams: { kind: 'radioStation' } });
+    player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: true, durationUs: 10_000_000 });
+    expect(iface.Metadata['mpris:length'].value).toBe(10_000_000);
+    iface.SetPosition('/org/sidra/track/radio', 10_000_001n);
+    iface.Seek(10_000_001n);
+    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
+    player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: null, durationUs: null });
+    expect(iface.Metadata['mpris:length']).toBeUndefined();
+    expect(iface.CanSeek).toBe(true);
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([expect.objectContaining({ Metadata: iface.Metadata })]);
   });
 });
 
@@ -817,7 +860,7 @@ describe('MPRIS metadata', () => {
       CanPause: iface.CanPause,
       CanSeek: iface.CanSeek,
       CanControl: iface.CanControl,
-    }).toEqual(persistentProperties);
+    }).toEqual({ ...persistentProperties, CanPlay: false, CanPause: false, CanSeek: false });
   });
 });
 

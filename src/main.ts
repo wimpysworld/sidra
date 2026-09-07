@@ -272,6 +272,7 @@ function onSendChannels<C extends SendChannel>(listeners: Record<C, SendListener
 function initPlayerIPC(): Player {
   const player = new Player();
   onSendChannels<PlayerSendChannel>({
+    playbackCapabilitiesDidChange: (_event, data) => player.handlePlaybackCapabilitiesDidChange(data),
     playbackStateDidChange: (_event, data) => player.handlePlaybackStateDidChange(data),
     nowPlayingItemDidChange: (_event, data) => player.handleNowPlayingItemDidChange(data),
     timedMetadataDidChange: (_event, data) => player.handleTimedMetadataDidChange(data),
@@ -595,16 +596,6 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     const firstLoad = !initialized;
     initialized = true;
 
-    // Injection failure must not abandon the rest of this handler. A renderer
-    // torn down mid-injection rejects the CSS calls above, and without this the
-    // handler stops before markCssReady() and the splash never closes.
-    // injectRendererScripts() contains its own failures and never rejects.
-    try {
-      await injectContent();
-    } catch (e: unknown) {
-      mainLog.warn('failed to inject content on load:', e);
-    }
-
     if (firstLoad) {
       // Integration failures are contained for the same reason: markCssReady()
       // below is the only thing that dismisses the splash. Each initialiser is
@@ -631,7 +622,17 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
           app.on('will-quit', teardownTrayState);
         }],
       ], (name, e) => mainLog.error(`integration initialisation failed: ${name}:`, e));
+    }
 
+    // Register integrations before the hook sends its initial playback state.
+    // Injection failure must still reach markCssReady() to dismiss the splash.
+    try {
+      await injectContent();
+    } catch (e: unknown) {
+      mainLog.warn('failed to inject content on load:', e);
+    }
+
+    if (firstLoad) {
       markCssReady();
       setTimeout(() => {
         if (appTray) {

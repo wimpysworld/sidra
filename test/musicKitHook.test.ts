@@ -275,6 +275,9 @@ function createHarness({
         for (const { callback } of monitors) callback();
       }
     },
+    runVolumePoll: () => {
+      for (const { callback } of intervals.filter(({ delay }) => delay === 250)) callback();
+    },
     // Runs the script again against the same window, then drains only the
     // timers that second run added. The message listener is installed inside
     // the waitForMK callback rather than the script body, so a re-run that
@@ -288,6 +291,86 @@ function createHarness({
     window,
   };
 }
+
+describe('MusicKit initial state and capabilities', () => {
+  const item = { id: 'episode', attributes: { name: 'Episode', playParams: { kind: 'radioStation' } } };
+
+  it('publishes current metadata, playback state, position and modes on attach', () => {
+    const { bridgeSend } = createHarness({ musicKitOverrides: {
+      nowPlayingItem: item, playbackState: 3, isPlaying: false,
+      currentPlaybackDuration: 600, currentPlaybackTime: 42, repeatMode: 2, shuffleMode: 1,
+    } });
+
+    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
+      canPlay: true, canPause: true, canSeek: true, durationUs: 600_000_000,
+    });
+    expect(bridgeSend).toHaveBeenCalledWith('nowPlayingItemDidChange', expect.objectContaining({ trackId: 'episode', name: 'Episode' }));
+    expect(bridgeSend).toHaveBeenCalledWith('playbackStateDidChange', { status: false, state: 3 });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 42_000_000);
+    expect(bridgeSend).toHaveBeenCalledWith('repeatModeDidChange', 2);
+    expect(bridgeSend).toHaveBeenCalledWith('shuffleModeDidChange', 1);
+  });
+
+  it('keeps radio seekability unknown without duration and refreshes through the existing poll', () => {
+    const { bridgeSend, musicKit, musicKitListeners, runVolumePoll } = createHarness({
+      musicKitOverrides: { nowPlayingItem: item },
+    });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
+      canPlay: true, canPause: true, canSeek: null, durationUs: null,
+    });
+    bridgeSend.mockClear();
+    Object.assign(musicKit, { currentPlaybackDuration: 123.456789 });
+    musicKitListeners.get('playbackTimeDidChange')?.();
+    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackCapabilitiesDidChange')).toBe(false);
+    runVolumePoll();
+    runVolumePoll();
+    expect(bridgeSend.mock.calls.filter(([channel]) => channel === 'playbackCapabilitiesDidChange')).toEqual([
+      ['playbackCapabilitiesDidChange', { canPlay: true, canPause: true, canSeek: true, durationUs: 123_456_789 }],
+    ]);
+    Object.assign(musicKit, { currentPlaybackDuration: Infinity });
+    runVolumePoll();
+    expect(bridgeSend).toHaveBeenLastCalledWith('playbackCapabilitiesDidChange', {
+      canPlay: true, canPause: true, canSeek: null, durationUs: null,
+    });
+  });
+
+  it('disables capabilities when the item clears and restores them on item change', () => {
+    const { bridgeSend, musicKit, musicKitListeners } = createHarness({ musicKitOverrides: { nowPlayingItem: item } });
+    Object.assign(musicKit, { nowPlayingItem: null });
+    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
+      canPlay: false, canPause: false, canSeek: false, durationUs: null,
+    });
+    Object.assign(musicKit, { nowPlayingItem: item });
+    musicKitListeners.get('nowPlayingItemDidChange')?.({ item });
+    expect(bridgeSend.mock.calls.filter(([channel]) => channel === 'playbackCapabilitiesDidChange')).toHaveLength(3);
+  });
+
+  it('uses callable controls as capability evidence', () => {
+    const { bridgeSend } = createHarness({ musicKitOverrides: {
+      nowPlayingItem: item, currentPlaybackDuration: 600, play: undefined, pause: undefined, seekToTime: undefined,
+    } });
+    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
+      canPlay: false, canPause: false, canSeek: false, durationUs: 600_000_000,
+    });
+  });
+
+  it('publishes the replacement instance and ignores capability reports from the old instance', () => {
+    const { bridgeSend, musicKit, musicKitListeners, replaceInstance, runMonitorCycles } = createHarness({
+      musicKitOverrides: { nowPlayingItem: item },
+    });
+    const replacement = replaceInstance();
+    Object.assign(replacement, { nowPlayingItem: null, playbackState: 0, isPlaying: false });
+    runMonitorCycles(1);
+    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
+      canPlay: false, canPause: false, canSeek: false, durationUs: null,
+    });
+    bridgeSend.mockClear();
+    Object.assign(musicKit, { currentPlaybackDuration: 20 });
+    musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
+    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackCapabilitiesDidChange')).toBe(false);
+  });
+});
 
 describe('musicKitHook', () => {
   const radioItem = {
