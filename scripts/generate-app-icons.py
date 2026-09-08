@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the shared logo and package app icons for macOS and Windows."""
+"""Render the shared logo and package app icons for macOS, Windows and Linux."""
 
 from pathlib import Path
 import shutil
@@ -11,8 +11,13 @@ import tempfile
 root = Path(__file__).resolve().parent.parent
 source = root / "assets/source/sidra-icon-squircle.svg"
 output = root / "build"
+linux_output = output / "icons"
 sizes = (16, 24, 32, 48, 64, 128, 256, 512, 1024)
 ico_sizes = sizes[:7]
+# electron-builder installs each PNG into hicolor/<size>x<size>/apps. The
+# hicolor theme registers no 1024x1024 directory, so an icon written there is
+# never found and the desktop falls back to a generic one (issue #256).
+linux_sizes = tuple(size for size in sizes if size <= 512)
 icns_slots = {
     b"icp4": 16,
     b"icp5": 32,
@@ -63,3 +68,14 @@ with tempfile.TemporaryDirectory(prefix="app-icons-", dir=output) as temporary:
     for name in ("icon.png", "icon.icns", "icon.ico"):
         (staging / name).replace(output / name)
     (staging / "sidra-logo.png").replace(root / "assets/sidra-logo.png")
+
+    # electron-builder reads build/icons as an icon set and installs every PNG
+    # under hicolor. Drop the sizes no longer generated, so a removed size does
+    # not stay in the package.
+    linux_output.mkdir(exist_ok=True)
+    wanted = {f"{size}x{size}.png" for size in linux_sizes}
+    for stale in linux_output.glob("*.png"):
+        if stale.name not in wanted:
+            stale.unlink()
+    for size in linux_sizes:
+        (linux_output / f"{size}x{size}.png").write_bytes(images[size])
