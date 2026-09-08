@@ -74,7 +74,7 @@
       "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
     },
     "linux": {
-      "icon": "build/icon.png",
+      "icon": "build/icons",
       "target": [
         "AppImage",
         "deb",

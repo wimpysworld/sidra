@@ -101,6 +101,42 @@ function main() {
   }
   console.log(`  \u2713 Linux desktop actions: wired to ${busName}`);
 
+  // electron-builder installs each PNG of the Linux icon set into
+  // hicolor/<size>x<size>/apps. A size the hicolor theme does not register is
+  // never found, so the desktop shows a generic icon (issue #256). A single PNG
+  // file here yields exactly one size, which is how 1024x1024 shipped alone.
+  const registeredHicolorSizes = new Set([16, 22, 24, 32, 36, 48, 64, 72, 96, 128, 192, 256, 512]);
+  const iconSetting = config.linux?.icon;
+  if (typeof iconSetting !== "string" || iconSetting === "") {
+    throw new Error("build.linux.icon must name the Linux icon set directory");
+  }
+  const iconDir = path.join(projectDir, iconSetting);
+  if (!fs.existsSync(iconDir) || !fs.statSync(iconDir).isDirectory()) {
+    throw new Error(
+      `build.linux.icon must be a directory of sized PNGs, not a single file: ${iconSetting}\n` +
+      "electron-builder emits one icon from a single PNG and installs it under\n" +
+      "hicolor/<size>x<size>/apps, so only that one size reaches the desktop."
+    );
+  }
+  const iconSizes = fs.readdirSync(iconDir)
+    .map((name) => /^(\d+)x\1\.png$/.exec(name))
+    .filter((match) => match !== null)
+    .map((match) => Number(match[1]));
+  if (iconSizes.length === 0) {
+    throw new Error(`build.linux.icon directory holds no <size>x<size>.png files: ${iconSetting}`);
+  }
+  const unregistered = iconSizes.filter((size) => !registeredHicolorSizes.has(size)).sort((a, b) => a - b);
+  if (unregistered.length > 0) {
+    throw new Error(
+      `build.linux.icon holds sizes the hicolor theme does not register: ${unregistered.join(", ")}.\n` +
+      "Icons installed there are never found. Run just generate-assets."
+    );
+  }
+  if (!iconSizes.includes(512)) {
+    throw new Error("build.linux.icon must include 512x512.png, the largest registered hicolor size");
+  }
+  console.log(`  \u2713 Linux icon set: ${iconSizes.sort((a, b) => a - b).join(", ")} in registered hicolor sizes`);
+
   console.log("\nAll configuration checks passed.");
 }
 
