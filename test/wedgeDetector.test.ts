@@ -16,7 +16,10 @@ async function loadWedgeDetector(): Promise<WedgeDetector> {
 
 describe('wedgeDetector', () => {
   let player: Player;
-  let mockWin: { webContents: { send: ReturnType<typeof vi.fn> } };
+  let mockWin: {
+    isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
+    webContents: { send: ReturnType<typeof vi.fn>; isDestroyed: ReturnType<typeof vi.fn<() => boolean>> };
+  };
   let mainWindow: BrowserWindow | null;
   let getMainWindow: () => BrowserWindow | null;
   let wedgeDetector: WedgeDetector;
@@ -26,8 +29,10 @@ describe('wedgeDetector', () => {
     vi.useFakeTimers();
     player = new Player();
     mockWin = {
+      isDestroyed: vi.fn(() => false),
       webContents: {
         send: vi.fn(),
+        isDestroyed: vi.fn(() => false),
       },
     };
     mainWindow = mockWin as unknown as BrowserWindow;

@@ -61,6 +61,12 @@ const busStub = {
   disconnect: vi.fn(),
 };
 
+type ContentsStub = EventEmitter & {
+  send: ReturnType<typeof vi.fn>;
+  getURL: ReturnType<typeof vi.fn<() => string>>;
+  isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
+};
+
 interface WindowStub extends EventEmitter {
   show: ReturnType<typeof vi.fn>;
   focus: ReturnType<typeof vi.fn>;
@@ -68,7 +74,8 @@ interface WindowStub extends EventEmitter {
   isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
   isFullScreen: ReturnType<typeof vi.fn<() => boolean>>;
   setFullScreen: ReturnType<typeof vi.fn<(value: boolean) => void>>;
-  webContents: EventEmitter & { send: ReturnType<typeof vi.fn>; getURL: ReturnType<typeof vi.fn<() => string>> };
+  /** Throws once isDestroyed() is true, as Electron's native getter does. */
+  readonly webContents: ContentsStub;
 }
 
 interface PlayerInterface {
@@ -120,6 +127,9 @@ const positionBreaches: Array<Record<string, unknown>> = [];
 let emissions: Array<Record<string, unknown>> = [];
 
 let win: WindowStub;
+// Held apart from win, because reading win.webContents throws once the window
+// is destroyed and an assertion must still reach the send and emit spies.
+let winContents: ContentsStub;
 let player: FakePlayer;
 
 /**
@@ -175,15 +185,28 @@ beforeEach(() => {
   emissions = [];
   setMusicService('music');
   // loadURL must return a promise: production attaches a .catch() to it.
-  win = Object.assign(new EventEmitter(), {
+  winContents = Object.assign(new EventEmitter(), {
+    send: vi.fn(),
+    getURL: vi.fn(() => 'https://music.apple.com/gb/new'),
+    isDestroyed: vi.fn(() => false),
+  });
+  const windowBase = Object.assign(new EventEmitter(), {
     show: vi.fn(),
     focus: vi.fn(),
     loadURL: vi.fn<(url: string) => Promise<void>>(() => Promise.resolve()),
     isDestroyed: vi.fn(() => false),
     isFullScreen: vi.fn(() => false),
     setFullScreen: vi.fn<(value: boolean) => void>(),
-    webContents: Object.assign(new EventEmitter(), { send: vi.fn(), getURL: vi.fn(() => 'https://music.apple.com/gb/new') }),
   });
+  // Electron throws "Object has been destroyed" from this native getter once the
+  // window has gone, which quitting does before will-quit runs (#257). A plain
+  // property would let an unguarded read pass the whole suite.
+  win = Object.defineProperty(windowBase, 'webContents', {
+    get(): ContentsStub {
+      if (windowBase.isDestroyed()) throw new TypeError('Object has been destroyed');
+      return winContents;
+    },
+  }) as WindowStub;
   player = new FakePlayer();
   player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: true, durationUs: null });
 });
@@ -360,8 +383,8 @@ describe('MPRIS command provenance', () => {
 
     invoke(iface);
 
-    expect(win.webContents.send).toHaveBeenCalledOnce();
-    expect(win.webContents.send).toHaveBeenCalledWith(channel, ...args);
+    expect(winContents.send).toHaveBeenCalledOnce();
+    expect(winContents.send).toHaveBeenCalledWith(channel, ...args);
     const commandLog = method === 'Volume' ? log.scope('mpris').debug : log.scope('mpris').info;
     expect(commandLog).toHaveBeenCalledWith(
       `source=mpris method=${method} channel=${channel} result=sent`,
@@ -374,7 +397,7 @@ describe('MPRIS command provenance', () => {
 
     invoke(iface);
 
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
     expect(log.scope('mpris').info).toHaveBeenCalledWith(
       `source=mpris method=${method} channel=${channel} result=dropped`,
     );
@@ -391,6 +414,19 @@ describe('MPRIS command provenance', () => {
     expect(app.quit).toHaveBeenCalledOnce();
     expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Raise result=sent');
     expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Quit result=sent');
+  });
+
+  it.each(COMMAND_CASES)('drops $method once the window is destroyed', ({ method, channel, invoke }) => {
+    vi.useFakeTimers();
+    const iface = initPlayerInterface();
+    win.isDestroyed.mockReturnValue(true);
+
+    expect(() => invoke(iface)).not.toThrow();
+
+    expect(winContents.send).not.toHaveBeenCalled();
+    expect(log.scope('mpris').info).toHaveBeenCalledWith(
+      `source=mpris method=${method} channel=${channel} result=dropped`,
+    );
   });
 
   it('logs Raise as dropped when no window exists', () => {
@@ -412,7 +448,7 @@ describe('MPRIS command provenance', () => {
     iface.Volume = 0.6;
 
     const provenance = 'source=mpris method=Volume channel=player:setVolume result=sent';
-    expect(win.webContents.send.mock.calls).toEqual([
+    expect(winContents.send.mock.calls).toEqual([
       ['player:setVolume', 0.2],
       ['player:setVolume', 0.4],
       ['player:setVolume', 0.6],
@@ -430,20 +466,48 @@ describe('MPRIS command provenance', () => {
 
     iface.SetPosition('/org/sidra/track/private_track_accepted', 12_345_678n);
 
-    expect(win.webContents.send).toHaveBeenCalledWith('player:seek', 12.345678);
+    expect(winContents.send).toHaveBeenCalledWith('player:seek', 12.345678);
     expect(mprisLogText()).toContain('source=mpris method=SetPosition channel=player:seek result=sent');
     expect(mprisLogText()).not.toContain(acceptedTrackId);
     expect(mprisLogText()).not.toContain('12345678');
 
     vi.mocked(log.scope('mpris').info).mockClear();
-    win.webContents.send.mockClear();
+    winContents.send.mockClear();
     iface.SetPosition(rejectedTrackId, 98_765_432n);
 
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
     expect(mprisLogText()).toContain('SetPosition trackId mismatch, ignoring');
     expect(mprisLogText()).not.toContain('method=SetPosition');
     expect(mprisLogText()).not.toContain(rejectedTrackId);
     expect(mprisLogText()).not.toContain('98765432');
+  });
+});
+
+describe('MPRIS teardown', () => {
+  it('detaches the navigation listeners it attached', () => {
+    initInterfaces();
+    expect(winContents.listenerCount('did-start-navigation')).toBe(1);
+    expect(winContents.listenerCount('will-redirect')).toBe(1);
+    expect(winContents.listenerCount('did-navigate')).toBe(1);
+
+    quit();
+
+    expect(winContents.listenerCount('did-start-navigation')).toBe(0);
+    expect(winContents.listenerCount('will-redirect')).toBe(0);
+    expect(winContents.listenerCount('did-navigate')).toBe(0);
+  });
+
+  // Quitting destroys the window before will-quit runs, and reading its
+  // webContents then throws "Object has been destroyed", which Electron shows as
+  // a main-process error dialog while the app exits (#257). disconnectBus() runs
+  // last in the handler, so the call proves the whole handler completed.
+  it('completes without reading the renderer of a destroyed window', () => {
+    initInterfaces();
+    win.isDestroyed.mockReturnValue(true);
+
+    expect(() => quit()).not.toThrow();
+
+    expect(busStub.disconnect).toHaveBeenCalledOnce();
   });
 });
 
@@ -474,7 +538,7 @@ describe('MPRIS Stop', () => {
     iface.Stop();
     player.handlePlaybackStopped({ requestId: 1, success: true });
     iface.Stop();
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:stop', 1);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:stop', 1);
   });
 
   it('accepts another Stop after a failed or unacknowledged request', () => {
@@ -488,7 +552,7 @@ describe('MPRIS Stop', () => {
     player.handlePlaybackStopped({ requestId: 2, success: true });
     expect(iface.PlaybackStatus).toBe('Paused');
     iface.Stop();
-    expect(win.webContents.send.mock.calls).toEqual([
+    expect(winContents.send.mock.calls).toEqual([
       ['player:stop', 1], ['player:stop', 2], ['player:stop', 3],
     ]);
   });
@@ -536,10 +600,10 @@ describe('MPRIS playback capabilities', () => {
     iface.Seek(1_000_000n);
     player.emitNowPlaying({ trackId: 'track-1', durationInMillis: 10_000 });
     iface.SetPosition('/org/sidra/track/track_1', 1_000_000n);
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
     player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: null, durationUs: null });
     iface.SetPosition('/org/sidra/track/track_1', 1_000_000n);
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:seek', 1);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:seek', 1);
   });
 
   it('uses effective duration for metadata and seek bounds, then clears the bound', () => {
@@ -550,7 +614,7 @@ describe('MPRIS playback capabilities', () => {
     expect(iface.Metadata['mpris:length'].value).toBe(10_000_000);
     iface.SetPosition('/org/sidra/track/radio', 10_000_001n);
     iface.Seek(10_000_001n);
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
     player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: null, durationUs: null });
     expect(iface.Metadata['mpris:length']).toBeUndefined();
     expect(iface.CanSeek).toBe(true);
@@ -572,7 +636,7 @@ describe('MPRIS seek bounds', () => {
 
     iface.SetPosition(trackId, position);
 
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:seek', Number(position) / 1_000_000);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:seek', Number(position) / 1_000_000);
   });
 
   it.each([-1n, 10_000_001n, 9_223_372_036_854_775_807n])('ignores invalid SetPosition %s', (position) => {
@@ -581,7 +645,7 @@ describe('MPRIS seek bounds', () => {
 
     iface.SetPosition(trackId, position);
 
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
   });
 
   it('ignores NoTrack before playback and after a document replacement', () => {
@@ -592,7 +656,7 @@ describe('MPRIS seek bounds', () => {
     iface.SetPosition('/org/mpris/MediaPlayer2/TrackList/NoTrack', 0n);
     iface.SetPosition(trackId, 0n);
 
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -608,7 +672,7 @@ describe('MPRIS seek bounds', () => {
 
     iface.Seek(offset);
 
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith(channel, ...args);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith(channel, ...args);
     expect(log.scope('mpris').info).toHaveBeenCalledWith(`source=mpris method=Seek channel=${channel} result=sent`);
   });
 
@@ -621,7 +685,7 @@ describe('MPRIS seek bounds', () => {
     iface.SetPosition(trackId, 30_000_000n);
     iface.Seek(30_000_000n);
 
-    expect(win.webContents.send.mock.calls).toEqual([
+    expect(winContents.send.mock.calls).toEqual([
       ['player:seek', 15], ['player:seek', 30], ['player:seek', 30],
     ]);
   });
@@ -632,7 +696,7 @@ describe('MPRIS seek bounds', () => {
     iface.SetPosition(trackId, 10_000_001n);
     iface.Seek(10_000_001n);
 
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
   });
 
   it('rejects unsafe targets when the duration is unknown', () => {
@@ -642,7 +706,7 @@ describe('MPRIS seek bounds', () => {
     player.setPositionUs(1);
     iface.Seek(BigInt(Number.MAX_SAFE_INTEGER));
 
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
   });
 
   it('treats a zero duration as a known bound', () => {
@@ -651,7 +715,7 @@ describe('MPRIS seek bounds', () => {
     iface.SetPosition(trackId, 1n);
     iface.Seek(1n);
 
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:next');
   });
 });
 
@@ -674,7 +738,7 @@ describe('MPRIS fixed Rate', () => {
     vi.advanceTimersByTime(250);
 
     expect(iface.Rate).toBe(1);
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
     expect(emissions).toEqual([]);
   });
 
@@ -682,7 +746,7 @@ describe('MPRIS fixed Rate', () => {
     const iface = initPlayerInterface();
     iface.Rate = 0;
 
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:pause');
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:pause');
     expect(iface.Rate).toBe(1);
     expect(log.scope('mpris').info).toHaveBeenCalledWith('source=mpris method=Rate channel=player:pause result=sent');
   });
@@ -692,15 +756,15 @@ describe('MPRIS OpenUri', () => {
   beforeEach(() => { vi.useFakeTimers(); });
 
   function commitAndReady(url: string): void {
-    win.webContents.getURL.mockReturnValue(url);
-    win.webContents.emit('did-navigate', {}, url);
+    winContents.getURL.mockReturnValue(url);
+    winContents.emit('did-navigate', {}, url);
     player.handleHookReady(url);
   }
 
   it('queues media immediately on a ready active service without navigation', () => {
     player.handleHookReady('https://music.apple.com/gb/new');
     initPlayerInterface().OpenUri('https://music.apple.com/gb/album/123');
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', 'https://music.apple.com/gb/album/123');
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', 'https://music.apple.com/gb/album/123');
     expect(switchService).not.toHaveBeenCalled();
     expect(win.loadURL).not.toHaveBeenCalled();
   });
@@ -709,22 +773,22 @@ describe('MPRIS OpenUri', () => {
     const url = 'https://classical.music.apple.com/gb/album/123';
     initPlayerInterface().OpenUri(url);
     expect(switchService).toHaveBeenCalledExactlyOnceWith('classical', url);
-    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
-    win.webContents.emit('did-finish-load');
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    winContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
+    winContents.emit('did-finish-load');
+    expect(winContents.send).not.toHaveBeenCalled();
     commitAndReady(url);
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', url);
-    expect(vi.mocked(switchService).mock.invocationCallOrder[0]).toBeLessThan(win.webContents.send.mock.invocationCallOrder[0]);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', url);
+    expect(vi.mocked(switchService).mock.invocationCallOrder[0]).toBeLessThan(winContents.send.mock.invocationCallOrder[0]);
   });
 
   it('keeps the original media request through a same-service storefront redirect', () => {
     const url = 'https://classical.music.apple.com/album/123';
     const redirected = 'https://classical.music.apple.com/gb/album/123';
     initPlayerInterface().OpenUri(url);
-    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
-    win.webContents.emit('will-redirect', { isMainFrame: true, url: redirected });
+    winContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
+    winContents.emit('will-redirect', { isMainFrame: true, url: redirected });
     commitAndReady(redirected);
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', url);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', url);
   });
 
   it('keeps only the latest request while readiness is delayed', () => {
@@ -734,18 +798,18 @@ describe('MPRIS OpenUri', () => {
     iface.OpenUri(first);
     iface.OpenUri(latest);
     commitAndReady(first);
-    expect(win.webContents.send).not.toHaveBeenCalled();
-    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: latest });
+    expect(winContents.send).not.toHaveBeenCalled();
+    winContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: latest });
     commitAndReady(latest);
-    expect(win.webContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', latest);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith('player:openUri', latest);
   });
 
   it.each([false, true])('cancels pending media on unrelated navigation with sameDocument=%s', (isSameDocument) => {
     const target = 'https://classical.music.apple.com/album/1';
     initPlayerInterface().OpenUri(target);
-    win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument, url: 'https://classical.music.apple.com/search' });
+    winContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument, url: 'https://classical.music.apple.com/search' });
     commitAndReady(target);
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
   });
 
   it('expires a pending request and removes readiness listeners on quit', () => {
@@ -754,14 +818,14 @@ describe('MPRIS OpenUri', () => {
     iface.OpenUri(target);
     vi.advanceTimersByTime(10_000);
     commitAndReady(target);
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
     player.resetForDocumentReplacement();
     iface.OpenUri(target);
     quit();
     expect(player.listenerCount('hookReady')).toBe(0);
-    expect(win.webContents.listenerCount('did-start-navigation')).toBe(0);
-    expect(win.webContents.listenerCount('will-redirect')).toBe(0);
-    expect(win.webContents.listenerCount('did-navigate')).toBe(0);
+    expect(winContents.listenerCount('did-start-navigation')).toBe(0);
+    expect(winContents.listenerCount('will-redirect')).toBe(0);
+    expect(winContents.listenerCount('did-navigate')).toBe(0);
     vi.advanceTimersByTime(10_000);
     expect(log.scope('mpris').warn).toHaveBeenCalledTimes(1);
   });
@@ -769,7 +833,7 @@ describe('MPRIS OpenUri', () => {
   it.each(['https://music.apple.com.evil.test/album/1', 'https://user@music.apple.com/album/1', 'https://music.apple.com:1234/album/1'])('rejects a URI outside the service origin %#', (uri) => {
     initPlayerInterface().OpenUri(uri);
     expect(switchService).not.toHaveBeenCalled();
-    expect(win.webContents.send).not.toHaveBeenCalled();
+    expect(winContents.send).not.toHaveBeenCalled();
   });
   it('advertises HTTPS URI support', () => {
     initPlayerInterface();
@@ -1178,7 +1242,7 @@ describe('MPRIS volume', () => {
     const iface = initPlayerInterface();
     iface.Volume = 0.4;
 
-    expect(win.webContents.send).toHaveBeenCalledWith('player:setVolume', 0.4);
+    expect(winContents.send).toHaveBeenCalledWith('player:setVolume', 0.4);
     vi.advanceTimersByTime(250);
     expect(emissions).toEqual([{ Volume: 0.4 }]);
 

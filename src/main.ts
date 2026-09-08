@@ -30,7 +30,7 @@ import { cleanArtworkCache } from './artwork';
 import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
 import { contentReadyProbeScript } from './contentReady';
 import { initNotificationProbe } from './notify';
-import { runSteps } from './utils';
+import { liveWebContents, runSteps } from './utils';
 import { openExternalUrl } from './utils/openExternal';
 
 const SPLASH_MIN_DISPLAY_MS = 500;
@@ -676,7 +676,14 @@ if (gotLock) {
     const created = createMainWindow(ses);
     win = created.win;
     const winReady = created.winReady;
-    initCommandBridge((channel, ...args) => win!.webContents.send(channel, ...args));
+    initCommandBridge((channel, ...args) => {
+      const contents = liveWebContents(win);
+      if (!contents) {
+        mainLog.warn(`command dropped, renderer gone: ${channel}`);
+        return;
+      }
+      contents.send(channel, ...args);
+    });
     initControllerIPC(win);
     setGetMainWindowCallback(() => win);
     initServiceSwitch({
@@ -690,7 +697,7 @@ if (gotLock) {
     });
     const teardownSettingsActions = initSettingsActions({
       getMainWindow: () => win,
-      applyZoom: factor => win?.webContents.setZoomFactor(factor),
+      applyZoom: factor => liveWebContents(win)?.setZoomFactor(factor),
       switchService,
       refreshTray: () => { if (appTray) rebuildTrayMenu(appTray); },
     });

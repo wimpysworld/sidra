@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { Player, PlaybackState, PlaybackStatePayload, NowPlayingPayload, IntegrationContext } from './player';
+import { liveWebContents } from './utils';
 
 const wedgeLog = log.scope('wedge');
 
@@ -43,13 +44,13 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
 
   skipAttempts++;
   lastAdvanceTime = Date.now();
-  const win = getWin();
-  const result = win ? 'sent' : 'dropped';
+  const contents = liveWebContents(getWin());
+  const result = contents ? 'sent' : 'dropped';
   wedgeLog.warn(
     `source=wedge channel=player:next reason=playback-stalled attempt=${skipAttempts}/${MAX_SKIP_ATTEMPTS} result=${result}`,
   );
 
-  win?.webContents.send('player:next' satisfies ReceiveChannel);
+  contents?.send('player:next' satisfies ReceiveChannel);
 }
 
 /**

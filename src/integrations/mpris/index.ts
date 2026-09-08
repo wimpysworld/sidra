@@ -3,7 +3,7 @@ import log from 'electron-log/main';
 
 import { NowPlayingPayload, TimedMetadataPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, PlaybackStopped, IntegrationContext, getShareUrl } from '../../player';
 import { downloadArtwork } from '../../artwork';
-import { errorMessage } from '../../utils';
+import { errorMessage, liveWebContents } from '../../utils';
 import { getServiceByHost } from '../../musicService';
 import { getMusicService } from '../../config';
 import { switchService } from '../../serviceSwitch';
@@ -342,9 +342,9 @@ class MediaPlayer2Player extends Interface {
   }
 
   private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): boolean {
-    const win = this._getMainWindow();
-    if (win) {
-      win.webContents.send(channel, ...args);
+    const contents = liveWebContents(this._getMainWindow());
+    if (contents) {
+      contents.send(channel, ...args);
       logCommand(method, 'sent', channel);
       return true;
     } else {
@@ -1084,9 +1084,12 @@ export function init(ctx: IntegrationContext): void {
   };
 
   app.on('will-quit', () => {
-    navigationWindow?.webContents.removeListener('did-start-navigation', onNavigationStarted);
-    navigationWindow?.webContents.removeListener('will-redirect', onNavigationRedirected);
-    navigationWindow?.webContents.removeListener('did-navigate', onNavigationCommitted);
+    // Read the renderer here rather than at init: quitting destroys the window
+    // first, and a captured reference would be stale by the time this runs.
+    const teardownContents = liveWebContents(navigationWindow);
+    teardownContents?.removeListener('did-start-navigation', onNavigationStarted);
+    teardownContents?.removeListener('will-redirect', onNavigationRedirected);
+    teardownContents?.removeListener('did-navigate', onNavigationCommitted);
     player.removeListener('hookReady', onHookReady);
     fullscreenWindow?.removeListener('enter-full-screen', onFullscreenChanged);
     fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
@@ -1121,9 +1124,10 @@ export function init(ctx: IntegrationContext): void {
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
-  navigationWindow?.webContents.on('did-start-navigation', onNavigationStarted);
-  navigationWindow?.webContents.on('will-redirect', onNavigationRedirected);
-  navigationWindow?.webContents.on('did-navigate', onNavigationCommitted);
+  const navigationContents = liveWebContents(navigationWindow);
+  navigationContents?.on('did-start-navigation', onNavigationStarted);
+  navigationContents?.on('will-redirect', onNavigationRedirected);
+  navigationContents?.on('did-navigate', onNavigationCommitted);
 
   fullscreenWindow = getMainWindow();
   if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
