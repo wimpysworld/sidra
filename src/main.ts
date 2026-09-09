@@ -684,7 +684,7 @@ if (gotLock) {
     initCommandBridge((channel, ...args) => {
       const contents = liveWebContents(win);
       if (!contents) {
-        mainLog.warn(`command dropped, renderer gone: ${channel}`);
+        mainLog.warn(`source=command channel=${channel} reason=renderer-gone result=dropped`);
         return;
       }
       contents.send(channel, ...args);

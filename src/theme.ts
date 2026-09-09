@@ -6,6 +6,7 @@ import { bundledTheme, isThemeName, type BundledThemeName, type ThemeName } from
 import { buildThemeCss } from './themeTemplate';
 import { parseCustomTheme } from './customTheme';
 import { getTheme } from './config';
+import { liveWebContents } from './utils';
 
 export type { ThemeName };
 
@@ -212,10 +213,18 @@ export function initThemeCSS(win: BrowserWindow): void {
   });
 
   applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async (generation) => {
+    // nativeTheme 'updated' and a tray click can both land after the window is
+    // destroyed. The catch in enqueueThemeCssOp would contain the getter throw,
+    // but as a warning about a failed operation rather than a window that has gone.
+    const contents = liveWebContents(win);
+    if (!contents) {
+      themeCssKey = null;
+      return;
+    }
     const css = getThemeCss(name);
     const previousKey = themeCssKey;
     if (previousKey !== null) {
-      await win.webContents.removeInsertedCSS(previousKey);
+      await contents.removeInsertedCSS(previousKey);
       themeCssKey = null;
       // Navigation can commit during removal, so verify the document before inserting.
       if (documentReplaced(generation)) return;
@@ -225,7 +234,7 @@ export function initThemeCSS(win: BrowserWindow): void {
       return;
     }
     const verb = previousKey !== null ? 're-injected' : 'injected';
-    await insertAndTrack(win.webContents, css, generation, `Theme CSS ${verb}: ${name}`);
+    await insertAndTrack(contents, css, generation, `Theme CSS ${verb}: ${name}`);
   });
 
   nativeTheme.on('updated', () => {

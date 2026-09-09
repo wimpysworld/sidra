@@ -181,6 +181,18 @@ describe('wedgeDetector', () => {
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
+  // The timer outlives the window: a stall detected during quit fires after the
+  // window is destroyed, and reading win.webContents then throws (#257).
+  it('drops the skip without throwing once the window is destroyed', () => {
+    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+    mockWin.isDestroyed.mockReturnValue(true);
+
+    expect(() => vi.advanceTimersByTime(6000)).not.toThrow();
+
+    expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    expect(wedgeLog.warn).toHaveBeenCalledWith(expect.stringContaining('result=dropped'));
+  });
+
   it('requires getMainWindow in context', () => {
     const playerOnly: IntegrationContext = { player: new Player() };
     expect(() => wedgeDetector.init(playerOnly)).toThrow('wedgeDetector requires getMainWindow');
