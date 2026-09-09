@@ -1034,7 +1034,11 @@ export function init(ctx: IntegrationContext): void {
 
   const rootIface = new MediaPlayer2(getMainWindow);
   const playerIface = new MediaPlayer2Player(getMainWindow, player.capabilitiesSnapshot(), player.hookReadyUrl());
-  const navigationWindow = getMainWindow();
+  // Captured once, as settingsWindow.ts does. The handle stays usable after the
+  // window is destroyed: removeListener is a Node EventEmitter method and never
+  // reaches the native object. Only the webContents getter itself throws then,
+  // so it is read here, through the guard, and never again at teardown (#257).
+  const navigationContents = liveWebContents(getMainWindow());
   const onNavigationStarted = (details: { isMainFrame: boolean; isSameDocument: boolean; url: string }): void => {
     if (details.isMainFrame) playerIface.navigationStarted(details.url, details.isSameDocument);
   };
@@ -1084,12 +1088,9 @@ export function init(ctx: IntegrationContext): void {
   };
 
   app.on('will-quit', () => {
-    // Read the renderer here rather than at init: quitting destroys the window
-    // first, and a captured reference would be stale by the time this runs.
-    const teardownContents = liveWebContents(navigationWindow);
-    teardownContents?.removeListener('did-start-navigation', onNavigationStarted);
-    teardownContents?.removeListener('will-redirect', onNavigationRedirected);
-    teardownContents?.removeListener('did-navigate', onNavigationCommitted);
+    navigationContents?.removeListener('did-start-navigation', onNavigationStarted);
+    navigationContents?.removeListener('will-redirect', onNavigationRedirected);
+    navigationContents?.removeListener('did-navigate', onNavigationCommitted);
     player.removeListener('hookReady', onHookReady);
     fullscreenWindow?.removeListener('enter-full-screen', onFullscreenChanged);
     fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
@@ -1124,7 +1125,6 @@ export function init(ctx: IntegrationContext): void {
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
-  const navigationContents = liveWebContents(navigationWindow);
   navigationContents?.on('did-start-navigation', onNavigationStarted);
   navigationContents?.on('will-redirect', onNavigationRedirected);
   navigationContents?.on('did-navigate', onNavigationCommitted);
