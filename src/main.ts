@@ -377,8 +377,13 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
       win.webContents.once('did-navigate-in-page', () => {
         const poll = () => {
           if (pollCancelled) return;
+          // The getter read happens before the promise exists, so the .catch()
+          // below cannot contain its throw. Quitting during startup destroys the
+          // window while this timer is still armed (#257).
+          const contents = liveWebContents(win);
+          if (!contents) return;
           const selector = getService(getMusicService()).contentReadySelector;
-          win.webContents.executeJavaScript(contentReadyProbeScript(selector))
+          contents.executeJavaScript(contentReadyProbeScript(selector))
             .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); })
             .catch(() => { if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); });
         };

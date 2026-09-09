@@ -5,14 +5,18 @@ type Listener = (...args: unknown[]) => unknown;
 
 const bootstrap = vi.hoisted(() => {
   const mainWebListeners = new Map<string, Listener>();
+  const mainWebOnceListeners = new Map<string, Listener>();
   const appListeners = new Map<string, Listener>();
 
   const webContents = {
     mainFrame: { url: 'https://music.apple.com/gb/new' },
+    isDestroyed: vi.fn(() => false),
     on: vi.fn((event: string, listener: Listener) => {
       mainWebListeners.set(event, listener);
     }),
-    once: vi.fn(),
+    once: vi.fn((event: string, listener: Listener) => {
+      mainWebOnceListeners.set(event, listener);
+    }),
     executeJavaScript: vi.fn(() => Promise.resolve(true)),
     insertCSS: vi.fn(() => Promise.resolve('css-key')),
     setZoomFactor: vi.fn(),
@@ -28,7 +32,14 @@ const bootstrap = vi.hoisted(() => {
   };
 
   const mainWindow = {
-    webContents,
+    isDestroyed: vi.fn(() => false),
+    // Electron throws from this native getter once the window is destroyed,
+    // which quitting does before will-quit runs (#257). A plain property would
+    // let an unguarded read pass.
+    get webContents() {
+      if (mainWindow.isDestroyed()) throw new TypeError('Object has been destroyed');
+      return webContents;
+    },
     loadURL: vi.fn(() => Promise.reject(new Error('offline'))),
     on: vi.fn((_event: string, _listener: Listener) => {}),
     once: vi.fn(),
@@ -64,6 +75,7 @@ const bootstrap = vi.hoisted(() => {
 
   return {
     mainWebListeners,
+    mainWebOnceListeners,
     appListeners,
     webContents,
     mainWindow,
@@ -237,17 +249,10 @@ vi.mock('../src/contentReady', () => ({ contentReadyProbeScript: vi.fn(() => 'tr
 vi.mock('../src/notify', () => ({ initNotificationProbe: vi.fn() }));
 vi.mock('../src/utils/openExternal', () => ({ openExternalUrl: vi.fn() }));
 
-vi.mock('../src/utils', () => ({
-  runSteps: (steps: ReadonlyArray<readonly [string, () => void]>, report: (name: string, error: unknown) => void) => {
-    for (const [name, step] of steps) {
-      try {
-        step();
-      } catch (error: unknown) {
-        report(name, error);
-      }
-    }
-  },
-}));
+// The real module: it imports electron as a type only, so nothing here needs a
+// stand-in, and a hand-written subset once left liveWebContents() undefined
+// while every path that calls it went unexercised.
+vi.mock('../src/utils', async (importOriginal) => importOriginal());
 
 describe('main bootstrap', () => {
   let chromeDescriptor: PropertyDescriptor | undefined;
@@ -260,7 +265,9 @@ describe('main bootstrap', () => {
     chromeDescriptor = Object.getOwnPropertyDescriptor(process.versions, 'chrome');
     Object.defineProperty(process.versions, 'chrome', { value: '148.2.3.4', configurable: true });
     bootstrap.mainWebListeners.clear();
+    bootstrap.mainWebOnceListeners.clear();
     bootstrap.appListeners.clear();
+    bootstrap.mainWindow.isDestroyed.mockReturnValue(false);
     bootstrap.browserWindow
       .mockImplementationOnce(function () { return bootstrap.splashWindow; })
       .mockImplementationOnce(function () { return bootstrap.mainWindow; });
@@ -439,6 +446,25 @@ describe('main bootstrap', () => {
     await navigate?.({}, 'https://music.apple.com/gb/new');
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
     expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
+  });
+
+  // The poll runs from a bare setTimeout and read win.webContents before its
+  // promise existed, so the .catch() on that promise could not contain the
+  // getter throw. Quitting during startup destroys the window while the timer
+  // is still armed, and the throw escaped as the #257 error dialog.
+  it('stops the content-ready poll once the window is destroyed', async () => {
+    bootstrap.webContents.executeJavaScript.mockResolvedValue(false);
+    await startMain();
+    const startPoll = bootstrap.mainWebOnceListeners.get('did-navigate-in-page');
+    expect(startPoll).toBeDefined();
+
+    startPoll?.();
+    await Promise.resolve();
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledOnce();
+
+    bootstrap.mainWindow.isDestroyed.mockReturnValue(true);
+    expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledOnce();
   });
 
   it('waits for Settings and its dependencies before creating the tray', async () => {
