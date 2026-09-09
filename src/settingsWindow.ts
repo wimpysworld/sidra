@@ -7,6 +7,7 @@ import { getLoadingText, getTrayStrings } from './i18n';
 import { isAllowedNavigationUrl } from './musicService';
 import { applySettingsAction, getSettingsState, subscribeSettingsChanges } from './settings';
 import { getThemeCss, resolveTheme } from './theme';
+import { liveWebContents } from './utils';
 
 let settingsWindow: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -16,8 +17,8 @@ const settingsLog = log.scope('settings');
 
 // Accept only the current local Settings document in its own main frame.
 function validateSender(event: IpcMainInvokeEvent): void {
-  const contents = settingsWindow?.webContents;
-  if (!settingsWindow || settingsWindow.isDestroyed() || !contents || contents.isDestroyed()
+  const contents = liveWebContents(settingsWindow);
+  if (!contents
     || event.sender !== contents || event.senderFrame !== contents.mainFrame
     || event.senderFrame?.url !== currentSettingsUrl || contents.getURL() !== currentSettingsUrl) {
     throw new Error('Invalid settings sender');

@@ -86,6 +86,7 @@ describe('theme helpers', () => {
     const win = {
       isDestroyed: vi.fn().mockReturnValue(options.isDestroyed ?? false),
       webContents: {
+        isDestroyed: vi.fn().mockReturnValue(false),
         removeInsertedCSS,
         insertCSS,
         on: vi.fn((event: string, handler: () => void) => {
