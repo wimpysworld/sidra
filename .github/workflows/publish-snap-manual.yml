@@ -1,5 +1,5 @@
-# Publish branch builds to edge to test snap fixes without a full release.
-# This workflow checks amd64 only. The tag-driven publish-snap job in
+# Publish branch builds directly to stable without a full release.
+# This workflow builds amd64 only. The tag-driven publish-snap job in
 # builder.yml is the release path and publishes both architectures.
 name: Publish Snap (Manual) 📦
 
@@ -77,12 +77,12 @@ jobs:
         env:
           SNAP_FILE: ${{ steps.find.outputs.snap }}
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-      - name: Release Snap to Edge 🚀
+      - name: Release Snap to Stable 🚀
         run: snapcraft release "$SNAP_NAME" "$SNAP_REVISION" "$SNAP_CHANNEL"
         env:
           SNAP_NAME: sidra
           SNAP_REVISION: ${{ steps.upload.outputs.revision }}
-          SNAP_CHANNEL: edge
+          SNAP_CHANNEL: stable
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
       - name: Show Snap Store Revisions 🔎
         continue-on-error: true
