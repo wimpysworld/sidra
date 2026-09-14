@@ -16,7 +16,7 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "github:castlabs/electron-releases#v44.1.0+wvcus",
-    "electron-builder": "^26.16.0",
+    "electron-builder": "^26.16.1",
     "typescript": "^7.x",
     "vitest": "^5.0.0"
   },
