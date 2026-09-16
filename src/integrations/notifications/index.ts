@@ -16,6 +16,11 @@ const PLAYBACK_NOTIFICATION_GROUP = 'playback';
 
 const notifLog = log.scope('notifications');
 
+function isWindowFocused(win: BrowserWindow | null): boolean {
+  if (!win || win.isDestroyed()) return false;
+  return win.isFocused();
+}
+
 function clearPlaybackHistory(): void {
   if (process.platform !== 'darwin') return;
   try {
@@ -245,7 +250,7 @@ export function init(ctx: IntegrationContext): void {
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
       const isCurrent = () => !stopped && generation === currentGeneration
-        && getNotificationsEnabled() && notificationsAvailable();
+        && getNotificationsEnabled() && notificationsAvailable() && !isWindowFocused(getWin());
       if (!isCurrent()) return;
       showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications, pendingNotifications,
         () => player.playbackSnapshot()).then((refresh) => {
