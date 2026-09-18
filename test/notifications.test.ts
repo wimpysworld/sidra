@@ -76,6 +76,29 @@ describe('notifications integration', () => {
     expect(vi.mocked(downloadArtwork)).not.toHaveBeenCalled();
   });
 
+  it('suppresses notifications when the main window is focused', async () => {
+    quit();
+    const win = { isDestroyed: vi.fn(() => false), isFocused: vi.fn(() => true) };
+    init({ player, getMainWindow: () => win as unknown as BrowserWindow });
+
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(vi.mocked(createNotification)).not.toHaveBeenCalled();
+    expect(vi.mocked(downloadArtwork)).not.toHaveBeenCalled();
+  });
+
+  it('shows notifications when the main window is not focused', async () => {
+    quit();
+    const win = { isDestroyed: vi.fn(() => false), isFocused: vi.fn(() => false) };
+    init({ player, getMainWindow: () => win as unknown as BrowserWindow });
+
+    player.emitNowPlaying(TRACK);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+    expect(vi.mocked(createNotification)).toHaveBeenCalledOnce();
+  });
+
   it('collapses a burst of track changes into one notification for the last track', async () => {
     player.emitNowPlaying({ ...TRACK, name: 'Ceremony' });
     await vi.advanceTimersByTimeAsync(500);
@@ -161,7 +184,7 @@ describe('notifications integration', () => {
 
   it('shows and focuses the window only on a body click', async () => {
     quit();
-    const win = { show: vi.fn(), focus: vi.fn() };
+    const win = { show: vi.fn(), focus: vi.fn(), isDestroyed: vi.fn(() => false), isFocused: vi.fn(() => false) };
     init({ player, getMainWindow: () => win as unknown as BrowserWindow });
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
