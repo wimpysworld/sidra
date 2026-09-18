@@ -1,35 +1,50 @@
-import { app, BrowserWindow, Notification } from 'electron';
-import log from 'electron-log/main';
-import { randomBytes } from 'node:crypto';
-import { NowPlayingPayload, TimedMetadataPayload, IntegrationContext, PlaybackState, PlaybackSnapshot } from '../../player';
-import { downloadArtwork } from '../../artwork';
-import { getNotificationsEnabled } from '../../config';
-import { createNotification, notificationsAvailable } from '../../notify';
-import { errorMessage } from '../../utils';
-import { getTrayStrings } from '../../i18n';
-import { sendCommand } from '../../commandBridge';
-import type { createLinuxNotifications } from '../../linuxNotifications';
+import { app, BrowserWindow, Notification } from "electron";
+import log from "electron-log/main";
+import { randomBytes } from "node:crypto";
+import {
+  NowPlayingPayload,
+  TimedMetadataPayload,
+  IntegrationContext,
+  PlaybackState,
+  PlaybackSnapshot,
+} from "../../player";
+import { downloadArtwork } from "../../artwork";
+import { getNotificationsEnabled } from "../../config";
+import { createNotification, notificationsAvailable } from "../../notify";
+import { errorMessage } from "../../utils";
+import { getTrayStrings } from "../../i18n";
+import { sendCommand } from "../../commandBridge";
+import type { createLinuxNotifications } from "../../linuxNotifications";
 
 const NOTIFICATION_DEBOUNCE_MS = 1500;
 const ARTWORK_RACE_TIMEOUT_MS = 500;
-const PLAYBACK_NOTIFICATION_GROUP = 'playback';
+const PLAYBACK_NOTIFICATION_GROUP = "playback";
+const NOTIFICATION_ACTION_LABELS = {
+  play: "\u25B6\uFE0E",
+  pause: "\u23F8\uFE0E",
+  previous: "\u23EE\uFE0E",
+  next: "\u23ED\uFE0E",
+} as const;
 
-const notifLog = log.scope('notifications');
+const notifLog = log.scope("notifications");
 
 function clearPlaybackHistory(): void {
-  if (process.platform !== 'darwin') return;
+  if (process.platform !== "darwin") return;
   try {
     Notification.removeGroup(PLAYBACK_NOTIFICATION_GROUP);
   } catch {
-    notifLog.warn('playback notification cleanup unavailable');
+    notifLog.warn("playback notification cleanup unavailable");
   }
 }
 
-function closeNotifications(notifications: Set<Electron.Notification>, pending: Set<Electron.Notification>): void {
+function closeNotifications(
+  notifications: Set<Electron.Notification>,
+  pending: Set<Electron.Notification>,
+): void {
   for (const notification of notifications) {
-    notification.removeAllListeners('action');
-    notification.removeAllListeners('click');
-    notification.removeAllListeners('close');
+    notification.removeAllListeners("action");
+    notification.removeAllListeners("click");
+    notification.removeAllListeners("close");
     // close() detaches Electron's delegate without cancelling pending artwork.
     // Keep the delegate until show or failed can retire the pending object.
     if (!pending.has(notification)) {
@@ -44,20 +59,22 @@ async function showNotification(
   payload: NowPlayingPayload | null,
   getMainWindow: () => BrowserWindow | null,
   isCurrent: () => boolean,
-  getLinuxNotifications: () => Promise<ReturnType<typeof createLinuxNotifications>>,
+  getLinuxNotifications: () => Promise<
+    ReturnType<typeof createLinuxNotifications>
+  >,
   activeNotifications: Set<Electron.Notification>,
   pendingNotifications: Set<Electron.Notification>,
   getPlaybackSnapshot: () => PlaybackSnapshot,
 ): Promise<(() => void) | undefined> {
   if (!payload?.name) {
-    notifLog.debug('skipping notification: no track name');
+    notifLog.debug("skipping notification: no track name");
     return;
   }
   const title = payload.name;
 
   // Check availability before downloading artwork to avoid unused network and disk work.
   if (!notificationsAvailable()) {
-    notifLog.debug('skipping notification: no notification daemon');
+    notifLog.debug("skipping notification: no notification daemon");
     return;
   }
 
@@ -65,31 +82,42 @@ async function showNotification(
   const artworkPath = payload.artworkUrl
     ? await Promise.race([
         downloadArtwork(payload.artworkUrl).catch((error: unknown) => {
-          notifLog.warn('artwork download error:', errorMessage(error));
+          notifLog.warn("artwork download error:", errorMessage(error));
           return null;
         }),
-        new Promise<null>((resolve) => setTimeout(resolve, ARTWORK_RACE_TIMEOUT_MS, null)),
+        new Promise<null>((resolve) =>
+          setTimeout(resolve, ARTWORK_RACE_TIMEOUT_MS, null),
+        ),
       ])
     : null;
 
   if (!isCurrent()) return;
-  const strings = getTrayStrings();
   const isPlaying = () => getPlaybackSnapshot().isPlaying;
   let lastKnownPlaying = isPlaying();
-  const playbackAction = (): 'play' | 'pause' => {
+  const playbackAction = (): "play" | "pause" => {
     const { state } = getPlaybackSnapshot();
     if (state === PlaybackState.Playing) lastKnownPlaying = true;
-    else if (state === PlaybackState.Paused || state === PlaybackState.Stopped || state === PlaybackState.None
-      || state === PlaybackState.Ended || state === PlaybackState.Completed) lastKnownPlaying = false;
-    return lastKnownPlaying ? 'pause' : 'play';
+    else if (
+      state === PlaybackState.Paused ||
+      state === PlaybackState.Stopped ||
+      state === PlaybackState.None ||
+      state === PlaybackState.Ended ||
+      state === PlaybackState.Completed
+    )
+      lastKnownPlaying = false;
+    return lastKnownPlaying ? "pause" : "play";
   };
-  const onAction = (action: 'previous' | 'next' | 'default' | 'play' | 'pause'): void => {
+  const onAction = (
+    action: "previous" | "next" | "default" | "play" | "pause",
+  ): void => {
     if (!isCurrent()) return;
-    if (action === 'previous') sendCommand('player:previous');
-    else if (action === 'next') sendCommand('player:next');
-    else if (action === 'play') { if (playbackAction() === 'play') sendCommand('player:play'); }
-    else if (action === 'pause') { if (playbackAction() === 'pause') sendCommand('player:pause'); }
-    else {
+    if (action === "previous") sendCommand("player:previous");
+    else if (action === "next") sendCommand("player:next");
+    else if (action === "play") {
+      if (playbackAction() === "play") sendCommand("player:play");
+    } else if (action === "pause") {
+      if (playbackAction() === "pause") sendCommand("player:pause");
+    } else {
       const win = getMainWindow();
       if (win) {
         win.show();
@@ -98,28 +126,38 @@ async function showNotification(
     }
   };
 
-  if (process.platform === 'linux') {
+  if (process.platform === "linux") {
     const linux = await getLinuxNotifications();
     let lastAction = playbackAction();
-    const deliver = (refreshOnly: boolean) => linux.show({
-      title,
-      body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
-      icon: artworkPath ?? undefined,
-      previous: strings.previous,
-      next: strings.next,
-      playbackAction: lastAction,
-      playbackLabel: strings[lastAction],
-      onAction,
-    }, isCurrent, refreshOnly);
+    const deliver = (refreshOnly: boolean) =>
+      linux.show(
+        {
+          title,
+          body: [payload.artistName, payload.albumName]
+            .filter(Boolean)
+            .join(" - "),
+          icon: artworkPath ?? undefined,
+          previous: NOTIFICATION_ACTION_LABELS.previous,
+          next: NOTIFICATION_ACTION_LABELS.next,
+          playbackAction: lastAction,
+          playbackLabel: NOTIFICATION_ACTION_LABELS[lastAction],
+          onAction,
+        },
+        isCurrent,
+        refreshOnly,
+      );
     await deliver(false);
     return () => {
       const action = playbackAction();
       if (!isCurrent() || action === lastAction) return;
       lastAction = action;
-      void deliver(true).catch(() => notifLog.warn('playback notification refresh unavailable'));
+      void deliver(true).catch(() =>
+        notifLog.warn("playback notification refresh unavailable"),
+      );
     };
   }
 
+  const strings = getTrayStrings();
   let currentNotification: Electron.Notification | null = null;
   let pending = false;
   let dismissed = false;
@@ -130,22 +168,22 @@ async function showNotification(
     try {
       deliver();
     } catch {
-      notifLog.warn('playback notification refresh unavailable');
+      notifLog.warn("playback notification refresh unavailable");
     }
   };
   const deliver = (): void => {
     lastAction = playbackAction();
     const displayedAction = lastAction;
     const options: Electron.NotificationConstructorOptions = {
-      id: randomBytes(8).toString('hex'),
+      id: randomBytes(8).toString("hex"),
       groupId: PLAYBACK_NOTIFICATION_GROUP,
       title,
-      body: [payload.artistName, payload.albumName].filter(Boolean).join(' - '),
+      body: [payload.artistName, payload.albumName].filter(Boolean).join(" - "),
       silent: true,
       actions: [
-        { type: 'button', text: strings[displayedAction] },
-        { type: 'button', text: strings.previous },
-        { type: 'button', text: strings.next },
+        { type: "button", text: strings[displayedAction] },
+        { type: "button", text: strings.previous },
+        { type: "button", text: strings.next },
       ],
     };
 
@@ -168,7 +206,7 @@ async function showNotification(
     activeNotifications.add(notification);
     pendingNotifications.add(notification);
 
-    notification.on('show', () => {
+    notification.on("show", () => {
       pendingNotifications.delete(notification);
       if (!isCurrent() || !activeNotifications.has(notification)) {
         notification.removeAllListeners();
@@ -177,31 +215,31 @@ async function showNotification(
         return;
       }
       pending = false;
-      notifLog.debug('notification displayed:', payload.name);
+      notifLog.debug("notification displayed:", payload.name);
       refresh();
     });
 
-    notification.on('close', () => {
+    notification.on("close", () => {
       if (currentNotification === notification) dismissed = true;
     });
 
-    notification.on('failed', (_event, error) => {
+    notification.on("failed", (_event, error) => {
       pendingNotifications.delete(notification);
       activeNotifications.delete(notification);
       notification.removeAllListeners();
       if (currentNotification === notification) dismissed = true;
-      notifLog.error('notification failed:', payload.name, error);
+      notifLog.error("notification failed:", payload.name, error);
     });
 
-    notification.on('action', (event) => {
+    notification.on("action", (event) => {
       if (event.actionIndex === 0) onAction(displayedAction);
-      else if (event.actionIndex === 1) onAction('previous');
-      else if (event.actionIndex === 2) onAction('next');
+      else if (event.actionIndex === 1) onAction("previous");
+      else if (event.actionIndex === 2) onAction("next");
     });
-    notification.on('click', () => onAction('default'));
+    notification.on("click", () => onAction("default"));
 
     notification.show();
-    notifLog.debug('notification requested:', payload.name);
+    notifLog.debug("notification requested:", payload.name);
   };
   deliver();
   return refresh;
@@ -216,8 +254,8 @@ export function init(ctx: IntegrationContext): void {
   const getWin = getMainWindow ?? (() => null);
   clearPlaybackHistory();
 
-  notifLog.info('notification module initialised');
-  notifLog.info('notifications enabled:', getNotificationsEnabled());
+  notifLog.info("notification module initialised");
+  notifLog.info("notifications enabled:", getNotificationsEnabled());
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let generation = 0;
@@ -228,8 +266,10 @@ export function init(ctx: IntegrationContext): void {
   const activeNotifications = new Set<Electron.Notification>();
   const pendingNotifications = new Set<Electron.Notification>();
   let linux: Promise<ReturnType<typeof createLinuxNotifications>> | null = null;
-  const getLinuxNotifications = () => linux ??= import('../../linuxNotifications')
-    .then(({ createLinuxNotifications }) => createLinuxNotifications());
+  const getLinuxNotifications = () =>
+    (linux ??= import("../../linuxNotifications").then(
+      ({ createLinuxNotifications }) => createLinuxNotifications(),
+    ));
 
   const scheduleNotification = (payload: NowPlayingPayload | null): void => {
     refreshPlayback = undefined;
@@ -244,36 +284,61 @@ export function init(ctx: IntegrationContext): void {
 
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      const isCurrent = () => !stopped && generation === currentGeneration
-        && getNotificationsEnabled() && notificationsAvailable();
+      const isCurrent = () =>
+        !stopped &&
+        generation === currentGeneration &&
+        getNotificationsEnabled() &&
+        notificationsAvailable();
       if (!isCurrent()) return;
-      showNotification(payload, getWin, isCurrent, getLinuxNotifications, activeNotifications, pendingNotifications,
-        () => player.playbackSnapshot()).then((refresh) => {
-        if (!isCurrent()) return;
-        refreshPlayback = refresh;
-        refreshPlayback?.();
-      }).catch((error: unknown) =>
-        notifLog.warn('notification error:', errorMessage(error)),
-      );
+      showNotification(
+        payload,
+        getWin,
+        isCurrent,
+        getLinuxNotifications,
+        activeNotifications,
+        pendingNotifications,
+        () => player.playbackSnapshot(),
+      )
+        .then((refresh) => {
+          if (!isCurrent()) return;
+          refreshPlayback = refresh;
+          refreshPlayback?.();
+        })
+        .catch((error: unknown) =>
+          notifLog.warn("notification error:", errorMessage(error)),
+        );
     }, NOTIFICATION_DEBOUNCE_MS);
   };
 
   const onPlaybackStateDidChange = (): void => {
     const { state } = player.playbackSnapshot();
     if (state === PlaybackState.None) refreshPlayback = undefined;
-    else if (state === PlaybackState.Playing || state === PlaybackState.Paused || state === PlaybackState.Stopped
-      || state === PlaybackState.Ended || state === PlaybackState.Completed) refreshPlayback?.();
+    else if (
+      state === PlaybackState.Playing ||
+      state === PlaybackState.Paused ||
+      state === PlaybackState.Stopped ||
+      state === PlaybackState.Ended ||
+      state === PlaybackState.Completed
+    )
+      refreshPlayback?.();
   };
 
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
-    radioStation = payload?.playParams?.kind === 'radioStation' ? payload : null;
+  const onNowPlayingItemDidChange = (
+    payload: NowPlayingPayload | null,
+  ): void => {
+    radioStation =
+      payload?.playParams?.kind === "radioStation" ? payload : null;
     timedDisplayKey = null;
     scheduleNotification(payload);
   };
 
   const onTimedMetadataDidChange = (payload: TimedMetadataPayload): void => {
     if (!radioStation) return;
-    const displayKey = JSON.stringify([payload.name, payload.artistName, payload.albumName ?? '']);
+    const displayKey = JSON.stringify([
+      payload.name,
+      payload.artistName,
+      payload.albumName ?? "",
+    ]);
     if (displayKey === timedDisplayKey) return;
     timedDisplayKey = displayKey;
     scheduleNotification({
@@ -284,23 +349,26 @@ export function init(ctx: IntegrationContext): void {
     });
   };
 
-  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  player.on('timedMetadataDidChange', onTimedMetadataDidChange);
-  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("timedMetadataDidChange", onTimedMetadataDidChange);
+  player.on("playbackStateDidChange", onPlaybackStateDidChange);
 
-  app.on('will-quit', () => {
+  app.on("will-quit", () => {
     if (stopped) return;
     stopped = true;
     if (linux) void linux.then((adapter) => adapter.dispose()).catch(() => {});
-    closeNotifications(new Set([...activeNotifications, ...pendingNotifications]), pendingNotifications);
+    closeNotifications(
+      new Set([...activeNotifications, ...pendingNotifications]),
+      pendingNotifications,
+    );
     activeNotifications.clear();
     clearPlaybackHistory();
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
-    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
-    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.removeListener("timedMetadataDidChange", onTimedMetadataDidChange);
+    player.removeListener("playbackStateDidChange", onPlaybackStateDidChange);
   });
 }

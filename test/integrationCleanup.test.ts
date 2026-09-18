@@ -36,7 +36,7 @@ function playerConsumerFiles(): string[] {
  * A separate test checks that main.ts registers the tray closure on `will-quit`.
  */
 const CLEANUP_OPENER =
-  /app\.on\(\s*'will-quit'\s*,\s*(?:async\s*)?\(\s*\)\s*=>\s*\{|return\s*(?:async\s*)?\(\s*\)\s*=>\s*\{/;
+  /app\.on\(\s*(['"])will-quit\1\s*,\s*(?:async\s*)?\(\s*\)\s*=>\s*\{|return\s*(?:async\s*)?\(\s*\)\s*=>\s*\{/;
 
 /**
  * Find the closing quote, or return -1 for an unterminated literal.
@@ -275,6 +275,20 @@ describe("player listener cleanup", () => {
           return () => {
             player.off('playbackStateDidChange', onPlaybackStateDidChange);
           };
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it("accepts a removal inside a double-quoted will-quit handler", () => {
+      const source = `
+        export function init(): void {
+          ${REGISTER}
+
+          app.on("will-quit", () => {
+            ${REMOVE}
+          });
         }
       `;
 
