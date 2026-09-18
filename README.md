@@ -186,7 +186,7 @@ System Settings → Privacy & Security only offers **Open Anyway** for the milde
 
 ### Windows
 
-**Installer** (`.exe`) - run and follow the prompts.
+**Installer** (`.exe`) - run the setup wizard. It defaults to an installation for your user, lets you choose an installation for all users, and lets you select the installation directory.
 
 SmartScreen will warn the installer is unsigned. Click **More info** then **Run anyway**.
 

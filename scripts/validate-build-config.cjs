@@ -32,6 +32,24 @@ function main() {
   }
   console.log("  \u2713 no deprecated options detected");
 
+  const nsis = config.nsis;
+  if (nsis?.oneClick !== false) {
+    throw new Error("build.nsis.oneClick must be false to use the assisted installer");
+  }
+  if (nsis.allowToChangeInstallationDirectory !== true) {
+    throw new Error("build.nsis.allowToChangeInstallationDirectory must be true");
+  }
+  if (Object.hasOwn(nsis, "perMachine")) {
+    throw new Error("build.nsis.perMachine must remain unset so the installer offers per-user and all-users choices");
+  }
+  if (Object.hasOwn(nsis, "selectPerMachineByDefault")) {
+    throw new Error("build.nsis.selectPerMachineByDefault must remain unset so per-user remains the default choice");
+  }
+  if (nsis.deleteAppDataOnUninstall !== false) {
+    throw new Error("build.nsis.deleteAppDataOnUninstall must remain false");
+  }
+  console.log("  \u2713 NSIS installer: assisted, per-user by default, install scope and directory selectable");
+
   // FPM requires the author's email for the deb/rpm maintainer field.
   const author = pkg.author;
   const emailRegex = /<[^>]+@[^>]+>/;

@@ -197,7 +197,8 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     }
   }
