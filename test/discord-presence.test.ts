@@ -1,10 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { IPC, type Client as DiscordClient, type ClientOptions, type SetActivity } from '@xhayper/discord-rpc';
-import { ActivityType } from 'discord-api-types/v10';
-import { app } from 'electron';
-import { PlaybackState, NowPlayingPayload } from '../src/player';
-import { FakePlayer } from './mocks/player';
-import { restorePlatform, setPlatform } from './mocks/platform';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  IPC,
+  type Client as DiscordClient,
+  type ClientOptions,
+  type SetActivity,
+} from "@xhayper/discord-rpc";
+import { ActivityType } from "discord-api-types/v10";
+import { app } from "electron";
+import { PlaybackState, NowPlayingPayload } from "../src/player";
+import { FakePlayer } from "./mocks/player";
+import { restorePlatform, setPlatform } from "./mocks/platform";
 
 // Matches DEBOUNCE_MS and PAUSE_TIMEOUT_MS in
 // src/integrations/discord-presence/index.ts, which keeps them private.
@@ -17,7 +22,7 @@ const CLEAR_ACTIVITY_TIMEOUT_MS = 2000;
 
 // 'timeout' clears the cached connection promise, while 'transport' retains it.
 // The integration must recover from both library failure paths.
-type ConnectOutcome = 'connected' | 'timeout' | 'transport';
+type ConnectOutcome = "connected" | "timeout" | "transport";
 
 // Use a structural type because the client class lives inside the hoisted vi.mock factory.
 // Type annotations disappear at runtime, unlike a reference to that class.
@@ -26,11 +31,11 @@ interface ClientHandle {
   connectAttempts: number;
   destroyCalls: number;
   pipeId: number | undefined;
-  transport: DiscordClient['transport'];
+  transport: DiscordClient["transport"];
   listenerCount(event: string): number;
 }
 
-type DiscordIpcPathList = InstanceType<typeof IPC.IPCTransport>['pathList'];
+type DiscordIpcPathList = InstanceType<typeof IPC.IPCTransport>["pathList"];
 
 // Promise-returning spies replace Discord socket calls and support production .then()/.catch() chains.
 // The hoisted holder survives fresh module imports. Typed setActivity arguments let tests inspect recorded activities.
@@ -43,13 +48,13 @@ const rpc = vi.hoisted(() => ({
   defaultPathList: undefined as DiscordIpcPathList | undefined,
   defaultPathSnapshot: undefined as DiscordIpcPathList | undefined,
   connectAttempts: 0,
-  outcome: (_attempt: number): ConnectOutcome => 'connected',
+  outcome: (_attempt: number): ConnectOutcome => "connected",
 }));
 
 // Only Client is replaced. StatusDisplayType comes from the real package, so a
 // renumbering there reaches the source under test rather than being masked.
-vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@xhayper/discord-rpc')>();
+vi.mock("@xhayper/discord-rpc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@xhayper/discord-rpc")>();
 
   // Model @xhayper/discord-rpc 1.3.4: failed connections retain once('connected') listeners.
   // Transport rejection also retains connectionPromise, so reuse returns the same rejected promise without connecting.
@@ -59,7 +64,7 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
     connectAttempts = 0;
     destroyCalls = 0;
     pipeId: number | undefined;
-    transport: DiscordClient['transport'];
+    transport: DiscordClient["transport"];
     user = { setActivity: rpc.setActivity, clearActivity: rpc.clearActivity };
 
     private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -119,7 +124,7 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
       const attempt = rpc.connectAttempts;
 
       this.connectionPromise = new Promise<void>((resolve, reject) => {
-        this.once('connected', () => {
+        this.once("connected", () => {
           this.connectionPromise = undefined;
           this.isConnected = true;
           this.closeArmed = true;
@@ -130,16 +135,16 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
         // assignment below has not made yet.
         void Promise.resolve().then(() => {
           const outcome = rpc.outcome(attempt);
-          if (outcome === 'connected') {
-            this.emit('connected');
+          if (outcome === "connected") {
+            this.emit("connected");
             return;
           }
-          if (outcome === 'timeout') {
+          if (outcome === "timeout") {
             this.connectionPromise = undefined;
-            reject(new Error('Connection timed out'));
+            reject(new Error("Connection timed out"));
             return;
           }
-          reject(new Error('could not connect'));
+          reject(new Error("could not connect"));
         });
       });
 
@@ -148,7 +153,7 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
 
     async login(): Promise<void> {
       await this.connect();
-      this.emit('ready');
+      this.emit("ready");
     }
 
     async destroy(): Promise<void> {
@@ -156,7 +161,7 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
       this.isConnected = false;
       if (this.closeArmed) {
         this.closeArmed = false;
-        this.emit('disconnected');
+        this.emit("disconnected");
       }
     }
 
@@ -171,14 +176,14 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
 });
 
 const TRACK: NowPlayingPayload = {
-  name: 'Blue Monday',
-  artistName: 'New Order',
-  albumName: 'Power, Corruption & Lies',
+  name: "Blue Monday",
+  artistName: "New Order",
+  albumName: "Power, Corruption & Lies",
   durationInMillis: 240_000,
-  url: 'https://music.apple.com/gb/album/blue-monday/1',
+  url: "https://music.apple.com/gb/album/blue-monday/1",
 };
 
-const START = new Date('2026-01-01T00:00:00Z');
+const START = new Date("2026-01-01T00:00:00Z");
 
 /**
  * Loads a fresh copy of the integration with the toggle on. trackName, client
@@ -187,11 +192,13 @@ const START = new Date('2026-01-01T00:00:00Z');
  * electron-conf mock factory: a statically imported config writes to a store
  * the reloaded integration no longer reads.
  */
-async function loadDiscord(): Promise<typeof import('../src/integrations/discord-presence')> {
+async function loadDiscord(): Promise<
+  typeof import("../src/integrations/discord-presence")
+> {
   vi.resetModules();
-  const config = await import('../src/config');
+  const config = await import("../src/config");
   config.setDiscordEnabled(true);
-  return import('../src/integrations/discord-presence');
+  return import("../src/integrations/discord-presence");
 }
 
 /** The activity object of the only setActivity call made so far. */
@@ -203,18 +210,20 @@ function activity(): SetActivity {
 function ipcPathList(target: ClientHandle): DiscordIpcPathList {
   expect(target.transport).toBeInstanceOf(IPC.IPCTransport);
   if (!(target.transport instanceof IPC.IPCTransport)) {
-    throw new Error('Expected an IPC transport');
+    throw new Error("Expected an IPC transport");
   }
   return target.transport.pathList;
 }
 
 function defaultIpcPathList(): DiscordIpcPathList {
-  if (!rpc.defaultPathSnapshot) throw new Error('Expected the default IPC path list');
+  if (!rpc.defaultPathSnapshot)
+    throw new Error("Expected the default IPC path list");
   return rpc.defaultPathSnapshot;
 }
 
 function sharedDefaultIpcPathList(): DiscordIpcPathList {
-  if (!rpc.defaultPathList) throw new Error('Expected the shared default IPC path list');
+  if (!rpc.defaultPathList)
+    throw new Error("Expected the shared default IPC path list");
   return rpc.defaultPathList;
 }
 
@@ -231,7 +240,11 @@ const MAX_RECONNECT_STEPS = 40;
  * is armed inside the same step.
  */
 async function driveConnectAttempts(target: number): Promise<void> {
-  for (let step = 0; step < MAX_RECONNECT_STEPS && rpc.connectAttempts < target; step++) {
+  for (
+    let step = 0;
+    step < MAX_RECONNECT_STEPS && rpc.connectAttempts < target;
+    step++
+  ) {
     await vi.advanceTimersByTimeAsync(RECONNECT_CAP_MS);
   }
 }
@@ -244,10 +257,10 @@ beforeEach(() => {
   rpc.defaultPathList = undefined;
   rpc.defaultPathSnapshot = undefined;
   rpc.connectAttempts = 0;
-  rpc.outcome = () => 'connected';
+  rpc.outcome = () => "connected";
 });
 
-describe('discord presence integration', () => {
+describe("discord presence integration", () => {
   let player: FakePlayer;
 
   beforeEach(async () => {
@@ -264,8 +277,8 @@ describe('discord presence integration', () => {
     vi.useRealTimers();
   });
 
-  it('sends a listening activity with the track title as the status display', () => {
-    vi.spyOn(app, 'getName').mockReturnValue('Test Player');
+  it("sends a listening activity with the track title as the status display", () => {
+    vi.spyOn(app, "getName").mockReturnValue("Test Player");
     player.setPlaybackState(PlaybackState.Playing);
     player.emitNowPlaying(TRACK);
     vi.advanceTimersByTime(DEBOUNCE_MS);
@@ -275,14 +288,14 @@ describe('discord presence integration', () => {
     expect(activity()).toMatchObject({
       statusDisplayType: 2,
       type: ActivityType.Listening,
-      details: 'Blue Monday',
-      state: 'by New Order',
+      details: "Blue Monday",
+      state: "by New Order",
       buttons: [
-        { label: 'Test Player', url: 'https://github.com/wimpysworld/sidra' },
-        { label: 'Play on Apple Music', url: TRACK.url },
+        { label: "Test Player", url: "https://github.com/wimpysworld/sidra" },
+        { label: "Play on Apple Music", url: TRACK.url },
       ],
-      smallImageKey: 'sidra_logo',
-      smallImageText: 'Test Player',
+      smallImageKey: "sidra_logo",
+      smallImageText: "Test Player",
       // sendActivity() anchors both stamps to Date.now() at fire time, and the
       // fake clock has moved by the debounce. The playhead sits at zero, so
       // the start is that moment and the end is a track length later.
@@ -291,54 +304,64 @@ describe('discord presence integration', () => {
     });
   });
 
-  it('translates artist fallback and service buttons without changing metadata or URLs', async () => {
-    const { app: freshApp } = await import('electron');
-    vi.spyOn(freshApp, 'getPreferredSystemLanguages').mockReturnValue(['fr']);
+  it("translates artist fallback and service buttons without changing metadata or URLs", async () => {
+    const { app: freshApp } = await import("electron");
+    vi.spyOn(freshApp, "getPreferredSystemLanguages").mockReturnValue(["fr"]);
     player.emitNowPlaying({ ...TRACK, artistName: undefined });
     vi.advanceTimersByTime(DEBOUNCE_MS);
     expect(activity()).toMatchObject({
       details: TRACK.name,
-      state: 'par Artiste inconnu',
+      state: "par Artiste inconnu",
       buttons: expect.arrayContaining([
-        { label: 'Lire sur Apple Music', url: TRACK.url },
+        { label: "Lire sur Apple Music", url: TRACK.url },
       ]),
     });
   });
 
   // MusicKit never populates url on a library item, so the button URL must come
   // from getShareUrl(), which rebuilds it from the catalogue id.
-  it('keeps the service button for a library track with a catalogue id and no url', () => {
-    player.emitNowPlaying({ ...TRACK, url: undefined, playParams: { catalogId: '1440833098' } });
+  it("keeps the service button for a library track with a catalogue id and no url", () => {
+    player.emitNowPlaying({
+      ...TRACK,
+      url: undefined,
+      playParams: { catalogId: "1440833098" },
+    });
     vi.advanceTimersByTime(DEBOUNCE_MS);
 
     expect(activity()).toMatchObject({
       buttons: expect.arrayContaining([
-        { label: 'Play on Apple Music', url: 'https://music.apple.com/song/1440833098' },
+        {
+          label: "Play on Apple Music",
+          url: "https://music.apple.com/song/1440833098",
+        },
       ]),
     });
   });
 
-  it('omits the service button when the payload yields no share URL', () => {
+  it("omits the service button when the payload yields no share URL", () => {
     player.emitNowPlaying({ ...TRACK, url: undefined });
     vi.advanceTimersByTime(DEBOUNCE_MS);
 
     expect(activity().buttons).toEqual([
-      { label: expect.any(String), url: 'https://github.com/wimpysworld/sidra' },
+      {
+        label: expect.any(String),
+        url: "https://github.com/wimpysworld/sidra",
+      },
     ]);
   });
 
-  it('sends no timestamps while paused but keeps the status display', () => {
+  it("sends no timestamps while paused but keeps the status display", () => {
     player.setPlaybackState(PlaybackState.Paused);
     player.emitNowPlaying(TRACK);
     vi.advanceTimersByTime(DEBOUNCE_MS);
 
     const sent = activity();
     expect(sent).toMatchObject({ statusDisplayType: 2 });
-    expect(sent).not.toHaveProperty('startTimestamp');
-    expect(sent).not.toHaveProperty('endTimestamp');
+    expect(sent).not.toHaveProperty("startTimestamp");
+    expect(sent).not.toHaveProperty("endTimestamp");
   });
 
-  it('clears a published activity once after a document replacement', async () => {
+  it("clears a published activity once after a document replacement", async () => {
     player.setPlaybackState(PlaybackState.Playing);
     player.emitNowPlaying(TRACK);
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
@@ -357,7 +380,7 @@ describe('discord presence integration', () => {
 
 // Separate from the block above because these tests install their own connect
 // script before init(), and the shared beforeEach there logs in first.
-describe('discord presence reconnect', () => {
+describe("discord presence reconnect", () => {
   let player: FakePlayer;
 
   beforeEach(() => {
@@ -371,8 +394,8 @@ describe('discord presence reconnect', () => {
     vi.useRealTimers();
   });
 
-  it('leaves at most one connected listener on the live client after repeated failures', async () => {
-    rpc.outcome = () => 'timeout';
+  it("leaves at most one connected listener on the live client after repeated failures", async () => {
+    rpc.outcome = () => "timeout";
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
 
@@ -383,13 +406,13 @@ describe('discord presence reconnect', () => {
     // keeps the count on the live one at the single leak of its own attempt;
     // reusing one instance accrues one per attempt and trips Node's warning.
     const live = rpc.instances[rpc.instances.length - 1];
-    expect(live.listenerCount('connected')).toBeLessThanOrEqual(1);
+    expect(live.listenerCount("connected")).toBeLessThanOrEqual(1);
   });
 
-  it('makes a fresh connect after a transport rejection instead of replaying the rejected promise', async () => {
+  it("makes a fresh connect after a transport rejection instead of replaying the rejected promise", async () => {
     // Only the first attempt fails at the transport, the path that leaves the
     // cached connection promise in place.
-    rpc.outcome = (attempt) => (attempt === 1 ? 'transport' : 'timeout');
+    rpc.outcome = (attempt) => (attempt === 1 ? "transport" : "timeout");
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
 
@@ -405,9 +428,9 @@ describe('discord presence reconnect', () => {
     expect(rpc.instances).toHaveLength(2);
   });
 
-  it('carries the ready handler onto the replacement client, so a late connect still sends an activity', async () => {
+  it("carries the ready handler onto the replacement client, so a late connect still sends an activity", async () => {
     const SUCCEED_ON = 12;
-    rpc.outcome = (attempt) => (attempt < SUCCEED_ON ? 'timeout' : 'connected');
+    rpc.outcome = (attempt) => (attempt < SUCCEED_ON ? "timeout" : "connected");
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
     player.setPlaybackState(PlaybackState.Playing);
@@ -420,13 +443,14 @@ describe('discord presence reconnect', () => {
     // proves its ready handler ran: only that handler schedules the update.
     expect(rpc.instances.length).toBeGreaterThan(1);
     expect(rpc.setActivity).toHaveBeenCalled();
-    const sent = rpc.setActivity.mock.calls[rpc.setActivity.mock.calls.length - 1][0];
-    expect(sent).toMatchObject({ details: 'Blue Monday' });
+    const sent =
+      rpc.setActivity.mock.calls[rpc.setActivity.mock.calls.length - 1][0];
+    expect(sent).toMatchObject({ details: "Blue Monday" });
   });
 
-  it('reads the playhead through the replacement client, so a reconnected session still carries timestamps', async () => {
+  it("reads the playhead through the replacement client, so a reconnected session still carries timestamps", async () => {
     // A replacement client's ready handler must read the player snapshot, even though init() did not create that client.
-    rpc.outcome = (attempt) => (attempt === 1 ? 'transport' : 'connected');
+    rpc.outcome = (attempt) => (attempt === 1 ? "transport" : "connected");
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
     player.setPlaybackState(PlaybackState.Playing);
@@ -450,7 +474,7 @@ describe('discord presence reconnect', () => {
     });
   });
 
-  it('sends an activity again after disable() and enable()', async () => {
+  it("sends an activity again after disable() and enable()", async () => {
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
     player.setPlaybackState(PlaybackState.Playing);
@@ -473,7 +497,7 @@ describe('discord presence reconnect', () => {
 
   // clearActivity() waits for Discord's nonce reply, which can remain pending on a live socket.
   // Teardown must still destroy the transport to release the socket and stale activity.
-  it('destroys a retired client whose activity clear never answers, and destroys it once', async () => {
+  it("destroys a retired client whose activity clear never answers, and destroys it once", async () => {
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
     await vi.advanceTimersByTimeAsync(0);
@@ -482,9 +506,11 @@ describe('discord presence reconnect', () => {
     expect(retired.isConnected).toBe(true);
 
     let answer: (() => void) | undefined;
-    rpc.clearActivity.mockReturnValueOnce(new Promise<void>((resolve) => {
-      answer = resolve;
-    }));
+    rpc.clearActivity.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        answer = resolve;
+      }),
+    );
 
     discord.disable();
     expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
@@ -500,8 +526,8 @@ describe('discord presence reconnect', () => {
   });
 });
 
-describe('discord presence Vesktop Flatpak IPC discovery', () => {
-  const runtimeDir = '/run/user/1000';
+describe("discord presence Vesktop Flatpak IPC discovery", () => {
+  const runtimeDir = "/run/user/1000";
   let player: FakePlayer;
 
   beforeEach(() => {
@@ -517,9 +543,9 @@ describe('discord presence Vesktop Flatpak IPC discovery', () => {
     vi.unstubAllEnvs();
   });
 
-  it('appends all Vesktop pipe paths after the unchanged defaults on Linux', async () => {
-    setPlatform('linux');
-    vi.stubEnv('XDG_RUNTIME_DIR', runtimeDir);
+  it("appends all Vesktop pipe paths after the unchanged defaults on Linux", async () => {
+    setPlatform("linux");
+    vi.stubEnv("XDG_RUNTIME_DIR", runtimeDir);
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
 
@@ -534,19 +560,22 @@ describe('discord presence Vesktop Flatpak IPC discovery', () => {
     expect(paths).toHaveLength(defaults.length + 1);
     expect(paths.slice(0, defaults.length)).toEqual(defaults);
     expect(sharedDefaults).toEqual(defaults);
-    expect(vesktopPath.platform).toEqual(['linux']);
-    expect(Array.from({ length: 10 }, (_, id) => vesktopPath.format(id))).toEqual(
+    expect(vesktopPath.platform).toEqual(["linux"]);
+    expect(
+      Array.from({ length: 10 }, (_, id) => vesktopPath.format(id)),
+    ).toEqual(
       Array.from(
         { length: 10 },
-        (_, id) => `${runtimeDir}/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-${id}`,
+        (_, id) =>
+          `${runtimeDir}/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-${id}`,
       ),
     );
   });
 
-  it('does not mutate the shared defaults or duplicate Vesktop paths across replacements', async () => {
-    setPlatform('linux');
-    vi.stubEnv('XDG_RUNTIME_DIR', runtimeDir);
-    rpc.outcome = (attempt) => (attempt === 1 ? 'transport' : 'connected');
+  it("does not mutate the shared defaults or duplicate Vesktop paths across replacements", async () => {
+    setPlatform("linux");
+    vi.stubEnv("XDG_RUNTIME_DIR", runtimeDir);
+    rpc.outcome = (attempt) => (attempt === 1 ? "transport" : "connected");
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
 
@@ -570,11 +599,11 @@ describe('discord presence Vesktop Flatpak IPC discovery', () => {
   });
 
   it.each([
-    ['an absent runtime directory', undefined],
-    ['an empty runtime directory', ''],
-  ])('keeps only the shared defaults with %s', async (_label, value) => {
-    setPlatform('linux');
-    vi.stubEnv('XDG_RUNTIME_DIR', value);
+    ["an absent runtime directory", undefined],
+    ["an empty runtime directory", ""],
+  ])("keeps only the shared defaults with %s", async (_label, value) => {
+    setPlatform("linux");
+    vi.stubEnv("XDG_RUNTIME_DIR", value);
     const discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
 
@@ -583,27 +612,30 @@ describe('discord presence Vesktop Flatpak IPC discovery', () => {
     expect(paths).toEqual(defaultIpcPathList());
   });
 
-  it.each(['win32', 'darwin'] as const)('keeps only the shared defaults on %s', async (platform) => {
-    setPlatform(platform);
-    vi.stubEnv('XDG_RUNTIME_DIR', runtimeDir);
-    const discord = await loadDiscord();
-    discord.init({ player, getMainWindow: () => null });
+  it.each(["win32", "darwin"] as const)(
+    "keeps only the shared defaults on %s",
+    async (platform) => {
+      setPlatform(platform);
+      vi.stubEnv("XDG_RUNTIME_DIR", runtimeDir);
+      const discord = await loadDiscord();
+      discord.init({ player, getMainWindow: () => null });
 
-    const paths = ipcPathList(rpc.instances[0]);
-    expect(paths).toBe(sharedDefaultIpcPathList());
-    expect(paths).toEqual(defaultIpcPathList());
-  });
+      const paths = ipcPathList(rpc.instances[0]);
+      expect(paths).toBe(sharedDefaultIpcPathList());
+      expect(paths).toEqual(defaultIpcPathList());
+    },
+  );
 });
 
 // The send path takes the Player as an argument, and init() is the only place
 // that has one. The exported toggles are the boundary where that is checked, so
 // a tray click before init() has to be inert rather than reaching a client.
-describe('discord presence tray toggles before init', () => {
+describe("discord presence tray toggles before init", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('builds no client and sends nothing', async () => {
+  it("builds no client and sends nothing", async () => {
     const discord = await loadDiscord();
 
     expect(() => discord.enable()).not.toThrow();

@@ -1,17 +1,29 @@
-import { app } from 'electron';
-import { join } from 'node:path';
-import log from 'electron-log/main';
-import { Client, IPC, SetActivity, StatusDisplayType } from '@xhayper/discord-rpc';
-import { ActivityType } from 'discord-api-types/v10';
-import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext, getShareUrl } from '../../player';
-import { getDiscordEnabled, getMusicService } from '../../config';
-import { getService } from '../../musicService';
-import { createPauseTimer } from '../../pauseTimer';
-import { getDiscordArtistText, getDiscordPlayOnText } from '../../i18n';
+import { app } from "electron";
+import { join } from "node:path";
+import log from "electron-log/main";
+import {
+  Client,
+  IPC,
+  SetActivity,
+  StatusDisplayType,
+} from "@xhayper/discord-rpc";
+import { ActivityType } from "discord-api-types/v10";
+import {
+  Player,
+  NowPlayingPayload,
+  PlaybackState,
+  PlaybackStatePayload,
+  IntegrationContext,
+  getShareUrl,
+} from "../../player";
+import { getDiscordEnabled, getMusicService } from "../../config";
+import { getService } from "../../musicService";
+import { createPauseTimer } from "../../pauseTimer";
+import { getDiscordArtistText, getDiscordPlayOnText } from "../../i18n";
 
-const discordLog = log.scope('discord');
+const discordLog = log.scope("discord");
 
-const CLIENT_ID = '1485248818688688318';
+const CLIENT_ID = "1485248818688688318";
 const DEBOUNCE_MS = 1000;
 const PAUSE_TIMEOUT_MS = 30_000;
 const RECONNECT_BASE_MS = 2000;
@@ -23,7 +35,7 @@ const MAX_IMAGE_URL_LEN = 256;
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
-  return s.slice(0, max - 1) + '\u2026';
+  return s.slice(0, max - 1) + "\u2026";
 }
 
 // Discord rejects an activity string shorter than MIN_STRING_LEN, and the
@@ -31,7 +43,7 @@ function truncate(s: string, max: number): string {
 // with zero-width spaces instead.
 function padMin(s: string, min: number): string {
   while (s.length < min) {
-    s += '\u200b';
+    s += "\u200b";
   }
   return s;
 }
@@ -40,9 +52,9 @@ function padMin(s: string, min: number): string {
 let trackName: string | null = null;
 let artistName: string | null = null;
 let albumName: string | null = null;
-let artworkUrl: string | undefined = undefined;
+let artworkUrl: string | undefined;
 let durationMs = 0;
-let trackUrl: string | undefined = undefined;
+let trackUrl: string | undefined;
 
 function clearTrackMetadata(): void {
   trackName = null;
@@ -66,25 +78,36 @@ let retryCount = 0;
 let client: Client | undefined;
 
 const pauseTimeout = createPauseTimer(PAUSE_TIMEOUT_MS, () => {
-  discordLog.debug('pause timeout reached, clearing activity');
+  discordLog.debug("pause timeout reached, clearing activity");
   client?.user?.clearActivity().catch(() => {});
 });
 
 function createClient(player: Player): Client {
   const created = new Client({ clientId: CLIENT_ID });
   const runtimeDir = process.env.XDG_RUNTIME_DIR;
-  if (process.platform === 'linux' && runtimeDir && created.transport instanceof IPC.IPCTransport) {
+  if (
+    process.platform === "linux" &&
+    runtimeDir &&
+    created.transport instanceof IPC.IPCTransport
+  ) {
     created.transport.pathList = [
       ...created.transport.pathList,
       {
-        platform: ['linux'],
-        format: (id) => join(runtimeDir, '.flatpak', 'dev.vencord.Vesktop', 'xdg-run', `discord-ipc-${id}`),
+        platform: ["linux"],
+        format: (id) =>
+          join(
+            runtimeDir,
+            ".flatpak",
+            "dev.vencord.Vesktop",
+            "xdg-run",
+            `discord-ipc-${id}`,
+          ),
       },
     ];
   }
 
-  created.on('ready', () => {
-    discordLog.info('connected to Discord');
+  created.on("ready", () => {
+    discordLog.info("connected to Discord");
     retryCount = 0;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -93,8 +116,8 @@ function createClient(player: Player): Client {
     scheduleUpdate(player);
   });
 
-  created.on('disconnected', () => {
-    discordLog.info('disconnected from Discord');
+  created.on("disconnected", () => {
+    discordLog.info("disconnected from Discord");
     scheduleReconnect(player);
   });
 
@@ -129,7 +152,10 @@ function retireClient(retiring: Client, clearActivity: boolean): void {
   }
 
   timer = setTimeout(destroyOnce, CLEAR_ACTIVITY_TIMEOUT_MS);
-  void retiring.user.clearActivity().catch(() => {}).then(destroyOnce);
+  void retiring.user
+    .clearActivity()
+    .catch(() => {})
+    .then(destroyOnce);
 }
 
 // Client.connect() leaks a 'connected' listener on both failure paths, and a
@@ -160,8 +186,8 @@ function scheduleUpdate(player: Player): void {
 
   if (!client.isConnected) {
     if (!reconnectTimer) {
-      discordLog.debug('not connected, attempting login');
-      loginOrRetry(player, client, 'login');
+      discordLog.debug("not connected, attempting login");
+      loginOrRetry(player, client, "login");
     }
     return;
   }
@@ -188,7 +214,7 @@ function disconnectClient(player: Player): void {
   retryCount = 0;
 
   replaceClient(player, true);
-  discordLog.info('disconnected from Discord (disabled via toggle)');
+  discordLog.info("disconnected from Discord (disabled via toggle)");
 }
 
 // scheduleUpdate() checks the connection before arming the debounce.
@@ -197,23 +223,27 @@ function sendActivity(player: Player): void {
   if (!client) return;
 
   if (!trackName) {
-    discordLog.debug('no track metadata, clearing activity');
+    discordLog.debug("no track metadata, clearing activity");
     client.user?.clearActivity().catch(() => {});
     return;
   }
 
   const details = padMin(truncate(trackName, MAX_STRING_LEN), MIN_STRING_LEN);
-  const state = padMin(truncate(getDiscordArtistText(artistName), MAX_STRING_LEN), MIN_STRING_LEN);
+  const state = padMin(
+    truncate(getDiscordArtistText(artistName), MAX_STRING_LEN),
+    MIN_STRING_LEN,
+  );
 
-  const largeImageKey = (artworkUrl && artworkUrl.length <= MAX_IMAGE_URL_LEN)
-    ? artworkUrl
-    : 'sidra_logo';
+  const largeImageKey =
+    artworkUrl && artworkUrl.length <= MAX_IMAGE_URL_LEN
+      ? artworkUrl
+      : "sidra_logo";
   const largeImageText = albumName
     ? truncate(albumName, MAX_STRING_LEN)
     : undefined;
 
   const buttons: Array<{ label: string; url: string }> = [
-    { label: app.getName(), url: 'https://github.com/wimpysworld/sidra' },
+    { label: app.getName(), url: "https://github.com/wimpysworld/sidra" },
   ];
   if (trackUrl) {
     const displayName = getService(getMusicService()).displayName;
@@ -227,7 +257,7 @@ function sendActivity(player: Player): void {
     state,
     largeImageKey,
     largeImageText,
-    smallImageKey: 'sidra_logo',
+    smallImageKey: "sidra_logo",
     smallImageText: app.getName(),
     buttons,
   };
@@ -242,11 +272,14 @@ function sendActivity(player: Player): void {
     activity.endTimestamp = new Date(now - currentPositionMs + durationMs);
   }
 
-  client.user?.setActivity(activity).then(() => {
-    discordLog.debug('activity updated:', trackName);
-  }).catch((err: Error) => {
-    discordLog.warn('failed to set activity:', err.message);
-  });
+  client.user
+    ?.setActivity(activity)
+    .then(() => {
+      discordLog.debug("activity updated:", trackName);
+    })
+    .catch((err: Error) => {
+      discordLog.warn("failed to set activity:", err.message);
+    });
 }
 
 function scheduleReconnect(player: Player): void {
@@ -260,8 +293,8 @@ function scheduleReconnect(player: Player): void {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     if (client?.isConnected) return;
-    discordLog.info('attempting reconnect');
-    loginOrRetry(player, replaceClient(player), 'reconnect');
+    discordLog.info("attempting reconnect");
+    loginOrRetry(player, replaceClient(player), "reconnect");
   }, delay);
 }
 
@@ -270,8 +303,8 @@ export function enable(): void {
   const player = playerRef;
   if (!player || !client) return;
   if (!client.isConnected) {
-    discordLog.info('enabling Discord presence');
-    loginOrRetry(player, client, 'enable login');
+    discordLog.info("enabling Discord presence");
+    loginOrRetry(player, client, "enable login");
   }
 }
 
@@ -286,19 +319,19 @@ export function disable(): void {
 export function init(ctx: IntegrationContext): void {
   const { player } = ctx;
   playerRef = player;
-  discordLog.info('discord presence module initialised');
+  discordLog.info("discord presence module initialised");
 
   client = createClient(player);
 
   if (getDiscordEnabled()) {
-    loginOrRetry(player, client, 'initial login');
+    loginOrRetry(player, client, "initial login");
   }
 
   // Named listeners let will-quit remove the same function references.
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
-    if (!payload) {
-      clearTrackMetadata();
-    } else {
+  const onNowPlayingItemDidChange = (
+    payload: NowPlayingPayload | null,
+  ): void => {
+    if (payload) {
       trackName = payload.name ?? null;
       artistName = payload.artistName ?? null;
       albumName = payload.albumName ?? null;
@@ -307,6 +340,8 @@ export function init(ctx: IntegrationContext): void {
       // getShareUrl() rebuilds the link from the catalogue id when payload.url
       // is absent, which it always is on a library item.
       trackUrl = getShareUrl(payload);
+    } else {
+      clearTrackMetadata();
     }
 
     // A track change supersedes an earlier pause, so the pending clear-activity
@@ -332,10 +367,10 @@ export function init(ctx: IntegrationContext): void {
     scheduleUpdate(player);
   };
 
-  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  player.on('playbackStateDidChange', onPlaybackStateDidChange);
+  player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("playbackStateDidChange", onPlaybackStateDidChange);
 
-  app.on('will-quit', () => {
+  app.on("will-quit", () => {
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -352,8 +387,8 @@ export function init(ctx: IntegrationContext): void {
       client = undefined;
     }
 
-    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
+    player.removeListener("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.removeListener("playbackStateDidChange", onPlaybackStateDidChange);
 
     clearTrackMetadata();
     previousState = 0;
