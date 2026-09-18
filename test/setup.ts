@@ -1,25 +1,25 @@
 // Loaded by Vitest before every test file, so a stand-in registered here is
 // shared by the whole suite.
-import { vi } from 'vitest';
+import { vi } from "vitest";
 
 // Mock electron modules - these are unavailable outside the Electron runtime.
 // Each test file can override specific behaviour via vi.mocked().
-vi.mock('electron', () => ({
+vi.mock("electron", () => ({
   app: {
-    getName: () => 'Sidra',
-    getVersion: () => '0.3.0',
+    getName: () => "Sidra",
+    getVersion: () => "0.3.0",
     getPath: (name: string) => `/tmp/sidra-test/${name}`,
-    getPreferredSystemLanguages: () => ['en-GB', 'en'],
-    getLocaleCountryCode: () => 'GB',
+    getPreferredSystemLanguages: () => ["en-GB", "en"],
+    getLocaleCountryCode: () => "GB",
     isPackaged: false,
-    whenReady: () => new Promise(() => {}),  // Never resolves - prevents bootstrap from running
+    whenReady: () => new Promise(() => {}), // Never resolves - prevents bootstrap from running
     on: vi.fn(),
     emit: vi.fn(),
     quit: vi.fn(),
     setAppUserModelId: vi.fn(),
     commandLine: { appendSwitch: vi.fn() },
     setDesktopName: vi.fn(),
-    userAgentFallback: '',
+    userAgentFallback: "",
   },
   BrowserWindow: vi.fn(),
   ipcMain: { on: vi.fn(), handle: vi.fn() },
@@ -38,16 +38,40 @@ vi.mock('electron', () => ({
   // Returns a promise, as the real shell.openExternal does: callers attach a
   // .catch() to it, so a bare vi.fn() throws inside them.
   shell: { openExternal: vi.fn(() => Promise.resolve()) },
-  nativeTheme: { shouldUseDarkColors: true, shouldUseDarkColorsForSystemIntegratedUI: false, on: vi.fn() },
+  nativeTheme: {
+    shouldUseDarkColors: true,
+    shouldUseDarkColorsForSystemIntegratedUI: false,
+    on: vi.fn(),
+  },
   nativeImage: {
     createFromPath: vi.fn(() => ({
       isEmpty: () => false,
-      resize: vi.fn(function (this: { isEmpty: () => boolean; toPNG: () => Buffer }) { return this; }),
+      resize: vi.fn(function (this: {
+        isEmpty: () => boolean;
+        toPNG: () => Buffer;
+      }) {
+        return this;
+      }),
+      toPNG: vi.fn(() => Buffer.from([])),
+    })),
+    createFromBuffer: vi.fn(() => ({
+      isEmpty: () => false,
+      resize: vi.fn(function (this: {
+        isEmpty: () => boolean;
+        toPNG: () => Buffer;
+      }) {
+        return this;
+      }),
       toPNG: vi.fn(() => Buffer.from([])),
     })),
     createFromNamedImage: vi.fn(() => ({
       isEmpty: () => false,
-      resize: vi.fn(function (this: { isEmpty: () => boolean; toPNG: () => Buffer }) { return this; }),
+      resize: vi.fn(function (this: {
+        isEmpty: () => boolean;
+        toPNG: () => Buffer;
+      }) {
+        return this;
+      }),
       toPNG: vi.fn(() => Buffer.from([])),
     })),
     createEmpty: vi.fn(() => ({
@@ -73,15 +97,21 @@ vi.mock('electron', () => ({
   ipcRenderer: { send: vi.fn() },
 }));
 
-vi.mock('electron-log/main', () => {
+vi.mock("electron-log/main", () => {
   const noop = vi.fn();
-  const scopedLogger = { info: noop, warn: noop, error: noop, debug: noop, silly: noop };
+  const scopedLogger = {
+    info: noop,
+    warn: noop,
+    error: noop,
+    debug: noop,
+    silly: noop,
+  };
   return {
     default: {
       initialize: noop,
       transports: {
-        file: { level: 'info', format: '' },
-        console: { level: 'debug', format: '' },
+        file: { level: "info", format: "" },
+        console: { level: "debug", format: "" },
       },
       scope: () => scopedLogger,
       info: noop,
@@ -95,19 +125,29 @@ vi.mock('electron-log/main', () => {
 // Mock process.getSystemVersion() - used by tray.ts for macOS version detection.
 // Default returns '15.0.0' (pre-Tahoe). Tests override via vi.spyOn().
 if (!process.getSystemVersion) {
-  (process as unknown as Record<string, unknown>).getSystemVersion = vi.fn(() => '15.0.0');
+  (process as unknown as Record<string, unknown>).getSystemVersion = vi.fn(
+    () => "15.0.0",
+  );
 } else {
-  vi.spyOn(process, 'getSystemVersion').mockReturnValue('15.0.0');
+  vi.spyOn(process, "getSystemVersion").mockReturnValue("15.0.0");
 }
 
-vi.mock('electron-conf/main', () => {
+vi.mock("electron-conf/main", () => {
   const data = new Map<string, unknown>();
   return {
     Conf: class {
-      has(key: string) { return data.has(key); }
-      get(key: string) { return data.get(key); }
-      set(key: string, value: unknown) { data.set(key, value); }
-      clear() { data.clear(); }
+      has(key: string) {
+        return data.has(key);
+      }
+      get(key: string) {
+        return data.get(key);
+      }
+      set(key: string, value: unknown) {
+        data.set(key, value);
+      }
+      clear() {
+        data.clear();
+      }
       // One map backs every Conf instance, exposed so test/config.test.ts can
       // seed and clear what the getters read.
       static _data = data;

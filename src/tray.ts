@@ -1,110 +1,135 @@
-import { app, BrowserWindow, Menu, nativeImage, nativeTheme, ShareMenu, Tray } from 'electron';
-import path from 'path';
-import log from 'electron-log/main';
-import { getTrayStrings, getUpdateStrings, getAutoUpdateStrings, type TrayStrings } from './i18n';
-import { getAssetPath, getProductInfo } from './paths';
-import { Player, isTerminalPlaybackState, getShareUrl, type NowPlayingPayload } from './player';
-import { getNotificationsEnabled, getDiscordEnabled, getLastfmEnabled, getLastfmSessionKey, getLastfmUsername, getCloseToTrayEnabled } from './config';
-import { showAboutWindow } from './aboutWindow';
-import { getUpdateInfo } from './update';
-import { quitAndInstall } from './autoUpdate';
-import { isConfigured as isLastfmConfigured } from './integrations/lastfm';
-import { applySettingsAction, getSettingsState } from './settings';
-import { downloadArtwork } from './artwork';
-import { sendCommand } from './commandBridge';
-import { createPauseEdgeTimer } from './pauseTimer';
-import { openExternalUrl } from './utils/openExternal';
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  ShareMenu,
+  Tray,
+} from "electron";
+import path from "path";
+import log from "electron-log/main";
+import {
+  getTrayStrings,
+  getUpdateStrings,
+  getAutoUpdateStrings,
+  type TrayStrings,
+} from "./i18n";
+import { getAssetPath, getProductInfo } from "./paths";
+import {
+  Player,
+  isTerminalPlaybackState,
+  getShareUrl,
+  type NowPlayingPayload,
+} from "./player";
+import {
+  getNotificationsEnabled,
+  getDiscordEnabled,
+  getLastfmEnabled,
+  getLastfmSessionKey,
+  getLastfmUsername,
+  getCloseToTrayEnabled,
+} from "./config";
+import { showAboutWindow } from "./aboutWindow";
+import { getUpdateInfo } from "./update";
+import { quitAndInstall } from "./autoUpdate";
+import { isConfigured as isLastfmConfigured } from "./integrations/lastfm";
+import { applySettingsAction, getSettingsState } from "./settings";
+import { downloadArtwork } from "./artwork";
+import { sendCommand } from "./commandBridge";
+import { createPauseEdgeTimer } from "./pauseTimer";
+import { openExternalUrl } from "./utils/openExternal";
 
-const trayLog = log.scope('tray');
+const trayLog = log.scope("tray");
 
-const iconsDir = getAssetPath('assets', 'icons');
-const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
+const iconsDir = getAssetPath("assets", "icons");
+const menuIconsDir = path.join(iconsDir, "tray", "menu");
 
 /** Menu actions accepted by both platform icon maps and checked at call sites. */
 export type MenuIconKey =
-  | 'about'
-  | 'player'
-  | 'start-page'
-  | 'notifications'
-  | 'discord'
-  | 'lastfm'
-  | 'style'
-  | 'zoom'
-  | 'update-ready'
-  | 'update-available'
-  | 'quit'
-  | 'share'
-  | 'artist'
-  | 'album'
-  | 'record-vinyl'
-  | 'previous'
-  | 'play'
-  | 'pause'
-  | 'next'
-  | 'volume'
-  | 'close-to-tray'
-  | 'show-window'
-  | 'hide-window';
+  | "about"
+  | "player"
+  | "start-page"
+  | "notifications"
+  | "discord"
+  | "lastfm"
+  | "style"
+  | "zoom"
+  | "update-ready"
+  | "update-available"
+  | "quit"
+  | "share"
+  | "artist"
+  | "album"
+  | "record-vinyl"
+  | "previous"
+  | "play"
+  | "pause"
+  | "next"
+  | "volume"
+  | "close-to-tray"
+  | "show-window"
+  | "hide-window";
 
 // Maps tray action keys to PNG basenames (without extension) in assets/icons/tray/menu/{light,dark}/
 // Partial because 'share' ships no PNG: the Share item is macOS-only, so the
 // gap is unreachable and the map declares it rather than hiding it.
 const menuIconFileMap: Partial<Record<MenuIconKey, string>> = {
-  'about': 'circle-info',
-  'player': 'headphones',
-  'start-page': 'music',
-  'notifications': 'bell',
-  'discord': 'discord',
-  'lastfm': 'lastfm',
-  'style': 'palette',
-  'zoom': 'expand',
-  'update-ready': 'rotate',
-  'update-available': 'parachute-box',
-  'quit': 'eject',
-  'artist': 'star',
-  'album': 'compact-disc',
-  'record-vinyl': 'record-vinyl',
-  'previous': 'backward-step',
-  'play': 'play',
-  'pause': 'pause',
-  'next': 'forward-step',
-  'volume': 'volume',
-  'close-to-tray': 'toggle-on',
-  'show-window': 'eye',
-  'hide-window': 'eye-slash',
+  about: "circle-info",
+  player: "headphones",
+  "start-page": "music",
+  notifications: "bell",
+  discord: "discord",
+  lastfm: "lastfm",
+  style: "palette",
+  zoom: "expand",
+  "update-ready": "rotate",
+  "update-available": "parachute-box",
+  quit: "eject",
+  artist: "star",
+  album: "compact-disc",
+  "record-vinyl": "record-vinyl",
+  previous: "backward-step",
+  play: "play",
+  pause: "pause",
+  next: "forward-step",
+  volume: "volume",
+  "close-to-tray": "toggle-on",
+  "show-window": "eye",
+  "hide-window": "eye-slash",
 };
 
 // Maps tray action keys to SF Symbol names for macOS Tahoe+
 const menuIconSFSymbolMap: Record<MenuIconKey, string> = {
-  'about': 'info.circle',
-  'player': 'headphones',
-  'start-page': 'music.note',
-  'notifications': 'bell',
-  'discord': 'bubble.left.and.bubble.right',
-  'lastfm': 'dot.radiowaves.left.and.right',
-  'style': 'paintpalette',
-  'zoom': 'arrow.up.left.and.arrow.down.right',
-  'update-ready': 'arrow.clockwise',
-  'update-available': 'arrow.down.circle',
-  'quit': 'xmark.circle',
-  'share': 'square.and.arrow.up',
-  'artist': 'star',
-  'album': 'opticaldisc',
-  'record-vinyl': 'record.circle',
-  'previous': 'backward.end',
-  'play': 'play',
-  'pause': 'pause',
-  'next': 'forward.end',
-  'volume': 'speaker.wave.2',
-  'close-to-tray': 'menubar.dock.rectangle',
-  'show-window': 'eye',
-  'hide-window': 'eye.slash',
+  about: "info.circle",
+  player: "headphones",
+  "start-page": "music.note",
+  notifications: "bell",
+  discord: "bubble.left.and.bubble.right",
+  lastfm: "dot.radiowaves.left.and.right",
+  style: "paintpalette",
+  zoom: "arrow.up.left.and.arrow.down.right",
+  "update-ready": "arrow.clockwise",
+  "update-available": "arrow.down.circle",
+  quit: "xmark.circle",
+  share: "square.and.arrow.up",
+  artist: "star",
+  album: "opticaldisc",
+  "record-vinyl": "record.circle",
+  previous: "backward.end",
+  play: "play",
+  pause: "pause",
+  next: "forward.end",
+  volume: "speaker.wave.2",
+  "close-to-tray": "menubar.dock.rectangle",
+  "show-window": "eye",
+  "hide-window": "eye.slash",
 };
 
 function isMacOSTahoeOrLater(): boolean {
-  if (process.platform !== 'darwin') return false;
+  if (process.platform !== "darwin") return false;
   const version = process.getSystemVersion();
-  const major = parseInt(version.split('.')[0], 10);
+  const major = parseInt(version.split(".")[0], 10);
   return !isNaN(major) && major >= 26;
 }
 
@@ -114,8 +139,10 @@ function isMacOSTahoeOrLater(): boolean {
  * blank gutter for an empty NativeImage. macOS draws SF Symbols and only from
  * Tahoe, where they are available; Linux and Windows use themed PNGs.
  */
-export function getMenuIcon(action: MenuIconKey): Electron.NativeImage | undefined {
-  if (process.platform === 'darwin') {
+export function getMenuIcon(
+  action: MenuIconKey,
+): Electron.NativeImage | undefined {
+  if (process.platform === "darwin") {
     if (!isMacOSTahoeOrLater()) return undefined;
 
     const symbolName = menuIconSFSymbolMap[action];
@@ -129,41 +156,58 @@ export function getMenuIcon(action: MenuIconKey): Electron.NativeImage | undefin
     // SF Symbols render at their intrinsic size, which is too large for
     // menu items. Resize to 18px with HiDPI representations.
     const img = nativeImage.createEmpty();
-    img.addRepresentation({ scaleFactor: 1.0, buffer: raw.resize({ width: 18, height: 18 }).toPNG() });
-    img.addRepresentation({ scaleFactor: 2.0, buffer: raw.resize({ width: 36, height: 36 }).toPNG() });
+    img.addRepresentation({
+      scaleFactor: 1.0,
+      buffer: raw.resize({ width: 18, height: 18 }).toPNG(),
+    });
+    img.addRepresentation({
+      scaleFactor: 2.0,
+      buffer: raw.resize({ width: 36, height: 36 }).toPNG(),
+    });
     return img;
   }
 
   const baseName = menuIconFileMap[action];
   if (!baseName) return undefined;
 
-  const variant = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  const variant = nativeTheme.shouldUseDarkColors ? "dark" : "light";
   const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
   const img = nativeImage.createFromPath(iconPath);
-  return img.isEmpty() ? undefined : img;
+  if (img.isEmpty()) return undefined;
+  if (process.platform !== "linux") return img;
+
+  // Chromium's DBusMenu path exports only the 1x representation. Promote the
+  // existing 2x pixels so Linux menu consumers receive the detailed raster.
+  return nativeImage.createFromBuffer(img.toPNG({ scaleFactor: 2 }), {
+    scaleFactor: 1,
+  });
 }
 
 function isGnomeSession(): boolean {
-  return process.env.XDG_CURRENT_DESKTOP?.toLowerCase().split(':').includes('gnome') ?? false;
+  return (
+    process.env.XDG_CURRENT_DESKTOP?.toLowerCase()
+      .split(":")
+      .includes("gnome") ?? false
+  );
 }
 
 function getLinuxTrayIconPath(): string {
   if (isGnomeSession()) {
-    return path.join(iconsDir, 'sidra-tray-outline.png');
+    return path.join(iconsDir, "sidra-tray-outline.png");
   }
 
   return nativeTheme.shouldUseDarkColors
-    ? path.join(iconsDir, 'sidra-tray-dark.png')
-    : path.join(iconsDir, 'sidra-tray-light.png');
+    ? path.join(iconsDir, "sidra-tray-dark.png")
+    : path.join(iconsDir, "sidra-tray-light.png");
 }
 
 function getTrayIconPath(): string {
-  if (process.platform === 'darwin') {
-    return path.join(iconsDir, 'sidraTemplate.png');
+  if (process.platform === "darwin") {
+    return path.join(iconsDir, "sidraTemplate.png");
   }
 
-  if (process.platform === 'win32') {
-    return path.join(iconsDir, 'sidra-tray.png');
+  if (process.platform === "win32") {
+    return path.join(iconsDir, "sidra-tray.png");
   }
 
   return getLinuxTrayIconPath();
@@ -171,9 +215,9 @@ function getTrayIconPath(): string {
 
 function escapePango(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -183,7 +227,7 @@ function escapePango(text: string): string {
  * macOS and Windows need no such substitution, so callers apply this on Linux only.
  */
 export function sanitiseLinuxLabel(text: string): string {
-  return text.replace(/&/g, '\uFF06');
+  return text.replace(/&/g, "\uFF06");
 }
 
 /**
@@ -193,7 +237,9 @@ export function sanitiseLinuxLabel(text: string): string {
 export function truncateMenuLabel(text: string, maxLength = 32): string {
   const splitIndex = text.search(/[([]/);
   const trimmed = splitIndex > 0 ? text.slice(0, splitIndex).trimEnd() : text;
-  return trimmed.length > maxLength ? trimmed.slice(0, maxLength).trimEnd() + '…' : trimmed;
+  return trimmed.length > maxLength
+    ? trimmed.slice(0, maxLength).trimEnd() + "…"
+    : trimmed;
 }
 
 interface NowPlayingState {
@@ -207,7 +253,12 @@ interface NowPlayingState {
 // because the menu builders run outside initTrayStateManager, reached from
 // rebuildTrayMenu and from the tray's own click and theme handlers, so the
 // handlers there update these fields rather than keeping a second copy.
-const nowPlayingState: NowPlayingState = { payload: null, artworkPath: null, isPlaying: false, volume: 1 };
+const nowPlayingState: NowPlayingState = {
+  payload: null,
+  artworkPath: null,
+  isPlaying: false,
+  volume: 1,
+};
 let getMainWindowCallback: (() => BrowserWindow | null) | null = null;
 
 interface SubmenuContext {
@@ -216,87 +267,179 @@ interface SubmenuContext {
 }
 
 function buildChoiceSubmenu(
-  label: string, iconKey: MenuIconKey, selected: string | number,
+  label: string,
+  iconKey: MenuIconKey,
+  selected: string | number,
   options: { value: string | number; label: string }[],
   action: (value: string | number) => unknown,
 ): Electron.MenuItemConstructorOptions {
   const icon = getMenuIcon(iconKey);
-  const selectedLabel = options.find(option => option.value === selected)?.label ?? `${Math.round(Number(selected) * 100)}%`;
+  const selectedLabel =
+    options.find((option) => option.value === selected)?.label ??
+    `${Math.round(Number(selected) * 100)}%`;
   return {
     label: `${label}: ${selectedLabel}`,
     ...(icon ? { icon } : {}),
-    submenu: options.map(option => ({
-      label: option.label, type: 'radio' as const, checked: selected === option.value,
-      click: () => { applySettingsAction(action(option.value)); },
+    submenu: options.map((option) => ({
+      label: option.label,
+      type: "radio" as const,
+      checked: selected === option.value,
+      click: () => {
+        applySettingsAction(action(option.value));
+      },
     })),
   };
 }
 
-function buildPlayerSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+function buildPlayerSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
   const state = getSettingsState();
-  return buildChoiceSubmenu(ctx.strings.player, 'player', state.musicService, state.options.musicService,
-    value => ({ type: 'musicService', value }));
+  return buildChoiceSubmenu(
+    ctx.strings.player,
+    "player",
+    state.musicService,
+    state.options.musicService,
+    (value) => ({ type: "musicService", value }),
+  );
 }
 
-function buildStartPageSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+function buildStartPageSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
   const state = getSettingsState();
-  return buildChoiceSubmenu(ctx.strings.startPage, 'start-page', state.startPage, state.options.startPage,
-    value => ({ type: 'startPage', serviceId: state.musicService, value }));
+  return buildChoiceSubmenu(
+    ctx.strings.startPage,
+    "start-page",
+    state.startPage,
+    state.options.startPage,
+    (value) => ({ type: "startPage", serviceId: state.musicService, value }),
+  );
 }
 
 function buildToggleSubmenu(
-  label: string, iconKey: MenuIconKey, enabled: boolean,
-  type: 'notifications' | 'closeToTray' | 'discord' | 'lastfmEnabled',
-  ctx: SubmenuContext, extraItems: Electron.MenuItemConstructorOptions[] = [],
+  label: string,
+  iconKey: MenuIconKey,
+  enabled: boolean,
+  type: "notifications" | "closeToTray" | "discord" | "lastfmEnabled",
+  ctx: SubmenuContext,
+  extraItems: Electron.MenuItemConstructorOptions[] = [],
 ): Electron.MenuItemConstructorOptions {
   const icon = getMenuIcon(iconKey);
   return {
     label: `${label}: ${enabled ? ctx.strings.on : ctx.strings.off}`,
     ...(icon ? { icon } : {}),
-    submenu: [...[true, false].map(value => ({
-      label: value ? ctx.strings.on : ctx.strings.off, type: 'radio' as const, checked: enabled === value,
-      click: () => { applySettingsAction({ type, value }); },
-    })), ...extraItems],
+    submenu: [
+      ...[true, false].map((value) => ({
+        label: value ? ctx.strings.on : ctx.strings.off,
+        type: "radio" as const,
+        checked: enabled === value,
+        click: () => {
+          applySettingsAction({ type, value });
+        },
+      })),
+      ...extraItems,
+    ],
   };
 }
 
-function buildNotificationsSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  return buildToggleSubmenu(ctx.strings.notifications, 'notifications', getNotificationsEnabled(), 'notifications', ctx);
+function buildNotificationsSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
+  return buildToggleSubmenu(
+    ctx.strings.notifications,
+    "notifications",
+    getNotificationsEnabled(),
+    "notifications",
+    ctx,
+  );
 }
 
-function buildCloseToTraySubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  return buildToggleSubmenu(ctx.strings.closeToTray, 'close-to-tray', getCloseToTrayEnabled(), 'closeToTray', ctx);
+function buildCloseToTraySubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
+  return buildToggleSubmenu(
+    ctx.strings.closeToTray,
+    "close-to-tray",
+    getCloseToTrayEnabled(),
+    "closeToTray",
+    ctx,
+  );
 }
 
-function buildDiscordSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
-  return buildToggleSubmenu(ctx.strings.discord, 'discord', getDiscordEnabled(), 'discord', ctx);
+function buildDiscordSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
+  return buildToggleSubmenu(
+    ctx.strings.discord,
+    "discord",
+    getDiscordEnabled(),
+    "discord",
+    ctx,
+  );
 }
 
-function buildLastfmSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+function buildLastfmSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
   if (!getLastfmSessionKey()) {
-    const icon = getMenuIcon('lastfm');
+    const icon = getMenuIcon("lastfm");
     return {
-      label: 'Last.fm', ...(icon ? { icon } : {}),
-      submenu: [{ label: ctx.strings.lastfmConnect, click: () => { applySettingsAction({ type: 'lastfmConnect' }); } }],
+      label: "Last.fm",
+      ...(icon ? { icon } : {}),
+      submenu: [
+        {
+          label: ctx.strings.lastfmConnect,
+          click: () => {
+            applySettingsAction({ type: "lastfmConnect" });
+          },
+        },
+      ],
     };
   }
-  return buildToggleSubmenu('Last.fm', 'lastfm', getLastfmEnabled(), 'lastfmEnabled', ctx, [
-    { type: 'separator' },
-    { label: `✓ ${getLastfmUsername()}`, enabled: false },
-    { label: ctx.strings.lastfmDisconnect, click: () => { applySettingsAction({ type: 'lastfmDisconnect' }); } },
-  ]);
+  return buildToggleSubmenu(
+    "Last.fm",
+    "lastfm",
+    getLastfmEnabled(),
+    "lastfmEnabled",
+    ctx,
+    [
+      { type: "separator" },
+      { label: `✓ ${getLastfmUsername()}`, enabled: false },
+      {
+        label: ctx.strings.lastfmDisconnect,
+        click: () => {
+          applySettingsAction({ type: "lastfmDisconnect" });
+        },
+      },
+    ],
+  );
 }
 
-function buildStyleSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+function buildStyleSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
   const state = getSettingsState();
-  return buildChoiceSubmenu(ctx.strings.style, 'style', state.theme, state.options.theme,
-    value => ({ type: 'theme', value }));
+  return buildChoiceSubmenu(
+    ctx.strings.style,
+    "style",
+    state.theme,
+    state.options.theme,
+    (value) => ({ type: "theme", value }),
+  );
 }
 
-function buildZoomSubmenu(ctx: SubmenuContext): Electron.MenuItemConstructorOptions {
+function buildZoomSubmenu(
+  ctx: SubmenuContext,
+): Electron.MenuItemConstructorOptions {
   const state = getSettingsState();
-  return buildChoiceSubmenu(ctx.strings.zoom, 'zoom', state.zoomFactor, state.options.zoomFactor,
-    value => ({ type: 'zoomFactor', value }));
+  return buildChoiceSubmenu(
+    ctx.strings.zoom,
+    "zoom",
+    state.zoomFactor,
+    state.options.zoomFactor,
+    (value) => ({ type: "zoomFactor", value }),
+  );
 }
 
 function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
@@ -304,35 +447,45 @@ function buildUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
   const updateStrings = getUpdateStrings();
   if (update && update.ready) {
     const autoUpdateStrings = getAutoUpdateStrings();
-    const icon = getMenuIcon('update-ready');
+    const icon = getMenuIcon("update-ready");
     return [
-      { type: 'separator' },
+      { type: "separator" },
       {
         label: autoUpdateStrings.ready,
         ...(icon ? { icon } : {}),
-        click: () => { quitAndInstall(); },
+        click: () => {
+          quitAndInstall();
+        },
       },
     ];
   } else if (update) {
-    const updateLabel = updateStrings.updateAvailable.replace('{version}', update.version);
-    const icon = getMenuIcon('update-available');
+    const updateLabel = updateStrings.updateAvailable.replace(
+      "{version}",
+      update.version,
+    );
+    const icon = getMenuIcon("update-available");
     return [
-      { type: 'separator' },
+      { type: "separator" },
       {
         label: updateLabel,
         ...(icon ? { icon } : {}),
-        click: () => { openExternalUrl(update.url, trayLog); },
+        click: () => {
+          openExternalUrl(update.url, trayLog);
+        },
       },
     ];
   }
   return [
-    { type: 'separator' },
+    { type: "separator" },
     { label: updateStrings.upToDate, enabled: false },
   ];
 }
 
 /** Artwork icon for the track row, multi-representation for HiDPI. */
-function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electron.NativeImage | undefined {
+function buildArtworkIcon(
+  artworkPath: string | null,
+  isLinux: boolean,
+): Electron.NativeImage | undefined {
   if (!artworkPath) return undefined;
   const src = nativeImage.createFromPath(artworkPath);
   if (src.isEmpty()) return undefined;
@@ -345,9 +498,18 @@ function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electro
   }
 
   const img = nativeImage.createEmpty();
-  const sizes: [number, number][] = [[1.0, 18], [1.25, 23], [1.5, 27], [1.75, 32], [2.0, 36]];
+  const sizes: [number, number][] = [
+    [1.0, 18],
+    [1.25, 23],
+    [1.5, 27],
+    [1.75, 32],
+    [2.0, 36],
+  ];
   for (const [scaleFactor, size] of sizes) {
-    img.addRepresentation({ scaleFactor, buffer: src.resize({ width: size, height: size }).toPNG() });
+    img.addRepresentation({
+      scaleFactor,
+      buffer: src.resize({ width: size, height: size }).toPNG(),
+    });
   }
   return img;
 }
@@ -356,7 +518,11 @@ function buildArtworkIcon(artworkPath: string | null, isLinux: boolean): Electro
  * One disabled metadata row. The label is user content Apple supplies, so it
  * goes through sanitiseLinuxLabel on Linux to keep Pango from reading it as markup.
  */
-function buildMetadataItem(text: string, icon: Electron.NativeImage | undefined, isLinux: boolean): Electron.MenuItemConstructorOptions {
+function buildMetadataItem(
+  text: string,
+  icon: Electron.NativeImage | undefined,
+  isLinux: boolean,
+): Electron.MenuItemConstructorOptions {
   const label = truncateMenuLabel(text);
   return {
     label: isLinux ? sanitiseLinuxLabel(label) : label,
@@ -368,19 +534,34 @@ function buildMetadataItem(text: string, icon: Electron.NativeImage | undefined,
 // 1981 is the last year before the CD shipped, so 1981 and earlier shows the vinyl icon.
 function albumIconKey(releaseDate: string | undefined): MenuIconKey {
   const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
-  return !isNaN(releaseYear) && releaseYear <= 1981 ? 'record-vinyl' : 'album';
+  return !isNaN(releaseYear) && releaseYear <= 1981 ? "record-vinyl" : "album";
 }
 
-function buildMetadataItems(payload: NowPlayingPayload, artworkIcon: Electron.NativeImage | undefined, isLinux: boolean): Electron.MenuItemConstructorOptions[] {
+function buildMetadataItems(
+  payload: NowPlayingPayload,
+  artworkIcon: Electron.NativeImage | undefined,
+  isLinux: boolean,
+): Electron.MenuItemConstructorOptions[] {
   return [
-    buildMetadataItem(payload.name ?? '', artworkIcon, isLinux),
-    buildMetadataItem(payload.artistName ?? '', getMenuIcon('artist'), isLinux),
-    buildMetadataItem(payload.albumName ?? '', getMenuIcon(albumIconKey(payload.releaseDate)), isLinux),
+    buildMetadataItem(payload.name ?? "", artworkIcon, isLinux),
+    buildMetadataItem(payload.artistName ?? "", getMenuIcon("artist"), isLinux),
+    buildMetadataItem(
+      payload.albumName ?? "",
+      getMenuIcon(albumIconKey(payload.releaseDate)),
+      isLinux,
+    ),
   ];
 }
 
-function buildTransportItems(strings: TrayStrings, isPlaying: boolean): Electron.MenuItemConstructorOptions[] {
-  const item = (label: string, iconKey: MenuIconKey, channel: ReceiveChannel): Electron.MenuItemConstructorOptions => {
+function buildTransportItems(
+  strings: TrayStrings,
+  isPlaying: boolean,
+): Electron.MenuItemConstructorOptions[] {
+  const item = (
+    label: string,
+    iconKey: MenuIconKey,
+    channel: ReceiveChannel,
+  ): Electron.MenuItemConstructorOptions => {
     const icon = getMenuIcon(iconKey);
     return {
       label,
@@ -389,84 +570,111 @@ function buildTransportItems(strings: TrayStrings, isPlaying: boolean): Electron
     };
   };
   return [
-    item(strings.previous, 'previous', 'player:previous'),
-    item(isPlaying ? strings.pause : strings.play, isPlaying ? 'pause' : 'play', 'player:playPause'),
-    item(strings.next, 'next', 'player:next'),
+    item(strings.previous, "previous", "player:previous"),
+    item(
+      isPlaying ? strings.pause : strings.play,
+      isPlaying ? "pause" : "play",
+      "player:playPause",
+    ),
+    item(strings.next, "next", "player:next"),
   ];
 }
 
 // 0 is offered as Mute; the other four take their label from the value.
 const VOLUME_LEVELS = [0, 0.25, 0.5, 0.75, 1];
 
-function buildVolumeSubmenu(strings: TrayStrings, volume: number): Electron.MenuItemConstructorOptions {
-  const icon = getMenuIcon('volume');
+function buildVolumeSubmenu(
+  strings: TrayStrings,
+  volume: number,
+): Electron.MenuItemConstructorOptions {
+  const icon = getMenuIcon("volume");
   return {
     label: `${strings.volume}: ${Math.round(volume * 100)}%`,
     ...(icon ? { icon } : {}),
-    submenu: VOLUME_LEVELS.map(level => ({
+    submenu: VOLUME_LEVELS.map((level) => ({
       label: level === 0 ? strings.mute : `${Math.round(level * 100)}%`,
-      type: 'radio' as const,
+      type: "radio" as const,
       checked: volume === level,
-      click: () => sendCommand('player:setVolume', level),
+      click: () => sendCommand("player:setVolume", level),
     })),
   };
 }
 
 // macOS only - uses the native share sheet via ShareMenu.
-function buildShareItems(strings: TrayStrings, payload: NowPlayingPayload): Electron.MenuItemConstructorOptions[] {
+function buildShareItems(
+  strings: TrayStrings,
+  payload: NowPlayingPayload,
+): Electron.MenuItemConstructorOptions[] {
   const shareUrl = getShareUrl(payload);
-  if (process.platform !== 'darwin' || !shareUrl) return [];
-  const icon = getMenuIcon('share');
-  return [{
-    label: strings.share,
-    ...(icon ? { icon } : {}),
-    click: () => {
-      const shareMenu = new ShareMenu({ urls: [shareUrl] });
-      shareMenu.popup();
+  if (process.platform !== "darwin" || !shareUrl) return [];
+  const icon = getMenuIcon("share");
+  return [
+    {
+      label: strings.share,
+      ...(icon ? { icon } : {}),
+      click: () => {
+        const shareMenu = new ShareMenu({ urls: [shareUrl] });
+        shareMenu.popup();
+      },
     },
-  }];
+  ];
 }
 
-function buildNowPlayingMenuItems(strings: TrayStrings, isLinux: boolean): Electron.MenuItemConstructorOptions[] {
+function buildNowPlayingMenuItems(
+  strings: TrayStrings,
+  isLinux: boolean,
+): Electron.MenuItemConstructorOptions[] {
   const { payload, artworkPath, isPlaying, volume } = nowPlayingState;
   if (!payload) {
     return [];
   }
 
   return [
-    ...buildMetadataItems(payload, buildArtworkIcon(artworkPath, isLinux), isLinux),
-    { type: 'separator' },
+    ...buildMetadataItems(
+      payload,
+      buildArtworkIcon(artworkPath, isLinux),
+      isLinux,
+    ),
+    { type: "separator" },
     ...buildTransportItems(strings, isPlaying),
     buildVolumeSubmenu(strings, volume),
     ...buildShareItems(strings, payload),
-    { type: 'separator' },
+    { type: "separator" },
   ];
 }
 
 function buildContextMenu(tray: Tray): Menu {
   const refresh = () => tray.setContextMenu(buildContextMenu(tray));
   const strings = getTrayStrings();
-  const isLinux = process.platform === 'linux';
+  const isLinux = process.platform === "linux";
   const ctx: SubmenuContext = { strings, refresh };
-  const aboutIcon = getMenuIcon('about');
-  const quitIcon = getMenuIcon('quit');
+  const aboutIcon = getMenuIcon("about");
+  const quitIcon = getMenuIcon("quit");
 
   const showWindowItems: Electron.MenuItemConstructorOptions[] = [];
   if (getCloseToTrayEnabled()) {
     const windowVisible = getMainWindowCallback?.()?.isVisible() ?? true;
     if (windowVisible) {
-      const hideIcon = getMenuIcon('hide-window');
+      const hideIcon = getMenuIcon("hide-window");
       showWindowItems.push({
         label: strings.hideWindow,
         ...(hideIcon ? { icon: hideIcon } : {}),
-        click: () => { getMainWindowCallback?.()?.hide(); refresh(); },
+        click: () => {
+          getMainWindowCallback?.()?.hide();
+          refresh();
+        },
       });
     } else {
-      const showIcon = getMenuIcon('show-window');
+      const showIcon = getMenuIcon("show-window");
       showWindowItems.push({
         label: strings.showWindow,
         ...(showIcon ? { icon: showIcon } : {}),
-        click: () => { const w = getMainWindowCallback?.(); w?.show(); w?.focus(); refresh(); },
+        click: () => {
+          const w = getMainWindowCallback?.();
+          w?.show();
+          w?.focus();
+          refresh();
+        },
       });
     }
   }
@@ -488,7 +696,7 @@ function buildContextMenu(tray: Tray): Menu {
     buildStyleSubmenu(ctx),
     buildZoomSubmenu(ctx),
     ...buildUpdateMenuItems(),
-    { type: 'separator' },
+    { type: "separator" },
     {
       label: strings.quit,
       ...(quitIcon ? { icon: quitIcon } : {}),
@@ -500,7 +708,9 @@ function buildContextMenu(tray: Tray): Menu {
 }
 
 /** Supply the current main window for tray visibility controls. */
-export function setGetMainWindowCallback(callback: () => BrowserWindow | null): void {
+export function setGetMainWindowCallback(
+  callback: () => BrowserWindow | null,
+): void {
   getMainWindowCallback = callback;
 }
 
@@ -545,28 +755,40 @@ export function cancelTrayRebuild(): void {
 }
 
 /** Show track details or the product name, escaping Linux tooltip markup. */
-export function updateTrayTooltip(tray: Tray, payload: NowPlayingPayload | null): void {
+export function updateTrayTooltip(
+  tray: Tray,
+  payload: NowPlayingPayload | null,
+): void {
   const fallback = getProductInfo().productName;
   const text = payload?.name
-    ? payload.artistName ? `${payload.name} - ${payload.artistName}` : payload.name
+    ? payload.artistName
+      ? `${payload.name} - ${payload.artistName}`
+      : payload.name
     : fallback;
   const tooltip = text || fallback;
-  const escaped = process.platform === 'linux' ? escapePango(tooltip) : tooltip;
-  trayLog.debug('updateTrayTooltip:', payload ? `name=${payload.name}, artistName=${payload.artistName}` : 'null payload', '->', `"${escaped}"`);
+  const escaped = process.platform === "linux" ? escapePango(tooltip) : tooltip;
+  trayLog.debug(
+    "updateTrayTooltip:",
+    payload
+      ? `name=${payload.name}, artistName=${payload.artistName}`
+      : "null payload",
+    "->",
+    `"${escaped}"`,
+  );
   tray.setToolTip(escaped);
 }
 
 /** Create the platform tray icon, menu and visibility handlers. */
 export function createTray(): Tray {
   const iconPath = getTrayIconPath();
-  trayLog.info('creating tray with icon:', iconPath);
+  trayLog.info("creating tray with icon:", iconPath);
 
   const tray = new Tray(iconPath);
   tray.setToolTip(getProductInfo().productName);
 
   tray.setContextMenu(buildContextMenu(tray));
 
-  tray.on('click', () => {
+  tray.on("click", () => {
     if (!getCloseToTrayEnabled()) return;
     const mainWin = getMainWindowCallback?.();
     if (!mainWin) return;
@@ -579,19 +801,19 @@ export function createTray(): Tray {
     }
   });
 
-  if (process.platform === 'linux' || process.platform === 'win32') {
-    nativeTheme.on('updated', () => {
-      if (process.platform === 'linux' && !isGnomeSession()) {
+  if (process.platform === "linux" || process.platform === "win32") {
+    nativeTheme.on("updated", () => {
+      if (process.platform === "linux" && !isGnomeSession()) {
         const newIconPath = getLinuxTrayIconPath();
-        trayLog.info('theme changed, switching tray icon:', newIconPath);
+        trayLog.info("theme changed, switching tray icon:", newIconPath);
         tray.setImage(newIconPath);
       }
-      trayLog.info('theme changed, rebuilding context menu');
+      trayLog.info("theme changed, rebuilding context menu");
       tray.setContextMenu(buildContextMenu(tray));
     });
   }
 
-  trayLog.info('tray created');
+  trayLog.info("tray created");
 
   return tray;
 }
@@ -610,23 +832,34 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
   const clearNowPlaying = (): void => {
     pendingPayload = null;
     updateTrayTooltip(tray, null);
-    updateNowPlayingState({ payload: null, artworkPath: null, isPlaying: false });
+    updateNowPlayingState({
+      payload: null,
+      artworkPath: null,
+      isPlaying: false,
+    });
     scheduleTrayRebuild(tray);
   };
 
   const trayPauseTimer = createPauseEdgeTimer(TRAY_PAUSE_TIMEOUT_MS, () => {
-    trayLog.debug('tray pause timeout reached, clearing Now Playing');
+    trayLog.debug("tray pause timeout reached, clearing Now Playing");
     clearNowPlaying();
   });
 
-  const onNowPlayingItemDidChange = async (payload: NowPlayingPayload | null): Promise<void> => {
+  const onNowPlayingItemDidChange = async (
+    payload: NowPlayingPayload | null,
+  ): Promise<void> => {
     trayPauseTimer.cancel();
     if (!payload) {
-      trayLog.debug('nowPlayingItemDidChange (tray handler): null payload, clearing state');
+      trayLog.debug(
+        "nowPlayingItemDidChange (tray handler): null payload, clearing state",
+      );
       clearNowPlaying();
       return;
     }
-    trayLog.debug('nowPlayingItemDidChange (tray handler):', `"${payload.name}"`);
+    trayLog.debug(
+      "nowPlayingItemDidChange (tray handler):",
+      `"${payload.name}"`,
+    );
     pendingPayload = payload;
     updateTrayTooltip(tray, payload);
     let artworkPath: string | null = null;
@@ -639,7 +872,9 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     scheduleTrayRebuild(tray);
   };
 
-  const onPlaybackStateDidChange = (payload: { status: boolean; state: number } | null): void => {
+  const onPlaybackStateDidChange = (
+    payload: { status: boolean; state: number } | null,
+  ): void => {
     const state = payload?.state ?? 0;
     if (isTerminalPlaybackState(state)) {
       trayPauseTimer.cancel();
@@ -661,15 +896,15 @@ export function initTrayStateManager(player: Player, tray: Tray): () => void {
     scheduleTrayRebuild(tray);
   };
 
-  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  player.on('playbackStateDidChange', onPlaybackStateDidChange);
-  player.on('volumeDidChange', onVolumeDidChange);
+  player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("playbackStateDidChange", onPlaybackStateDidChange);
+  player.on("volumeDidChange", onVolumeDidChange);
 
   return () => {
     trayPauseTimer.destroy();
     cancelTrayRebuild();
-    player.off('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    player.off('playbackStateDidChange', onPlaybackStateDidChange);
-    player.off('volumeDidChange', onVolumeDidChange);
+    player.off("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.off("playbackStateDidChange", onPlaybackStateDidChange);
+    player.off("volumeDidChange", onVolumeDidChange);
   };
 }
