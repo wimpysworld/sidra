@@ -159,7 +159,7 @@ function findCleanupFaults(rawSource: string): string[] {
   // Node exposes the original callback through the once wrapper's `.listener`, so removeListener accepts that reference even after delivery.
   const named = [
     ...source.matchAll(
-      /player\.(?:on|once|addListener)\(\s*'([^']+)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
+      /player\.(?:on|once|addListener)\(\s*(['"])([\w-]+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
     ),
   ];
   const total = [...source.matchAll(/player\.(?:on|once|addListener)\(/g)].length;
@@ -172,14 +172,20 @@ function findCleanupFaults(rawSource: string): string[] {
     faults.push(`has ${unbalanced} cleanup block(s) whose braces never balance`);
   }
   const cleanup = bodies.join('\n');
-
-  for (const [, event, handler] of named) {
-    const removal = new RegExp(
-      `player\\.(removeListener|off)\\(\\s*'${event}'\\s*,\\s*${handler}\\s*\\)`,
+  const removalKeys = (input: string): Set<string> =>
+    new Set(
+      [...input.matchAll(
+        /player\.(?:removeListener|off)\(\s*(['"])([\w-]+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
+      )].map(([, , event, handler]) => `${event}:${handler}`),
     );
-    if (removal.test(cleanup)) continue;
+  const cleanupRemovals = removalKeys(cleanup);
+  const allRemovals = removalKeys(source);
+
+  for (const [, , event, handler] of named) {
+    const key = `${event}:${handler}`;
+    if (cleanupRemovals.has(key)) continue;
     faults.push(
-      removal.test(source)
+      allRemovals.has(key)
         ? `removes '${event}' as ${handler} outside any will-quit handler or teardown closure, so quitting leaves it attached`
         : `registers '${event}' as ${handler} but never removes it`,
     );
@@ -255,6 +261,36 @@ describe('player listener cleanup', () => {
       `;
 
       expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('accepts double-quoted event names', () => {
+      const source = `
+        export function initTrayStateManager(): () => void {
+          player.on("playbackStateDidChange", onPlaybackStateDidChange);
+
+          return () => {
+            player.off("playbackStateDidChange", onPlaybackStateDidChange);
+          };
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([]);
+    });
+
+    it('rejects a double-quoted removal for a different event', () => {
+      const source = `
+        export function initTrayStateManager(): () => void {
+          player.on("playbackStateDidChange", onPlaybackStateDidChange);
+
+          return () => {
+            player.off("volumeDidChange", onPlaybackStateDidChange);
+          };
+        }
+      `;
+
+      expect(findCleanupFaults(source)).toEqual([
+        expect.stringContaining("registers 'playbackStateDidChange'"),
+      ]);
     });
 
     it('accepts a cleanup block written above the registration, as mpris has it', () => {

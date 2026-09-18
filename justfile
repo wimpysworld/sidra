@@ -179,21 +179,19 @@ _generate-menu-icons:
     #!/usr/bin/env bash
     set -euo pipefail
     src="assets/source/tray-menu"
+    out="assets/icons/tray/menu"
     for svg in "$src"/*.svg; do
         name=$(basename "$svg" .svg)
         for variant in light dark; do
-            dir="assets/icons/tray/menu/$variant"
+            dir="$out/$variant"
             mkdir -p "$dir"
             if [ "$variant" = "dark" ]; then
                 sed 's/<svg /<svg fill="#FFFFFF" /' "$svg" \
-                    | rsvg-convert -w 18 -h 18 -o "$dir/$name.png"
-                sed 's/<svg /<svg fill="#FFFFFF" /' "$svg" \
-                    | rsvg-convert -w 36 -h 36 -o "$dir/$name@2x.png"
+                    | rsvg-convert -w 64 -h 64 -o "$dir/$name.png"
             else
-                rsvg-convert -w 18 -h 18 -o "$dir/$name.png" "$svg"
-                rsvg-convert -w 36 -h 36 -o "$dir/$name@2x.png" "$svg"
+                rsvg-convert -w 64 -h 64 -o "$dir/$name.png" "$svg"
             fi
-            optipng -strip all -o7 -quiet "$dir/$name.png" "$dir/$name@2x.png"
+            optipng -strip all -o7 -quiet "$dir/$name.png"
         done
     done
 

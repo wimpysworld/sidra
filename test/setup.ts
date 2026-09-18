@@ -44,36 +44,23 @@ vi.mock("electron", () => ({
     on: vi.fn(),
   },
   nativeImage: {
-    createFromPath: vi.fn(() => ({
-      isEmpty: () => false,
-      resize: vi.fn(function (this: {
-        isEmpty: () => boolean;
-        toPNG: () => Buffer;
-      }) {
-        return this;
-      }),
-      toPNG: vi.fn(() => Buffer.from([])),
-    })),
-    createFromBuffer: vi.fn(() => ({
-      isEmpty: () => false,
-      resize: vi.fn(function (this: {
-        isEmpty: () => boolean;
-        toPNG: () => Buffer;
-      }) {
-        return this;
-      }),
-      toPNG: vi.fn(() => Buffer.from([])),
-    })),
-    createFromNamedImage: vi.fn(() => ({
-      isEmpty: () => false,
-      resize: vi.fn(function (this: {
-        isEmpty: () => boolean;
-        toPNG: () => Buffer;
-      }) {
-        return this;
-      }),
-      toPNG: vi.fn(() => Buffer.from([])),
-    })),
+    createFromPath: vi.fn(() => {
+      const image = {
+        isEmpty: () => false,
+        resize: vi.fn(() => image),
+        toPNG: vi.fn(() => Buffer.from([])),
+        addRepresentation: vi.fn(),
+      };
+      return image;
+    }),
+    createFromNamedImage: vi.fn(() => {
+      const image = {
+        isEmpty: () => false,
+        resize: vi.fn(() => image),
+        toPNG: vi.fn(() => Buffer.from([])),
+      };
+      return image;
+    }),
     createEmpty: vi.fn(() => ({
       isEmpty: () => true,
       addRepresentation: vi.fn(),

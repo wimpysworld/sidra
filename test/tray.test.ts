@@ -158,8 +158,6 @@ import {
   createTray,
   getMenuIcon,
   updateNowPlayingState,
-  updateTrayTooltip,
-  rebuildTrayMenu,
   initTrayStateManager,
   setGetMainWindowCallback as setTrayMainWindowCallback,
   type MenuIconKey,
@@ -234,8 +232,8 @@ function resetTrayMocks(): void {
   vi.mocked(getUpdateInfo).mockReturnValue(null);
   vi.mocked(process.getSystemVersion).mockReturnValue("15.0.0");
   vi.mocked(nativeImage.createFromPath).mockClear();
-  vi.mocked(nativeImage.createFromBuffer).mockClear();
   vi.mocked(nativeImage.createFromNamedImage).mockClear();
+  cancelTrayRebuild();
   setGetMainWindowCallback(() => null);
   setSwitchServiceCallback(() => {});
   updateNowPlayingState({
@@ -1578,7 +1576,7 @@ describe("createTray - menu template inspection", () => {
         const artistItem = findItem(template, "Test Artist");
         expect(artistItem!.label).not.toMatch(/[★⦿]/);
         const prevItem = findItem(template, "Previous");
-        expect(prevItem!.label).not.toMatch(/[⇤⇥◫🞂🕪]/);
+        expect(prevItem!.label).not.toMatch(/[⇤⇥◫🞂🕪]/u);
       });
     });
 
@@ -1963,25 +1961,23 @@ describe("getMenuIcon", () => {
       );
     });
 
-    it("promotes the 2x PNG representation to a 1x image", () => {
-      const png = Buffer.from("2x PNG");
-      const sourceToPNG = vi.fn(() => png);
+    it("loads the shared 64px PNG without runtime conversion", () => {
+      Object.defineProperty(nativeTheme, "shouldUseDarkColors", {
+        value: true,
+        configurable: true,
+      });
+      const sourceToPNG = vi.fn(() => Buffer.from([]));
       const source = {
         isEmpty: () => false,
         toPNG: sourceToPNG,
       } as unknown as Electron.NativeImage;
-      const promoted = {
-        isEmpty: () => false,
-      } as unknown as Electron.NativeImage;
       vi.mocked(nativeImage.createFromPath).mockReturnValueOnce(source);
-      vi.mocked(nativeImage.createFromBuffer).mockReturnValueOnce(promoted);
 
-      expect(getMenuIcon("about")).toBe(promoted);
-      expect(sourceToPNG).toHaveBeenCalledWith({ scaleFactor: 2 });
-      expect(vi.mocked(nativeImage.createFromBuffer)).toHaveBeenCalledWith(
-        png,
-        { scaleFactor: 1 },
+      expect(getMenuIcon("about")).toBe(source);
+      expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
+        expect.stringContaining("tray/menu/dark/circle-info.png"),
       );
+      expect(sourceToPNG).not.toHaveBeenCalled();
     });
 
     it("returns undefined for an unknown action", () => {
@@ -1997,7 +1993,6 @@ describe("getMenuIcon", () => {
         }),
       } as unknown as Electron.NativeImage);
       expect(getMenuIcon("about")).toBeUndefined();
-      expect(vi.mocked(nativeImage.createFromBuffer)).not.toHaveBeenCalled();
     });
   });
 
@@ -2010,21 +2005,81 @@ describe("getMenuIcon", () => {
       });
     });
 
-    it("returns the source image unchanged from the dark PNG directory", () => {
-      const sourceToPNG = vi.fn(() => Buffer.from([]));
-      const source = {
+    it("builds a 16-DIP image with explicit representations", () => {
+      const buffers = new Map(
+        [20, 24, 32, 48, 64].map((size) => [size, Buffer.from(`${size}px`)]),
+      );
+      const addRepresentation = vi.fn();
+      const resizedImages = new Map<number, Electron.NativeImage>();
+      const resize = vi.fn(
+        ({ width }: Electron.ResizeOptions): Electron.NativeImage => {
+          const resized = {
+            isEmpty: () => false,
+            addRepresentation: width === 16 ? addRepresentation : vi.fn(),
+            toPNG: vi.fn(() => buffers.get(width!) ?? Buffer.from([])),
+          } as unknown as Electron.NativeImage;
+          resizedImages.set(width!, resized);
+          return resized;
+        },
+      );
+      vi.mocked(nativeImage.createFromPath).mockReturnValueOnce({
         isEmpty: () => false,
-        toPNG: sourceToPNG,
-      } as unknown as Electron.NativeImage;
-      vi.mocked(nativeImage.createFromPath).mockReturnValueOnce(source);
+        resize,
+      } as unknown as Electron.NativeImage);
 
       const icon = getMenuIcon("play");
-      expect(icon).toBe(source);
+
+      expect(icon).toBe(resizedImages.get(16));
       expect(vi.mocked(nativeImage.createFromPath)).toHaveBeenCalledWith(
         expect.stringContaining("tray/menu/dark/play.png"),
       );
-      expect(sourceToPNG).not.toHaveBeenCalled();
-      expect(vi.mocked(nativeImage.createFromBuffer)).not.toHaveBeenCalled();
+      expect(resize.mock.calls.map(([options]) => options)).toEqual(
+        [16, 20, 24, 32, 48, 64].map((size) => ({
+          width: size,
+          height: size,
+          quality: "best",
+        })),
+      );
+      expect(addRepresentation.mock.calls.map(([options]) => options)).toEqual(
+        [
+          [1.25, 20],
+          [1.5, 24],
+          [2, 32],
+          [3, 48],
+          [4, 64],
+        ].map(([scaleFactor, size]) => ({
+          scaleFactor,
+          buffer: buffers.get(size),
+        })),
+      );
+    });
+
+    it("uses separate light and dark cached images", () => {
+      const dark = getMenuIcon("about");
+      const darkAgain = getMenuIcon("about");
+      Object.defineProperty(nativeTheme, "shouldUseDarkColors", {
+        value: false,
+        configurable: true,
+      });
+      const light = getMenuIcon("about");
+
+      expect(darkAgain).toBe(dark);
+      expect(light).not.toBe(dark);
+      expect(vi.mocked(nativeImage.createFromPath).mock.calls).toEqual([
+        [expect.stringContaining("tray/menu/dark/circle-info.png")],
+        [expect.stringContaining("tray/menu/light/circle-info.png")],
+      ]);
+    });
+
+    it("returns undefined without resizing when the shared image is empty", () => {
+      const resize = vi.fn();
+      vi.mocked(nativeImage.createFromPath).mockReturnValueOnce({
+        isEmpty: () => true,
+        resize,
+      } as unknown as Electron.NativeImage);
+
+      expect(getMenuIcon("play")).toBeUndefined();
+      expect(resize).not.toHaveBeenCalled();
     });
   });
 
@@ -2041,7 +2096,6 @@ describe("getMenuIcon", () => {
         "info.circle",
         [-1, 0, 1],
       );
-      expect(vi.mocked(nativeImage.createFromBuffer)).not.toHaveBeenCalled();
     });
 
     it("returns undefined for an unknown action", () => {

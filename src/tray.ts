@@ -44,6 +44,9 @@ const trayLog = log.scope("tray");
 
 const iconsDir = getAssetPath("assets", "icons");
 const menuIconsDir = path.join(iconsDir, "tray", "menu");
+const WINDOWS_MENU_ICON_DIP_SIZE = 16;
+const WINDOWS_MENU_ICON_SCALES = [1, 1.25, 1.5, 2, 3, 4] as const;
+const windowsMenuIconCache = new Map<string, Electron.NativeImage>();
 
 /** Menu actions accepted by both platform icon maps and checked at call sites. */
 export type MenuIconKey =
@@ -172,15 +175,31 @@ export function getMenuIcon(
 
   const variant = nativeTheme.shouldUseDarkColors ? "dark" : "light";
   const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
-  const img = nativeImage.createFromPath(iconPath);
-  if (img.isEmpty()) return undefined;
-  if (process.platform !== "linux") return img;
+  if (process.platform === "win32") {
+    const cached = windowsMenuIconCache.get(iconPath);
+    if (cached) return cached;
+  }
 
-  // Chromium's DBusMenu path exports only the 1x representation. Promote the
-  // existing 2x pixels so Linux menu consumers receive the detailed raster.
-  return nativeImage.createFromBuffer(img.toPNG({ scaleFactor: 2 }), {
-    scaleFactor: 1,
+  const source = nativeImage.createFromPath(iconPath);
+  if (source.isEmpty()) return undefined;
+  if (process.platform !== "win32") return source;
+
+  const image = source.resize({
+    width: WINDOWS_MENU_ICON_DIP_SIZE,
+    height: WINDOWS_MENU_ICON_DIP_SIZE,
+    quality: "best",
   });
+  for (const scaleFactor of WINDOWS_MENU_ICON_SCALES.slice(1)) {
+    const pixelSize = WINDOWS_MENU_ICON_DIP_SIZE * scaleFactor;
+    image.addRepresentation({
+      scaleFactor,
+      buffer: source
+        .resize({ width: pixelSize, height: pixelSize, quality: "best" })
+        .toPNG(),
+    });
+  }
+  windowsMenuIconCache.set(iconPath, image);
+  return image;
 }
 
 function isGnomeSession(): boolean {
@@ -745,13 +764,14 @@ function scheduleTrayRebuild(tray: Tray): void {
   }, TRAY_REBUILD_COALESCE_MS);
 }
 
-/** Cancel a pending coalesced rebuild and release its tray reference. */
+/** Cancel a pending rebuild and release its tray and icon resources. */
 export function cancelTrayRebuild(): void {
   if (rebuildTimer) {
     clearTimeout(rebuildTimer);
     rebuildTimer = null;
   }
   pendingRebuildTray = null;
+  windowsMenuIconCache.clear();
 }
 
 /** Show track details or the product name, escaping Linux tooltip markup. */
