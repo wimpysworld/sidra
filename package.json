@@ -155,6 +155,7 @@
       }
     },
     "afterPack": "build/afterPack.cjs",
+    "afterSign": "build/afterSign.cjs",
     "mac": {
       "target": [
         "dmg"

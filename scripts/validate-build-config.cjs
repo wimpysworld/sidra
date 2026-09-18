@@ -44,6 +44,19 @@ function main() {
   }
   console.log("  \u2713 no deprecated options detected");
 
+  if (config.afterPack !== "build/afterPack.cjs") {
+    throw new Error("build.afterPack must use build/afterPack.cjs for macOS VMP signing");
+  }
+  if (config.afterSign !== "build/afterSign.cjs") {
+    throw new Error("build.afterSign must use build/afterSign.cjs for Windows VMP signing");
+  }
+  if (config.win?.signAndEditExecutable === false) {
+    throw new Error(
+      "build.win.signAndEditExecutable must not be false because Windows VMP signing depends on afterSign",
+    );
+  }
+  console.log("  \u2713 VMP hooks: macOS afterPack, Windows afterSign");
+
   const nsis = config.nsis;
   if (nsis?.oneClick !== false) {
     throw new Error(
