@@ -1,6 +1,7 @@
 import { app } from 'electron';
+import { join } from 'node:path';
 import log from 'electron-log/main';
-import { Client, SetActivity, StatusDisplayType } from '@xhayper/discord-rpc';
+import { Client, IPC, SetActivity, StatusDisplayType } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
 import { Player, NowPlayingPayload, PlaybackState, PlaybackStatePayload, IntegrationContext, getShareUrl } from '../../player';
 import { getDiscordEnabled, getMusicService } from '../../config';
@@ -71,6 +72,16 @@ const pauseTimeout = createPauseTimer(PAUSE_TIMEOUT_MS, () => {
 
 function createClient(player: Player): Client {
   const created = new Client({ clientId: CLIENT_ID });
+  const runtimeDir = process.env.XDG_RUNTIME_DIR;
+  if (process.platform === 'linux' && runtimeDir && created.transport instanceof IPC.IPCTransport) {
+    created.transport.pathList = [
+      ...created.transport.pathList,
+      {
+        platform: ['linux'],
+        format: (id) => join(runtimeDir, '.flatpak', 'dev.vencord.Vesktop', 'xdg-run', `discord-ipc-${id}`),
+      },
+    ];
+  }
 
   created.on('ready', () => {
     discordLog.info('connected to Discord');

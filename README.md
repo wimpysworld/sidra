@@ -22,7 +22,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🎧 **Untouched audio** - Sidra adds no `AudioContext`, DSP, or resampling of its own (Chromium and the OS can still resample); lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
 - 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus a live-reloading custom colour theme
 - 📊 **Last.fm scrobbling** - opt-in, with browser approval
-- 🎮 **Discord Rich Presence** - show what you are listening to
+- 🎮 **Discord Rich Presence** - show what you are listening to, including Vesktop Flatpak on Linux
 - 🔔 **Desktop notifications** - tracks and radio songs with Play/Pause, Previous and Next controls where the platform supports notification actions
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical

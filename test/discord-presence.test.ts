@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { SetActivity } from '@xhayper/discord-rpc';
+import { IPC, type Client as DiscordClient, type ClientOptions, type SetActivity } from '@xhayper/discord-rpc';
 import { ActivityType } from 'discord-api-types/v10';
 import { app } from 'electron';
 import { PlaybackState, NowPlayingPayload } from '../src/player';
 import { FakePlayer } from './mocks/player';
+import { restorePlatform, setPlatform } from './mocks/platform';
 
 // Matches DEBOUNCE_MS and PAUSE_TIMEOUT_MS in
 // src/integrations/discord-presence/index.ts, which keeps them private.
@@ -24,8 +25,12 @@ interface ClientHandle {
   isConnected: boolean;
   connectAttempts: number;
   destroyCalls: number;
+  pipeId: number | undefined;
+  transport: DiscordClient['transport'];
   listenerCount(event: string): number;
 }
+
+type DiscordIpcPathList = InstanceType<typeof IPC.IPCTransport>['pathList'];
 
 // Promise-returning spies replace Discord socket calls and support production .then()/.catch() chains.
 // The hoisted holder survives fresh module imports. Typed setActivity arguments let tests inspect recorded activities.
@@ -35,6 +40,8 @@ const rpc = vi.hoisted(() => ({
   clearActivity: vi.fn(() => Promise.resolve()),
   handlers: {} as Record<string, (...args: unknown[]) => void>,
   instances: [] as ClientHandle[],
+  defaultPathList: undefined as DiscordIpcPathList | undefined,
+  defaultPathSnapshot: undefined as DiscordIpcPathList | undefined,
   connectAttempts: 0,
   outcome: (_attempt: number): ConnectOutcome => 'connected',
 }));
@@ -51,6 +58,8 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
     isConnected = false;
     connectAttempts = 0;
     destroyCalls = 0;
+    pipeId: number | undefined;
+    transport: DiscordClient['transport'];
     user = { setActivity: rpc.setActivity, clearActivity: rpc.clearActivity };
 
     private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -60,7 +69,13 @@ vi.mock('@xhayper/discord-rpc', async (importOriginal) => {
     // when its transport closes.
     private closeArmed = false;
 
-    constructor() {
+    constructor(options: ClientOptions) {
+      this.pipeId = options.pipeId;
+      this.transport = new actual.Client(options).transport;
+      if (this.transport instanceof actual.IPC.IPCTransport) {
+        rpc.defaultPathList ??= this.transport.pathList;
+        rpc.defaultPathSnapshot ??= [...this.transport.pathList];
+      }
       rpc.instances.push(this);
     }
 
@@ -185,6 +200,24 @@ function activity(): SetActivity {
   return rpc.setActivity.mock.calls[0][0];
 }
 
+function ipcPathList(target: ClientHandle): DiscordIpcPathList {
+  expect(target.transport).toBeInstanceOf(IPC.IPCTransport);
+  if (!(target.transport instanceof IPC.IPCTransport)) {
+    throw new Error('Expected an IPC transport');
+  }
+  return target.transport.pathList;
+}
+
+function defaultIpcPathList(): DiscordIpcPathList {
+  if (!rpc.defaultPathSnapshot) throw new Error('Expected the default IPC path list');
+  return rpc.defaultPathSnapshot;
+}
+
+function sharedDefaultIpcPathList(): DiscordIpcPathList {
+  if (!rpc.defaultPathList) throw new Error('Expected the shared default IPC path list');
+  return rpc.defaultPathList;
+}
+
 /**
  * A bound on the reconnect drive loop, so a chain that stalls fails an
  * assertion instead of hanging the suite.
@@ -208,6 +241,8 @@ async function driveConnectAttempts(target: number): Promise<void> {
 // per-describe ones.
 beforeEach(() => {
   rpc.instances.length = 0;
+  rpc.defaultPathList = undefined;
+  rpc.defaultPathSnapshot = undefined;
   rpc.connectAttempts = 0;
   rpc.outcome = () => 'connected';
 });
@@ -462,6 +497,101 @@ describe('discord presence reconnect', () => {
     answer?.();
     await vi.advanceTimersByTimeAsync(0);
     expect(retired.destroyCalls).toBe(1);
+  });
+});
+
+describe('discord presence Vesktop Flatpak IPC discovery', () => {
+  const runtimeDir = '/run/user/1000';
+  let player: FakePlayer;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    player = new FakePlayer();
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    restorePlatform();
+    vi.unstubAllEnvs();
+  });
+
+  it('appends all Vesktop pipe paths after the unchanged defaults on Linux', async () => {
+    setPlatform('linux');
+    vi.stubEnv('XDG_RUNTIME_DIR', runtimeDir);
+    const discord = await loadDiscord();
+    discord.init({ player, getMainWindow: () => null });
+
+    const target = rpc.instances[0];
+    const paths = ipcPathList(target);
+    const defaults = defaultIpcPathList();
+    const sharedDefaults = sharedDefaultIpcPathList();
+    const vesktopPath = paths[defaults.length];
+
+    expect(target.pipeId).toBeUndefined();
+    expect(paths).not.toBe(sharedDefaults);
+    expect(paths).toHaveLength(defaults.length + 1);
+    expect(paths.slice(0, defaults.length)).toEqual(defaults);
+    expect(sharedDefaults).toEqual(defaults);
+    expect(vesktopPath.platform).toEqual(['linux']);
+    expect(Array.from({ length: 10 }, (_, id) => vesktopPath.format(id))).toEqual(
+      Array.from(
+        { length: 10 },
+        (_, id) => `${runtimeDir}/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-${id}`,
+      ),
+    );
+  });
+
+  it('does not mutate the shared defaults or duplicate Vesktop paths across replacements', async () => {
+    setPlatform('linux');
+    vi.stubEnv('XDG_RUNTIME_DIR', runtimeDir);
+    rpc.outcome = (attempt) => (attempt === 1 ? 'transport' : 'connected');
+    const discord = await loadDiscord();
+    discord.init({ player, getMainWindow: () => null });
+
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(RECONNECT_BASE_MS);
+    expect(rpc.instances).toHaveLength(2);
+
+    discord.disable();
+    expect(rpc.instances).toHaveLength(3);
+
+    const defaults = defaultIpcPathList();
+    expect(sharedDefaultIpcPathList()).toEqual(defaults);
+    for (const target of rpc.instances) {
+      const paths = ipcPathList(target);
+      expect(paths).toHaveLength(defaults.length + 1);
+      expect(paths.slice(0, defaults.length)).toEqual(defaults);
+      expect(paths[defaults.length].format(0)).toBe(
+        `${runtimeDir}/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-0`,
+      );
+    }
+  });
+
+  it.each([
+    ['an absent runtime directory', undefined],
+    ['an empty runtime directory', ''],
+  ])('keeps only the shared defaults with %s', async (_label, value) => {
+    setPlatform('linux');
+    vi.stubEnv('XDG_RUNTIME_DIR', value);
+    const discord = await loadDiscord();
+    discord.init({ player, getMainWindow: () => null });
+
+    const paths = ipcPathList(rpc.instances[0]);
+    expect(paths).toBe(sharedDefaultIpcPathList());
+    expect(paths).toEqual(defaultIpcPathList());
+  });
+
+  it.each(['win32', 'darwin'] as const)('keeps only the shared defaults on %s', async (platform) => {
+    setPlatform(platform);
+    vi.stubEnv('XDG_RUNTIME_DIR', runtimeDir);
+    const discord = await loadDiscord();
+    discord.init({ player, getMainWindow: () => null });
+
+    const paths = ipcPathList(rpc.instances[0]);
+    expect(paths).toBe(sharedDefaultIpcPathList());
+    expect(paths).toEqual(defaultIpcPathList());
   });
 });
 
