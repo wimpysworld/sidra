@@ -26,7 +26,7 @@ function loadLocaleFile(filename: string): TranslationFile {
   }
 }
 
-// Load synchronously because the splash needs its translation before the first window renders.
+// Load synchronously because the first window needs translated splash text.
 const loadingData = loadLocaleFile('loading.json');
 const trayData = loadLocaleFile('tray.json');
 const aboutData = loadLocaleFile('about.json');
@@ -149,8 +149,8 @@ export const COPYRIGHT_SUFFIX: Record<string, string> = aboutData.COPYRIGHT_SUFF
 export const LICENSE_PREFIX: Record<string, string> = aboutData.LICENSE_PREFIX;
 
 // --- Cached system language list ---
-// Cached because every tray rebuild resolves the whole string set. A system
-// language changed mid-session therefore takes effect on the next launch
+// Cache the list because every tray rebuild resolves all labels. Changes to
+// system language settings take effect on the next launch.
 let _cachedLangs: string[] | null = null;
 function getSystemLanguages(): string[] {
   if (!_cachedLangs) _cachedLangs = app.getPreferredSystemLanguages();
@@ -160,9 +160,10 @@ function getSystemLanguages(): string[] {
 // --- Generic locale resolution ---
 
 /**
- * Resolve preferred languages in order, checking exact and normalised tags before base languages.
- * Chinese script matching precedes base-language fallback.
- * Use English only when no preferred language matches, so every record needs an en entry.
+ * Resolve preferred languages in order. Check exact and normalised tags before
+ * base languages, and resolve Chinese scripts before base-language fallback.
+ * Use English only when no preferred language matches, so each record needs an
+ * English entry.
  */
 export function getLocalizedString(
   record: Record<string, string>,
@@ -273,11 +274,9 @@ export interface TrayStrings {
   closeToTray: string;
 }
 
-// Every tray label against the record it resolves from. Typed on keyof
-// TrayStrings, so a key added to the interface and left out here fails tsc.
-// The brand name and the zoom steps read the same in every language and are
-// written as en-only records: en is what getLocalizedString falls back to, so
-// one shape covers the whole table.
+// Map each TrayStrings field to its translation record. The keyed Record makes
+// a missing field a compile error. Brand names and zoom steps use English-only
+// records because getLocalizedString() uses English as its final fallback.
 const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   settings: SETTINGS_TEXT,
   integrations: INTEGRATIONS_TEXT,
@@ -336,10 +335,8 @@ const NAMED_TRAY_KEYS: ReadonlySet<keyof TrayStrings> = new Set([
 ]);
 
 /**
- * Every tray label in one object, resolved once per menu rebuild. Labels that
- * name the app carry a {name} placeholder rather than the word "Sidra", so a
- * translation cannot hardcode it and the product name stays in package.json.
- * NAMED_TRAY_KEYS lists them.
+ * Resolve all tray labels once per menu rebuild. Labels in NAMED_TRAY_KEYS use
+ * a {name} placeholder so translations cannot hardcode the product name.
  */
 export function getTrayStrings(): TrayStrings {
   const langs = getSystemLanguages();
@@ -357,7 +354,7 @@ export function getDiscordPlayOnText(service: string): string {
   return getLocalizedString(DISCORD_PLAY_ON_TEXT, getSystemLanguages()).replace('{service}', () => service);
 }
 
-/** Format the localised Discord artist label, using the unknown-artist translation for null. */
+/** Format the localised Discord artist label, with translated fallback text. */
 export function getDiscordArtistText(artist: string | null): string {
   const langs = getSystemLanguages();
   const name = artist ?? getLocalizedString(UNKNOWN_ARTIST_TEXT, langs);
@@ -376,8 +373,8 @@ export function getLastfmConnectFailedText(): string {
 }
 
 /**
- * Placeholder for JSON labels in assets/navigationBar.js.
- * executeJavaScript() injection has no loadFile() query parameters, so loadAssets() substitutes labels before injection.
+ * Placeholder for JSON labels in assets/navigationBar.js. Injection through
+ * executeJavaScript() has no query parameters, so loadAssets() substitutes it.
  */
 export const NAV_LABELS_TOKEN = '__SIDRA_NAV_LABELS__';
 

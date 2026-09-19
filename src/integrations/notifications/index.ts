@@ -45,8 +45,9 @@ function closeNotifications(
     notification.removeAllListeners("action");
     notification.removeAllListeners("click");
     notification.removeAllListeners("close");
-    // close() detaches Electron's delegate without cancelling pending artwork.
-    // Keep the delegate until show or failed can retire the pending object.
+    // Calling `close()` detaches Electron's delegate before a pending
+    // notification can emit `show` or `failed`. Keep the delegate until either
+    // event retires it.
     if (!pending.has(notification)) {
       notification.removeAllListeners();
       notification.close();

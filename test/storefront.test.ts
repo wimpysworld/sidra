@@ -1,10 +1,29 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import './mocks/storefront-deps';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import "./mocks/storefront-deps";
 
-import { handleStorefrontNavigation, buildAppleMusicURL, buildItmsRouteURL, extractStorefrontFromURL, handleLastPageNavigation, type ItmsRouteToken } from '../src/storefront';
-import { getStorefront, setStorefront, getLanguage, setLanguage, getMusicService, getStartPage, getLastPageUrl, getClassicalStartPage, getClassicalLastPageUrl, setLastPageUrl, setClassicalLastPageUrl } from '../src/config';
-import { getStorefront as getLocaleStorefront } from '../src/i18n';
-import { MUSIC_SERVICES, type ClassicalStartPageId } from '../src/musicService';
+import {
+  handleStorefrontNavigation,
+  buildAppleMusicURL,
+  buildItmsRouteURL,
+  extractStorefrontFromURL,
+  handleLastPageNavigation,
+  type ItmsRouteToken,
+} from "../src/storefront";
+import {
+  getStorefront,
+  setStorefront,
+  getLanguage,
+  setLanguage,
+  getMusicService,
+  getStartPage,
+  getLastPageUrl,
+  getClassicalStartPage,
+  getClassicalLastPageUrl,
+  setLastPageUrl,
+  setClassicalLastPageUrl,
+} from "../src/config";
+import { getStorefront as getLocaleStorefront } from "../src/i18n";
+import { MUSIC_SERVICES, type ClassicalStartPageId } from "../src/musicService";
 
 const mockedGetStorefront = vi.mocked(getStorefront);
 const mockedSetStorefront = vi.mocked(setStorefront);
@@ -19,309 +38,339 @@ const mockedSetLastPageUrl = vi.mocked(setLastPageUrl);
 const mockedSetClassicalLastPageUrl = vi.mocked(setClassicalLastPageUrl);
 const mockedGetLocaleStorefront = vi.mocked(getLocaleStorefront);
 
-describe('handleStorefrontNavigation', () => {
+describe("handleStorefrontNavigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedGetStorefront.mockReturnValue('us');
+    mockedGetStorefront.mockReturnValue("us");
     mockedGetLanguage.mockReturnValue(undefined);
   });
 
-  it('persists new storefront and language from a valid Apple Music URL', () => {
-    mockedGetStorefront.mockReturnValue('us');
-    handleStorefrontNavigation('https://music.apple.com/gb/album/foo?l=en-GB');
-    expect(mockedSetStorefront).toHaveBeenCalledWith('gb');
-    expect(mockedSetLanguage).toHaveBeenCalledWith('en-GB');
+  it("persists new storefront and language from a valid Apple Music URL", () => {
+    mockedGetStorefront.mockReturnValue("us");
+    handleStorefrontNavigation("https://music.apple.com/gb/album/foo?l=en-GB");
+    expect(mockedSetStorefront).toHaveBeenCalledWith("gb");
+    expect(mockedSetLanguage).toHaveBeenCalledWith("en-GB");
   });
 
-  it('does not change language when URL has no language parameter', () => {
-    mockedGetStorefront.mockReturnValue('us');
+  it("does not change language when URL has no language parameter", () => {
+    mockedGetStorefront.mockReturnValue("us");
     mockedGetLanguage.mockReturnValue(undefined);
-    handleStorefrontNavigation('https://music.apple.com/gb/new');
-    expect(mockedSetStorefront).toHaveBeenCalledWith('gb');
+    handleStorefrontNavigation("https://music.apple.com/gb/new");
+    expect(mockedSetStorefront).toHaveBeenCalledWith("gb");
     expect(mockedSetLanguage).not.toHaveBeenCalled();
   });
 
-  it('does not update config for non-Apple Music URLs', () => {
-    handleStorefrontNavigation('https://example.com/gb/new');
+  it("does not update config for non-Apple Music URLs", () => {
+    handleStorefrontNavigation("https://example.com/gb/new");
     expect(mockedSetStorefront).not.toHaveBeenCalled();
     expect(mockedSetLanguage).not.toHaveBeenCalled();
   });
 
-  it('does not update config for malformed URLs', () => {
-    handleStorefrontNavigation('not-a-url');
+  it("does not update config for malformed URLs", () => {
+    handleStorefrontNavigation("not-a-url");
     expect(mockedSetStorefront).not.toHaveBeenCalled();
     expect(mockedSetLanguage).not.toHaveBeenCalled();
   });
 
-  it('does not call setStorefront when storefront is unchanged', () => {
-    mockedGetStorefront.mockReturnValue('gb');
-    mockedGetLanguage.mockReturnValue('en-GB');
-    handleStorefrontNavigation('https://music.apple.com/gb/album/foo?l=en-GB');
+  it("does not call setStorefront when storefront is unchanged", () => {
+    mockedGetStorefront.mockReturnValue("gb");
+    mockedGetLanguage.mockReturnValue("en-GB");
+    handleStorefrontNavigation("https://music.apple.com/gb/album/foo?l=en-GB");
     expect(mockedSetStorefront).not.toHaveBeenCalled();
   });
 
-  it('preserves current language when URL has no language parameter and language is already set', () => {
-    mockedGetStorefront.mockReturnValue('gb');
-    mockedGetLanguage.mockReturnValue('en-GB');
-    handleStorefrontNavigation('https://music.apple.com/gb/new');
-    // No ?l= in URL means no language change, regardless of current value
+  it("preserves current language when URL has no language parameter and language is already set", () => {
+    mockedGetStorefront.mockReturnValue("gb");
+    mockedGetLanguage.mockReturnValue("en-GB");
+    handleStorefrontNavigation("https://music.apple.com/gb/new");
     expect(mockedSetLanguage).not.toHaveBeenCalled();
   });
 
-  it('overwrites stored language when URL provides a different language', () => {
-    mockedGetStorefront.mockReturnValue('gb');
-    mockedGetLanguage.mockReturnValue('en-GB');
-    handleStorefrontNavigation('https://music.apple.com/gb/album/foo?l=cy');
-    expect(mockedSetLanguage).toHaveBeenCalledWith('cy');
+  it("overwrites stored language when URL provides a different language", () => {
+    mockedGetStorefront.mockReturnValue("gb");
+    mockedGetLanguage.mockReturnValue("en-GB");
+    handleStorefrontNavigation("https://music.apple.com/gb/album/foo?l=cy");
+    expect(mockedSetLanguage).toHaveBeenCalledWith("cy");
   });
 });
 
-describe('extractStorefrontFromURL', () => {
-  it('returns storefront and null language from a music URL with no language', () => {
-    const result = extractStorefrontFromURL('https://music.apple.com/gb/new');
+describe("extractStorefrontFromURL", () => {
+  it("returns storefront and null language from a music URL with no language", () => {
+    const result = extractStorefrontFromURL("https://music.apple.com/gb/new");
     expect(result).not.toBeNull();
-    expect(result!.storefront).toBe('gb');
+    expect(result!.storefront).toBe("gb");
     expect(result!.language).toBeNull();
   });
 
-  it('returns storefront and language from a music URL with language', () => {
-    const result = extractStorefrontFromURL('https://music.apple.com/gb/album/foo?l=en-GB');
+  it("returns storefront and language from a music URL with language", () => {
+    const result = extractStorefrontFromURL(
+      "https://music.apple.com/gb/album/foo?l=en-GB",
+    );
     expect(result).not.toBeNull();
-    expect(result!.storefront).toBe('gb');
-    expect(result!.language).toBe('en-GB');
+    expect(result!.storefront).toBe("gb");
+    expect(result!.language).toBe("en-GB");
   });
 
-  it('returns storefront from a classical URL', () => {
-    const result = extractStorefrontFromURL('https://classical.music.apple.com/gb/browse');
+  it("returns storefront from a classical URL", () => {
+    const result = extractStorefrontFromURL(
+      "https://classical.music.apple.com/gb/browse",
+    );
     expect(result).not.toBeNull();
-    expect(result!.storefront).toBe('gb');
+    expect(result!.storefront).toBe("gb");
   });
 
-  it('returns null for a URL with no path segments', () => {
-    expect(extractStorefrontFromURL('https://classical.music.apple.com/gb')).not.toBeNull();
-    expect(extractStorefrontFromURL('https://classical.music.apple.com/')).toBeNull();
-    expect(extractStorefrontFromURL('https://music.apple.com/')).toBeNull();
+  it("returns null for a URL with no path segments", () => {
+    expect(
+      extractStorefrontFromURL("https://classical.music.apple.com/gb"),
+    ).not.toBeNull();
+    expect(
+      extractStorefrontFromURL("https://classical.music.apple.com/"),
+    ).toBeNull();
+    expect(extractStorefrontFromURL("https://music.apple.com/")).toBeNull();
   });
 
-  it('returns null for an uppercase storefront code', () => {
-    expect(extractStorefrontFromURL('https://music.apple.com/GB/new')).toBeNull();
+  it("returns null for an uppercase storefront code", () => {
+    expect(
+      extractStorefrontFromURL("https://music.apple.com/GB/new"),
+    ).toBeNull();
   });
 
-  it('returns null for a three-letter first segment', () => {
-    expect(extractStorefrontFromURL('https://music.apple.com/gbr/new')).toBeNull();
+  it("returns null for a three-letter first segment", () => {
+    expect(
+      extractStorefrontFromURL("https://music.apple.com/gbr/new"),
+    ).toBeNull();
   });
 
-  it('returns null for an unknown host', () => {
-    expect(extractStorefrontFromURL('https://unknown.example.com/gb/new')).toBeNull();
+  it("returns null for an unknown host", () => {
+    expect(
+      extractStorefrontFromURL("https://unknown.example.com/gb/new"),
+    ).toBeNull();
   });
 
-  it('returns null for a malformed URL', () => {
-    expect(extractStorefrontFromURL('not-a-url')).toBeNull();
+  it("returns null for a malformed URL", () => {
+    expect(extractStorefrontFromURL("not-a-url")).toBeNull();
   });
 });
 
-describe('buildAppleMusicURL - music service', () => {
+describe("buildAppleMusicURL - music service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedGetMusicService.mockReturnValue('music');
-    mockedGetStorefront.mockReturnValue('us');
+    mockedGetMusicService.mockReturnValue("music");
+    mockedGetStorefront.mockReturnValue("us");
     mockedGetLanguage.mockReturnValue(null);
   });
 
-  it('builds home URL', () => {
-    mockedGetStartPage.mockReturnValue('home');
+  it("builds home URL", () => {
+    mockedGetStartPage.mockReturnValue("home");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/home');
+    expect(url).toBe("https://music.apple.com/us/home");
   });
 
-  it('builds new URL', () => {
-    mockedGetStartPage.mockReturnValue('new');
+  it("builds new URL", () => {
+    mockedGetStartPage.mockReturnValue("new");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/new');
+    expect(url).toBe("https://music.apple.com/us/new");
   });
 
-  it('builds radio URL', () => {
-    mockedGetStartPage.mockReturnValue('radio');
+  it("builds radio URL", () => {
+    mockedGetStartPage.mockReturnValue("radio");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/radio');
+    expect(url).toBe("https://music.apple.com/us/radio");
   });
 
-  it('builds all-playlists URL', () => {
-    mockedGetStartPage.mockReturnValue('all-playlists');
+  it("builds all-playlists URL", () => {
+    mockedGetStartPage.mockReturnValue("all-playlists");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/library/all-playlists/');
+    expect(url).toBe("https://music.apple.com/us/library/all-playlists/");
   });
 
-  it('builds last URL when stored path exists', () => {
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue('album/foo/123');
+  it("builds last URL when stored path exists", () => {
+    mockedGetStartPage.mockReturnValue("last");
+    mockedGetLastPageUrl.mockReturnValue("album/foo/123");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/album/foo/123');
+    expect(url).toBe("https://music.apple.com/us/album/foo/123");
   });
 
-  it('falls back to new when last is selected but no path stored', () => {
-    mockedGetStartPage.mockReturnValue('last');
+  it("falls back to new when last is selected but no path stored", () => {
+    mockedGetStartPage.mockReturnValue("last");
     mockedGetLastPageUrl.mockReturnValue(undefined);
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/new');
+    expect(url).toBe("https://music.apple.com/us/new");
   });
 
-  it('rebuilds last URL with its query intact', () => {
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue('search?term=jazz');
+  it("rebuilds last URL with its query intact", () => {
+    mockedGetStartPage.mockReturnValue("last");
+    mockedGetLastPageUrl.mockReturnValue("search?term=jazz");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/search?term=jazz');
+    expect(url).toBe("https://music.apple.com/us/search?term=jazz");
   });
 
-  it('adds the language beside an existing query', () => {
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue('search?term=jazz');
-    mockedGetLanguage.mockReturnValue('en-GB');
+  it("adds the language beside an existing query", () => {
+    mockedGetStartPage.mockReturnValue("last");
+    mockedGetLastPageUrl.mockReturnValue("search?term=jazz");
+    mockedGetLanguage.mockReturnValue("en-GB");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/search?term=jazz&l=en-GB');
+    expect(url).toBe("https://music.apple.com/us/search?term=jazz&l=en-GB");
   });
 
-  it('overwrites a stored language rather than duplicating it', () => {
-    mockedGetStartPage.mockReturnValue('last');
-    mockedGetLastPageUrl.mockReturnValue('search?term=jazz&l=fr');
-    mockedGetLanguage.mockReturnValue('en-GB');
+  it("overwrites a stored language rather than duplicating it", () => {
+    mockedGetStartPage.mockReturnValue("last");
+    mockedGetLastPageUrl.mockReturnValue("search?term=jazz&l=fr");
+    mockedGetLanguage.mockReturnValue("en-GB");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://music.apple.com/us/search?term=jazz&l=en-GB');
+    expect(url).toBe("https://music.apple.com/us/search?term=jazz&l=en-GB");
   });
 });
 
-describe('buildAppleMusicURL - classical service', () => {
+describe("buildAppleMusicURL - classical service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedGetMusicService.mockReturnValue('classical');
-    mockedGetStorefront.mockReturnValue('gb');
+    mockedGetMusicService.mockReturnValue("classical");
+    mockedGetStorefront.mockReturnValue("gb");
     mockedGetLanguage.mockReturnValue(null);
   });
 
-  it('falls back to home when a removed library start page is still persisted', () => {
+  it("falls back to home when a removed library start page is still persisted", () => {
     // Classical has no web library route. Legacy stored ids must resolve to Home instead of an unavailable route.
-    mockedGetClassicalStartPage.mockReturnValue('library' as ClassicalStartPageId);
+    mockedGetClassicalStartPage.mockReturnValue(
+      "library" as ClassicalStartPageId,
+    );
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb');
+    expect(url).toBe("https://classical.music.apple.com/gb");
   });
 
-  it('builds a probed URL for every declared classical start page id', () => {
+  it("builds a probed URL for every declared classical start page id", () => {
     // Start-page routes must work without authentication. Check new routes against the service before adding them here.
     const expected: Record<string, string> = {
-      'home': 'https://classical.music.apple.com/gb',
-      'browse': 'https://classical.music.apple.com/gb/browse/catalog',
-      'playlists': 'https://classical.music.apple.com/gb/browse/playlists',
-      'search': 'https://classical.music.apple.com/gb/search',
+      home: "https://classical.music.apple.com/gb",
+      browse: "https://classical.music.apple.com/gb/browse/catalog",
+      playlists: "https://classical.music.apple.com/gb/browse/playlists",
+      search: "https://classical.music.apple.com/gb/search",
     };
-    const ids = MUSIC_SERVICES.classical.startPages.map(p => p.id);
+    const ids = MUSIC_SERVICES.classical.startPages.map((p) => p.id);
     expect(ids).toEqual(Object.keys(expected));
     for (const id of ids) {
       mockedGetClassicalStartPage.mockReturnValue(id);
       const url = buildAppleMusicURL();
       expect(url).toBe(expected[id]);
-      expect(new URL(url).pathname.split('/').filter(Boolean)).not.toContain('library');
+      expect(new URL(url).pathname.split("/").filter(Boolean)).not.toContain(
+        "library",
+      );
     }
   });
 
-  it('builds classical last URL when stored path exists', () => {
-    mockedGetClassicalStartPage.mockReturnValue('last');
-    mockedGetClassicalLastPageUrl.mockReturnValue('browse/albums');
+  it("builds classical last URL when stored path exists", () => {
+    mockedGetClassicalStartPage.mockReturnValue("last");
+    mockedGetClassicalLastPageUrl.mockReturnValue("browse/albums");
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb/browse/albums');
+    expect(url).toBe("https://classical.music.apple.com/gb/browse/albums");
   });
 
-  it('falls back to default when last is selected but no path stored', () => {
-    mockedGetClassicalStartPage.mockReturnValue('last');
+  it("falls back to default when last is selected but no path stored", () => {
+    mockedGetClassicalStartPage.mockReturnValue("last");
     mockedGetClassicalLastPageUrl.mockReturnValue(undefined);
     const url = buildAppleMusicURL();
-    expect(url).toBe('https://classical.music.apple.com/gb');
+    expect(url).toBe("https://classical.music.apple.com/gb");
   });
 
-  // Round trips: what handleLastPageNavigation stored is what the launch resolves.
+  // The launch must resolve the exact path that handleLastPageNavigation() stored.
   function lastStoredClassicalPath(): string {
     const calls = mockedSetClassicalLastPageUrl.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
     return calls[calls.length - 1][0];
   }
 
-  it('resolves Home after Browse then Home, not the earlier Browse', () => {
-    mockedGetClassicalStartPage.mockReturnValue('last');
-    handleLastPageNavigation('https://classical.music.apple.com/gb/browse/catalog');
-    handleLastPageNavigation('https://classical.music.apple.com/gb');
+  it("resolves Home after Browse then Home, not the earlier Browse", () => {
+    mockedGetClassicalStartPage.mockReturnValue("last");
+    handleLastPageNavigation(
+      "https://classical.music.apple.com/gb/browse/catalog",
+    );
+    handleLastPageNavigation("https://classical.music.apple.com/gb");
     mockedGetClassicalLastPageUrl.mockReturnValue(lastStoredClassicalPath());
-    expect(buildAppleMusicURL()).toBe('https://classical.music.apple.com/gb');
+    expect(buildAppleMusicURL()).toBe("https://classical.music.apple.com/gb");
   });
 
-  it('resolves Home with its query after a Home visit carrying one', () => {
-    mockedGetClassicalStartPage.mockReturnValue('last');
-    handleLastPageNavigation('https://classical.music.apple.com/gb/browse/catalog');
-    handleLastPageNavigation('https://classical.music.apple.com/gb?l=en-GB');
+  it("resolves Home with its query after a Home visit carrying one", () => {
+    mockedGetClassicalStartPage.mockReturnValue("last");
+    handleLastPageNavigation(
+      "https://classical.music.apple.com/gb/browse/catalog",
+    );
+    handleLastPageNavigation("https://classical.music.apple.com/gb?l=en-GB");
     mockedGetClassicalLastPageUrl.mockReturnValue(lastStoredClassicalPath());
-    expect(buildAppleMusicURL()).toBe('https://classical.music.apple.com/gb?l=en-GB');
+    expect(buildAppleMusicURL()).toBe(
+      "https://classical.music.apple.com/gb?l=en-GB",
+    );
   });
 });
 
-describe('buildAppleMusicURL - registry-driven page paths', () => {
-  // Adding a start page to MUSIC_SERVICES must need no edit in storefront.ts.
+describe("buildAppleMusicURL - registry-driven page paths", () => {
+  // Adding a start page to MUSIC_SERVICES must not require an edit in storefront.ts.
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedGetStorefront.mockReturnValue('gb');
+    mockedGetStorefront.mockReturnValue("gb");
     mockedGetLanguage.mockReturnValue(null);
   });
 
-  it('resolves every music start page from the registry', () => {
-    mockedGetMusicService.mockReturnValue('music');
+  it("resolves every music start page from the registry", () => {
+    mockedGetMusicService.mockReturnValue("music");
     for (const page of MUSIC_SERVICES.music.startPages) {
       mockedGetStartPage.mockReturnValue(page.id);
-      expect(buildAppleMusicURL()).toBe(`${MUSIC_SERVICES.music.origin}/gb/${page.path}`);
+      expect(buildAppleMusicURL()).toBe(
+        `${MUSIC_SERVICES.music.origin}/gb/${page.path}`,
+      );
     }
     expect(mockedGetLastPageUrl).not.toHaveBeenCalled();
   });
 
-  it('resolves every classical start page from the registry', () => {
-    mockedGetMusicService.mockReturnValue('classical');
+  it("resolves every classical start page from the registry", () => {
+    mockedGetMusicService.mockReturnValue("classical");
     for (const page of MUSIC_SERVICES.classical.startPages) {
       mockedGetClassicalStartPage.mockReturnValue(page.id);
-      const expected = page.path === ''
-        ? `${MUSIC_SERVICES.classical.origin}/gb`
-        : `${MUSIC_SERVICES.classical.origin}/gb/${page.path}`;
+      const expected =
+        page.path === ""
+          ? `${MUSIC_SERVICES.classical.origin}/gb`
+          : `${MUSIC_SERVICES.classical.origin}/gb/${page.path}`;
       expect(buildAppleMusicURL()).toBe(expected);
     }
     expect(mockedGetClassicalLastPageUrl).not.toHaveBeenCalled();
   });
 });
 
-describe('buildItmsRouteURL', () => {
+describe("buildItmsRouteURL", () => {
   // The Record type fails to compile if an ItmsRouteToken is missed.
   const routePaths: Record<ItmsRouteToken, string> = {
-    library: 'library',
-    browse: 'browse',
-    radio: 'radio',
-    listenNow: 'listen-now',
-    subscribe: 'subscribe',
+    library: "library",
+    browse: "browse",
+    radio: "radio",
+    listenNow: "listen-now",
+    subscribe: "subscribe",
   };
   const tokens = Object.keys(routePaths) as ItmsRouteToken[];
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedGetStorefront.mockReturnValue('gb');
+    mockedGetStorefront.mockReturnValue("gb");
     mockedGetLanguage.mockReturnValue(null);
   });
 
-  it('appends ?l= when a language is set', () => {
-    mockedGetLanguage.mockReturnValue('en-GB');
-    expect(buildItmsRouteURL('library')).toBe('https://music.apple.com/gb/library?l=en-GB');
+  it("appends ?l= when a language is set", () => {
+    mockedGetLanguage.mockReturnValue("en-GB");
+    expect(buildItmsRouteURL("library")).toBe(
+      "https://music.apple.com/gb/library?l=en-GB",
+    );
   });
 
-  it('falls back to the locale storefront when none is persisted', () => {
+  it("falls back to the locale storefront when none is persisted", () => {
     mockedGetStorefront.mockReturnValue(undefined);
-    mockedGetLocaleStorefront.mockReturnValue('de');
-    expect(buildItmsRouteURL('browse')).toBe('https://music.apple.com/de/browse');
+    mockedGetLocaleStorefront.mockReturnValue("de");
+    expect(buildItmsRouteURL("browse")).toBe(
+      "https://music.apple.com/de/browse",
+    );
   });
 
   // itms:// is pinned to the music host and ITMS_ROUTE_PATHS holds music-only paths,
   // so the active service must not reach the origin.
-  for (const service of ['classical', 'music'] as const) {
+  for (const service of ["classical", "music"] as const) {
     describe(`with the ${service} service active`, () => {
       beforeEach(() => {
         mockedGetMusicService.mockReturnValue(service);
@@ -330,7 +379,9 @@ describe('buildItmsRouteURL', () => {
       for (const token of tokens) {
         it(`builds ${token} against the music host`, () => {
           const url = buildItmsRouteURL(token);
-          expect(url).toBe(`${MUSIC_SERVICES.music.origin}/gb/${routePaths[token]}`);
+          expect(url).toBe(
+            `${MUSIC_SERVICES.music.origin}/gb/${routePaths[token]}`,
+          );
           expect(new URL(url).origin).toBe(MUSIC_SERVICES.music.origin);
         });
       }
@@ -338,67 +389,73 @@ describe('buildItmsRouteURL', () => {
   }
 });
 
-describe('handleLastPageNavigation', () => {
+describe("handleLastPageNavigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('stores path against music service for music.apple.com URL', () => {
-    handleLastPageNavigation('https://music.apple.com/gb/album/foo/123');
-    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('album/foo/123');
+  it("stores path against music service for music.apple.com URL", () => {
+    handleLastPageNavigation("https://music.apple.com/gb/album/foo/123");
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith("album/foo/123");
     expect(mockedSetClassicalLastPageUrl).not.toHaveBeenCalled();
   });
 
-  it('stores path against classical service for classical.music.apple.com URL', () => {
-    handleLastPageNavigation('https://classical.music.apple.com/gb/browse/albums');
-    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('browse/albums');
+  it("stores path against classical service for classical.music.apple.com URL", () => {
+    handleLastPageNavigation(
+      "https://classical.music.apple.com/gb/browse/albums",
+    );
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith("browse/albums");
     expect(mockedSetLastPageUrl).not.toHaveBeenCalled();
   });
 
-  it('keeps the query when storing a music path', () => {
-    handleLastPageNavigation('https://music.apple.com/gb/search?term=jazz');
-    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('search?term=jazz');
+  it("keeps the query when storing a music path", () => {
+    handleLastPageNavigation("https://music.apple.com/gb/search?term=jazz");
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith("search?term=jazz");
   });
 
-  it('keeps the query when storing a classical path', () => {
-    handleLastPageNavigation('https://classical.music.apple.com/gb/search?term=bach');
-    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('search?term=bach');
+  it("keeps the query when storing a classical path", () => {
+    handleLastPageNavigation(
+      "https://classical.music.apple.com/gb/search?term=bach",
+    );
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith(
+      "search?term=bach",
+    );
   });
 
-  it('stores nothing extra for a URL with no query', () => {
-    handleLastPageNavigation('https://music.apple.com/gb/browse');
-    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('browse');
+  it("stores nothing extra for a URL with no query", () => {
+    handleLastPageNavigation("https://music.apple.com/gb/browse");
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith("browse");
   });
 
-  it('drops the fragment', () => {
-    handleLastPageNavigation('https://music.apple.com/gb/search?term=jazz#top');
-    expect(mockedSetLastPageUrl).toHaveBeenCalledWith('search?term=jazz');
+  it("drops the fragment", () => {
+    handleLastPageNavigation("https://music.apple.com/gb/search?term=jazz#top");
+    expect(mockedSetLastPageUrl).toHaveBeenCalledWith("search?term=jazz");
   });
 
-  it('stores the empty root path when classical Home is visited', () => {
-    handleLastPageNavigation('https://classical.music.apple.com/gb');
-    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('');
+  it("stores the empty root path when classical Home is visited", () => {
+    handleLastPageNavigation("https://classical.music.apple.com/gb");
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith("");
   });
 
-  it('keeps the query when storing the classical root', () => {
-    handleLastPageNavigation('https://classical.music.apple.com/gb?l=en-GB');
-    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith('?l=en-GB');
+  it("keeps the query when storing the classical root", () => {
+    handleLastPageNavigation("https://classical.music.apple.com/gb?l=en-GB");
+    expect(mockedSetClassicalLastPageUrl).toHaveBeenCalledWith("?l=en-GB");
   });
 
-  it('does not store the bare root for the music service', () => {
+  it("does not store the bare root for the music service", () => {
     // music.apple.com declares no root start page: its bare root is a redirect stop.
-    handleLastPageNavigation('https://music.apple.com/gb');
+    handleLastPageNavigation("https://music.apple.com/gb");
     expect(mockedSetLastPageUrl).not.toHaveBeenCalled();
   });
 
-  it('does nothing for an unknown host', () => {
-    handleLastPageNavigation('https://example.com/gb/album/foo');
+  it("does nothing for an unknown host", () => {
+    handleLastPageNavigation("https://example.com/gb/album/foo");
     expect(mockedSetLastPageUrl).not.toHaveBeenCalled();
     expect(mockedSetClassicalLastPageUrl).not.toHaveBeenCalled();
   });
 
-  it('does nothing for a malformed URL', () => {
-    handleLastPageNavigation('not-a-url');
+  it("does nothing for a malformed URL", () => {
+    handleLastPageNavigation("not-a-url");
     expect(mockedSetLastPageUrl).not.toHaveBeenCalled();
     expect(mockedSetClassicalLastPageUrl).not.toHaveBeenCalled();
   });

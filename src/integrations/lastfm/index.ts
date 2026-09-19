@@ -1,8 +1,8 @@
-import { app, net, shell, BrowserWindow } from 'electron';
-import log from 'electron-log/main';
-import { createHash } from 'crypto';
-import { readFileSync } from 'fs';
-import { getAssetPath } from '../../paths';
+import { app, net, shell, BrowserWindow } from "electron";
+import log from "electron-log/main";
+import { createHash } from "crypto";
+import { readFileSync } from "fs";
+import { getAssetPath } from "../../paths";
 import {
   Player,
   NowPlayingPayload,
@@ -10,7 +10,7 @@ import {
   PlaybackStatePayload,
   IntegrationContext,
   type TimedMetadataPayload,
-} from '../../player';
+} from "../../player";
 import {
   getLastfmEnabled,
   getLastfmSessionKey,
@@ -21,12 +21,12 @@ import {
   getPendingScrobbles,
   setPendingScrobbles,
   type PendingScrobble,
-} from '../../config';
-import { getLastfmConnectedText, getLastfmConnectFailedText } from '../../i18n';
-import { errorMessage } from '../../utils';
-import { createNotification } from '../../notify';
+} from "../../config";
+import { getLastfmConnectedText, getLastfmConnectFailedText } from "../../i18n";
+import { errorMessage } from "../../utils";
+import { createNotification } from "../../notify";
 
-const lastfmLog = log.scope('lastfm');
+const lastfmLog = log.scope("lastfm");
 
 let stateChangedCallback: (() => void) | null = null;
 
@@ -35,8 +35,8 @@ export function setStateChangedCallback(callback: (() => void) | null): void {
   stateChangedCallback = callback;
 }
 
-const API_ROOT = 'https://ws.audioscrobbler.com/2.0/';
-const AUTH_URL = 'https://www.last.fm/api/auth/';
+const API_ROOT = "https://ws.audioscrobbler.com/2.0/";
+const AUTH_URL = "https://www.last.fm/api/auth/";
 
 /**
  * Reads application credentials from SIDRA_LASTFM_API_KEY/SIDRA_LASTFM_API_SECRET,
@@ -49,13 +49,15 @@ function loadCredentials(): { apiKey: string; apiSecret: string } {
   const envSecret = process.env.SIDRA_LASTFM_API_SECRET;
   if (envKey && envSecret) return { apiKey: envKey, apiSecret: envSecret };
   try {
-    const parsed = JSON.parse(readFileSync(getAssetPath('assets', 'lastfm-credentials.json'), 'utf8')) as {
+    const parsed = JSON.parse(
+      readFileSync(getAssetPath("assets", "lastfm-credentials.json"), "utf8"),
+    ) as {
       apiKey?: string;
       apiSecret?: string;
     };
-    return { apiKey: parsed.apiKey ?? '', apiSecret: parsed.apiSecret ?? '' };
+    return { apiKey: parsed.apiKey ?? "", apiSecret: parsed.apiSecret ?? "" };
   } catch {
-    return { apiKey: '', apiSecret: '' };
+    return { apiKey: "", apiSecret: "" };
   }
 }
 
@@ -66,16 +68,15 @@ const { apiKey: API_KEY, apiSecret: API_SECRET } = loadCredentials();
 const MIN_TRACK_LENGTH_MS = 30_000;
 const SCROBBLE_CAP_MS = 240_000;
 
-// The renderer reports the playhead a few hundred milliseconds behind wall
-// time, and the scrobble timer fires on wall time, so an honest play arrives at
-// the threshold marginally short. Allow for that before refusing a scrobble.
+// The renderer reports the playhead after the wall-clock scrobble timer fires,
+// so a valid play can appear slightly short of the threshold. Allow for that
+// reporting delay before refusing a scrobble.
 const POSITION_TOLERANCE_MS = 2000;
 
-// 50 is the maximum number of tracks Last.fm accepts in one track.scrobble
-// request, so it caps both what the queue holds and what one drain submits.
-// Past the cap the oldest play is dropped. A longer queue can still arrive from
-// a hand-edited or older config.json, which is why the drain caps the batch
-// again rather than trusting this one.
+// 50 is the maximum number of tracks that Last.fm accepts in one
+// `track.scrobble` request, so it caps both the queue and each drain. Past the
+// cap, the oldest play is dropped. Persisted configuration can exceed the
+// current cap, so the drain also limits its batch.
 const MAX_PENDING_SCROBBLES = 50;
 
 // A transport that never settles must not lock authentication, lose a live
@@ -94,7 +95,7 @@ const AUTH_POLL_TIMEOUT_MS = 120_000;
  * attributes and text nodes as strings.
  */
 interface LastfmScrobble {
-  ignoredMessage?: { code?: string; '#text'?: string };
+  ignoredMessage?: { code?: string; "#text"?: string };
 }
 
 interface LastfmResponse {
@@ -109,12 +110,12 @@ interface LastfmResponse {
   // numbers in captured bodies, but that same transform documents attributes as
   // strings, so both are accepted and coerced rather than trusted.
   scrobbles?: {
-    '@attr'?: { accepted?: number | string; ignored?: number | string };
+    "@attr"?: { accepted?: number | string; ignored?: number | string };
     scrobble?: LastfmScrobble | LastfmScrobble[];
   };
 }
 
-/** What Last.fm did with a submitted batch: the counts, and the distinct reasons. */
+/** Counts accepted and ignored plays, with each distinct refusal code. */
 interface ScrobbleOutcome {
   accepted: number;
   ignored: number;
@@ -142,32 +143,36 @@ function readScrobbleOutcome(res: LastfmResponse): ScrobbleOutcome | null {
   const codes = new Set<string>();
   for (const entry of entries) {
     const code = entry.ignoredMessage?.code;
-    // "0" is the code a kept play carries, so it is not a reason for anything.
-    if (code && code !== '0') codes.add(code);
+    // Code "0" means that Last.fm accepted the play, so exclude it from refusal reasons.
+    if (code && code !== "0") codes.add(code);
   }
   return {
-    accepted: toCount(scrobbles['@attr']?.accepted),
-    ignored: toCount(scrobbles['@attr']?.ignored),
+    accepted: toCount(scrobbles["@attr"]?.accepted),
+    ignored: toCount(scrobbles["@attr"]?.ignored),
     codes: [...codes].sort(),
   };
 }
 
-// Last.fm error 9, "Invalid session key - Please re-authenticate". Session keys
-// never expire on their own, so this is what the user revoking Sidra under their
-// account's Applications settings looks like. No retry can recover it.
+// Last.fm error 9, "Invalid session key - Please re-authenticate", indicates
+// that the stored session was revoked. Session keys do not expire on their own,
+// so retry cannot recover from this error.
 const INVALID_SESSION_ERROR = 9;
 
-// Service failures (8, 11, 16, 29) and rejected application keys (10, 26) do not
-// refuse the play itself, and Last.fm can restore service or keys without user action.
-// Batch contents cannot cause these failures, so retain plays in the bounded queue
-// until a successful playback request calls flushPendingScrobbles(), never a retry timer.
+// Service failures (8, 11, 16, 29) and rejected application keys (10, 26) do
+// not refuse the play itself. Last.fm can restore the service or keys without
+// user action. Batch contents cannot cause these failures, so retain plays in
+// the bounded queue until a successful playback request calls
+// `flushPendingScrobbles()`. A retry timer must not drain the queue.
 const RETRIABLE_ERRORS = new Set([8, 10, 11, 16, 26, 29]);
 
 /** An error the Last.fm API reported in its response body, with its code intact. */
 class LastfmApiError extends Error {
-  constructor(readonly code: number, message: string) {
+  constructor(
+    readonly code: number,
+    message: string,
+  ) {
     super(message);
-    this.name = 'LastfmApiError';
+    this.name = "LastfmApiError";
   }
 }
 
@@ -185,7 +190,7 @@ function isFinalRefusal(err: unknown): boolean {
  * Last.fm menu entirely when this is false, so users never see a dead feature.
  */
 export function isConfigured(): boolean {
-  return API_KEY !== '' && API_SECRET !== '';
+  return API_KEY !== "" && API_SECRET !== "";
 }
 
 function nowUnix(): number {
@@ -197,12 +202,15 @@ function nowUnix(): number {
  * name+value pairs, append the shared secret, then MD5. `format` and `callback`
  * are excluded by the caller (they are added to the request, never signed).
  */
-export function signParams(params: Record<string, string>, secret: string): string {
+export function signParams(
+  params: Record<string, string>,
+  secret: string,
+): string {
   const keys = Object.keys(params).sort();
-  let sigBase = '';
+  let sigBase = "";
   for (const key of keys) sigBase += key + params[key];
   sigBase += secret;
-  return createHash('md5').update(sigBase, 'utf8').digest('hex');
+  return createHash("md5").update(sigBase, "utf8").digest("hex");
 }
 
 /**
@@ -221,19 +229,21 @@ async function apiCall(
   timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<LastfmResponse> {
   const signed = { ...params, api_sig: signParams(params, API_SECRET) };
-  const query = new URLSearchParams({ ...signed, format: 'json' });
+  const query = new URLSearchParams({ ...signed, format: "json" });
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = post
       ? await net.fetch(API_ROOT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: query.toString(),
           signal: controller.signal,
         })
-      : await net.fetch(`${API_ROOT}?${query.toString()}`, { signal: controller.signal });
+      : await net.fetch(`${API_ROOT}?${query.toString()}`, {
+          signal: controller.signal,
+        });
 
     // The body is read before the status because Last.fm reports its own errors
     // in the body and sends several of them with a non-2xx status: checking the
@@ -248,7 +258,10 @@ async function apiCall(
       throw new Error(`Last.fm HTTP ${response.status}: response was not JSON`);
     }
     if (json.error) {
-      throw new LastfmApiError(json.error, `Last.fm error ${json.error}: ${json.message ?? 'unknown'}`);
+      throw new LastfmApiError(
+        json.error,
+        `Last.fm error ${json.error}: ${json.message ?? "unknown"}`,
+      );
     }
     if (!response.ok) throw new Error(`Last.fm HTTP ${response.status}`);
     return json;
@@ -315,9 +328,13 @@ let pendingRadioBoundary: RadioBoundaryTrack | null | undefined;
 function notify(body: string, force = false): void {
   if (!force && !getNotificationsEnabled()) return;
   try {
-    const notification = createNotification({ title: 'Last.fm', body, silent: true });
+    const notification = createNotification({
+      title: "Last.fm",
+      body,
+      silent: true,
+    });
     if (!notification) return;
-    notification.on('click', () => {
+    notification.on("click", () => {
       const win = getWindow();
       if (win) {
         win.show();
@@ -326,7 +343,7 @@ function notify(body: string, force = false): void {
     });
     notification.show();
   } catch (err: unknown) {
-    lastfmLog.warn('notification failed:', errorMessage(err));
+    lastfmLog.warn("notification failed:", errorMessage(err));
   }
 }
 
@@ -376,8 +393,9 @@ interface ActiveTrack {
 }
 
 /**
- * Allows playback requests only with application credentials, an enabled integration, a session and named track metadata.
- * Returns the validated fields so callers need no non-null assertions.
+ * Allows playback requests only with credentials, an enabled integration, a
+ * session, and named track metadata. Returns validated fields so callers need
+ * no non-null assertions.
  */
 function active(): ActiveTrack | null {
   if (!isConfigured() || !getLastfmEnabled()) return null;
@@ -392,9 +410,12 @@ function active(): ActiveTrack | null {
  * Compares generations because Last.fm can return the same key when an account reconnects.
  */
 function handleInvalidSession(err: unknown, generation: number): boolean {
-  if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR) return false;
+  if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR)
+    return false;
   if (generation !== sessionGeneration) return true;
-  lastfmLog.warn('session rejected by Last.fm; reconnect from the tray to resume scrobbling');
+  lastfmLog.warn(
+    "session rejected by Last.fm; reconnect from the tray to resume scrobbling",
+  );
   disconnect();
   notify(getLastfmConnectFailedText(), true);
   return true;
@@ -420,7 +441,9 @@ function queueScrobble(entry: PendingScrobble): void {
  * batch into the new play.
  */
 function dropSubmitted(count: number): void {
-  setPendingScrobbles(getPendingScrobbles().slice(Math.max(count - trimmedWhileDraining, 0)));
+  setPendingScrobbles(
+    getPendingScrobbles().slice(Math.max(count - trimmedWhileDraining, 0)),
+  );
 }
 
 /**
@@ -447,22 +470,36 @@ function drainGuard(sessionKey: string): PendingScrobble[] | null {
  * reports a duration for any track with one rather than only where the rounded
  * seconds are non-zero.
  */
-function trackParams(entry: PendingScrobble, suffix = ''): Record<string, string> {
+function trackParams(
+  entry: PendingScrobble,
+  suffix = "",
+): Record<string, string> {
   const params: Record<string, string> = {
     [`artist${suffix}`]: entry.artist,
     [`track${suffix}`]: entry.track,
     [`timestamp${suffix}`]: String(entry.timestamp),
   };
   if (entry.album) params[`album${suffix}`] = entry.album;
-  if (entry.durationSec) params[`duration${suffix}`] = String(entry.durationSec);
-  if (entry.chosenByUser !== undefined) params[`chosenByUser${suffix}`] = String(entry.chosenByUser);
+  if (entry.durationSec)
+    params[`duration${suffix}`] = String(entry.durationSec);
+  if (entry.chosenByUser !== undefined)
+    params[`chosenByUser${suffix}`] = String(entry.chosenByUser);
   return params;
 }
 
 /** Encodes a batch as the indexed parameters one track.scrobble request takes. */
-function buildBatchParams(batch: PendingScrobble[], sessionKey: string): Record<string, string> {
-  const params: Record<string, string> = { method: 'track.scrobble', api_key: API_KEY, sk: sessionKey };
-  batch.forEach((entry, index) => Object.assign(params, trackParams(entry, `[${index}]`)));
+function buildBatchParams(
+  batch: PendingScrobble[],
+  sessionKey: string,
+): Record<string, string> {
+  const params: Record<string, string> = {
+    method: "track.scrobble",
+    api_key: API_KEY,
+    sk: sessionKey,
+  };
+  batch.forEach((entry, index) =>
+    Object.assign(params, trackParams(entry, `[${index}]`)),
+  );
   return params;
 }
 
@@ -474,48 +511,57 @@ function buildBatchParams(batch: PendingScrobble[], sessionKey: string): Record<
  * entries under it are the next account's plays, and removing the batch length
  * would discard them.
  */
-function onDrainSettled(res: LastfmResponse, batch: PendingScrobble[], generation: number): void {
+function onDrainSettled(
+  res: LastfmResponse,
+  batch: PendingScrobble[],
+  generation: number,
+): void {
   if (generation !== sessionGeneration) {
-    lastfmLog.info('queued scrobbles submitted for an account that has gone:', batch.length);
+    lastfmLog.info(
+      "queued scrobbles submitted for an account that has gone:",
+      batch.length,
+    );
     return;
   }
   dropSubmitted(batch.length);
-  // The batch clears whatever Last.fm made of it, and the codes are reported
-  // and then let go rather than held for another attempt: a filtered artist
-  // or track, and a timestamp too old or too new, all answer about the play
-  // itself and would be filtered again on any resend, while the daily limit
-  // needs a queue policy this integration does not have. So the log is the
-  // only place the loss is visible at all.
+  // A successful response removes the whole batch, including filtered plays.
+  // Retrying a filtered artist, track, or timestamp gives the same result. The
+  // daily limit needs a queue policy that this integration does not have, so
+  // the log is the only record of these losses.
   const outcome = readScrobbleOutcome(res);
   if (!outcome) {
-    lastfmLog.info('queued scrobbles submitted:', batch.length);
+    lastfmLog.info("queued scrobbles submitted:", batch.length);
     return;
   }
-  const reasons = outcome.codes.length > 0 ? `; ignored codes: ${outcome.codes.join(', ')}` : '';
+  const reasons =
+    outcome.codes.length > 0
+      ? `; ignored codes: ${outcome.codes.join(", ")}`
+      : "";
   const counts = `Last.fm accepted ${outcome.accepted}, ignored ${outcome.ignored}${reasons}`;
   lastfmLog.info(`queued scrobbles submitted: ${batch.length}; ${counts}`);
 }
 
 /** Decides whether a failed batch is gone or still owed, and reports which. */
-function onDrainFailed(err: Error, batch: PendingScrobble[], generation: number): void {
+function onDrainFailed(
+  err: Error,
+  batch: PendingScrobble[],
+  generation: number,
+): void {
   // A refusal is as final for a queued play as it is for a live one, so the
   // batch goes whether or not the session survived it. Keeping a batch the
   // API can only refuse would block every later drain behind it forever.
   if (isFinalRefusal(err)) {
     if (!handleInvalidSession(err, generation)) {
-      lastfmLog.warn('queued scrobbles refused, dropped:', err.message);
+      lastfmLog.warn("queued scrobbles refused, dropped:", err.message);
     }
     // An invalid session clears the queue and advances the generation.
     if (generation === sessionGeneration) dropSubmitted(batch.length);
     return;
   }
-  // A transport failure, or a service that answered about itself rather
-  // than about these plays. Nothing took them, so the queue stands and the
-  // next successful request carries it out. That cannot wedge: no code here
-  // can be provoked by the batch, so the condition is the service's and it
-  // clears when the service does. Nothing is scheduled either, so the next
-  // attempt waits on a request the user's own playback triggers.
-  lastfmLog.warn('queued scrobbles not sent, still queued:', err.message);
+  // A transport failure or service failure says nothing about these plays, so
+  // keep the queue. Batch contents cannot cause these failures, and no retry is
+  // scheduled. The next playback request makes the next attempt.
+  lastfmLog.warn("queued scrobbles not sent, still queued:", err.message);
 }
 
 /**
@@ -554,24 +600,25 @@ function sendNowPlaying(): void {
   if (!current) return;
   const sessionKey = current.sessionKey;
   const params: Record<string, string> = {
-    method: 'track.updateNowPlaying',
+    method: "track.updateNowPlaying",
     artist: current.artist,
     track: current.track,
     api_key: API_KEY,
     sk: sessionKey,
   };
   if (current.album) params.album = current.album;
-  if (current.durationMs > 0) params.duration = String(Math.round(current.durationMs / 1000));
+  if (current.durationMs > 0)
+    params.duration = String(Math.round(current.durationMs / 1000));
 
   const generation = sessionGeneration;
   apiCall(params, true)
     .then(() => {
-      lastfmLog.debug('event=now-playing status=submitted');
+      lastfmLog.debug("event=now-playing status=submitted");
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
       if (handleInvalidSession(err, generation)) return;
-      lastfmLog.warn('now playing failed:', err.message);
+      lastfmLog.warn("now playing failed:", err.message);
     });
 }
 
@@ -587,17 +634,24 @@ function playbackReachedThreshold(): boolean {
   const threshold = scrobbleThresholdMs(durationMs);
   if (threshold === null) return false;
   if (isRadioSong) {
-    return radioPositionAdvanced && lastRadioAdvanceAt !== null &&
+    return (
+      radioPositionAdvanced &&
+      lastRadioAdvanceAt !== null &&
       Date.now() - lastRadioAdvanceAt <= POSITION_TOLERANCE_MS &&
-      accumulatedMs >= threshold;
+      accumulatedMs >= threshold
+    );
   }
   if (!positionReported) return false;
   return snapshot.positionUs / 1000 + POSITION_TOLERANCE_MS >= threshold;
 }
 
-function submitScrobble(entry: PendingScrobble, sessionKey: string, generation: number): void {
+function submitScrobble(
+  entry: PendingScrobble,
+  sessionKey: string,
+  generation: number,
+): void {
   const params: Record<string, string> = {
-    method: 'track.scrobble',
+    method: "track.scrobble",
     ...trackParams(entry),
     api_key: API_KEY,
     sk: sessionKey,
@@ -605,21 +659,27 @@ function submitScrobble(entry: PendingScrobble, sessionKey: string, generation: 
 
   apiCall(params, true)
     .then(() => {
-      lastfmLog.info('event=scrobble status=submitted');
+      lastfmLog.info("event=scrobble status=submitted");
       flushPendingScrobbles(sessionKey);
     })
     .catch((err: Error) => {
       if (handleInvalidSession(err, generation)) return;
       if (isFinalRefusal(err)) {
-        lastfmLog.warn('scrobble failed, not retried:', err.message);
+        lastfmLog.warn("scrobble failed, not retried:", err.message);
         return;
       }
       if (generation !== sessionGeneration) {
-        lastfmLog.warn('scrobble not queued, the account it belongs to has gone:', err.message);
+        lastfmLog.warn(
+          "scrobble not queued, the account it belongs to has gone:",
+          err.message,
+        );
         return;
       }
       queueScrobble(entry);
-      lastfmLog.warn('scrobble queued, the request did not reach Last.fm:', err.message);
+      lastfmLog.warn(
+        "scrobble queued, the request did not reach Last.fm:",
+        err.message,
+      );
     });
 }
 
@@ -633,7 +693,9 @@ function doScrobble(): void {
   const current = active();
   if (!current) return;
   if (!playbackReachedThreshold()) {
-    lastfmLog.debug('event=scrobble status=skipped reason=threshold-not-reached');
+    lastfmLog.debug(
+      "event=scrobble status=skipped reason=threshold-not-reached",
+    );
     return;
   }
   scrobbled = true;
@@ -642,14 +704,19 @@ function doScrobble(): void {
   const generation = sessionGeneration;
   // The queued entry and the live request are built from one object so the play
   // that goes on the queue cannot drift from the play that was submitted.
-  const entry: PendingScrobble = { artist: current.artist, track: current.track, timestamp: trackStartUnix };
+  const entry: PendingScrobble = {
+    artist: current.artist,
+    track: current.track,
+    timestamp: trackStartUnix,
+  };
   if (current.album) entry.album = current.album;
-  if (current.durationMs > 0) entry.durationSec = Math.round(current.durationMs / 1000);
+  if (current.durationMs > 0)
+    entry.durationSec = Math.round(current.durationMs / 1000);
   if (isRadioSong) entry.chosenByUser = 0;
 
-  // Keep scrobbled set after submission, including failures, to prevent resubmission on resume.
-  // submitScrobble() queues non-final failures only for the same session.
-  // A later playback request drains the queue without a retry timer.
+  // Keep `scrobbled` set after submission to prevent resubmission on resume.
+  // `submitScrobble()` queues non-final failures only for the same session, and
+  // a later playback request drains the queue without a retry timer.
   submitScrobble(entry, sessionKey, generation);
 }
 
@@ -661,7 +728,12 @@ function doScrobble(): void {
  */
 function armScrobbleTimer(): void {
   clearScrobbleTimer();
-  if (scrobbled || !active() || (isRadioSong && pendingRadioBoundary !== undefined)) return;
+  if (
+    scrobbled ||
+    !active() ||
+    (isRadioSong && pendingRadioBoundary !== undefined)
+  )
+    return;
   const threshold = scrobbleThresholdMs(durationMs);
   if (threshold === null) return;
   const remaining = threshold - accumulatedMs;
@@ -675,8 +747,15 @@ function armScrobbleTimer(): void {
 function radioBoundaryTrack(): RadioBoundaryTrack | null {
   foldPlayTime();
   const current = active();
-  if (!current || !isRadioSong || !radioObservedFromStart || !radioPositionAdvanced || scrobbled ||
-      accumulatedMs <= MIN_TRACK_LENGTH_MS || trackStartUnix === 0) {
+  if (
+    !current ||
+    !isRadioSong ||
+    !radioObservedFromStart ||
+    !radioPositionAdvanced ||
+    scrobbled ||
+    accumulatedMs <= MIN_TRACK_LENGTH_MS ||
+    trackStartUnix === 0
+  ) {
     return null;
   }
   return {
@@ -687,10 +766,13 @@ function radioBoundaryTrack(): RadioBoundaryTrack | null {
 }
 
 function adoptRadioTrack(payload: TimedMetadataPayload): void {
-  const cleanBoundary = payload.transition === 'clean' && !radioSeekPending;
+  const cleanBoundary = payload.transition === "clean" && !radioSeekPending;
   const observedAtMs = payload.observedAtMs ?? Date.now();
   if (cleanBoundary && isRadioSong) {
-    accumulatedMs = Math.max(0, accumulatedMs - Math.max(0, Date.now() - observedAtMs));
+    accumulatedMs = Math.max(
+      0,
+      accumulatedMs - Math.max(0, Date.now() - observedAtMs),
+    );
   }
   const outgoing = cleanBoundary ? radioBoundaryTrack() : null;
   const observedFromStart = cleanBoundary;
@@ -728,8 +810,12 @@ function confirmRadioBoundary(): void {
   if (pendingRadioBoundary === undefined || !getLastfmEnabled()) return;
   const outgoing = pendingRadioBoundary;
   pendingRadioBoundary = undefined;
-  if (outgoing && getLastfmEnabled() && outgoing.generation === sessionGeneration &&
-      getLastfmSessionKey() === outgoing.sessionKey) {
+  if (
+    outgoing &&
+    getLastfmEnabled() &&
+    outgoing.generation === sessionGeneration &&
+    getLastfmSessionKey() === outgoing.sessionKey
+  ) {
     const entry: PendingScrobble = {
       artist: outgoing.artist,
       track: outgoing.track,
@@ -786,14 +872,16 @@ function markPlaybackStarted(): void {
  */
 export function enable(): void {
   if (!isConfigured()) {
-    lastfmLog.warn('enabled but no API credentials configured; scrobbling is inert');
+    lastfmLog.warn(
+      "enabled but no API credentials configured; scrobbling is inert",
+    );
     return;
   }
   if (isRadioSong) radioObservedFromStart = false;
   if (playerRef?.playbackSnapshot().isPlaying) {
     markPlaybackStarted();
   }
-  lastfmLog.info('scrobbling enabled');
+  lastfmLog.info("scrobbling enabled");
 }
 
 /**
@@ -804,26 +892,26 @@ export function enable(): void {
 export function disable(): void {
   clearScrobbleTimer();
   foldPlayTime();
-  lastfmLog.info('scrobbling disabled');
+  lastfmLog.info("scrobbling disabled");
 }
 
-/**
- * Hands a URL to the system browser, checking the protocol first as every other
- * `shell.openExternal` call in the app does.
- */
+/** Restricts external navigation to HTTP and HTTPS URLs before opening them. */
 function openInBrowser(url: URL): void {
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    lastfmLog.warn('refusing to open a non-web URL:', url.protocol);
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    lastfmLog.warn("refusing to open a non-web URL:", url.protocol);
     return;
   }
-  shell.openExternal(url.toString()).catch((err: Error) => lastfmLog.warn('failed to open browser:', err.message));
+  shell
+    .openExternal(url.toString())
+    .catch((err: Error) =>
+      lastfmLog.warn("failed to open browser:", err.message),
+    );
 }
 
 /**
- * Closes a failed auth attempt: the flow is released, the feature switched back
- * off and the user told. The notification is forced past `notifications.enabled`
- * because it answers an action the user just took in the tray, and silence there
- * leaves the menu back at Connect with no explanation.
+ * Closes a failed authentication attempt, disables the feature, and notifies
+ * the user. The notification bypasses `notifications.enabled` because it
+ * answers a tray action that otherwise fails without an explanation.
  */
 function failAuth(reason: string, onComplete?: () => void): void {
   authInProgress = false;
@@ -843,23 +931,23 @@ function failAuth(reason: string, onComplete?: () => void): void {
 export function startAuth(onComplete?: () => void): void {
   if (authInProgress) return;
   if (!isConfigured()) {
-    failAuth('cannot authenticate: no API credentials configured', onComplete);
+    failAuth("cannot authenticate: no API credentials configured", onComplete);
     return;
   }
   authInProgress = true;
   const generation = ++authGeneration;
 
-  apiCall({ method: 'auth.getToken', api_key: API_KEY }, false)
+  apiCall({ method: "auth.getToken", api_key: API_KEY }, false)
     .then((res) => {
       if (generation !== authGeneration) return;
       const token = res.token;
-      if (!token) throw new Error('no token returned');
+      if (!token) throw new Error("no token returned");
       // Percent-encode both values so token characters cannot change the query structure.
       const url = new URL(AUTH_URL);
-      url.searchParams.set('api_key', API_KEY);
-      url.searchParams.set('token', token);
+      url.searchParams.set("api_key", API_KEY);
+      url.searchParams.set("token", token);
       openInBrowser(url);
-      lastfmLog.info('waiting for browser authorisation');
+      lastfmLog.info("waiting for browser authorisation");
       pollForSession(token, Date.now(), generation, onComplete);
     })
     .catch((err: Error) => {
@@ -875,15 +963,24 @@ export function startAuth(onComplete?: () => void): void {
  * the generation guard once `cancelAuth()` has run, so an abandoned flow cannot
  * connect an account behind the user's back.
  */
-function pollForSession(token: string, startedAt: number, generation: number, onComplete?: () => void): void {
+function pollForSession(
+  token: string,
+  startedAt: number,
+  generation: number,
+  onComplete?: () => void,
+): void {
   if (generation !== authGeneration) return;
   const remainingMs = AUTH_POLL_TIMEOUT_MS - (Date.now() - startedAt);
   if (remainingMs <= 0) {
-    failAuth('authorisation timed out', onComplete);
+    failAuth("authorisation timed out", onComplete);
     return;
   }
 
-  apiCall({ method: 'auth.getSession', api_key: API_KEY, token }, false, Math.min(REQUEST_TIMEOUT_MS, remainingMs))
+  apiCall(
+    { method: "auth.getSession", api_key: API_KEY, token },
+    false,
+    Math.min(REQUEST_TIMEOUT_MS, remainingMs),
+  )
     .then((res) => {
       if (generation !== authGeneration) return;
       const key = res.session?.key;
@@ -894,23 +991,29 @@ function pollForSession(token: string, startedAt: number, generation: number, on
         invalidateRadioContinuity();
         setLastfmSession(key, name);
         sessionGeneration += 1;
-        lastfmLog.info('authenticated as', name);
+        lastfmLog.info("authenticated as", name);
         notify(getLastfmConnectedText(name));
         enable();
         onComplete?.();
         stateChangedCallback?.();
         return;
       }
-      throw new Error('session not yet authorised');
+      throw new Error("session not yet authorised");
     })
     .catch(() => {
       if (generation !== authGeneration) return;
       if (Date.now() - startedAt >= AUTH_POLL_TIMEOUT_MS) {
-        failAuth('authorisation timed out', onComplete);
+        failAuth("authorisation timed out", onComplete);
         return;
       }
-      const delay = Math.min(AUTH_POLL_INTERVAL_MS, AUTH_POLL_TIMEOUT_MS - (Date.now() - startedAt));
-      authPollTimer = setTimeout(() => pollForSession(token, startedAt, generation, onComplete), delay);
+      const delay = Math.min(
+        AUTH_POLL_INTERVAL_MS,
+        AUTH_POLL_TIMEOUT_MS - (Date.now() - startedAt),
+      );
+      authPollTimer = setTimeout(
+        () => pollForSession(token, startedAt, generation, onComplete),
+        delay,
+      );
     });
 }
 
@@ -928,12 +1031,11 @@ export function disconnect(): void {
   sessionGeneration += 1;
   invalidateRadioContinuity();
   // The queued plays go with the account. They are the user's listening history
-  // held in plain text, and Disconnect is what removes Sidra's copy of that; a
-  // queue that outlived the account would also submit those plays to whichever
-  // account was connected next.
+  // held in plain text, and Disconnect removes Sidra's copy. A queue that
+  // outlived the account would submit those plays to the next connected account.
   setPendingScrobbles([]);
   setLastfmEnabled(false);
-  lastfmLog.info('disconnected from Last.fm');
+  lastfmLog.info("disconnected from Last.fm");
   stateChangedCallback?.();
 }
 
@@ -944,13 +1046,17 @@ export function disconnect(): void {
 export function init(ctx: IntegrationContext): void {
   playerRef = ctx.player;
   getWindow = ctx.getMainWindow ?? (() => null);
-  lastfmLog.info('Last.fm module initialised');
+  lastfmLog.info("Last.fm module initialised");
   if (!isConfigured()) {
-    lastfmLog.info('no API credentials configured; scrobbling is inert until set');
+    lastfmLog.info(
+      "no API credentials configured; scrobbling is inert until set",
+    );
   }
 
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
-    resetTrack(payload?.playParams?.kind === 'radioStation' ? null : payload);
+  const onNowPlayingItemDidChange = (
+    payload: NowPlayingPayload | null,
+  ): void => {
+    resetTrack(payload?.playParams?.kind === "radioStation" ? null : payload);
     lastPositionUs = null;
     lastPositionAt = null;
     radioSeekPending = false;
@@ -996,7 +1102,11 @@ export function init(ctx: IntegrationContext): void {
       const advanceUs = positionUs - lastPositionUs;
       const reportGapMs = now - lastPositionAt;
       const maximumAdvanceUs = (reportGapMs + POSITION_TOLERANCE_MS) * 1000;
-      if (reportGapMs > POSITION_TOLERANCE_MS || advanceUs < 0 || advanceUs > maximumAdvanceUs) {
+      if (
+        reportGapMs > POSITION_TOLERANCE_MS ||
+        advanceUs < 0 ||
+        advanceUs > maximumAdvanceUs
+      ) {
         invalidateRadioContinuity();
         radioSeekPending = true;
       } else if (advanceUs > 0 && playerRef?.playbackSnapshot().isPlaying) {
@@ -1006,7 +1116,11 @@ export function init(ctx: IntegrationContext): void {
         radioPositionAdvanced = true;
         lastRadioAdvanceAt = now;
         confirmRadioBoundary();
-        if (pendingRadioBoundary === undefined && !scrobbleTimer && playbackReachedThreshold()) {
+        if (
+          pendingRadioBoundary === undefined &&
+          !scrobbleTimer &&
+          playbackReachedThreshold()
+        ) {
           doScrobble();
         }
       }
@@ -1015,18 +1129,27 @@ export function init(ctx: IntegrationContext): void {
     lastPositionAt = now;
   };
 
-  ctx.player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  ctx.player.on('timedMetadataDidChange', onTimedMetadataDidChange);
-  ctx.player.on('playbackStateDidChange', onPlaybackStateDidChange);
-  ctx.player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+  ctx.player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  ctx.player.on("timedMetadataDidChange", onTimedMetadataDidChange);
+  ctx.player.on("playbackStateDidChange", onPlaybackStateDidChange);
+  ctx.player.on("playbackTimeDidChange", onPlaybackTimeDidChange);
 
-  app.on('will-quit', () => {
+  app.on("will-quit", () => {
     clearScrobbleTimer();
     cancelAuth();
-    ctx.player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    ctx.player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
-    ctx.player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-    ctx.player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+    ctx.player.removeListener(
+      "nowPlayingItemDidChange",
+      onNowPlayingItemDidChange,
+    );
+    ctx.player.removeListener(
+      "timedMetadataDidChange",
+      onTimedMetadataDidChange,
+    );
+    ctx.player.removeListener(
+      "playbackStateDidChange",
+      onPlaybackStateDidChange,
+    );
+    ctx.player.removeListener("playbackTimeDidChange", onPlaybackTimeDidChange);
     resetTrack(null);
     previousState = 0;
     lastPositionUs = null;

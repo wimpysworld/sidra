@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { restorePlatform, setPlatform } from './mocks/platform';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { restorePlatform, setPlatform } from "./mocks/platform";
 
 type Listener = (...args: unknown[]) => unknown;
 
@@ -9,7 +9,7 @@ const bootstrap = vi.hoisted(() => {
   const appListeners = new Map<string, Listener>();
 
   const webContents = {
-    mainFrame: { url: 'https://music.apple.com/gb/new' },
+    mainFrame: { url: "https://music.apple.com/gb/new" },
     isDestroyed: vi.fn(() => false),
     on: vi.fn((event: string, listener: Listener) => {
       mainWebListeners.set(event, listener);
@@ -18,10 +18,10 @@ const bootstrap = vi.hoisted(() => {
       mainWebOnceListeners.set(event, listener);
     }),
     executeJavaScript: vi.fn(() => Promise.resolve(true)),
-    insertCSS: vi.fn(() => Promise.resolve('css-key')),
+    insertCSS: vi.fn(() => Promise.resolve("css-key")),
     setZoomFactor: vi.fn(),
     setWindowOpenHandler: vi.fn(),
-    getURL: vi.fn(() => 'https://music.apple.com/gb/new'),
+    getURL: vi.fn(() => "https://music.apple.com/gb/new"),
     openDevTools: vi.fn(),
     send: vi.fn(),
     reload: vi.fn(),
@@ -33,14 +33,14 @@ const bootstrap = vi.hoisted(() => {
 
   const mainWindow = {
     isDestroyed: vi.fn(() => false),
-    // Electron throws from this native getter once the window is destroyed,
-    // which quitting does before will-quit runs (#257). A plain property would
-    // let an unguarded read pass.
+    // Electron's native webContents getter throws after window destruction.
+    // The mock must reject unguarded teardown reads because destruction precedes will-quit.
     get webContents() {
-      if (mainWindow.isDestroyed()) throw new TypeError('Object has been destroyed');
+      if (mainWindow.isDestroyed())
+        throw new TypeError("Object has been destroyed");
       return webContents;
     },
-    loadURL: vi.fn(() => Promise.reject(new Error('offline'))),
+    loadURL: vi.fn(() => Promise.reject(new Error("offline"))),
     on: vi.fn((_event: string, _listener: Listener) => {}),
     once: vi.fn(),
     show: vi.fn(),
@@ -101,12 +101,12 @@ const bootstrap = vi.hoisted(() => {
   };
 });
 
-vi.mock('electron', () => ({
+vi.mock("electron", () => ({
   app: {
-    name: 'Sidra',
+    name: "Sidra",
     isPackaged: false,
-    getName: vi.fn(() => 'Test Player'),
-    getVersion: vi.fn(() => '0.3.0'),
+    getName: vi.fn(() => "Test Player"),
+    getVersion: vi.fn(() => "0.3.0"),
     getPath: vi.fn((name: string) => `/tmp/sidra-test/${name}`),
     whenReady: vi.fn(() => Promise.resolve()),
     on: bootstrap.appOn,
@@ -116,7 +116,7 @@ vi.mock('electron', () => ({
     setAsDefaultProtocolClient: vi.fn(() => true),
     commandLine: { appendSwitch: vi.fn() },
     setDesktopName: vi.fn(),
-    userAgentFallback: '',
+    userAgentFallback: "",
   },
   BrowserWindow: bootstrap.browserWindow,
   components: {
@@ -140,66 +140,69 @@ vi.mock('electron', () => ({
   webFrameMain: { fromId: vi.fn() },
 }));
 
-vi.mock('electron-log/main', () => ({
+vi.mock("electron-log/main", () => ({
   default: {
     initialize: vi.fn(),
     transports: {
-      file: { level: 'info', format: '' },
-      console: { level: 'debug', format: '' },
+      file: { level: "info", format: "" },
+      console: { level: "debug", format: "" },
     },
     scope: vi.fn(() => bootstrap.log),
   },
 }));
 
-vi.mock('fs', () => ({
-  default: { readFileSync: vi.fn(() => 'asset') },
+vi.mock("fs", () => ({
+  default: { readFileSync: vi.fn(() => "asset") },
 }));
 
-vi.mock('../src/config', () => ({
+vi.mock("../src/config", () => ({
   getZoomFactor: vi.fn(() => 1),
   getCloseToTrayEnabled: vi.fn(() => false),
-  getMusicService: vi.fn(() => 'music'),
+  getMusicService: vi.fn(() => "music"),
 }));
 
-vi.mock('../src/i18n', () => ({
-  getLoadingText: vi.fn(() => ({ text: 'Loading...', lang: 'en' })),
+vi.mock("../src/i18n", () => ({
+  getLoadingText: vi.fn(() => ({ text: "Loading...", lang: "en" })),
   getNavigationStrings: vi.fn(() => ({})),
-  getTrayStrings: vi.fn(() => ({ about: 'À propos de Sidra' })),
-  NAV_LABELS_TOKEN: '__NAV_LABELS__',
+  getTrayStrings: vi.fn(() => ({ about: "À propos de Sidra" })),
+  NAV_LABELS_TOKEN: "__NAV_LABELS__",
 }));
 
-vi.mock('../src/paths', () => ({ getAssetPath: vi.fn((...parts: string[]) => parts.join('/')) }));
+vi.mock("../src/paths", () => ({
+  getAssetPath: vi.fn((...parts: string[]) => parts.join("/")),
+}));
 
-vi.mock('../src/player', () => ({
+vi.mock("../src/player", () => ({
   Player: class {
     handleHookReady = bootstrap.handleHookReady;
-    handlePlaybackCapabilitiesDidChange = bootstrap.handlePlaybackCapabilitiesDidChange;
+    handlePlaybackCapabilitiesDidChange =
+      bootstrap.handlePlaybackCapabilitiesDidChange;
     resetForDocumentReplacement = bootstrap.resetForDocumentReplacement;
   },
 }));
 
-vi.mock('../src/storefront', () => ({
-  buildAppleMusicURL: vi.fn(() => 'https://music.apple.com/gb/new'),
+vi.mock("../src/storefront", () => ({
+  buildAppleMusicURL: vi.fn(() => "https://music.apple.com/gb/new"),
   buildItmsRouteURL: vi.fn(),
   handleStorefrontNavigation: vi.fn(),
   handleLastPageNavigation: vi.fn(),
 }));
 
-vi.mock('../src/itms', () => ({ extractItmsUrlFromArgv: vi.fn(() => null) }));
+vi.mock("../src/itms", () => ({ extractItmsUrlFromArgv: vi.fn(() => null) }));
 
-vi.mock('../src/serviceSwitch', () => ({
+vi.mock("../src/serviceSwitch", () => ({
   initServiceSwitch: vi.fn(),
   routeToMusicService: vi.fn(),
   switchService: vi.fn(),
 }));
 
-vi.mock('../src/theme', () => ({
+vi.mock("../src/theme", () => ({
   initThemeCSS: vi.fn(),
   injectThemeCss: vi.fn(() => Promise.resolve()),
   setThemeChangedCallback: vi.fn(),
 }));
 
-vi.mock('../src/tray', () => ({
+vi.mock("../src/tray", () => ({
   createTray: vi.fn(() => bootstrap.tray),
   getMenuIcon: vi.fn(),
   initTrayStateManager: bootstrap.integrations.trayState,
@@ -207,71 +210,97 @@ vi.mock('../src/tray', () => ({
   setGetMainWindowCallback: vi.fn(),
 }));
 
-vi.mock('../src/settings', () => ({
+vi.mock("../src/settings", () => ({
   initSettingsActions: vi.fn(() => vi.fn()),
   notifySettingsChanged: vi.fn(),
 }));
-vi.mock('../src/settingsWindow', () => ({
+vi.mock("../src/settingsWindow", () => ({
   initSettingsWindow: vi.fn(),
   handleSettingsNavigation: vi.fn(),
 }));
 
-vi.mock('../src/commandBridge', () => ({ initCommandBridge: vi.fn() }));
-vi.mock('../src/controllerIPC', () => ({
+vi.mock("../src/commandBridge", () => ({ initCommandBridge: vi.fn() }));
+vi.mock("../src/controllerIPC", () => ({
   initControllerIPC: vi.fn(),
   goBackIfPossible: vi.fn(),
 }));
-vi.mock('../src/aboutWindow', () => ({ showAboutWindow: vi.fn() }));
-vi.mock('../src/update', () => ({ checkForUpdates: vi.fn() }));
-vi.mock('../src/autoUpdate', () => ({ isAutoUpdateSupported: vi.fn(() => false), initAutoUpdate: vi.fn() }));
+vi.mock("../src/aboutWindow", () => ({ showAboutWindow: vi.fn() }));
+vi.mock("../src/update", () => ({ checkForUpdates: vi.fn() }));
+vi.mock("../src/autoUpdate", () => ({
+  isAutoUpdateSupported: vi.fn(() => false),
+  initAutoUpdate: vi.fn(),
+}));
 
-vi.mock('../src/musicService', () => ({
-  getService: vi.fn(() => ({ contentReadySelector: '#content' })),
-  allServices: vi.fn(() => [{
-    host: 'music.apple.com',
-    origin: 'https://music.apple.com',
-    authFrameHosts: ['idmsa.apple.com'],
-  }]),
+vi.mock("../src/musicService", () => ({
+  getService: vi.fn(() => ({ contentReadySelector: "#content" })),
+  allServices: vi.fn(() => [
+    {
+      host: "music.apple.com",
+      origin: "https://music.apple.com",
+      authFrameHosts: ["idmsa.apple.com"],
+    },
+  ]),
   isAllowedNavigationUrl: vi.fn(() => true),
 }));
 
-vi.mock('../src/integrations/notifications', () => ({ init: bootstrap.integrations.notifications }));
-vi.mock('../src/integrations/discord-presence', () => ({ init: bootstrap.integrations.discord }));
-vi.mock('../src/integrations/lastfm', () => ({ init: bootstrap.integrations.lastfm }));
-vi.mock('../src/integrations/macos-dock', () => ({ init: bootstrap.integrations.dock }));
-vi.mock('../src/integrations/windows-taskbar', () => ({ init: bootstrap.integrations.windowsTaskbar }));
-vi.mock('../src/artwork', () => ({ cleanArtworkCache: vi.fn() }));
-vi.mock('../src/wedgeDetector', () => ({
+vi.mock("../src/integrations/notifications", () => ({
+  init: bootstrap.integrations.notifications,
+}));
+vi.mock("../src/integrations/discord-presence", () => ({
+  init: bootstrap.integrations.discord,
+}));
+vi.mock("../src/integrations/lastfm", () => ({
+  init: bootstrap.integrations.lastfm,
+}));
+vi.mock("../src/integrations/macos-dock", () => ({
+  init: bootstrap.integrations.dock,
+}));
+vi.mock("../src/integrations/windows-taskbar", () => ({
+  init: bootstrap.integrations.windowsTaskbar,
+}));
+vi.mock("../src/artwork", () => ({ cleanArtworkCache: vi.fn() }));
+vi.mock("../src/wedgeDetector", () => ({
   init: bootstrap.integrations.wedgeDetector,
   reset: vi.fn(),
 }));
-vi.mock('../src/contentReady', () => ({ contentReadyProbeScript: vi.fn(() => 'true') }));
-vi.mock('../src/notify', () => ({ initNotificationProbe: vi.fn() }));
-vi.mock('../src/utils/openExternal', () => ({ openExternalUrl: vi.fn() }));
+vi.mock("../src/contentReady", () => ({
+  contentReadyProbeScript: vi.fn(() => "true"),
+}));
+vi.mock("../src/notify", () => ({ initNotificationProbe: vi.fn() }));
+vi.mock("../src/utils/openExternal", () => ({ openExternalUrl: vi.fn() }));
 
-// The real module: it imports electron as a type only, so nothing here needs a
-// stand-in, and a hand-written subset once left liveWebContents() undefined
-// while every path that calls it went unexercised.
-vi.mock('../src/utils', async (importOriginal) => importOriginal());
+// Use the real module because it imports electron only as a type.
+// A partial stand-in can omit liveWebContents() and leave guarded paths untested.
+vi.mock("../src/utils", async (importOriginal) => importOriginal());
 
-describe('main bootstrap', () => {
+describe("main bootstrap", () => {
   let chromeDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.useFakeTimers();
-    setPlatform('win32');
-    chromeDescriptor = Object.getOwnPropertyDescriptor(process.versions, 'chrome');
-    Object.defineProperty(process.versions, 'chrome', { value: '148.2.3.4', configurable: true });
+    setPlatform("win32");
+    chromeDescriptor = Object.getOwnPropertyDescriptor(
+      process.versions,
+      "chrome",
+    );
+    Object.defineProperty(process.versions, "chrome", {
+      value: "148.2.3.4",
+      configurable: true,
+    });
     bootstrap.mainWebListeners.clear();
     bootstrap.mainWebOnceListeners.clear();
     bootstrap.appListeners.clear();
     bootstrap.mainWindow.isDestroyed.mockReturnValue(false);
     bootstrap.browserWindow
-      .mockImplementationOnce(function () { return bootstrap.splashWindow; })
-      .mockImplementationOnce(function () { return bootstrap.mainWindow; });
-    bootstrap.mainWindow.loadURL.mockRejectedValue(new Error('offline'));
+      .mockImplementationOnce(function () {
+        return bootstrap.splashWindow;
+      })
+      .mockImplementationOnce(function () {
+        return bootstrap.mainWindow;
+      });
+    bootstrap.mainWindow.loadURL.mockRejectedValue(new Error("offline"));
   });
 
   afterEach(() => {
@@ -279,65 +308,82 @@ describe('main bootstrap', () => {
     vi.useRealTimers();
     restorePlatform();
     if (chromeDescriptor) {
-      Object.defineProperty(process.versions, 'chrome', chromeDescriptor);
+      Object.defineProperty(process.versions, "chrome", chromeDescriptor);
     } else {
-      Reflect.deleteProperty(process.versions, 'chrome');
+      Reflect.deleteProperty(process.versions, "chrome");
     }
   });
 
   async function startMain(): Promise<void> {
-    await import('../src/main');
-    for (let i = 0; i < 10 && bootstrap.mainWindow.loadURL.mock.calls.length === 0; i++) {
+    await import("../src/main");
+    for (
+      let i = 0;
+      i < 10 && bootstrap.mainWindow.loadURL.mock.calls.length === 0;
+      i++
+    ) {
       await Promise.resolve();
     }
     await Promise.resolve();
   }
 
-  it('forwards the About label from getTrayStrings to the macOS menu', async () => {
-    setPlatform('darwin');
+  it("forwards the About label from getTrayStrings to the macOS menu", async () => {
+    setPlatform("darwin");
     await startMain();
-    const { Menu } = await import('electron');
+    const { Menu } = await import("electron");
     expect(Menu.buildFromTemplate).toHaveBeenCalledWith([
-      expect.objectContaining({ submenu: expect.arrayContaining([
-        expect.objectContaining({ label: 'À propos de Sidra' }),
-      ]) }),
+      expect.objectContaining({
+        submenu: expect.arrayContaining([
+          expect.objectContaining({ label: "À propos de Sidra" }),
+        ]),
+      }),
     ]);
   });
 
-  it('creates a locked-down window, wires integrations, and contains first navigation failure', async () => {
+  it("creates a locked-down window, wires integrations, and contains first navigation failure", async () => {
     await startMain();
 
-    expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-      },
-    }));
-    expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      title: 'Test Player',
-      show: false,
-      webPreferences: expect.objectContaining({
-        partition: 'persist:sidra',
-        nodeIntegration: false,
-        contextIsolation: true,
-        spellcheck: false,
-        plugins: true,
-        sandbox: true,
+    expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+        },
       }),
-    }));
-    expect(bootstrap.mainWindow.loadURL).toHaveBeenCalledWith(
-      'https://music.apple.com/gb/new',
-      { userAgent: expect.stringContaining('Chrome/148.0.0.0') },
     );
-    const titleListener = bootstrap.mainWindow.on.mock.calls.find(([event]) => event === 'page-title-updated')?.[1];
+    expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        title: "Test Player",
+        show: false,
+        webPreferences: expect.objectContaining({
+          partition: "persist:sidra",
+          nodeIntegration: false,
+          contextIsolation: true,
+          spellcheck: false,
+          plugins: true,
+          sandbox: true,
+        }),
+      }),
+    );
+    expect(bootstrap.mainWindow.loadURL).toHaveBeenCalledWith(
+      "https://music.apple.com/gb/new",
+      { userAgent: expect.stringContaining("Chrome/148.0.0.0") },
+    );
+    const titleListener = bootstrap.mainWindow.on.mock.calls.find(
+      ([event]) => event === "page-title-updated",
+    )?.[1];
     const preventDefault = vi.fn();
     expect(titleListener).toBeDefined();
     titleListener?.({ preventDefault });
     expect(preventDefault).toHaveBeenCalledOnce();
-    expect(bootstrap.log.warn).toHaveBeenCalledWith('initial navigation loadURL failed:', 'offline');
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      "initial navigation loadURL failed:",
+      "offline",
+    );
 
-    const didFinishLoad = bootstrap.mainWebListeners.get('did-finish-load');
+    const didFinishLoad = bootstrap.mainWebListeners.get("did-finish-load");
     expect(didFinishLoad).toBeDefined();
     await didFinishLoad?.();
 
@@ -353,69 +399,110 @@ describe('main bootstrap', () => {
         bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
       );
     }
-    expect(bootstrap.appOn).toHaveBeenCalledWith('will-quit', expect.any(Function));
+    expect(bootstrap.appOn).toHaveBeenCalledWith(
+      "will-quit",
+      expect.any(Function),
+    );
   });
 
-  it('initialises controller IPC once and reuses guarded back navigation', async () => {
-    const { goBackIfPossible, initControllerIPC } = await import('../src/controllerIPC');
+  it("initialises controller IPC once and reuses guarded back navigation", async () => {
+    const { goBackIfPossible, initControllerIPC } = await import(
+      "../src/controllerIPC"
+    );
     await startMain();
 
     expect(initControllerIPC).toHaveBeenCalledOnce();
     expect(initControllerIPC).toHaveBeenCalledWith(bootstrap.mainWindow);
 
-    const backCall = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'nav:back');
+    const backCall = bootstrap.ipcOn.mock.calls.find(
+      ([channel]) => channel === "nav:back",
+    );
     expect(backCall).toBeDefined();
     backCall?.[1]();
     expect(goBackIfPossible).toHaveBeenCalledWith(bootstrap.mainWindow);
   });
 
-  it('accepts hook readiness only from the current main frame and document generation', async () => {
+  it("accepts hook readiness only from the current main frame and document generation", async () => {
     await startMain();
-    const ready = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'hookReady')?.[1];
-    const event = { sender: bootstrap.webContents, senderFrame: bootstrap.webContents.mainFrame };
+    const ready = bootstrap.ipcOn.mock.calls.find(
+      ([channel]) => channel === "hookReady",
+    )?.[1];
+    const event = {
+      sender: bootstrap.webContents,
+      senderFrame: bootstrap.webContents.mainFrame,
+    };
     ready?.({ ...event, sender: {} }, 0, 0);
     ready?.({ ...event, senderFrame: { url: event.senderFrame.url } }, 0, 0);
-    ready?.(event, '0', 0);
+    ready?.(event, "0", 0);
     expect(bootstrap.handleHookReady).not.toHaveBeenCalled();
     ready?.(event, 0, 0);
-    expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(event.senderFrame.url);
+    expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(
+      event.senderFrame.url,
+    );
     bootstrap.handleHookReady.mockClear();
-    bootstrap.mainWebListeners.get('did-navigate')?.({}, event.senderFrame.url);
+    bootstrap.mainWebListeners.get("did-navigate")?.({}, event.senderFrame.url);
     ready?.(event, 0, 0);
     expect(bootstrap.handleHookReady).not.toHaveBeenCalled();
     ready?.(event, 1, 1);
-    expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(event.senderFrame.url);
+    expect(bootstrap.handleHookReady).toHaveBeenCalledExactlyOnceWith(
+      event.senderFrame.url,
+    );
   });
 
-  it('rejects stale capabilities after document replacement, including a same-frame reload', async () => {
+  it("rejects stale capabilities after document replacement, including a same-frame reload", async () => {
     await startMain();
-    const capabilities = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'playbackCapabilitiesDidChange')?.[1];
-    const event = { sender: bootstrap.webContents, senderFrame: bootstrap.webContents.mainFrame };
-    const payload = { canPlay: true, canPause: true, canSeek: true, durationUs: 60_000_000 };
+    const capabilities = bootstrap.ipcOn.mock.calls.find(
+      ([channel]) => channel === "playbackCapabilitiesDidChange",
+    )?.[1];
+    const event = {
+      sender: bootstrap.webContents,
+      senderFrame: bootstrap.webContents.mainFrame,
+    };
+    const payload = {
+      canPlay: true,
+      canPause: true,
+      canSeek: true,
+      durationUs: 60_000_000,
+    };
     capabilities?.(event, payload, 0);
-    expect(bootstrap.handlePlaybackCapabilitiesDidChange).toHaveBeenCalledExactlyOnceWith(payload);
+    expect(
+      bootstrap.handlePlaybackCapabilitiesDidChange,
+    ).toHaveBeenCalledExactlyOnceWith(payload);
     bootstrap.handlePlaybackCapabilitiesDidChange.mockClear();
-    bootstrap.mainWebListeners.get('did-navigate')?.({}, event.senderFrame.url);
+    bootstrap.mainWebListeners.get("did-navigate")?.({}, event.senderFrame.url);
     capabilities?.(event, payload, 0);
     capabilities?.(event, payload);
-    capabilities?.(event, payload, '1');
+    capabilities?.(event, payload, "1");
     capabilities?.({ ...event, sender: {} }, payload, 1);
-    capabilities?.({ ...event, senderFrame: { url: event.senderFrame.url } }, payload, 1);
+    capabilities?.(
+      { ...event, senderFrame: { url: event.senderFrame.url } },
+      payload,
+      1,
+    );
     capabilities?.({ ...event, senderFrame: null }, payload, 1);
-    expect(bootstrap.handlePlaybackCapabilitiesDidChange).not.toHaveBeenCalled();
+    expect(
+      bootstrap.handlePlaybackCapabilitiesDidChange,
+    ).not.toHaveBeenCalled();
     capabilities?.(event, payload, 1);
-    expect(bootstrap.handlePlaybackCapabilitiesDidChange).toHaveBeenCalledExactlyOnceWith(payload);
+    expect(
+      bootstrap.handlePlaybackCapabilitiesDidChange,
+    ).toHaveBeenCalledExactlyOnceWith(payload);
   });
 
-  it('defers early SPA injection until integrations register and preserves later injection', async () => {
-    const { handleStorefrontNavigation, handleLastPageNavigation } = await import('../src/storefront');
+  it("defers early SPA injection until integrations register and preserves later injection", async () => {
+    const { handleStorefrontNavigation, handleLastPageNavigation } =
+      await import("../src/storefront");
     await startMain();
-    const navigate = bootstrap.mainWebListeners.get('did-navigate-in-page');
-    const finish = bootstrap.mainWebListeners.get('did-finish-load');
+    const navigate = bootstrap.mainWebListeners.get("did-navigate-in-page");
+    const finish = bootstrap.mainWebListeners.get("did-finish-load");
 
-    await navigate?.({}, 'https://music.apple.com/gb/home');
-    expect(handleStorefrontNavigation).toHaveBeenCalledWith('https://music.apple.com/gb/home');
-    expect(handleLastPageNavigation).toHaveBeenCalledWith('https://music.apple.com/gb/home');
+    await navigate?.({}, "https://music.apple.com/gb/home");
+    expect(handleStorefrontNavigation).toHaveBeenCalledWith(
+      "https://music.apple.com/gb/home",
+    );
+    expect(handleLastPageNavigation).toHaveBeenCalledWith(
+      "https://music.apple.com/gb/home",
+    );
     expect(bootstrap.webContents.executeJavaScript).not.toHaveBeenCalled();
 
     await finish?.();
@@ -426,36 +513,49 @@ describe('main bootstrap', () => {
       );
     }
 
-    await navigate?.({}, 'https://music.apple.com/gb/new');
+    await navigate?.({}, "https://music.apple.com/gb/new");
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
-    for (const initialise of Object.values(bootstrap.integrations)) expect(initialise).toHaveBeenCalledOnce();
+    for (const initialise of Object.values(bootstrap.integrations))
+      expect(initialise).toHaveBeenCalledOnce();
   });
 
-  it('permits later SPA injection after initial integration and hook failures', async () => {
-    bootstrap.integrations.notifications.mockImplementationOnce(() => { throw new Error('integration unavailable'); });
-    bootstrap.webContents.executeJavaScript.mockRejectedValueOnce(new Error('hook unavailable'));
+  it("permits later SPA injection after initial integration and hook failures", async () => {
+    bootstrap.integrations.notifications.mockImplementationOnce(() => {
+      throw new Error("integration unavailable");
+    });
+    bootstrap.webContents.executeJavaScript.mockRejectedValueOnce(
+      new Error("hook unavailable"),
+    );
     await startMain();
-    const navigate = bootstrap.mainWebListeners.get('did-navigate-in-page');
-    await navigate?.({}, 'https://music.apple.com/gb/home');
-    await expect(Promise.resolve(bootstrap.mainWebListeners.get('did-finish-load')?.())).resolves.toBeUndefined();
+    const navigate = bootstrap.mainWebListeners.get("did-navigate-in-page");
+    await navigate?.({}, "https://music.apple.com/gb/home");
+    await expect(
+      Promise.resolve(bootstrap.mainWebListeners.get("did-finish-load")?.()),
+    ).resolves.toBeUndefined();
 
-    expect(bootstrap.log.error).toHaveBeenCalledWith('integration initialisation failed: notifications:', expect.any(Error));
-    expect(bootstrap.log.warn).toHaveBeenCalledWith('failed to inject hookScript on load:', expect.any(Error));
+    expect(bootstrap.log.error).toHaveBeenCalledWith(
+      "integration initialisation failed: notifications:",
+      expect.any(Error),
+    );
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      "failed to inject hookScript on load:",
+      expect.any(Error),
+    );
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
-    await navigate?.({}, 'https://music.apple.com/gb/new');
+    await navigate?.({}, "https://music.apple.com/gb/new");
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
     expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
   });
 
-  // The poll runs from a bare setTimeout and read win.webContents before its
-  // promise existed, so the .catch() on that promise could not contain the
-  // getter throw. Quitting during startup destroys the window while the timer
-  // is still armed, and the throw escaped as the #257 error dialog.
-  it('stops the content-ready poll once the window is destroyed', async () => {
+  // The bare timeout can fire after startup destruction, when reading win.webContents throws before a promise exists.
+  // The poll must use liveWebContents() before executeJavaScript() so promise error handling is not bypassed.
+  it("stops the content-ready poll once the window is destroyed", async () => {
     bootstrap.webContents.executeJavaScript.mockResolvedValue(false);
     await startMain();
-    const startPoll = bootstrap.mainWebOnceListeners.get('did-navigate-in-page');
+    const startPoll = bootstrap.mainWebOnceListeners.get(
+      "did-navigate-in-page",
+    );
     expect(startPoll).toBeDefined();
 
     startPoll?.();
@@ -467,16 +567,19 @@ describe('main bootstrap', () => {
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledOnce();
   });
 
-  it('waits for Settings and its dependencies before creating the tray', async () => {
-    const { components } = await import('electron');
-    const { initSettingsActions } = await import('../src/settings');
-    const { initSettingsWindow } = await import('../src/settingsWindow');
-    const { createTray, rebuildTrayMenu, setGetMainWindowCallback } = await import('../src/tray');
-    const { initServiceSwitch } = await import('../src/serviceSwitch');
+  it("waits for Settings and its dependencies before creating the tray", async () => {
+    const { components } = await import("electron");
+    const { initSettingsActions } = await import("../src/settings");
+    const { initSettingsWindow } = await import("../src/settingsWindow");
+    const { createTray, rebuildTrayMenu, setGetMainWindowCallback } =
+      await import("../src/tray");
+    const { initServiceSwitch } = await import("../src/serviceSwitch");
     let resolveComponents!: () => void;
-    vi.mocked(components.whenReady).mockReturnValueOnce(new Promise(resolve => {
-      resolveComponents = () => resolve([]);
-    }));
+    vi.mocked(components.whenReady).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveComponents = () => resolve([]);
+      }),
+    );
 
     await startMain();
     try {
@@ -491,111 +594,150 @@ describe('main bootstrap', () => {
 
     expect(createTray).toHaveBeenCalledOnce();
     const trayCreated = vi.mocked(createTray).mock.invocationCallOrder[0];
-    for (const initialise of [initSettingsActions, initSettingsWindow, initServiceSwitch, setGetMainWindowCallback]) {
+    for (const initialise of [
+      initSettingsActions,
+      initSettingsWindow,
+      initServiceSwitch,
+      setGetMainWindowCallback,
+    ]) {
       expect(initialise).toHaveBeenCalledOnce();
-      expect(vi.mocked(initialise).mock.invocationCallOrder[0]).toBeLessThan(trayCreated);
+      expect(vi.mocked(initialise).mock.invocationCallOrder[0]).toBeLessThan(
+        trayCreated,
+      );
     }
-    expect(trayCreated).toBeLessThan(bootstrap.mainWindow.loadURL.mock.invocationCallOrder[0]);
-    expect(vi.mocked(initServiceSwitch).mock.calls[0][0].getTray()).toBe(bootstrap.tray);
+    expect(trayCreated).toBeLessThan(
+      bootstrap.mainWindow.loadURL.mock.invocationCallOrder[0],
+    );
+    expect(vi.mocked(initServiceSwitch).mock.calls[0][0].getTray()).toBe(
+      bootstrap.tray,
+    );
     vi.mocked(initSettingsActions).mock.calls[0][0].refreshTray();
     expect(rebuildTrayMenu).toHaveBeenCalledWith(bootstrap.tray);
   });
 
-  it('wires Settings entry points and refreshes state without a tray', async () => {
-    const { initSettingsActions, notifySettingsChanged } = await import('../src/settings');
-    const { initSettingsWindow, handleSettingsNavigation } = await import('../src/settingsWindow');
-    const { createTray } = await import('../src/tray');
-    const { initServiceSwitch } = await import('../src/serviceSwitch');
-    const { setThemeChangedCallback } = await import('../src/theme');
-    vi.mocked(createTray).mockReturnValueOnce(null as unknown as ReturnType<typeof createTray>);
+  it("wires Settings entry points and refreshes state without a tray", async () => {
+    const { initSettingsActions, notifySettingsChanged } = await import(
+      "../src/settings"
+    );
+    const { initSettingsWindow, handleSettingsNavigation } = await import(
+      "../src/settingsWindow"
+    );
+    const { createTray } = await import("../src/tray");
+    const { initServiceSwitch } = await import("../src/serviceSwitch");
+    const { setThemeChangedCallback } = await import("../src/theme");
+    vi.mocked(createTray).mockReturnValueOnce(
+      null as unknown as ReturnType<typeof createTray>,
+    );
     await startMain();
     expect(initSettingsActions).toHaveBeenCalledOnce();
     expect(initSettingsWindow).toHaveBeenCalledWith(bootstrap.mainWindow);
-    const nav = bootstrap.ipcOn.mock.calls.find(([channel]) => channel === 'nav:settings');
+    const nav = bootstrap.ipcOn.mock.calls.find(
+      ([channel]) => channel === "nav:settings",
+    );
     const event = {};
     nav?.[1](event);
-    expect(handleSettingsNavigation).toHaveBeenCalledWith(event, bootstrap.mainWindow);
+    expect(handleSettingsNavigation).toHaveBeenCalledWith(
+      event,
+      bootstrap.mainWindow,
+    );
     vi.mocked(setThemeChangedCallback).mock.calls[0][0]();
     expect(notifySettingsChanged).toHaveBeenCalledOnce();
-    vi.mocked(initServiceSwitch).mock.calls[0][0].loadURL('https://music.apple.com/gb/new');
+    vi.mocked(initServiceSwitch).mock.calls[0][0].loadURL(
+      "https://music.apple.com/gb/new",
+    );
     expect(notifySettingsChanged).toHaveBeenCalledTimes(2);
   });
 
-  it('resets controller state only for main-frame navigation', async () => {
+  it("resets controller state only for main-frame navigation", async () => {
     await startMain();
-    const didStartNavigation = bootstrap.mainWebListeners.get('did-start-navigation');
+    const didStartNavigation = bootstrap.mainWebListeners.get(
+      "did-start-navigation",
+    );
     expect(didStartNavigation).toBeDefined();
 
     didStartNavigation?.({
-      url: 'https://music.apple.com/gb/new#dialog',
+      url: "https://music.apple.com/gb/new#dialog",
       isSameDocument: true,
       isMainFrame: true,
     });
-    expect(bootstrap.webContents.send).toHaveBeenCalledWith('controller:reset');
+    expect(bootstrap.webContents.send).toHaveBeenCalledWith("controller:reset");
 
     didStartNavigation?.({
-      url: 'https://music.apple.com/gb/album/example',
+      url: "https://music.apple.com/gb/album/example",
       isSameDocument: false,
       isMainFrame: true,
     });
     expect(bootstrap.webContents.send).toHaveBeenCalledTimes(2);
 
     didStartNavigation?.({
-      url: 'https://music.apple.com/gb/iframe',
+      url: "https://music.apple.com/gb/iframe",
       isSameDocument: false,
       isMainFrame: false,
     });
     expect(bootstrap.webContents.send).toHaveBeenCalledTimes(2);
   });
 
-  it('resets playback only after a committed document navigation', async () => {
-    const { handleStorefrontNavigation } = await import('../src/storefront');
+  it("resets playback only after a committed document navigation", async () => {
+    const { handleStorefrontNavigation } = await import("../src/storefront");
     await startMain();
-    const didStartNavigation = bootstrap.mainWebListeners.get('did-start-navigation');
-    const didNavigate = bootstrap.mainWebListeners.get('did-navigate');
-    const didNavigateInPage = bootstrap.mainWebListeners.get('did-navigate-in-page');
+    const didStartNavigation = bootstrap.mainWebListeners.get(
+      "did-start-navigation",
+    );
+    const didNavigate = bootstrap.mainWebListeners.get("did-navigate");
+    const didNavigateInPage = bootstrap.mainWebListeners.get(
+      "did-navigate-in-page",
+    );
 
     expect(didStartNavigation).toBeDefined();
     expect(didNavigate).toBeDefined();
     expect(didNavigateInPage).toBeDefined();
 
     didStartNavigation?.({
-      url: 'https://music.apple.com/gb/album/example',
+      url: "https://music.apple.com/gb/album/example",
       isSameDocument: false,
       isMainFrame: true,
     });
-    await didNavigateInPage?.({}, 'https://music.apple.com/gb/new#dialog');
+    await didNavigateInPage?.({}, "https://music.apple.com/gb/new#dialog");
     expect(bootstrap.resetForDocumentReplacement).not.toHaveBeenCalled();
 
-    didNavigate?.({}, 'https://music.apple.com/gb/album/example');
+    didNavigate?.({}, "https://music.apple.com/gb/album/example");
 
     expect(bootstrap.resetForDocumentReplacement).toHaveBeenCalledOnce();
-    expect(bootstrap.resetForDocumentReplacement.mock.invocationCallOrder[0])
-      .toBeLessThan(vi.mocked(handleStorefrontNavigation).mock.invocationCallOrder.at(-1)!);
+    expect(
+      bootstrap.resetForDocumentReplacement.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(handleStorefrontNavigation).mock.invocationCallOrder.at(-1)!,
+    );
   });
 
-  it('logs process lifecycle events without private event data', async () => {
-    const privatePath = '/home/alice/.config/sidra/access-token-secret/preload.js';
-    const privateUrl = 'https://music.apple.com/gb/album/private?token=secret-token';
+  it("logs process lifecycle events without private event data", async () => {
+    const privatePath =
+      "/home/alice/.config/sidra/access-token-secret/preload.js";
+    const privateUrl =
+      "https://music.apple.com/gb/album/private?token=secret-token";
     const privateStack = `Error: secret-token\n    at ${privatePath}:1:1`;
-    const privateMetadata = { title: 'Private Track', url: privateUrl };
+    const privateMetadata = { title: "Private Track", url: privateUrl };
 
     await startMain();
 
-    const childProcessGoneCall = bootstrap.appOn.mock.calls
-      .findIndex(([event]) => event === 'child-process-gone');
-    expect(bootstrap.appOn.mock.invocationCallOrder[childProcessGoneCall])
-      .toBeLessThan(bootstrap.browserWindow.mock.invocationCallOrder[0]);
+    const childProcessGoneCall = bootstrap.appOn.mock.calls.findIndex(
+      ([event]) => event === "child-process-gone",
+    );
+    expect(
+      bootstrap.appOn.mock.invocationCallOrder[childProcessGoneCall],
+    ).toBeLessThan(bootstrap.browserWindow.mock.invocationCallOrder[0]);
 
     bootstrap.log.info.mockClear();
     bootstrap.log.warn.mockClear();
     bootstrap.log.error.mockClear();
 
-    const unresponsive = bootstrap.mainWebListeners.get('unresponsive');
-    const responsive = bootstrap.mainWebListeners.get('responsive');
-    const renderProcessGone = bootstrap.mainWebListeners.get('render-process-gone');
-    const preloadError = bootstrap.mainWebListeners.get('preload-error');
-    const childProcessGone = bootstrap.appListeners.get('child-process-gone');
+    const unresponsive = bootstrap.mainWebListeners.get("unresponsive");
+    const responsive = bootstrap.mainWebListeners.get("responsive");
+    const renderProcessGone = bootstrap.mainWebListeners.get(
+      "render-process-gone",
+    );
+    const preloadError = bootstrap.mainWebListeners.get("preload-error");
+    const childProcessGone = bootstrap.appListeners.get("child-process-gone");
 
     expect(unresponsive).toBeDefined();
     expect(responsive).toBeDefined();
@@ -603,52 +745,63 @@ describe('main bootstrap', () => {
     expect(preloadError).toBeDefined();
     expect(childProcessGone).toBeDefined();
 
-    unresponsive?.({ url: privateUrl, token: 'secret-token' });
+    unresponsive?.({ url: privateUrl, token: "secret-token" });
     responsive?.({ url: privateUrl, metadata: privateMetadata });
-    renderProcessGone?.({}, {
-      reason: 'crashed',
-      exitCode: 133,
-      url: privateUrl,
-      token: 'secret-token',
-      metadata: privateMetadata,
-      arguments: ['--secret-token'],
-    });
+    renderProcessGone?.(
+      {},
+      {
+        reason: "crashed",
+        exitCode: 133,
+        url: privateUrl,
+        token: "secret-token",
+        metadata: privateMetadata,
+        arguments: ["--secret-token"],
+      },
+    );
 
     const error = new Error(`failed for ${privateUrl}`);
-    error.name = 'TypeError';
+    error.name = "TypeError";
     error.stack = privateStack;
     preloadError?.({}, privatePath, error);
 
-    childProcessGone?.({}, {
-      type: 'Utility',
-      reason: 'crashed',
-      exitCode: 9,
-      serviceName: 'Audio Service',
-      name: privateUrl,
-      token: 'secret-token',
-      metadata: privateMetadata,
-      arguments: ['--secret-token'],
-    });
-    childProcessGone?.({}, {
-      type: 'GPU',
-      reason: 'oom',
-      exitCode: 137,
-      name: privateUrl,
-    });
+    childProcessGone?.(
+      {},
+      {
+        type: "Utility",
+        reason: "crashed",
+        exitCode: 9,
+        serviceName: "Audio Service",
+        name: privateUrl,
+        token: "secret-token",
+        metadata: privateMetadata,
+        arguments: ["--secret-token"],
+      },
+    );
+    childProcessGone?.(
+      {},
+      {
+        type: "GPU",
+        reason: "oom",
+        exitCode: 137,
+        name: privateUrl,
+      },
+    );
 
     expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
       1,
-      'event=unresponsive processType=renderer',
+      "event=unresponsive processType=renderer",
     );
     expect(bootstrap.log.info).toHaveBeenCalledOnce();
-    expect(bootstrap.log.info).toHaveBeenCalledWith('event=responsive processType=renderer');
+    expect(bootstrap.log.info).toHaveBeenCalledWith(
+      "event=responsive processType=renderer",
+    );
     expect(bootstrap.log.error).toHaveBeenCalledOnce();
     expect(bootstrap.log.error).toHaveBeenCalledWith(
-      'event=render-process-gone processType=renderer reason=crashed exitCode=133',
+      "event=render-process-gone processType=renderer reason=crashed exitCode=133",
     );
     expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
       2,
-      'event=preload-error processType=renderer preloadPath=preload.js errorName=TypeError',
+      "event=preload-error processType=renderer preloadPath=preload.js errorName=TypeError",
     );
     expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
       3,
@@ -656,7 +809,7 @@ describe('main bootstrap', () => {
     );
     expect(bootstrap.log.warn).toHaveBeenNthCalledWith(
       4,
-      'event=child-process-gone processType=GPU reason=oom exitCode=137',
+      "event=child-process-gone processType=GPU reason=oom exitCode=137",
     );
 
     const logCalls = JSON.stringify([
@@ -666,18 +819,18 @@ describe('main bootstrap', () => {
     ]);
     expect(logCalls).not.toContain(privatePath);
     expect(logCalls).not.toContain(privateUrl);
-    expect(logCalls).not.toContain('secret-token');
+    expect(logCalls).not.toContain("secret-token");
     expect(logCalls).not.toContain(privateStack);
-    expect(logCalls).not.toContain('Private Track');
-    expect(logCalls).not.toContain('--secret-token');
+    expect(logCalls).not.toContain("Private Track");
+    expect(logCalls).not.toContain("--secret-token");
     expect(bootstrap.webContents.reload).not.toHaveBeenCalled();
     expect(bootstrap.mainWindow.close).not.toHaveBeenCalled();
     expect(bootstrap.appQuit).not.toHaveBeenCalled();
     expect(bootstrap.mainWindow.loadURL).toHaveBeenCalledOnce();
   });
 
-  it('replaces an unsafe preload error name with a fixed fallback', async () => {
-    const privateUrl = 'https://music.apple.com/private?token=preload-secret';
+  it("replaces an unsafe preload error name with a fixed fallback", async () => {
+    const privateUrl = "https://music.apple.com/private?token=preload-secret";
     const privateName = `CustomError\r\n${privateUrl}\0token=preload-secret`;
     const privateMessage = `failed to load ${privateUrl}\tpreload-secret`;
     const privateStack = `${privateName}: ${privateMessage}\n    at /private/preload.js:1:1`;
@@ -688,17 +841,17 @@ describe('main bootstrap', () => {
     bootstrap.log.warn.mockClear();
     bootstrap.log.error.mockClear();
 
-    const preloadError = bootstrap.mainWebListeners.get('preload-error');
+    const preloadError = bootstrap.mainWebListeners.get("preload-error");
     expect(preloadError).toBeDefined();
 
     const error = new Error(privateMessage);
     error.name = privateName;
     error.stack = privateStack;
-    preloadError?.({}, '/private/preload.js', error);
+    preloadError?.({}, "/private/preload.js", error);
 
     expect(bootstrap.log.warn).toHaveBeenCalledOnce();
     expect(bootstrap.log.warn).toHaveBeenCalledWith(
-      'event=preload-error processType=renderer preloadPath=preload.js errorName=UnknownError',
+      "event=preload-error processType=renderer preloadPath=preload.js errorName=UnknownError",
     );
     expect(bootstrap.log.info).not.toHaveBeenCalled();
     expect(bootstrap.log.error).not.toHaveBeenCalled();
@@ -707,9 +860,19 @@ describe('main bootstrap', () => {
       ...bootstrap.log.info.mock.calls,
       ...bootstrap.log.warn.mock.calls,
       ...bootstrap.log.error.mock.calls,
-    ].flat().map(String);
-    for (const privateValue of [privateName, privateMessage, privateStack, privateUrl, 'preload-secret']) {
-      expect(loggedValues.every(value => !value.includes(privateValue))).toBe(true);
+    ]
+      .flat()
+      .map(String);
+    for (const privateValue of [
+      privateName,
+      privateMessage,
+      privateStack,
+      privateUrl,
+      "preload-secret",
+    ]) {
+      expect(loggedValues.every((value) => !value.includes(privateValue))).toBe(
+        true,
+      );
     }
   });
 });

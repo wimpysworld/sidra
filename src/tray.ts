@@ -250,8 +250,8 @@ export function sanitiseLinuxLabel(text: string): string {
 }
 
 /**
- * Remove text from the first '(' or '[' after the first character, then truncate at maxLength and append an ellipsis.
- * This removes qualifiers and limits the width of metadata rows.
+ * Remove parenthesised or bracketed qualifiers, then limit metadata row width
+ * to maxLength characters plus an ellipsis.
  */
 export function truncateMenuLabel(text: string, maxLength = 32): string {
   const splitIndex = text.search(/[([]/);
@@ -550,7 +550,7 @@ function buildMetadataItem(
   };
 }
 
-// 1981 is the last year before the CD shipped, so 1981 and earlier shows the vinyl icon.
+// Use vinyl for releases before the CD's 1982 commercial launch.
 function albumIconKey(releaseDate: string | undefined): MenuIconKey {
   const releaseYear = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
   return !isNaN(releaseYear) && releaseYear <= 1981 ? "record-vinyl" : "album";
@@ -619,7 +619,7 @@ function buildVolumeSubmenu(
   };
 }
 
-// macOS only - uses the native share sheet via ShareMenu.
+// macOS uses ShareMenu to open the native share sheet.
 function buildShareItems(
   strings: TrayStrings,
   payload: NowPlayingPayload,
@@ -839,12 +839,13 @@ export function createTray(): Tray {
 }
 
 /**
- * Update the menu and tooltip from playback events, clearing Now Playing after TRAY_PAUSE_TIMEOUT_MS of pause.
- * Register the returned closure on will-quit to destroy the pause timer, cancel pending rebuilds and remove player listeners.
+ * Update the tray from playback events and clear Now Playing after a sustained
+ * pause. Register the returned teardown on will-quit to destroy the pause timer,
+ * cancel pending rebuilds and remove player listeners.
  */
 export function initTrayStateManager(player: Player, tray: Tray): () => void {
   const TRAY_PAUSE_TIMEOUT_MS = 30_000;
-  // Reject artwork downloads for superseded tracks before committing metadata and artwork together.
+  // Reject artwork for superseded tracks before committing it with metadata.
   let pendingPayload: NowPlayingPayload | null = null;
 
   // Volume is left as it stands: it belongs to the player, not to the track

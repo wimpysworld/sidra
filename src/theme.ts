@@ -1,19 +1,24 @@
-import fs from 'fs';
-import path from 'path';
-import { app, BrowserWindow, nativeTheme, type WebContents } from 'electron';
-import log from 'electron-log/main';
-import { bundledTheme, isThemeName, type BundledThemeName, type ThemeName } from './palettes';
-import { buildThemeCss } from './themeTemplate';
-import { parseCustomTheme } from './customTheme';
-import { getTheme } from './config';
-import { liveWebContents } from './utils';
+import fs from "fs";
+import path from "path";
+import { app, BrowserWindow, nativeTheme, type WebContents } from "electron";
+import log from "electron-log/main";
+import {
+  bundledTheme,
+  isThemeName,
+  type BundledThemeName,
+  type ThemeName,
+} from "./palettes";
+import { buildThemeCss } from "./themeTemplate";
+import { parseCustomTheme } from "./customTheme";
+import { getTheme } from "./config";
+import { liveWebContents } from "./utils";
 
 export type { ThemeName };
 
-const themeLog = log.scope('theme');
+const themeLog = log.scope("theme");
 
 const THEME_RELOAD_DEBOUNCE_MS = 150;
-const customThemeFilename = 'custom-theme.json';
+const customThemeFilename = "custom-theme.json";
 const bundledCssCache = new Map<BundledThemeName, string>();
 
 // custom-theme.json is read for Settings, through both hasCustomTheme() and
@@ -33,22 +38,24 @@ let themeCssKey: string | null = null;
 // post-load injection cannot interleave and strand a stylesheet on the page.
 let themeCssOp: Promise<void> = Promise.resolve();
 
-// WebContents survives document replacement, so queued insertCSS work can reach a different page.
-// Advance on main-frame did-navigate and reject stale generations to avoid untracked duplicate stylesheets.
+// WebContents survives document replacement, so queued insertCSS work can reach
+// a different page. Reject stale generations to avoid untracked duplicate stylesheets.
 let documentGeneration = 0;
 
-// Every await inside queued work is another point a navigation can commit at,
-// so the pre-flight check below covers only the wait for the queue. Work that
-// awaits must re-check its captured generation afterwards, before it touches
-// the document again or records a key the document no longer holds.
+// Every await inside queued work is another point where navigation can commit.
+// The entry check in enqueueThemeCssOp() covers only the wait for the queue.
+// Work must re-check its generation after later waits, before it changes the
+// document or records a key that the document no longer holds.
 function documentReplaced(generation: number): boolean {
   if (generation === documentGeneration) return false;
   themeCssKey = null;
-  themeLog.debug('Theme CSS operation abandoned: document replaced');
+  themeLog.debug("Theme CSS operation abandoned: document replaced");
   return true;
 }
 
-function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise<void> {
+function enqueueThemeCssOp(
+  work: (generation: number) => Promise<void>,
+): Promise<void> {
   const generation = documentGeneration;
   themeCssOp = themeCssOp
     .then(() => {
@@ -56,16 +63,16 @@ function enqueueThemeCssOp(work: (generation: number) => Promise<void>): Promise
         // Any sheet the old document held died with it, so the tracked key is
         // stale too; removeInsertedCSS would reject on it.
         themeCssKey = null;
-        themeLog.debug('Theme CSS operation skipped: document replaced');
+        themeLog.debug("Theme CSS operation skipped: document replaced");
         return;
       }
       return work(generation);
     })
-    // Catch after then() so discarded promises cannot reject and later operations still run.
-    // Drop the uncertain key so later changes cannot repeat a failed removal.
+    // Catch after then() so a failed operation cannot reject the shared chain
+    // or block later operations. Drop the uncertain key to avoid another failed removal.
     .catch((error: unknown) => {
       themeCssKey = null;
-      themeLog.warn('Theme CSS operation failed', error);
+      themeLog.warn("Theme CSS operation failed", error);
     });
   return themeCssOp;
 }
@@ -92,8 +99,12 @@ async function insertAndTrack(
 // Before initialisation there is no document to update. Settings persists the
 // choice before calling applyTheme(), and injectThemeCss() reads that choice on
 // every page load, so an early change needs no queued replay.
-let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = (name: ThemeName) => {
-  themeLog.warn(`Theme CSS not applied, theme system not initialised yet: ${name}`);
+let applyThemeCSSInternal: (name: ThemeName) => Promise<void> = (
+  name: ThemeName,
+) => {
+  themeLog.warn(
+    `Theme CSS not applied, theme system not initialised yet: ${name}`,
+  );
   return Promise.resolve();
 };
 
@@ -107,12 +118,12 @@ export function applyTheme(name: ThemeName): void {
 
 /** The custom palette path: custom-theme.json in the userData directory. */
 export function customThemePath(): string {
-  return path.join(app.getPath('userData'), customThemeFilename);
+  return path.join(app.getPath("userData"), customThemeFilename);
 }
 
 /** True when custom-theme.json contains a valid palette. */
 export function hasCustomTheme(): boolean {
-  return getThemeCss('custom') !== null;
+  return getThemeCss("custom") !== null;
 }
 
 /**
@@ -121,23 +132,27 @@ export function hasCustomTheme(): boolean {
  */
 export function resolveTheme(): ThemeName {
   const theme = getTheme();
-  if (!isThemeName(theme)) return 'apple-music';
-  if (theme === 'custom' && getThemeCss('custom') === null) return 'apple-music';
+  if (!isThemeName(theme)) return "apple-music";
+  if (theme === "custom" && getThemeCss("custom") === null)
+    return "apple-music";
   return theme;
 }
 
 function readCustomTheme(): string | null {
   try {
-    const theme = parseCustomTheme(fs.readFileSync(customThemePath(), 'utf-8'));
+    const theme = parseCustomTheme(fs.readFileSync(customThemePath(), "utf-8"));
     if (!theme) {
-      themeLog.warn('Invalid custom-theme.json in userData directory');
+      themeLog.warn("Invalid custom-theme.json in userData directory");
       return null;
     }
     return buildThemeCss(theme);
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
-    if (err.code !== 'ENOENT') {
-      themeLog.warn('Failed to read custom-theme.json from userData directory', error);
+    if (err.code !== "ENOENT") {
+      themeLog.warn(
+        "Failed to read custom-theme.json from userData directory",
+        error,
+      );
     }
     return null;
   }
@@ -160,8 +175,8 @@ function disableCustomThemeCache(): void {
  * CSS is cached while the watcher below can invalidate it.
  */
 export function getThemeCss(name: ThemeName): string | null {
-  if (name === 'apple-music') return null;
-  if (name === 'custom') {
+  if (name === "apple-music") return null;
+  if (name === "custom") {
     if (customThemeCached) return customThemeCache;
     const css = readCustomTheme();
     if (customThemeCacheEnabled) {
@@ -188,7 +203,7 @@ export function getThemeCss(name: ThemeName): string | null {
 export function injectThemeCss(contents: WebContents): Promise<void> {
   return enqueueThemeCssOp(async (generation) => {
     const theme = resolveTheme();
-    if (theme === 'apple-music') {
+    if (theme === "apple-music") {
       themeCssKey = null;
       return;
     }
@@ -197,101 +212,114 @@ export function injectThemeCss(contents: WebContents): Promise<void> {
       themeLog.warn(`Theme CSS unavailable: ${theme}`);
       return;
     }
-    await insertAndTrack(contents, css, generation, `Theme CSS injected: ${theme}`);
+    await insertAndTrack(
+      contents,
+      css,
+      generation,
+      `Theme CSS injected: ${theme}`,
+    );
   });
 }
 
 /**
- * Initialise document tracking, theme changes, system colour-scheme updates and the custom-theme.json watcher for one window.
- * Call once.
+ * Initialise document tracking, theme changes, colour-scheme updates and the
+ * custom-theme.json watcher for one window. Call once.
  */
 export function initThemeCSS(win: BrowserWindow): void {
   // Commit of a main-frame navigation; did-navigate-in-page keeps the document,
   // so it is not one and must not advance the counter.
-  win.webContents.on('did-navigate', () => {
+  win.webContents.on("did-navigate", () => {
     documentGeneration += 1;
   });
 
-  applyThemeCSSInternal = (name: ThemeName) => enqueueThemeCssOp(async (generation) => {
-    // nativeTheme 'updated' and a tray click can both land after the window is
-    // destroyed. The catch in enqueueThemeCssOp would contain the getter throw,
-    // but as a warning about a failed operation rather than a window that has gone.
-    const contents = liveWebContents(win);
-    if (!contents) {
-      themeCssKey = null;
-      return;
-    }
-    const css = getThemeCss(name);
-    const previousKey = themeCssKey;
-    if (previousKey !== null) {
-      await contents.removeInsertedCSS(previousKey);
-      themeCssKey = null;
-      // Navigation can commit during removal, so verify the document before inserting.
-      if (documentReplaced(generation)) return;
-    }
-    if (css === null) {
-      if (previousKey !== null) themeLog.debug(`Theme CSS removed: ${name}`);
-      return;
-    }
-    const verb = previousKey !== null ? 're-injected' : 'injected';
-    await insertAndTrack(contents, css, generation, `Theme CSS ${verb}: ${name}`);
-  });
+  applyThemeCSSInternal = (name: ThemeName) =>
+    enqueueThemeCssOp(async (generation) => {
+      // nativeTheme 'updated' and a tray click can both arrive after destruction.
+      // liveWebContents() avoids reading the native getter from a destroyed window.
+      const contents = liveWebContents(win);
+      if (!contents) {
+        themeCssKey = null;
+        return;
+      }
+      const css = getThemeCss(name);
+      const previousKey = themeCssKey;
+      if (previousKey !== null) {
+        await contents.removeInsertedCSS(previousKey);
+        themeCssKey = null;
+        // Navigation can commit during removal, so verify the document before inserting.
+        if (documentReplaced(generation)) return;
+      }
+      if (css === null) {
+        if (previousKey !== null) themeLog.debug(`Theme CSS removed: ${name}`);
+        return;
+      }
+      const verb = previousKey !== null ? "re-injected" : "injected";
+      await insertAndTrack(
+        contents,
+        css,
+        generation,
+        `Theme CSS ${verb}: ${name}`,
+      );
+    });
 
-  nativeTheme.on('updated', () => {
+  nativeTheme.on("updated", () => {
     const currentTheme = resolveTheme();
-    if (currentTheme !== 'apple-music') {
+    if (currentTheme !== "apple-music") {
       void applyThemeCSSInternal(currentTheme);
     }
   });
 
-  // Last, because the debounced callback below calls applyThemeCSSInternal and
-  // resolveTheme against the window this function has just wired up.
+  // Initialise the watcher after applyThemeCSSInternal can update this window.
   initCustomThemeWatcher(win);
 }
 
 /**
- * Watch the userData directory for custom-theme.json changes, re-apply the CSS when the
- * stored theme needs it, and refresh Settings. Owns its debounce timer and closes
- * both on will-quit.
+ * Watch userData for custom-theme.json changes, reapply its CSS when active,
+ * and refresh Settings. Close the watcher and its debounce timer on will-quit.
  */
 function initCustomThemeWatcher(win: BrowserWindow): void {
   let customThemeTimer: NodeJS.Timeout | null = null;
-  const userDataPath = app.getPath('userData');
+  const userDataPath = app.getPath("userData");
   let watcher: fs.FSWatcher | null = null;
   try {
     fs.mkdirSync(userDataPath, { recursive: true });
-    watcher = fs.watch(userDataPath, { persistent: false }, (eventType, filename) => {
-      // macOS can emit a null filename for directory-level change events.
-      if (filename !== null && filename.toString() !== customThemeFilename) return;
-      themeLog.debug(`custom-theme.json watcher event: ${eventType}`);
-      // Before the debounce, not inside it: a Settings refresh during the debounce
-      // window must not read the previous contents back out of the cache.
-      invalidateCustomThemeCache();
-      if (customThemeTimer) clearTimeout(customThemeTimer);
-      customThemeTimer = setTimeout(() => {
-        customThemeTimer = null;
-        if (win.isDestroyed()) return;
-        const resolved = resolveTheme();
-        if (resolved === 'custom') {
-          void applyThemeCSSInternal('custom');
-        } else if (getTheme() === 'custom') {
-          void applyThemeCSSInternal('apple-music');
-        }
-        // File creation and deletion change the Settings options for every stored theme.
-        themeChangedCallback?.();
-      }, THEME_RELOAD_DEBOUNCE_MS);
-    });
-    watcher.on('error', (error) => {
-      themeLog.warn('custom-theme.json watcher error', error);
+    watcher = fs.watch(
+      userDataPath,
+      { persistent: false },
+      (eventType, filename) => {
+        // macOS can emit a null filename for directory-level change events.
+        if (filename !== null && filename.toString() !== customThemeFilename)
+          return;
+        themeLog.debug(`custom-theme.json watcher event: ${eventType}`);
+        // Before the debounce, not inside it: a Settings refresh during the debounce
+        // window must not read the previous contents back out of the cache.
+        invalidateCustomThemeCache();
+        if (customThemeTimer) clearTimeout(customThemeTimer);
+        customThemeTimer = setTimeout(() => {
+          customThemeTimer = null;
+          if (win.isDestroyed()) return;
+          const resolved = resolveTheme();
+          if (resolved === "custom") {
+            void applyThemeCSSInternal("custom");
+          } else if (getTheme() === "custom") {
+            void applyThemeCSSInternal("apple-music");
+          }
+          // File creation and deletion change the Settings options for every stored theme.
+          themeChangedCallback?.();
+        }, THEME_RELOAD_DEBOUNCE_MS);
+      },
+    );
+    watcher.on("error", (error) => {
+      themeLog.warn("custom-theme.json watcher error", error);
       // Node closes the watcher on error, so nothing is left to clear the cache.
       disableCustomThemeCache();
     });
   } catch (error) {
-    themeLog.warn('Failed to initialise custom-theme.json watcher', error);
+    themeLog.warn("Failed to initialise custom-theme.json watcher", error);
     disableCustomThemeCache();
   }
 
-  app.on('will-quit', () => {
+  app.on("will-quit", () => {
     if (customThemeTimer) {
       clearTimeout(customThemeTimer);
       customThemeTimer = null;
@@ -304,9 +332,9 @@ function initCustomThemeWatcher(win: BrowserWindow): void {
 }
 
 /**
- * Queue a key clear before service-switch navigation so the next document cannot remove the previous document's stylesheet.
- * Queueing prevents an in-flight insert from overwriting the clear and orders it before the next load's injection.
- * The stale-generation path also clears the key, so dropped work cannot lose the clear.
+ * Clear the tracked key before service navigation can remove a stylesheet from
+ * the wrong document. Queueing orders the clear after in-flight insertion and
+ * before the next load. Stale-generation handling preserves the clear.
  */
 export function notifyDocumentReplacing(): void {
   void enqueueThemeCssOp(() => {
@@ -315,7 +343,7 @@ export function notifyDocumentReplacing(): void {
   });
 }
 
-/** main.ts supplies the Settings refresh callback here. */
+/** Set the Settings refresh callback without creating an import cycle. */
 export function setThemeChangedCallback(callback: () => void): void {
   themeChangedCallback = callback;
 }

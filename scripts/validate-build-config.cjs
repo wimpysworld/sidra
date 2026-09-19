@@ -1,5 +1,5 @@
-// Check packaging settings through just validate and builder.yml's test-config
-// job, so configuration faults fail before installers reach users.
+// Validate packaging settings before installer creation. Local and CI gates use
+// the same checks, so configuration faults fail before installers reach users.
 const fs = require("fs");
 const path = require("path");
 
@@ -170,10 +170,9 @@ function main() {
   }
   console.log(`  \u2713 Linux desktop actions: wired to ${busName}`);
 
-  // electron-builder installs each PNG of the Linux icon set into
-  // hicolor/<size>x<size>/apps. A size the hicolor theme does not register is
-  // never found, so the desktop shows a generic icon (issue #256). A single PNG
-  // file here yields exactly one size, which is how 1024x1024 shipped alone.
+  // electron-builder installs every PNG from the Linux icon directory under
+  // hicolor/<size>x<size>/apps. Unregistered sizes are not discoverable. The
+  // directory form can provide each registered size instead of one source size.
   const registeredHicolorSizes = new Set([
     16, 22, 24, 32, 36, 48, 64, 72, 96, 128, 192, 256, 512,
   ]);

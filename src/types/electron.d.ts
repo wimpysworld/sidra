@@ -1,20 +1,20 @@
-// CastLabs ECS exposes these APIs but omits their types. Shared declarations
-// keep call sites type-checked without casts.
+// CastLabs ECS provides these runtime APIs but omits their declarations.
+// Central augmentation keeps callers type-checked without local casts.
 
 /** Runtime APIs missing from the bundled CastLabs Electron declarations. */
 declare namespace Electron {
-  /** CastLabs additions to the Electron application API. */
-  interface App {
-    /**
-     * Set the XDG desktop filename (Linux). It sets CHROME_DESKTOP, which is
-     * what gives Sidra's audio stream its own name and icon in PulseAudio.
-     */
-    setDesktopName(name: string): void;
+ /** Electron application APIs missing from the bundled CastLabs declarations. */
+ interface App {
+  /**
+   * Sets the XDG desktop filename on Linux. CastLabs maps the name to
+   * `CHROME_DESKTOP`, which gives Sidra's PulseAudio stream its own name and icon.
+   */
+  setDesktopName(name: string): void;
 
-    /**
-     * 'cache' is a valid runtime path, used for the artwork cache, but is
-     * absent from the CastLabs union type.
-     */
-    getPath(name: 'cache'): string;
-  }
+  /**
+   * Accepts `cache`, which the runtime supports but the CastLabs union omits.
+   * Sidra uses this path for the artwork cache.
+   */
+  getPath(name: "cache"): string;
+ }
 }

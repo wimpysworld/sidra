@@ -1,16 +1,22 @@
-import { app, BrowserWindow, nativeImage, nativeTheme } from 'electron';
-import path from 'path';
-import log from 'electron-log/main';
-import { PlaybackState, isTerminalPlaybackState, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
-import { getAssetPath } from '../../paths';
-import { getTrayStrings } from '../../i18n';
-import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
-import { sendCommand } from '../../commandBridge';
+import { app, BrowserWindow, nativeImage, nativeTheme } from "electron";
+import path from "path";
+import log from "electron-log/main";
+import {
+  PlaybackState,
+  isTerminalPlaybackState,
+  type NowPlayingPayload,
+  type PlaybackStatePayload,
+  type IntegrationContext,
+} from "../../player";
+import { getAssetPath } from "../../paths";
+import { getTrayStrings } from "../../i18n";
+import { updateProgressBar, clearProgressBar } from "../../utils/progressBar";
+import { sendCommand } from "../../commandBridge";
 
-const taskbarLog = log.scope('taskbar');
+const taskbarLog = log.scope("taskbar");
 
-const iconsDir = getAssetPath('assets', 'icons');
-const menuIconsDir = path.join(iconsDir, 'tray', 'menu');
+const iconsDir = getAssetPath("assets", "icons");
+const menuIconsDir = path.join(iconsDir, "tray", "menu");
 
 // Keep the previous badge during transient states to prevent taskbar flicker.
 const TRANSIENT_STATES: ReadonlySet<number> = new Set([
@@ -23,7 +29,9 @@ const TRANSIENT_STATES: ReadonlySet<number> = new Set([
 function loadIcon(baseName: string): Electron.NativeImage | null {
   // Taskbar icons follow the Windows system colour mode, not the separate app
   // setting that shouldUseDarkColors reports.
-  const variant = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light';
+  const variant = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI
+    ? "dark"
+    : "light";
   const iconPath = path.join(menuIconsDir, variant, `${baseName}.png`);
   const img = nativeImage.createFromPath(iconPath);
   if (img.isEmpty()) {
@@ -36,14 +44,26 @@ function loadIcon(baseName: string): Electron.NativeImage | null {
 function setThumbarButtons(win: BrowserWindow, isPlaying: boolean): void {
   const strings = getTrayStrings();
 
-  const entries: { tooltip: string; icon: Electron.NativeImage | null; channel: ReceiveChannel }[] = [
-    { tooltip: strings.previous, icon: loadIcon('backward-step'), channel: 'player:previous' },
+  const entries: {
+    tooltip: string;
+    icon: Electron.NativeImage | null;
+    channel: ReceiveChannel;
+  }[] = [
+    {
+      tooltip: strings.previous,
+      icon: loadIcon("backward-step"),
+      channel: "player:previous",
+    },
     {
       tooltip: isPlaying ? strings.pause : strings.play,
-      icon: isPlaying ? loadIcon('pause') : loadIcon('play'),
-      channel: 'player:playPause',
+      icon: isPlaying ? loadIcon("pause") : loadIcon("play"),
+      channel: "player:playPause",
     },
-    { tooltip: strings.next, icon: loadIcon('forward-step'), channel: 'player:next' },
+    {
+      tooltip: strings.next,
+      icon: loadIcon("forward-step"),
+      channel: "player:next",
+    },
   ];
 
   const buttons: Electron.ThumbarButton[] = [];
@@ -63,21 +83,21 @@ function setOverlayIcon(win: BrowserWindow, state: number): void {
   const strings = getTrayStrings();
   const overlay =
     state === PlaybackState.Playing
-      ? { icon: loadIcon('play'), description: strings.play }
+      ? { icon: loadIcon("play"), description: strings.play }
       : state === PlaybackState.Paused
-        ? { icon: loadIcon('pause'), description: strings.pause }
+        ? { icon: loadIcon("pause"), description: strings.pause }
         : null;
 
   if (overlay?.icon) {
     win.setOverlayIcon(overlay.icon, overlay.description);
   } else {
-    win.setOverlayIcon(null, '');
+    win.setOverlayIcon(null, "");
   }
 }
 
 /** Installs the thumbar buttons, overlay badge and progress bar on Windows only. */
 export function init(ctx: IntegrationContext): void {
-  if (process.platform !== 'win32') return;
+  if (process.platform !== "win32") return;
 
   const { player, getMainWindow } = ctx;
 
@@ -87,7 +107,7 @@ export function init(ctx: IntegrationContext): void {
   // setThumbarButtons is silently dropped by Windows when called on a hidden window.
   const win = getMainWindow?.();
   if (win) {
-    win.once('show', () => {
+    win.once("show", () => {
       const { isPlaying, state } = player.playbackSnapshot();
       if (currentPayload) {
         setThumbarButtons(win, isPlaying);
@@ -104,18 +124,20 @@ export function init(ctx: IntegrationContext): void {
     if (currentPayload) {
       setThumbarButtons(win, isPlaying);
     }
-    // Always update overlay to reflect current theme, even with no track loaded
+    // Always update the overlay for the current system theme, even with no track loaded.
     setOverlayIcon(win, state);
   };
 
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+  const onNowPlayingItemDidChange = (
+    payload: NowPlayingPayload | null,
+  ): void => {
     const win = getMainWindow?.();
     if (!win) return;
 
     currentPayload = payload;
     if (!payload) {
       win.setThumbarButtons([]);
-      win.setOverlayIcon(null, '');
+      win.setOverlayIcon(null, "");
       clearProgressBar(win);
       return;
     }
@@ -123,7 +145,9 @@ export function init(ctx: IntegrationContext): void {
     setThumbarButtons(win, isPlaying);
   };
 
-  const onPlaybackStateDidChange = (statePayload: PlaybackStatePayload): void => {
+  const onPlaybackStateDidChange = (
+    statePayload: PlaybackStatePayload,
+  ): void => {
     const win = getMainWindow?.();
     if (!win) return;
 
@@ -131,7 +155,7 @@ export function init(ctx: IntegrationContext): void {
     if (isTerminalPlaybackState(state)) {
       currentPayload = null;
       win.setThumbarButtons([]);
-      win.setOverlayIcon(null, '');
+      win.setOverlayIcon(null, "");
       clearProgressBar(win);
       return;
     }
@@ -150,17 +174,17 @@ export function init(ctx: IntegrationContext): void {
     updateProgressBar(win, positionUs, currentPayload?.durationInMillis);
   };
 
-  nativeTheme.on('updated', onThemeUpdated);
-  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  player.on('playbackStateDidChange', onPlaybackStateDidChange);
-  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+  nativeTheme.on("updated", onThemeUpdated);
+  player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("playbackStateDidChange", onPlaybackStateDidChange);
+  player.on("playbackTimeDidChange", onPlaybackTimeDidChange);
 
-  app.on('will-quit', () => {
-    nativeTheme.removeListener('updated', onThemeUpdated);
-    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+  app.on("will-quit", () => {
+    nativeTheme.removeListener("updated", onThemeUpdated);
+    player.removeListener("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.removeListener("playbackStateDidChange", onPlaybackStateDidChange);
+    player.removeListener("playbackTimeDidChange", onPlaybackTimeDidChange);
   });
 
-  taskbarLog.info('Windows taskbar integration initialised');
+  taskbarLog.info("Windows taskbar integration initialised");
 }

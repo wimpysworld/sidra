@@ -2,8 +2,8 @@
 // shared by the whole suite.
 import { vi } from "vitest";
 
-// Mock electron modules - these are unavailable outside the Electron runtime.
-// Each test file can override specific behaviour via vi.mocked().
+// Electron modules are unavailable outside the Electron runtime.
+// Each test file can override specific behaviour through vi.mocked().
 vi.mock("electron", () => ({
   app: {
     getName: () => "Sidra",
@@ -12,7 +12,7 @@ vi.mock("electron", () => ({
     getPreferredSystemLanguages: () => ["en-GB", "en"],
     getLocaleCountryCode: () => "GB",
     isPackaged: false,
-    whenReady: () => new Promise(() => {}), // Never resolves - prevents bootstrap from running
+    whenReady: () => new Promise(() => {}), // Never resolves, which prevents application bootstrap.
     on: vi.fn(),
     emit: vi.fn(),
     quit: vi.fn(),
@@ -109,8 +109,7 @@ vi.mock("electron-log/main", () => {
   };
 });
 
-// Mock process.getSystemVersion() - used by tray.ts for macOS version detection.
-// Default returns '15.0.0' (pre-Tahoe). Tests override via vi.spyOn().
+// macOS tray tests default to pre-Tahoe and can override this value through vi.spyOn().
 if (!process.getSystemVersion) {
   (process as unknown as Record<string, unknown>).getSystemVersion = vi.fn(
     () => "15.0.0",

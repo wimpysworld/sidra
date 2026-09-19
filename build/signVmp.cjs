@@ -1,6 +1,9 @@
 "use strict";
 
-/** Sign a packaged application directory with CastLabs EVS production VMP keys. */
+/**
+ * Sign a packaged application directory when CastLabs EVS production
+ * credentials are available.
+ */
 exports.signVmp = async function signVmp(appOutDir) {
   const { EVS_PACKAGE } = require("./evs.cjs");
   const {

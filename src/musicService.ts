@@ -1,10 +1,10 @@
 // Pure music service registry: no imports from electron, electron-log, or config.
 // The readiness selector is a pure constant, so importing this registry does not start Electron.
 
-import { CONTENT_READY_SELECTOR } from './contentReady';
+import { CONTENT_READY_SELECTOR } from "./contentReady";
 
 /** The two Apple web services Sidra wraps. */
-export type MusicServiceId = 'music' | 'classical';
+export type MusicServiceId = "music" | "classical";
 
 /** One start page choice: the id persisted in config, and its path under the storefront. */
 export interface StartPage<PageId extends string = string> {
@@ -28,61 +28,68 @@ export interface MusicService<PageId extends string = string> {
   defaultStartPage: PageId;
 }
 
-// PageId is inferred from startPages alone. NoInfer keeps defaultStartPage out of the inference,
-// so a typo there fails to compile instead of widening the union.
+// PageId is inferred from startPages alone. NoInfer keeps defaultStartPage out of
+// the inference, so a typo in defaultStartPage fails instead of widening the union.
 function defineService<const PageId extends string>(
-  def: Omit<MusicService<PageId>, 'defaultStartPage'> & { defaultStartPage: NoInfer<PageId> },
+  def: Omit<MusicService<PageId>, "defaultStartPage"> & {
+    defaultStartPage: NoInfer<PageId>;
+  },
 ): MusicService<PageId> {
   return def;
 }
 
-const SHARED_AUTH_FRAME_HOSTS = ['auth.music.apple.com', 'idmsa.apple.com'] as const;
+const SHARED_AUTH_FRAME_HOSTS = [
+  "auth.music.apple.com",
+  "idmsa.apple.com",
+] as const;
 
 /** The registry. Every host, origin and start page comes from here, never from a literal at the call site. */
 export const MUSIC_SERVICES = {
   music: defineService({
-    id: 'music',
-    host: 'music.apple.com',
-    origin: 'https://music.apple.com',
-    displayName: 'Apple Music',
+    id: "music",
+    host: "music.apple.com",
+    origin: "https://music.apple.com",
+    displayName: "Apple Music",
     authFrameHosts: SHARED_AUTH_FRAME_HOSTS,
     contentReadySelector: CONTENT_READY_SELECTOR,
     startPages: [
-      { id: 'home', path: 'home' },
-      { id: 'new', path: 'new' },
-      { id: 'radio', path: 'radio' },
-      { id: 'all-playlists', path: 'library/all-playlists/' },
+      { id: "home", path: "home" },
+      { id: "new", path: "new" },
+      { id: "radio", path: "radio" },
+      { id: "all-playlists", path: "library/all-playlists/" },
     ],
-    defaultStartPage: 'new',
+    defaultStartPage: "new",
   }),
   classical: defineService({
-    id: 'classical',
-    host: 'classical.music.apple.com',
-    origin: 'https://classical.music.apple.com',
-    displayName: 'Apple Music Classical',
+    id: "classical",
+    host: "classical.music.apple.com",
+    origin: "https://classical.music.apple.com",
+    displayName: "Apple Music Classical",
     authFrameHosts: SHARED_AUTH_FRAME_HOSTS,
     contentReadySelector: CONTENT_READY_SELECTOR,
     startPages: [
-      { id: 'home', path: '' },
-      { id: 'browse', path: 'browse/catalog' },
-      { id: 'playlists', path: 'browse/playlists' },
-      { id: 'search', path: 'search' },
+      { id: "home", path: "" },
+      { id: "browse", path: "browse/catalog" },
+      { id: "playlists", path: "browse/playlists" },
+      { id: "search", path: "search" },
     ],
-    defaultStartPage: 'home',
+    defaultStartPage: "home",
   }),
 } satisfies Record<MusicServiceId, MusicService>;
 
 /** Start page ids offered by Apple Music, derived from the registry. */
-export type MusicStartPageId = typeof MUSIC_SERVICES.music.startPages[number]['id'];
+export type MusicStartPageId =
+  (typeof MUSIC_SERVICES.music.startPages)[number]["id"];
 
 /** Start page ids offered by Apple Music Classical, derived from the registry. */
-export type ClassicalStartPageId = typeof MUSIC_SERVICES.classical.startPages[number]['id'];
+export type ClassicalStartPageId =
+  (typeof MUSIC_SERVICES.classical.startPages)[number]["id"];
 
 /** Every start page id in the registry, for records that must cover both services. */
 export type AnyStartPageId = MusicStartPageId | ClassicalStartPageId;
 
 /** Service used when nothing is persisted, and when a stored id turns out not to be one. */
-export const DEFAULT_SERVICE_ID: MusicServiceId = 'music';
+export const DEFAULT_SERVICE_ID: MusicServiceId = "music";
 
 /** Narrows a stored or externally supplied string to a registry id. */
 export function isMusicServiceId(value: string): value is MusicServiceId {
@@ -96,7 +103,7 @@ export function getService(id: MusicServiceId): MusicService {
 
 /** The service serving a hostname, or undefined when the host is not one of ours. */
 export function getServiceByHost(host: string): MusicService | undefined {
-  return Object.values(MUSIC_SERVICES).find(svc => svc.host === host);
+  return Object.values(MUSIC_SERVICES).find((svc) => svc.host === host);
 }
 
 /** Every registered service, for callers that iterate rather than look one up. */
@@ -106,7 +113,7 @@ export function allServices(): readonly MusicService[] {
 
 /** Service and authentication hosts derived from the registry for navigation checks. */
 export const ALLOWED_NAVIGATION_HOSTS: ReadonlySet<string> = new Set(
-  allServices().flatMap(svc => [svc.host, ...svc.authFrameHosts]),
+  allServices().flatMap((svc) => [svc.host, ...svc.authFrameHosts]),
 );
 
 /**
@@ -117,7 +124,10 @@ export const ALLOWED_NAVIGATION_HOSTS: ReadonlySet<string> = new Set(
 export function isAllowedNavigationUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && ALLOWED_NAVIGATION_HOSTS.has(parsed.hostname);
+    return (
+      parsed.protocol === "https:" &&
+      ALLOWED_NAVIGATION_HOSTS.has(parsed.hostname)
+    );
   } catch {
     return false;
   }

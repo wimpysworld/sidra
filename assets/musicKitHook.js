@@ -25,13 +25,16 @@
     let documentGeneration = 0;
     let documentActive = true;
     let resetStopForDocument = () => {};
-    window.addEventListener('pagehide', () => {
+    window.addEventListener("pagehide", () => {
       documentGeneration += 1;
       documentActive = false;
       resetStopForDocument();
     });
-    window.addEventListener('pageshow', () => { documentActive = true; });
-    const unsafeTimedText = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+    window.addEventListener("pageshow", () => {
+      documentActive = true;
+    });
+    const unsafeTimedText =
+      /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
     /**
      * Send to the main process, tolerating an absent bridge.
@@ -56,9 +59,11 @@
      * @returns {MediaSession | null} The usable media session, or null
      */
     function getPositionSink() {
-      if (typeof navigator === 'undefined' ||
-          !navigator.mediaSession ||
-          typeof navigator.mediaSession.setPositionState !== 'function') {
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.mediaSession ||
+        typeof navigator.mediaSession.setPositionState !== "function"
+      ) {
         return null;
       }
       return navigator.mediaSession;
@@ -75,17 +80,24 @@
       try {
         sink.setPositionState();
       } catch (_) {
-        // A failed clear has no fallback.
+        // MediaSession failures must not break MusicKit event handling.
       }
     }
 
     function effectiveDuration(mk) {
       const itemDurationMs = mk.nowPlayingItem?.attributes?.durationInMillis;
-      const duration = Number.isFinite(mk.currentPlaybackDuration) && mk.currentPlaybackDuration > 0
-        ? mk.currentPlaybackDuration
-        : Number.isFinite(itemDurationMs) ? itemDurationMs / 1000 : null;
-      return Number.isFinite(duration) && duration > 0 && duration <= Number.MAX_SAFE_INTEGER / 1_000_000
-        ? duration : null;
+      const duration =
+        Number.isFinite(mk.currentPlaybackDuration) &&
+        mk.currentPlaybackDuration > 0
+          ? mk.currentPlaybackDuration
+          : Number.isFinite(itemDurationMs)
+            ? itemDurationMs / 1000
+            : null;
+      return Number.isFinite(duration) &&
+        duration > 0 &&
+        duration <= Number.MAX_SAFE_INTEGER / 1_000_000
+        ? duration
+        : null;
     }
 
     /**
@@ -161,15 +173,21 @@
         if (window.__sidraHookedMk !== mk) return;
         const duration = item ? effectiveDuration(mk) : null;
         const capabilities = {
-          canPlay: !!item && typeof mk.play === 'function',
-          canPause: !!item && typeof mk.pause === 'function',
-          canSeek: !item || typeof mk.seekToTime !== 'function' ? false : duration === null ? null : true,
-          durationUs: duration === null ? null : Math.trunc(duration * 1_000_000),
+          canPlay: !!item && typeof mk.play === "function",
+          canPause: !!item && typeof mk.pause === "function",
+          canSeek:
+            !item || typeof mk.seekToTime !== "function"
+              ? false
+              : duration === null
+                ? null
+                : true,
+          durationUs:
+            duration === null ? null : Math.trunc(duration * 1_000_000),
         };
         const serialised = JSON.stringify(capabilities);
         if (serialised === lastCapabilities) return;
         lastCapabilities = serialised;
-        sendToMain('playbackCapabilitiesDidChange', capabilities);
+        sendToMain("playbackCapabilitiesDidChange", capabilities);
       }
       /**
        * Forward playback state changes to the main process.
@@ -177,13 +195,16 @@
        */
       function reportPlaybackState({ state }) {
         if (state === MusicKit.PlaybackStates.playing) resetStop();
-        sendToMain('playbackStateDidChange', {
+        sendToMain("playbackStateDidChange", {
           status: state === MusicKit.PlaybackStates.playing,
           state,
         });
         reportCapabilities();
       }
-      mk.addEventListener('playbackStateDidChange', whileHooked(mk, reportPlaybackState));
+      mk.addEventListener(
+        "playbackStateDidChange",
+        whileHooked(mk, reportPlaybackState),
+      );
 
       /**
        * Forward now-playing metadata to the main process.
@@ -194,105 +215,151 @@
         resetStop();
         reportCapabilities(item);
         if (!item) {
-          sendToMain('nowPlayingItemDidChange', null);
+          sendToMain("nowPlayingItemDidChange", null);
           clearPositionState();
           return;
         }
         const pp = item.attributes?.playParams;
-        sendToMain('nowPlayingItemDidChange', {
+        sendToMain("nowPlayingItemDidChange", {
           name: item.attributes?.name,
           albumName: item.attributes?.albumName,
           artistName: item.attributes?.artistName,
           durationInMillis: item.attributes?.durationInMillis,
           genreNames: item.attributes?.genreNames,
           artworkUrl: item.attributes?.artwork?.url
-            ?.replace('{w}', '512').replace('{h}', '512'),
+            ?.replace("{w}", "512")
+            .replace("{h}", "512"),
           trackId: item.id,
           trackNumber: item.attributes?.trackNumber,
           url: item.attributes?.url,
           discNumber: item.attributes?.discNumber,
           composerName: item.attributes?.composerName,
           releaseDate: item.attributes?.releaseDate,
-          playParams: pp ? {
-            catalogId: pp.catalogId,
-            globalId: pp.globalId,
-            kind: pp.kind,
-            isLibrary: pp.isLibrary,
-          } : undefined,
+          playParams: pp
+            ? {
+                catalogId: pp.catalogId,
+                globalId: pp.globalId,
+                kind: pp.kind,
+                isLibrary: pp.isLibrary,
+              }
+            : undefined,
           // Use the item's document host for sharing. The persisted service can
           // change before the previous service's track metadata disappears.
           sourceHost: window.location.hostname,
         });
       }
-      mk.addEventListener('nowPlayingItemDidChange', whileHooked(mk, reportNowPlaying));
+      mk.addEventListener(
+        "nowPlayingItemDidChange",
+        whileHooked(mk, reportNowPlaying),
+      );
 
       /**
        * Forward complete songs embedded in a radio station or archived show.
        * @param {object} metadata - MusicKit timedMetadataDidChange payload
        */
-      mk.addEventListener('timedMetadataDidChange', whileHooked(mk, (metadata) => {
-        if (mk.nowPlayingItem?.attributes?.playParams?.kind !== 'radioStation') return;
+      mk.addEventListener(
+        "timedMetadataDidChange",
+        whileHooked(mk, (metadata) => {
+          if (
+            mk.nowPlayingItem?.attributes?.playParams?.kind !== "radioStation"
+          )
+            return;
 
-        const title = typeof metadata?.title === 'string' ? metadata.title.trim() : '';
-        const artist = typeof metadata?.performer === 'string' ? metadata.performer.trim() : '';
-        if (!title || !artist) {
-          sendToMain('timedMetadataDidChange', null);
-          return;
-        }
+          const title =
+            typeof metadata?.title === "string" ? metadata.title.trim() : "";
+          const artist =
+            typeof metadata?.performer === "string"
+              ? metadata.performer.trim()
+              : "";
+          if (!title || !artist) {
+            sendToMain("timedMetadataDidChange", null);
+            return;
+          }
 
-        const links = Array.isArray(metadata.links) ? metadata.links : [];
-        const descriptions = links
-          .map((link) => typeof link?.description === 'string' ? link.description : null)
-          .filter((description) => description !== null);
-        if (new Set(descriptions).size !== descriptions.length) return;
+          const links = Array.isArray(metadata.links) ? metadata.links : [];
+          const descriptions = links
+            .map((link) =>
+              typeof link?.description === "string" ? link.description : null,
+            )
+            .filter((description) => description !== null);
+          if (new Set(descriptions).size !== descriptions.length) return;
 
-        const adamIds = metadata.storefrontAdamIds &&
-          typeof metadata.storefrontAdamIds === 'object' &&
-          !Array.isArray(metadata.storefrontAdamIds)
-          ? [...new Set(Object.values(metadata.storefrontAdamIds)
-              .filter((value) => typeof value === 'string')
-              .map((value) => value.trim())
-              .filter((value) => value !== '' && value.length <= 128 && !unsafeTimedText.test(value)))]
-          : [];
-        const catalogId = adamIds.length === 1 ? adamIds[0] : null;
-        const album = typeof metadata.album === 'string' ? metadata.album.trim() : undefined;
-        if (title.length > 512 || artist.length > 512) return;
-        sendToMain('timedMetadataDidChange', {
-          name: title,
-          artistName: artist,
-          albumName: album !== undefined && album.length <= 512 && !unsafeTimedText.test(album)
-            ? album
-            : undefined,
-          trackId: catalogId ?? undefined,
-          playParams: catalogId ? { catalogId, kind: 'song' } : undefined,
-        });
-      }));
+          const adamIds =
+            metadata.storefrontAdamIds &&
+            typeof metadata.storefrontAdamIds === "object" &&
+            !Array.isArray(metadata.storefrontAdamIds)
+              ? [
+                  ...new Set(
+                    Object.values(metadata.storefrontAdamIds)
+                      .filter((value) => typeof value === "string")
+                      .map((value) => value.trim())
+                      .filter(
+                        (value) =>
+                          value !== "" &&
+                          value.length <= 128 &&
+                          !unsafeTimedText.test(value),
+                      ),
+                  ),
+                ]
+              : [];
+          const catalogId = adamIds.length === 1 ? adamIds[0] : null;
+          const album =
+            typeof metadata.album === "string"
+              ? metadata.album.trim()
+              : undefined;
+          if (title.length > 512 || artist.length > 512) return;
+          sendToMain("timedMetadataDidChange", {
+            name: title,
+            artistName: artist,
+            albumName:
+              album !== undefined &&
+              album.length <= 512 &&
+              !unsafeTimedText.test(album)
+                ? album
+                : undefined,
+            trackId: catalogId ?? undefined,
+            playParams: catalogId ? { catalogId, kind: "song" } : undefined,
+          });
+        }),
+      );
 
       /**
        * Forward playback position (in microseconds) to the main process and
        * refresh the media session position state.
        */
-      mk.addEventListener('playbackTimeDidChange', whileHooked(mk, () => {
-        sendToMain('playbackTimeDidChange',
-          mk.currentPlaybackTime * 1_000_000
-        );
-        reportPositionState(mk);
-      }));
+      mk.addEventListener(
+        "playbackTimeDidChange",
+        whileHooked(mk, () => {
+          sendToMain(
+            "playbackTimeDidChange",
+            mk.currentPlaybackTime * 1_000_000,
+          );
+          reportPositionState(mk);
+        }),
+      );
 
-      /** Forward repeat mode changes to the main process. */
-      mk.addEventListener('repeatModeDidChange', whileHooked(mk, () => {
-        sendToMain('repeatModeDidChange', mk.repeatMode);
-      }));
+      mk.addEventListener(
+        "repeatModeDidChange",
+        whileHooked(mk, () => {
+          sendToMain("repeatModeDidChange", mk.repeatMode);
+        }),
+      );
 
-      /** Forward shuffle mode changes to the main process. */
-      mk.addEventListener('shuffleModeDidChange', whileHooked(mk, () => {
-        sendToMain('shuffleModeDidChange', mk.shuffleMode);
-      }));
+      mk.addEventListener(
+        "shuffleModeDidChange",
+        whileHooked(mk, () => {
+          sendToMain("shuffleModeDidChange", mk.shuffleMode);
+        }),
+      );
       reportNowPlaying({ item: mk.nowPlayingItem ?? null });
-      reportPlaybackState({ state: mk.playbackState ?? (mk.isPlaying ? MusicKit.PlaybackStates.playing : 0) });
-      sendToMain('playbackTimeDidChange', mk.currentPlaybackTime * 1_000_000);
-      sendToMain('repeatModeDidChange', mk.repeatMode);
-      sendToMain('shuffleModeDidChange', mk.shuffleMode);
+      reportPlaybackState({
+        state:
+          mk.playbackState ??
+          (mk.isPlaying ? MusicKit.PlaybackStates.playing : 0),
+      });
+      sendToMain("playbackTimeDidChange", mk.currentPlaybackTime * 1_000_000);
+      sendToMain("repeatModeDidChange", mk.repeatMode);
+      sendToMain("shuffleModeDidChange", mk.shuffleMode);
       return reportCapabilities;
     }
 
@@ -320,20 +387,23 @@
      */
     function attachVolume(mk, reportCapabilities) {
       /**
-       * Last value sent over the volumeDidChange IPC channel, so the poll
-       * below does not re-send a value the listener already reported.
+       * Last value sent over the volumeDidChange IPC channel, so volumePollTimer
+       * does not re-send a value that the listener already reported.
        * @type {number}
        */
       let lastVolume = mk.volume;
       // Send the initial volume so MPRIS (and any other listener) receives the
       // real value immediately, not just on subsequent changes.
-      sendToMain('volumeDidChange', lastVolume);
+      sendToMain("volumeDidChange", lastVolume);
       // MusicKit publishes playbackVolumeDidChange, not volumeDidChange.
       // Sidra's separate IPC channel keeps the volumeDidChange name.
-      mk.addEventListener('playbackVolumeDidChange', whileHooked(mk, () => {
-        lastVolume = mk.volume;
-        sendToMain('volumeDidChange', mk.volume);
-      }));
+      mk.addEventListener(
+        "playbackVolumeDidChange",
+        whileHooked(mk, () => {
+          lastVolume = mk.volume;
+          sendToMain("volumeDidChange", mk.volume);
+        }),
+      );
       // Poll every 250 ms for volume changes that do not reach the listener.
       // The player bar's write path is unknown, so both reporting paths are necessary.
       volumePollTimer = setInterval(() => {
@@ -341,7 +411,7 @@
         const v = mk.volume;
         if (v !== lastVolume) {
           lastVolume = v;
-          sendToMain('volumeDidChange', v);
+          sendToMain("volumeDidChange", v);
         }
       }, 250);
     }
@@ -374,43 +444,58 @@
       }
       resetStopForDocument = resetStop;
       function current(operationGeneration, pageGeneration) {
-        return documentActive && window.__sidraHookedMk === mk &&
-          generation === operationGeneration && documentGeneration === pageGeneration;
+        return (
+          documentActive &&
+          window.__sidraHookedMk === mk &&
+          generation === operationGeneration &&
+          documentGeneration === pageGeneration
+        );
       }
       function stop(requestId) {
-        if (!Number.isSafeInteger(requestId) || requestId <= 0) return Promise.resolve();
+        if (!Number.isSafeInteger(requestId) || requestId <= 0)
+          return Promise.resolve();
         if (pendingStop) return pendingStop;
         const operationGeneration = generation;
         const pageGeneration = documentGeneration;
-        const task = Promise.resolve().then(async () => {
-          if (!current(operationGeneration, pageGeneration)) return;
-          if (!stopped) {
-            mk.pause();
-            if (mk.nowPlayingItem && effectiveDuration(mk) !== null && typeof mk.seekToTime === 'function') {
-              let timeout;
-              try {
-                await Promise.race([
-                  mk.seekToTime(0),
-                  new Promise((_, reject) => {
-                    timeout = setTimeout(() => reject(new Error('Stop seek timed out')), 5000);
-                  }),
-                ]);
-              } finally {
-                clearTimeout(timeout);
+        const task = Promise.resolve()
+          .then(async () => {
+            if (!current(operationGeneration, pageGeneration)) return;
+            if (!stopped) {
+              mk.pause();
+              if (
+                mk.nowPlayingItem &&
+                effectiveDuration(mk) !== null &&
+                typeof mk.seekToTime === "function"
+              ) {
+                let timeout;
+                try {
+                  await Promise.race([
+                    mk.seekToTime(0),
+                    new Promise((_, reject) => {
+                      timeout = setTimeout(
+                        () => reject(new Error("Stop seek timed out")),
+                        5000,
+                      );
+                    }),
+                  ]);
+                } finally {
+                  clearTimeout(timeout);
+                }
               }
             }
-          }
-          if (!current(operationGeneration, pageGeneration)) return;
-          stopped = true;
-          sendToMain('playbackStopped', { requestId, success: true });
-        }).catch(() => {
-          console.warn('[Sidra] failed to stop playback');
-          if (current(operationGeneration, pageGeneration)) {
-            sendToMain('playbackStopped', { requestId, success: false });
-          }
-        }).finally(() => {
-          if (pendingStop === task) pendingStop = null;
-        });
+            if (!current(operationGeneration, pageGeneration)) return;
+            stopped = true;
+            sendToMain("playbackStopped", { requestId, success: true });
+          })
+          .catch(() => {
+            console.warn("[Sidra] failed to stop playback");
+            if (current(operationGeneration, pageGeneration)) {
+              sendToMain("playbackStopped", { requestId, success: false });
+            }
+          })
+          .finally(() => {
+            if (pendingStop === task) pendingStop = null;
+          });
         pendingStop = task;
         return task;
       }
@@ -420,21 +505,29 @@
         const pageGeneration = documentGeneration;
         const afterStop = pendingStop;
         const run = () => {
-          if (resumeToken !== resumeGeneration || !current(operationGeneration, pageGeneration)) return;
-          return toggle && !afterStop && !stopped && mk.isPlaying ? mk.pause() : mk.play();
+          if (
+            resumeToken !== resumeGeneration ||
+            !current(operationGeneration, pageGeneration)
+          )
+            return;
+          return toggle && !afterStop && !stopped && mk.isPlaying
+            ? mk.pause()
+            : mk.play();
         };
         try {
-          return (afterStop ? afterStop.then(run) : Promise.resolve(run())).catch(() => {
-            console.warn('[Sidra] failed to resume playback');
+          return (
+            afterStop ? afterStop.then(run) : Promise.resolve(run())
+          ).catch(() => {
+            console.warn("[Sidra] failed to resume playback");
           });
         } catch (_) {
-          console.warn('[Sidra] failed to resume playback');
+          console.warn("[Sidra] failed to resume playback");
           return Promise.resolve();
         }
       }
 
-      // Stopping the previous poll comes first, so a throw in either attach
-      // below cannot leave a second timer polling the replaced instance.
+      // Stop the old poll before attachPlaybackListeners() or attachVolume() can throw,
+      // otherwise two timers can report volumes from different instances.
       stopVolumePoll();
       const reportCapabilities = attachPlaybackListeners(mk, resetStop);
       attachVolume(mk, reportCapabilities);
@@ -451,21 +544,37 @@
       window.__sidra = {
         openUri: async (uri) => {
           try {
+            // Restrict queue changes to credential-free HTTPS URLs for the active service origin.
             const url = new URL(uri);
-            if (url.protocol !== 'https:' || !serviceHosts.has(url.hostname) ||
-                url.origin !== window.location.origin || url.username || url.password ||
-                !documentActive || window.__sidraHookedMk !== mk) return;
-            if (blockedQueue) throw new Error('Queue replacement still pending');
+            if (
+              url.protocol !== "https:" ||
+              !serviceHosts.has(url.hostname) ||
+              url.origin !== window.location.origin ||
+              url.username ||
+              url.password ||
+              !documentActive ||
+              window.__sidraHookedMk !== mk
+            )
+              return;
+            if (blockedQueue)
+              throw new Error("Queue replacement still pending");
             const request = ++queueRequest;
             const pageGeneration = documentGeneration;
-            queueTask = queueTask.then(async () => {
-              if (request !== queueRequest || pageGeneration !== documentGeneration ||
-                  !documentActive || window.__sidraHookedMk !== mk) return;
-              resetStop();
-              await mk.setQueue({ url: url.href, startPlaying: true });
-            }).catch(() => {
-              console.warn('[Sidra] failed to open requested media');
-            });
+            queueTask = queueTask
+              .then(async () => {
+                if (
+                  request !== queueRequest ||
+                  pageGeneration !== documentGeneration ||
+                  !documentActive ||
+                  window.__sidraHookedMk !== mk
+                )
+                  return;
+                resetStop();
+                await mk.setQueue({ url: url.href, startPlaying: true });
+              })
+              .catch(() => {
+                console.warn("[Sidra] failed to open requested media");
+              });
             let timeout;
             try {
               await Promise.race([
@@ -476,9 +585,11 @@
                       // Keep the SDK operation serialised after callers stop waiting.
                       queueRequest += 1;
                       blockedQueue = queueTask;
-                      blockedQueue.then(() => { blockedQueue = null; });
+                      blockedQueue.then(() => {
+                        blockedQueue = null;
+                      });
                     }
-                    reject(new Error('Queue replacement timed out'));
+                    reject(new Error("Queue replacement timed out"));
                   }, 5000);
                 }),
               ]);
@@ -486,21 +597,30 @@
               clearTimeout(timeout);
             }
           } catch (_) {
-            console.warn('[Sidra] failed to open requested media');
+            console.warn("[Sidra] failed to open requested media");
           }
         },
-        play:       () => resume(false),
-        pause:      () => { resumeGeneration += 1; return mk.pause(); },
+        play: () => resume(false),
+        pause: () => {
+          resumeGeneration += 1;
+          return mk.pause();
+        },
         stop,
-        playPause:  () => resume(true),
-        next:       () => mk.skipToNextItem(),
-        previous:   () => mk.skipToPreviousItem(),
-        seek:       (secs) => mk.seekToTime(secs),
-        setVolume:  (v) => { mk.volume = v; },
-        setRepeat:  (m) => { mk.repeatMode = m; },
-        setShuffle: (m) => { mk.shuffleMode = m; },
+        playPause: () => resume(true),
+        next: () => mk.skipToNextItem(),
+        previous: () => mk.skipToPreviousItem(),
+        seek: (secs) => mk.seekToTime(secs),
+        setVolume: (v) => {
+          mk.volume = v;
+        },
+        setRepeat: (m) => {
+          mk.repeatMode = m;
+        },
+        setShuffle: (m) => {
+          mk.shuffleMode = m;
+        },
       };
-      sendToMain('hookReady', injectedDocumentGeneration);
+      sendToMain("hookReady", injectedDocumentGeneration);
     }
 
     /**
@@ -516,7 +636,7 @@
       try {
         attachToInstance(mk);
       } catch (err) {
-        console.error('[Sidra] failed to attach to the MusicKit instance', err);
+        console.error("[Sidra] failed to attach to the MusicKit instance", err);
       }
     }
 
@@ -527,8 +647,17 @@
      * @type {Set<string>}
      */
     const COMMANDS = new Set([
-      'play', 'pause', 'stop', 'playPause', 'next', 'previous', 'openUri',
-      'seek', 'setVolume', 'setRepeat', 'setShuffle',
+      "play",
+      "pause",
+      "stop",
+      "playPause",
+      "next",
+      "previous",
+      "openUri",
+      "seek",
+      "setVolume",
+      "setRepeat",
+      "setShuffle",
     ]);
 
     /**
@@ -537,18 +666,18 @@
      * @param {MessageEvent} event - The postMessage event
      * @see {SidraCommandMessage} in src/types/hook.d.ts for the payload shape
      */
-    window.addEventListener('message', (event) => {
+    window.addEventListener("message", (event) => {
       if (event.source !== window) return;
-      if (!event.data || event.data.type !== 'sidra:command') return;
+      if (!event.data || event.data.type !== "sidra:command") return;
 
       const { channel, args } = event.data;
-      const method = channel.replace('player:', '');
+      const method = channel.replace("player:", "");
       if (!COMMANDS.has(method)) {
         console.warn(`[Sidra] blocked unrecognised command: "${method}"`);
         return;
       }
       // A failed initial attachment leaves no hook object, but this listener still runs.
-      if (typeof window.__sidra?.[method] === 'function') {
+      if (typeof window.__sidra?.[method] === "function") {
         window.__sidra[method](...(args || []));
       }
     });
@@ -572,7 +701,7 @@
      * Match the shared class on music.apple.com's div and Classical's amp-chrome-volume.
      * Element names differ, and Svelte scope hashes change between Apple builds.
      */
-    const VOLUME_SELECTOR = '.chrome-volume';
+    const VOLUME_SELECTOR = ".chrome-volume";
 
     /**
      * The control the wheel listener is currently bound to, or null.
@@ -601,18 +730,22 @@
       // A reversal starts from zero, so a residual from scrolling one way does
       // not delay the first step the other way.
       const direction = Math.sign(event.deltaY);
-      if (direction !== 0 && direction !== Math.sign(wheelDelta)) wheelDelta = 0;
+      if (direction !== 0 && direction !== Math.sign(wheelDelta))
+        wheelDelta = 0;
       wheelDelta += event.deltaY;
 
       const steps = Math.trunc(wheelDelta / WHEEL_NOTCH_DELTA);
       if (steps === 0) return;
       wheelDelta -= steps * WHEEL_NOTCH_DELTA;
 
-      // Read the live volume every time: a write MusicKit drops self-corrects
-      // on the next notch. Scrolling down (positive deltaY) lowers the volume,
-      // and the result is clamped because MusicKit throws outside 0 to 1.
+      // Read the live volume every time. If MusicKit drops a write, the next notch
+      // self-corrects. Scrolling down (positive deltaY) lowers the volume, and the
+      // result is clamped because MusicKit throws outside 0 to 1.
       const volume = hookedMk.volume - steps * VOLUME_STEP;
-      hookedMk.volume = Math.min(1, Math.max(0, Math.round(volume * 100) / 100));
+      hookedMk.volume = Math.min(
+        1,
+        Math.max(0, Math.round(volume * 100) / 100),
+      );
     }
 
     /**
@@ -627,10 +760,10 @@
     function bindVolumeWheel(control) {
       if (control === boundVolumeControl) return;
       if (boundVolumeControl) {
-        boundVolumeControl.removeEventListener('wheel', onVolumeWheel);
+        boundVolumeControl.removeEventListener("wheel", onVolumeWheel);
       }
       boundVolumeControl = control;
-      control.addEventListener('wheel', onVolumeWheel, { passive: false });
+      control.addEventListener("wheel", onVolumeWheel, { passive: false });
     }
 
     /**
@@ -645,23 +778,25 @@
      */
     function onPointerOver(event) {
       const target = event.target;
-      if (typeof target?.closest !== 'function') return;
+      if (typeof target?.closest !== "function") return;
       const control = target.closest(VOLUME_SELECTOR);
       if (control) bindVolumeWheel(control);
     }
 
-    window.addEventListener('pointerover', onPointerOver, { passive: true });
+    window.addEventListener("pointerover", onPointerOver, { passive: true });
 
-    console.log('[Sidra] MusicKit hooked successfully');
+    console.log("[Sidra] MusicKit hooked successfully");
 
     // MusicKit instance replacement raises no event, so compare the live instance with the marker.
     setInterval(() => {
       try {
         const currentMk = MusicKit.getInstance();
-        if (currentMk !== window.__sidraHookedMk &&
-            typeof currentMk.addEventListener === 'function') {
+        if (
+          currentMk !== window.__sidraHookedMk &&
+          typeof currentMk.addEventListener === "function"
+        ) {
           attachSafely(currentMk);
-          console.log('[Sidra] MusicKit re-hooked (instance replaced)');
+          console.log("[Sidra] MusicKit re-hooked (instance replaced)");
         }
       } catch (_) {
         // Skip this cycle if MusicKit.getInstance() throws during re-initialisation.

@@ -749,7 +749,9 @@ describe('SidraHook contract', () => {
     const block = /const COMMANDS = new Set\(\[([^\]]*)\]\)/.exec(HOOK_SOURCE);
     expect(block, 'COMMANDS set not found in assets/musicKitHook.js').not.toBeNull();
 
-    const commands = [...block![1].matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+    const commands = [...block![1].matchAll(/(['"])([^'"]+)\1/g)]
+      .map((m) => m[2])
+      .sort();
     expect(commands).toEqual(Object.keys(hookMethods).sort());
   });
 
@@ -771,10 +773,10 @@ describe('SidraHook contract', () => {
       sourceHost: true,
     } satisfies Record<keyof NowPlayingPayload, true>;
 
-    const block = /sendToMain\('nowPlayingItemDidChange', \{\n([\s\S]*?)^ {8}\}\);/m.exec(HOOK_SOURCE);
+    const block = /sendToMain\((['"])nowPlayingItemDidChange\1, \{\n([\s\S]*?)^ {8}\}\);/m.exec(HOOK_SOURCE);
     expect(block, 'now-playing payload not found in assets/musicKitHook.js').not.toBeNull();
 
-    const fields = [...block![1].matchAll(/^ {10}([A-Za-z]\w*):/gm)].map((match) => match[1]).sort();
+    const fields = [...block![2].matchAll(/^ {10}([A-Za-z]\w*):/gm)].map((match) => match[1]).sort();
     expect(fields).toEqual(Object.keys(payloadFields).sort());
   });
 });

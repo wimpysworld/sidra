@@ -249,9 +249,7 @@ async function driveConnectAttempts(target: number): Promise<void> {
   }
 }
 
-// The registry and the script outlive a module reset, so they are cleared for
-// every test in the file whichever block owns it. This hook runs before the
-// per-describe ones.
+// rpc.instances and rpc.outcome outlive vi.resetModules(), so this top-level hook resets them before every test.
 beforeEach(() => {
   rpc.instances.length = 0;
   rpc.defaultPathList = undefined;
@@ -378,8 +376,7 @@ describe("discord presence integration", () => {
   });
 });
 
-// Separate from the block above because these tests install their own connect
-// script before init(), and the shared beforeEach there logs in first.
+// Reconnect tests set rpc.outcome before init(), unlike the integration tests that initialise in beforeEach.
 describe("discord presence reconnect", () => {
   let player: FakePlayer;
 

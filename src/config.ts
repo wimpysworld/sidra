@@ -1,6 +1,6 @@
 /**
- * Typed access to persistent state through electron-conf.
- * Defaults belong to getters, not the schema, so an absent storefront still triggers system-region fallback in src/storefront.ts.
+ * Typed access to persistent state through electron-conf. Defaults belong to
+ * getters so an absent storefront still triggers the system-region fallback.
  */
 import { Conf } from 'electron-conf/main';
 import log from 'electron-log/main';
@@ -158,9 +158,10 @@ export function clearLastfmSession(): void {
 }
 
 /**
- * Validate every field from the editable store because one malformed play can invalidate a Last.fm batch.
- * Timestamps and durations are positive whole seconds, matching the integration's output.
- * Reject future timestamps because Last.fm can ignore them in a successful response, after which the queue drops them.
+ * Validate every stored field because one malformed play can invalidate a
+ * Last.fm batch. Timestamps and durations match the integration's positive
+ * whole seconds. Reject future timestamps because Last.fm can ignore them in a
+ * successful response, after which the queue drops them.
  */
 function isPendingScrobble(value: unknown): value is PendingScrobble {
   if (typeof value !== 'object' || value === null) return false;
@@ -306,7 +307,7 @@ const SERVICE_PAGE_ACCESSORS: Record<MusicServiceId, {
 
 /**
  * Read a service's stored start page with a union that covers both services.
- * Callers must resolve the result against that service's startPages, using its default when no entry matches.
+ * Resolve the result against that service's startPages and default.
  */
 export function getStartPageFor(id: MusicServiceId): AnyStartPageId | 'last' {
   return SERVICE_PAGE_ACCESSORS[id].getStartPage();

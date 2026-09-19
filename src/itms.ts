@@ -27,7 +27,7 @@ function isRouteToken(value: string | null): value is ItmsRouteToken {
  * Validates one itms:// URL and converts it to something Sidra can open. This is a
  * trust boundary: the URL arrives from the OS, so a bad scheme or host is null, and
  * a /deeplink path is null unless its `p` token is on the allowlist. Any other path
- * becomes an https catalogue URL with the `app` parameter stripped.
+ * becomes an HTTPS catalogue URL with the `app` parameter stripped.
  */
 export function transformItmsUrl(input: string): ItmsTarget | null {
   let parsed: URL;
@@ -53,6 +53,7 @@ export function transformItmsUrl(input: string): ItmsTarget | null {
     return { kind: 'route', token };
   }
 
+  // MUSIC_SERVICES owns the fixed origin. Input controls only the path and query below.
   const rebuilt = new URL(`${MUSIC_SERVICES['music'].origin}/`);
   rebuilt.pathname = parsed.pathname;
   const params = new URLSearchParams(parsed.searchParams);
@@ -62,8 +63,8 @@ export function transformItmsUrl(input: string): ItmsTarget | null {
 }
 
 /**
- * First valid itms:// URL in a process argv, or null. Used at launch and by the
- * second-instance handler, where the link arrives as an argument rather than an event.
+ * Return the first valid itms:// URL in a process argument list, or null.
+ * The launch and second-instance paths receive links as arguments rather than events.
  */
 export function extractItmsUrlFromArgv(argv: readonly string[]): ItmsTarget | null {
   for (const arg of argv) {

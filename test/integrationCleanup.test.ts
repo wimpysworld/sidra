@@ -188,7 +188,7 @@ function findCleanupFaults(rawSource: string): string[] {
     new Set(
       [
         ...input.matchAll(
-          /player\.(?:removeListener|off)\(\s*(['"])([\w-]+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
+          /player\.(?:removeListener|off)\(\s*(['"])([\w-]+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*,?\s*\)/g,
         ),
       ].map(([, , event, handler]) => `${event}:${handler}`),
     );
@@ -224,8 +224,7 @@ describe("player listener cleanup", () => {
     }
   });
 
-  // Fixtures for the sweep itself. The first is the point of the region check:
-  // a whole-file search for the removal accepts it, and the sweep must not.
+  // These fixtures test the sweep. `rejects a removal outside any cleanup block` proves that removals must be in a cleanup region.
   describe("the sweep itself", () => {
     const REGISTER =
       "player.on('playbackStateDidChange', onPlaybackStateDidChange);";
@@ -496,7 +495,7 @@ describe("player listener cleanup", () => {
       "main.ts calls initTrayStateManager() as a statement, discarding its teardown closure",
     ).toBe(false);
     expect(source).toMatch(
-      /app\.on\(\s*'will-quit'\s*,\s*teardownTrayState\s*\)/,
+      /app\.on\(\s*(['"])will-quit\1\s*,\s*teardownTrayState\s*,?\s*\)/,
     );
   });
 });

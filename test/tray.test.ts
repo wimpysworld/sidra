@@ -2211,7 +2211,6 @@ describe("initTrayStateManager", () => {
     it("clears the pause timer when called during an active pause timeout", () => {
       const cleanup = initTrayStateManager(player, mockTray);
 
-      // Simulate playing then pausing to start the pause timer
       player.setPlaybackState(PlaybackState.Playing);
       handlerFor("playbackStateDidChange")({
         status: true,
@@ -2297,7 +2296,7 @@ describe("initTrayStateManager", () => {
     it("clears Now Playing after 30s of inactivity when paused", () => {
       initTrayStateManager(player, mockTray);
 
-      // Transition to playing first (sets previousPlaying = true)
+      // createPauseEdgeTimer() needs a playing report before a paused report can arm it.
       player.setPlaybackState(PlaybackState.Playing);
       handlerFor("playbackStateDidChange")({
         status: true,
@@ -2329,7 +2328,6 @@ describe("initTrayStateManager", () => {
     it("cancels the pause timer when playback resumes", () => {
       initTrayStateManager(player, mockTray);
 
-      // Play -> Pause (start timer)
       player.setPlaybackState(PlaybackState.Playing);
       handlerFor("playbackStateDidChange")({
         status: true,
@@ -2342,7 +2340,6 @@ describe("initTrayStateManager", () => {
         state: PlaybackState.Paused,
       });
 
-      // Resume playing before timeout
       vi.advanceTimersByTime(10_000);
       player.setPlaybackState(PlaybackState.Playing);
       handlerFor("playbackStateDidChange")({
@@ -2350,7 +2347,6 @@ describe("initTrayStateManager", () => {
         state: PlaybackState.Playing,
       });
 
-      // Advance past original timeout - should not clear
       vi.mocked(Menu.buildFromTemplate).mockClear();
       const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
       setToolTipFn.mockClear();
@@ -2362,7 +2358,6 @@ describe("initTrayStateManager", () => {
     it("cancels the pause timer on track change", async () => {
       initTrayStateManager(player, mockTray);
 
-      // Play -> Pause (start timer)
       player.setPlaybackState(PlaybackState.Playing);
       handlerFor("playbackStateDidChange")({
         status: true,
@@ -2375,7 +2370,6 @@ describe("initTrayStateManager", () => {
         state: PlaybackState.Paused,
       });
 
-      // New track arrives - should cancel timer
       const payload: NowPlayingPayload = {
         name: "New Track",
         artistName: "Artist",
@@ -2384,7 +2378,6 @@ describe("initTrayStateManager", () => {
       player.setPlaybackState(PlaybackState.Playing);
       await handlerFor("nowPlayingItemDidChange")(payload);
 
-      // Advance past original timeout - should not clear
       vi.mocked(Menu.buildFromTemplate).mockClear();
       const setToolTipFn = mockTray.setToolTip as ReturnType<typeof vi.fn>;
       setToolTipFn.mockClear();
@@ -2441,7 +2434,6 @@ describe("initTrayStateManager", () => {
     it("guards against stale payload after artwork download", async () => {
       initTrayStateManager(player, mockTray);
 
-      // First track starts downloading artwork slowly
       let resolveFirst: (value: string | null) => void;
       const firstDownload = new Promise<string | null>((resolve) => {
         resolveFirst = resolve;

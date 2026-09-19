@@ -1,15 +1,20 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import vm from 'node:vm';
-import { describe, expect, it, vi } from 'vitest';
-import { Player } from '../src/player';
-import { allServices } from '../src/musicService';
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
+import { describe, expect, it, vi } from "vitest";
+import { Player } from "../src/player";
+import { allServices } from "../src/musicService";
 
-const hookScript = fs.readFileSync(
-  path.join(__dirname, '..', 'assets', 'musicKitHook.js'),
-  'utf-8',
-).replace('__SIDRA_DOCUMENT_GENERATION__', '1')
-  .replace('__SIDRA_SERVICE_HOSTS__', JSON.stringify(allServices().map(service => service.host)));
+const hookScript = fs
+  .readFileSync(
+    path.join(__dirname, "..", "assets", "musicKitHook.js"),
+    "utf-8",
+  )
+  .replace("__SIDRA_DOCUMENT_GENERATION__", "1")
+  .replace(
+    "__SIDRA_SERVICE_HOSTS__",
+    JSON.stringify(allServices().map((service) => service.host)),
+  );
 
 /** A listener registration made on a fake element. */
 interface Registration {
@@ -26,13 +31,17 @@ interface FakeElement {
   parent: FakeElement | null;
   registrations: Registration[];
   classList: { contains(token: string): boolean };
-  addEventListener(type: string, listener: (event: unknown) => void, options?: unknown): void;
+  addEventListener(
+    type: string,
+    listener: (event: unknown) => void,
+    options?: unknown,
+  ): void;
   removeEventListener(type: string, listener: (event: unknown) => void): void;
   closest(selector: string): FakeElement | null;
 }
 
 function element(classes: string, parent: FakeElement | null): FakeElement {
-  const tokens = classes.split(' ');
+  const tokens = classes.split(" ");
   const node: FakeElement = {
     tokens,
     parent,
@@ -49,8 +58,12 @@ function element(classes: string, parent: FakeElement | null): FakeElement {
     },
     // Only class selectors are supported, which is all the hook asks for.
     closest(selector) {
-      const wanted = selector.replace(/^\./, '');
-      for (let current: FakeElement | null = node; current; current = current.parent) {
+      const wanted = selector.replace(/^\./, "");
+      for (
+        let current: FakeElement | null = node;
+        current;
+        current = current.parent
+      ) {
         if (current.tokens.includes(wanted)) return current;
       }
       return null;
@@ -71,8 +84,8 @@ function chain(outermost: string, ...rest: string[]): FakeElement {
 
 /** The volume control in a chain, for a test that asserts against it directly. */
 function volumeControl(target: FakeElement): FakeElement {
-  const control = target.closest('.chrome-volume');
-  if (!control) throw new Error('this chain carries no chrome-volume element');
+  const control = target.closest(".chrome-volume");
+  if (!control) throw new Error("this chain carries no chrome-volume element");
   return control;
 }
 
@@ -80,21 +93,23 @@ function volumeControl(target: FakeElement): FakeElement {
 function wheelRegistrations(target: FakeElement): Registration[] {
   const found: Registration[] = [];
   for (let node: FakeElement | null = target; node; node = node.parent) {
-    found.push(...node.registrations.filter((entry) => entry.type === 'wheel'));
+    found.push(...node.registrations.filter((entry) => entry.type === "wheel"));
   }
   return found;
 }
 
 // The two services differ in the element that carries the chrome-volume token:
 // a div on music.apple.com, an amp-chrome-volume element on classical.
-const musicVolumeTarget = () => chain(
-  'chrome-player', 'chrome-volume', 'chrome-volume__slider',
-);
-const classicalVolumeTarget = () => chain(
-  'chrome-player__volume', 'chrome-volume', 'amp-volume-control',
-  'chrome-volume__indicator',
-);
-const nonVolumeTarget = () => chain('chrome-player', 'chrome-player__button');
+const musicVolumeTarget = () =>
+  chain("chrome-player", "chrome-volume", "chrome-volume__slider");
+const classicalVolumeTarget = () =>
+  chain(
+    "chrome-player__volume",
+    "chrome-volume",
+    "amp-volume-control",
+    "chrome-volume__indicator",
+  );
+const nonVolumeTarget = () => chain("chrome-player", "chrome-player__button");
 
 /** A MusicKit stand-in, optionally with a volume getter that throws. */
 function createMusicKit(
@@ -102,7 +117,9 @@ function createMusicKit(
   volumeThrows = false,
 ) {
   const instance = {
-    addEventListener: vi.fn((_event: string, _listener: (...args: unknown[]) => void) => {}),
+    addEventListener: vi.fn(
+      (_event: string, _listener: (...args: unknown[]) => void) => {},
+    ),
     currentPlaybackDuration: undefined,
     currentPlaybackTime: 0,
     isPlaying: true,
@@ -124,8 +141,10 @@ function createMusicKit(
     // Models a getter throwing while MusicKit re-initialises. The eager volume
     // read inside attachToInstance() is the most likely thrower, so this drives
     // the part-attached path the marker and attachSafely() exist to contain.
-    Object.defineProperty(instance, 'volume', {
-      get() { throw new Error('volume unavailable during re-initialisation'); },
+    Object.defineProperty(instance, "volume", {
+      get() {
+        throw new Error("volume unavailable during re-initialisation");
+      },
       configurable: true,
     });
   }
@@ -155,10 +174,9 @@ function createHarness({
   let nextTimeoutId = 0;
   const messageListeners: Array<(event: unknown) => void> = [];
   const pointerOverListeners: Array<(event: unknown) => void> = [];
-  // Registrations the hook made on window. The wheel listener must never appear
-  // here: see the non-fast-scrollable region note in the hook. A registration on
-  // document is caught differently - document is not in the vm context, so
-  // reaching for it throws where the hook runs.
+  // These are the registrations that assets/musicKitHook.js makes on window.
+  // The wheel listener stays on the volume control to limit the non-fast-scrollable region.
+  // A document registration throws because the VM context does not expose document.
   const globalRegistrations: Registration[] = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
@@ -179,17 +197,22 @@ function createHarness({
     __sidra?: Record<string, (...args: unknown[]) => unknown>;
   }
   const window: HarnessWindow = {
-    addEventListener: vi.fn((
-      event: string,
-      listener: (event: unknown) => void,
-      options?: unknown,
-    ) => {
-      globalRegistrations.push({ type: event, listener, options });
-      if (event === 'message') messageListeners.push(listener);
-      if (event === 'pointerover') pointerOverListeners.push(listener);
-    }),
+    addEventListener: vi.fn(
+      (
+        event: string,
+        listener: (event: unknown) => void,
+        options?: unknown,
+      ) => {
+        globalRegistrations.push({ type: event, listener, options });
+        if (event === "message") messageListeners.push(listener);
+        if (event === "pointerover") pointerOverListeners.push(listener);
+      },
+    ),
     navigator,
-    location: { hostname: 'music.apple.com', origin: 'https://music.apple.com' },
+    location: {
+      hostname: "music.apple.com",
+      origin: "https://music.apple.com",
+    },
   };
   if (!bridgeMissing) {
     window.AMWrapper = { ipcRenderer: { send: vi.fn() } };
@@ -201,8 +224,12 @@ function createHarness({
       timeouts.set(id, callback);
       return id;
     },
-    clearTimeout: (id: number) => { timeouts.delete(id); },
-    clearInterval: (id: number) => { intervals.delete(id); },
+    clearTimeout: (id: number) => {
+      timeouts.delete(id);
+    },
+    clearInterval: (id: number) => {
+      intervals.delete(id);
+    },
     console,
     navigator,
     setInterval: vi.fn((callback: () => void, delay: number) => {
@@ -217,13 +244,14 @@ function createHarness({
   // so getInstance() throws until it settles. Clearing the flag after the
   // injection run models it settling before the 500ms poll first fires, and
   // musicKitThrowsAtFirstPoll keeps it throwing through the first poll instead.
-  let getInstanceThrows = musicKitThrowsAtInjection || musicKitThrowsAtFirstPoll;
+  let getInstanceThrows =
+    musicKitThrowsAtInjection || musicKitThrowsAtFirstPoll;
   // Held in a variable so replaceInstance() can swap what getInstance() hands
   // back, which is what the 5-second monitor watches for.
   let liveInstance = musicKit;
   const musicKitApi = {
     getInstance: () => {
-      if (getInstanceThrows) throw new Error('MusicKit is re-initialising');
+      if (getInstanceThrows) throw new Error("MusicKit is re-initialising");
       return liveInstance;
     },
     PlaybackStates: { playing: 2 },
@@ -236,8 +264,8 @@ function createHarness({
   vm.runInContext(hookScript, context);
   if (repeatInjection) vm.runInContext(hookScript, context);
 
-  // Fire the first 500ms poll while getInstance() still throws. The hook must
-  // leave the poll running, so the later run below can attach.
+  // Fire the first 500ms poll while getInstance() still throws.
+  // The hook must leave the poll running so a later poll can attach.
   if (musicKitThrowsAtFirstPoll) {
     for (const { callback } of [...intervals.values()]) callback();
   }
@@ -252,7 +280,8 @@ function createHarness({
     // so bridgeMissing can drop it, and every assertion on IPC traffic comes
     // from a harness that has one.
     get bridgeSend() {
-      if (!window.AMWrapper) throw new Error('this harness was built without an AMWrapper bridge');
+      if (!window.AMWrapper)
+        throw new Error("this harness was built without an AMWrapper bridge");
       return window.AMWrapper.ipcRenderer.send;
     },
     // Moves the pointer onto `target`, as the browser does before any wheel
@@ -263,10 +292,15 @@ function createHarness({
     // Moves the pointer onto `target`, then sends one wheel event up its
     // ancestor chain, as bubbling delivers it. The event is handed back so a
     // test can read the preventDefault mock off it.
-    dispatchWheel: (
-      { ctrlKey = false, deltaY, target }:
-        { ctrlKey?: boolean; deltaY: number; target: FakeElement },
-    ) => {
+    dispatchWheel: ({
+      ctrlKey = false,
+      deltaY,
+      target,
+    }: {
+      ctrlKey?: boolean;
+      deltaY: number;
+      target: FakeElement;
+    }) => {
       for (const listener of pointerOverListeners) listener({ target });
       const event = { ctrlKey, deltaY, preventDefault: vi.fn(), target };
       for (const { listener } of wheelRegistrations(target)) listener(event);
@@ -289,12 +323,17 @@ function createHarness({
     // 500ms waitForMK share the same mock, so they are filtered out by delay.
     runMonitorCycles: (count: number) => {
       for (let cycle = 0; cycle < count; cycle++) {
-        const monitors = [...intervals.values()].filter(({ delay }) => delay === 5000);
+        const monitors = [...intervals.values()].filter(
+          ({ delay }) => delay === 5000,
+        );
         for (const { callback } of monitors) callback();
       }
     },
     runVolumePoll: () => {
-      for (const { callback } of [...intervals.values()].filter(({ delay }) => delay === 250)) callback();
+      for (const { callback } of [...intervals.values()].filter(
+        ({ delay }) => delay === 250,
+      ))
+        callback();
     },
     runTimeouts: () => {
       for (const [id, callback] of timeouts) {
@@ -318,130 +357,192 @@ function createHarness({
   };
 }
 
-describe('MusicKit OpenUri', () => {
-  it.each(['music.apple.com', 'classical.music.apple.com'])('queues and starts a URL on %s', async (host) => {
-    const { window, musicKit } = createHarness();
-    Object.assign(window.location, { hostname: host, origin: `https://${host}` });
-    const uri = `https://${host}/gb/album/123`;
-    await window.__sidra!.openUri(uri);
-    expect(musicKit.setQueue).toHaveBeenCalledExactlyOnceWith({ url: uri, startPlaying: true });
-    expect(musicKit.play).not.toHaveBeenCalled();
-  });
+describe("MusicKit OpenUri", () => {
+  it.each(["music.apple.com", "classical.music.apple.com"])(
+    "queues and starts a URL on %s",
+    async (host) => {
+      const { window, musicKit } = createHarness();
+      Object.assign(window.location, {
+        hostname: host,
+        origin: `https://${host}`,
+      });
+      const uri = `https://${host}/gb/album/123`;
+      await window.__sidra!.openUri(uri);
+      expect(musicKit.setQueue).toHaveBeenCalledExactlyOnceWith({
+        url: uri,
+        startPlaying: true,
+      });
+      expect(musicKit.play).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each(['invalid', 'http://music.apple.com/album/1', 'https://music.apple.com.evil.test/album/1', 'https://classical.music.apple.com/album/1', 'https://music.apple.com:1234/album/1', 'https://user@music.apple.com/album/1'])('rejects an invalid or wrong-service queue URL %#', async (uri) => {
+  it.each([
+    "invalid",
+    "http://music.apple.com/album/1",
+    "https://music.apple.com.evil.test/album/1",
+    "https://classical.music.apple.com/album/1",
+    "https://music.apple.com:1234/album/1",
+    "https://user@music.apple.com/album/1",
+  ])("rejects an invalid or wrong-service queue URL %#", async (uri) => {
     const { window, musicKit } = createHarness();
     await window.__sidra!.openUri(uri);
     expect(musicKit.setQueue).not.toHaveBeenCalled();
     expect(musicKit.play).not.toHaveBeenCalled();
   });
 
-  it('does not play the old queue or log request data after setQueue rejects', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it("does not play the old queue or log request data after setQueue rejects", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const { window, musicKit } = createHarness();
-      const uri = 'https://music.apple.com/album/private?token=secret';
+      const uri = "https://music.apple.com/album/private?token=secret";
       musicKit.setQueue.mockRejectedValueOnce(new Error(uri));
       const queue = musicKit.queue;
       await expect(window.__sidra!.openUri(uri)).resolves.toBeUndefined();
       expect(musicKit.play).not.toHaveBeenCalled();
       expect(musicKit.queue).toBe(queue);
-      expect(warn).toHaveBeenCalledExactlyOnceWith('[Sidra] failed to open requested media');
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        "[Sidra] failed to open requested media",
+      );
     } finally {
       warn.mockRestore();
     }
   });
 
-  it('reports readiness only after the command listener exists', () => {
+  it("reports readiness only after the command listener exists", () => {
     const { window, bridgeSend } = createHarness();
-    const listenerIndex = window.addEventListener.mock.calls.findIndex(([event]) => event === 'message');
-    const readyIndex = bridgeSend.mock.calls.findIndex(([channel]) => channel === 'hookReady');
-    expect(bridgeSend.mock.calls[readyIndex]).toEqual(['hookReady', 1, 1]);
-    expect(window.addEventListener.mock.invocationCallOrder[listenerIndex]).toBeLessThan(bridgeSend.mock.invocationCallOrder[readyIndex]);
-    expect(typeof window.__sidra!.openUri).toBe('function');
+    const listenerIndex = window.addEventListener.mock.calls.findIndex(
+      ([event]) => event === "message",
+    );
+    const readyIndex = bridgeSend.mock.calls.findIndex(
+      ([channel]) => channel === "hookReady",
+    );
+    expect(bridgeSend.mock.calls[readyIndex]).toEqual(["hookReady", 1, 1]);
+    expect(
+      window.addEventListener.mock.invocationCallOrder[listenerIndex],
+    ).toBeLessThan(bridgeSend.mock.invocationCallOrder[readyIndex]);
+    expect(typeof window.__sidra!.openUri).toBe("function");
   });
 
-  it('serialises queue replacement and drops superseded waiting requests', async () => {
+  it("serialises queue replacement and drops superseded waiting requests", async () => {
     let resolveQueue!: () => void;
     const { window, musicKit } = createHarness();
-    musicKit.setQueue.mockReturnValueOnce(new Promise(resolve => { resolveQueue = resolve; }));
-    const first = window.__sidra!.openUri('https://music.apple.com/album/1');
+    musicKit.setQueue.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    const first = window.__sidra!.openUri("https://music.apple.com/album/1");
     await Promise.resolve();
-    const superseded = window.__sidra!.openUri('https://music.apple.com/album/2');
-    const latest = window.__sidra!.openUri('https://music.apple.com/album/3');
+    const superseded = window.__sidra!.openUri(
+      "https://music.apple.com/album/2",
+    );
+    const latest = window.__sidra!.openUri("https://music.apple.com/album/3");
     expect(musicKit.setQueue).toHaveBeenCalledOnce();
     resolveQueue();
     await Promise.all([first, superseded, latest]);
     expect(musicKit.setQueue.mock.calls).toEqual([
-      [{ url: 'https://music.apple.com/album/1', startPlaying: true }],
-      [{ url: 'https://music.apple.com/album/3', startPlaying: true }],
+      [{ url: "https://music.apple.com/album/1", startPlaying: true }],
+      [{ url: "https://music.apple.com/album/3", startPlaying: true }],
     ]);
   });
 
-  it.each(['resolve', 'reject'])('bounds queue waits without overlapping a timed-out operation that later %ss', async (settlement) => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      let resolveQueue!: () => void;
-      let rejectQueue!: (error: Error) => void;
-      const { window, musicKit, runTimeouts } = createHarness();
-      musicKit.setQueue.mockReturnValueOnce(new Promise<void>((resolve, reject) => {
-        resolveQueue = resolve;
-        rejectQueue = reject;
-      }));
-      const first = window.__sidra!.openUri('https://music.apple.com/album/1');
-      await Promise.resolve();
-      const queued = window.__sidra!.openUri('https://music.apple.com/album/2');
-      runTimeouts();
-      await Promise.all([first, queued]);
-      await window.__sidra!.openUri('https://music.apple.com/album/3');
-      expect(musicKit.setQueue).toHaveBeenCalledOnce();
-      expect(musicKit.play).not.toHaveBeenCalled();
-      expect(warn.mock.calls).toEqual(Array(3).fill(['[Sidra] failed to open requested media']));
+  it.each(["resolve", "reject"])(
+    "bounds queue waits without overlapping a timed-out operation that later %ss",
+    async (settlement) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        let resolveQueue!: () => void;
+        let rejectQueue!: (error: Error) => void;
+        const { window, musicKit, runTimeouts } = createHarness();
+        musicKit.setQueue.mockReturnValueOnce(
+          new Promise<void>((resolve, reject) => {
+            resolveQueue = resolve;
+            rejectQueue = reject;
+          }),
+        );
+        const first = window.__sidra!.openUri(
+          "https://music.apple.com/album/1",
+        );
+        await Promise.resolve();
+        const queued = window.__sidra!.openUri(
+          "https://music.apple.com/album/2",
+        );
+        runTimeouts();
+        await Promise.all([first, queued]);
+        await window.__sidra!.openUri("https://music.apple.com/album/3");
+        expect(musicKit.setQueue).toHaveBeenCalledOnce();
+        expect(musicKit.play).not.toHaveBeenCalled();
+        expect(warn.mock.calls).toEqual(
+          Array(3).fill(["[Sidra] failed to open requested media"]),
+        );
 
-      if (settlement === 'resolve') resolveQueue();
-      else rejectQueue(new Error('private request data'));
-      await new Promise<void>(resolve => setImmediate(resolve));
-      expect(musicKit.setQueue).toHaveBeenCalledOnce();
-      await window.__sidra!.openUri('https://music.apple.com/album/4');
-      expect(musicKit.setQueue.mock.calls).toEqual([
-        [{ url: 'https://music.apple.com/album/1', startPlaying: true }],
-        [{ url: 'https://music.apple.com/album/4', startPlaying: true }],
-      ]);
-      expect(musicKit.play).not.toHaveBeenCalled();
-      expect(warn.mock.calls.every(([message]) => message === '[Sidra] failed to open requested media')).toBe(true);
-    } finally {
-      warn.mockRestore();
-    }
-  });
+        if (settlement === "resolve") resolveQueue();
+        else rejectQueue(new Error("private request data"));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(musicKit.setQueue).toHaveBeenCalledOnce();
+        await window.__sidra!.openUri("https://music.apple.com/album/4");
+        expect(musicKit.setQueue.mock.calls).toEqual([
+          [{ url: "https://music.apple.com/album/1", startPlaying: true }],
+          [{ url: "https://music.apple.com/album/4", startPlaying: true }],
+        ]);
+        expect(musicKit.play).not.toHaveBeenCalled();
+        expect(
+          warn.mock.calls.every(
+            ([message]) => message === "[Sidra] failed to open requested media",
+          ),
+        ).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
 
-  it('clears a completed queue timeout before another request', async () => {
+  it("clears a completed queue timeout before another request", async () => {
     const { window, musicKit, runTimeouts } = createHarness();
-    await window.__sidra!.openUri('https://music.apple.com/album/1');
+    await window.__sidra!.openUri("https://music.apple.com/album/1");
     runTimeouts();
-    await window.__sidra!.openUri('https://music.apple.com/album/2');
+    await window.__sidra!.openUri("https://music.apple.com/album/2");
     expect(musicKit.setQueue).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['navigation', 'instance'])('discards a waiting queue request after %s changes', async (change) => {
-    let resolveQueue!: () => void;
-    const { window, musicKit, globalRegistrations, replaceInstance, runMonitorCycles } = createHarness();
-    musicKit.setQueue.mockReturnValueOnce(new Promise<void>(resolve => { resolveQueue = resolve; }));
-    const first = window.__sidra!.openUri('https://music.apple.com/album/1');
-    await Promise.resolve();
-    const queued = window.__sidra!.openUri('https://music.apple.com/album/2');
-    if (change === 'navigation') {
-      globalRegistrations.find(({ type }) => type === 'pagehide')?.listener({});
-      globalRegistrations.find(({ type }) => type === 'pageshow')?.listener({});
-    } else {
-      replaceInstance();
-      runMonitorCycles(1);
-    }
-    resolveQueue();
-    await Promise.all([first, queued]);
-    expect(musicKit.setQueue).toHaveBeenCalledOnce();
-  });
+  it.each(["navigation", "instance"])(
+    "discards a waiting queue request after %s changes",
+    async (change) => {
+      let resolveQueue!: () => void;
+      const {
+        window,
+        musicKit,
+        globalRegistrations,
+        replaceInstance,
+        runMonitorCycles,
+      } = createHarness();
+      musicKit.setQueue.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveQueue = resolve;
+        }),
+      );
+      const first = window.__sidra!.openUri("https://music.apple.com/album/1");
+      await Promise.resolve();
+      const queued = window.__sidra!.openUri("https://music.apple.com/album/2");
+      if (change === "navigation") {
+        globalRegistrations
+          .find(({ type }) => type === "pagehide")
+          ?.listener({});
+        globalRegistrations
+          .find(({ type }) => type === "pageshow")
+          ?.listener({});
+      } else {
+        replaceInstance();
+        runMonitorCycles(1);
+      }
+      resolveQueue();
+      await Promise.all([first, queued]);
+      expect(musicKit.setQueue).toHaveBeenCalledOnce();
+    },
+  );
 });
 
-describe('MusicKit Stop', () => {
+describe("MusicKit Stop", () => {
   function pendingSeekHarness() {
     let resolveSeek!: () => void;
     let rejectSeek!: (error: Error) => void;
@@ -450,34 +551,52 @@ describe('MusicKit Stop', () => {
       rejectSeek = reject;
     });
     const engineStop = vi.fn();
-    const harness = createHarness({ musicKitOverrides: {
-      nowPlayingItem: { id: 'song' }, currentPlaybackDuration: 120,
-      seekToTime: vi.fn(() => seek), stop: engineStop,
-    } });
+    const harness = createHarness({
+      musicKitOverrides: {
+        nowPlayingItem: { id: "song" },
+        currentPlaybackDuration: 120,
+        seekToTime: vi.fn(() => seek),
+        stop: engineStop,
+      },
+    });
     return { ...harness, resolveSeek, rejectSeek, engineStop };
   }
 
-  it.each(['play', 'playPause'])('waits for rewind before %s and preserves the queue', async (command) => {
-    const { window, bridgeSend, musicKit, resolveSeek, engineStop } = pendingSeekHarness();
-    const queue = musicKit.queue;
-    const stopping = window.__sidra!.stop(1);
-    const playing = window.__sidra![command]();
-    await Promise.resolve();
-    expect(musicKit.pause).toHaveBeenCalledOnce();
-    expect(musicKit.seekToTime).toHaveBeenCalledExactlyOnceWith(0);
-    expect(musicKit.pause.mock.invocationCallOrder[0]).toBeLessThan(musicKit.seekToTime.mock.invocationCallOrder[0]);
-    expect(musicKit.play).not.toHaveBeenCalled();
-    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackStopped')).toBe(false);
+  it.each(["play", "playPause"])(
+    "waits for rewind before %s and preserves the queue",
+    async (command) => {
+      const { window, bridgeSend, musicKit, resolveSeek, engineStop } =
+        pendingSeekHarness();
+      const queue = musicKit.queue;
+      const stopping = window.__sidra!.stop(1);
+      const playing = window.__sidra![command]();
+      await Promise.resolve();
+      expect(musicKit.pause).toHaveBeenCalledOnce();
+      expect(musicKit.seekToTime).toHaveBeenCalledExactlyOnceWith(0);
+      expect(musicKit.pause.mock.invocationCallOrder[0]).toBeLessThan(
+        musicKit.seekToTime.mock.invocationCallOrder[0],
+      );
+      expect(musicKit.play).not.toHaveBeenCalled();
+      expect(
+        bridgeSend.mock.calls.some(
+          ([channel]) => channel === "playbackStopped",
+        ),
+      ).toBe(false);
 
-    resolveSeek();
-    await Promise.all([stopping, playing]);
-    expect(musicKit.play).toHaveBeenCalledOnce();
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true }, 1);
-    expect(engineStop).not.toHaveBeenCalled();
-    expect(musicKit.queue).toBe(queue);
-  });
+      resolveSeek();
+      await Promise.all([stopping, playing]);
+      expect(musicKit.play).toHaveBeenCalledOnce();
+      expect(bridgeSend).toHaveBeenCalledWith(
+        "playbackStopped",
+        { requestId: 1, success: true },
+        1,
+      );
+      expect(engineStop).not.toHaveBeenCalled();
+      expect(musicKit.queue).toBe(queue);
+    },
+  );
 
-  it('coalesces repeated Stop calls and does not rewind an already stopped item', async () => {
+  it("coalesces repeated Stop calls and does not rewind an already stopped item", async () => {
     const { window, musicKit, resolveSeek } = pendingSeekHarness();
     const stopping = window.__sidra!.stop(1);
     expect(window.__sidra!.stop(1)).toBe(stopping);
@@ -489,57 +608,91 @@ describe('MusicKit Stop', () => {
     expect(musicKit.seekToTime).toHaveBeenCalledOnce();
   });
 
-  it.each(['play', 'playPause'])('cancels a waiting %s on Pause without losing Stop completion', async (command) => {
-    const { window, bridgeSend, musicKit, resolveSeek } = pendingSeekHarness();
-    const stopping = window.__sidra!.stop(1);
-    const playing = window.__sidra![command]();
-    await Promise.resolve();
-    window.__sidra!.pause();
-    resolveSeek();
-    await Promise.all([stopping, playing]);
-    expect(musicKit.play).not.toHaveBeenCalled();
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true }, 1);
-    await window.__sidra!.stop(2);
-    expect(musicKit.seekToTime).toHaveBeenCalledOnce();
-    await window.__sidra!.play();
-    expect(musicKit.play).toHaveBeenCalledOnce();
-  });
+  it.each(["play", "playPause"])(
+    "cancels a waiting %s on Pause without losing Stop completion",
+    async (command) => {
+      const { window, bridgeSend, musicKit, resolveSeek } =
+        pendingSeekHarness();
+      const stopping = window.__sidra!.stop(1);
+      const playing = window.__sidra![command]();
+      await Promise.resolve();
+      window.__sidra!.pause();
+      resolveSeek();
+      await Promise.all([stopping, playing]);
+      expect(musicKit.play).not.toHaveBeenCalled();
+      expect(bridgeSend).toHaveBeenCalledWith(
+        "playbackStopped",
+        { requestId: 1, success: true },
+        1,
+      );
+      await window.__sidra!.stop(2);
+      expect(musicKit.seekToTime).toHaveBeenCalledOnce();
+      await window.__sidra!.play();
+      expect(musicKit.play).toHaveBeenCalledOnce();
+    },
+  );
 
-  it.each(['item', 'navigation', 'playing'])('clears completed Stop intent after %s changes', async (change) => {
-    const { window, musicKit, musicKitListeners, globalRegistrations, resolveSeek } = pendingSeekHarness();
-    const stopping = window.__sidra!.stop(1);
-    resolveSeek();
-    await stopping;
-    if (change === 'item') musicKitListeners.get('nowPlayingItemDidChange')?.({ item: { id: 'other' } });
-    else if (change === 'playing') musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
-    else {
-      globalRegistrations.find(({ type }) => type === 'pagehide')?.listener({});
-      globalRegistrations.find(({ type }) => type === 'pageshow')?.listener({});
-    }
-    await window.__sidra!.stop(2);
-    expect(musicKit.pause).toHaveBeenCalledTimes(2);
-    expect(musicKit.seekToTime).toHaveBeenCalledTimes(2);
-  });
+  it.each(["item", "navigation", "playing"])(
+    "clears completed Stop intent after %s changes",
+    async (change) => {
+      const {
+        window,
+        musicKit,
+        musicKitListeners,
+        globalRegistrations,
+        resolveSeek,
+      } = pendingSeekHarness();
+      const stopping = window.__sidra!.stop(1);
+      resolveSeek();
+      await stopping;
+      if (change === "item")
+        musicKitListeners.get("nowPlayingItemDidChange")?.({
+          item: { id: "other" },
+        });
+      else if (change === "playing")
+        musicKitListeners.get("playbackStateDidChange")?.({ state: 2 });
+      else {
+        globalRegistrations
+          .find(({ type }) => type === "pagehide")
+          ?.listener({});
+        globalRegistrations
+          .find(({ type }) => type === "pageshow")
+          ?.listener({});
+      }
+      await window.__sidra!.stop(2);
+      expect(musicKit.pause).toHaveBeenCalledTimes(2);
+      expect(musicKit.seekToTime).toHaveBeenCalledTimes(2);
+    },
+  );
 
-  it('reports seek failure and releases a waiting Play', async () => {
+  it("reports seek failure and releases a waiting Play", async () => {
     const { window, bridgeSend, musicKit, rejectSeek } = pendingSeekHarness();
     const stopping = window.__sidra!.stop(1);
     const playing = window.__sidra!.play();
     await Promise.resolve();
-    rejectSeek(new Error('seek failed'));
+    rejectSeek(new Error("seek failed"));
     await Promise.all([stopping, playing]);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false }, 1);
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackStopped",
+      { requestId: 1, success: false },
+      1,
+    );
     expect(musicKit.play).toHaveBeenCalledOnce();
   });
 
-  it('releases a waiting Play when the seek never settles and ignores late completion', async () => {
-    const { window, bridgeSend, musicKit, runTimeouts, resolveSeek } = pendingSeekHarness();
+  it("releases a waiting Play when the seek never settles and ignores late completion", async () => {
+    const { window, bridgeSend, musicKit, runTimeouts, resolveSeek } =
+      pendingSeekHarness();
     const stopping = window.__sidra!.stop(1);
     const playing = window.__sidra!.play();
     await Promise.resolve();
     runTimeouts();
     await Promise.all([stopping, playing]);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: false }, 1);
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackStopped",
+      { requestId: 1, success: false },
+      1,
+    );
     expect(musicKit.play).toHaveBeenCalledOnce();
     bridgeSend.mockClear();
     resolveSeek();
@@ -547,39 +700,71 @@ describe('MusicKit Stop', () => {
     expect(bridgeSend).not.toHaveBeenCalled();
   });
 
-  it.each(['item', 'navigation', 'instance', 'playing'])('discards a pending stop and Play after %s changes', async (change) => {
-    const { window, bridgeSend, musicKit, musicKitListeners, globalRegistrations, replaceInstance, runMonitorCycles, resolveSeek } = pendingSeekHarness();
-    const stopping = window.__sidra!.stop(1);
-    const playing = window.__sidra!.play();
-    await Promise.resolve();
-    if (change === 'item') {
-      musicKitListeners.get('nowPlayingItemDidChange')?.({ item: { id: 'other' } });
-    } else if (change === 'navigation') {
-      globalRegistrations.find(({ type }) => type === 'pagehide')?.listener({});
-      globalRegistrations.find(({ type }) => type === 'pageshow')?.listener({});
-    } else if (change === 'playing') {
-      musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
-    } else {
-      replaceInstance();
-      runMonitorCycles(1);
-    }
-    resolveSeek();
-    await Promise.all([stopping, playing]);
-    expect(musicKit.play).not.toHaveBeenCalled();
-    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackStopped')).toBe(false);
-  });
+  it.each(["item", "navigation", "instance", "playing"])(
+    "discards a pending stop and Play after %s changes",
+    async (change) => {
+      const {
+        window,
+        bridgeSend,
+        musicKit,
+        musicKitListeners,
+        globalRegistrations,
+        replaceInstance,
+        runMonitorCycles,
+        resolveSeek,
+      } = pendingSeekHarness();
+      const stopping = window.__sidra!.stop(1);
+      const playing = window.__sidra!.play();
+      await Promise.resolve();
+      if (change === "item") {
+        musicKitListeners.get("nowPlayingItemDidChange")?.({
+          item: { id: "other" },
+        });
+      } else if (change === "navigation") {
+        globalRegistrations
+          .find(({ type }) => type === "pagehide")
+          ?.listener({});
+        globalRegistrations
+          .find(({ type }) => type === "pageshow")
+          ?.listener({});
+      } else if (change === "playing") {
+        musicKitListeners.get("playbackStateDidChange")?.({ state: 2 });
+      } else {
+        replaceInstance();
+        runMonitorCycles(1);
+      }
+      resolveSeek();
+      await Promise.all([stopping, playing]);
+      expect(musicKit.play).not.toHaveBeenCalled();
+      expect(
+        bridgeSend.mock.calls.some(
+          ([channel]) => channel === "playbackStopped",
+        ),
+      ).toBe(false);
+    },
+  );
 
-  it.each([undefined, Infinity, 0])('pauses without an invented seek when duration is %s', async (duration) => {
-    const { window, bridgeSend, musicKit } = createHarness({ musicKitOverrides: {
-      nowPlayingItem: { id: 'radio' }, currentPlaybackDuration: duration,
-    } });
-    await window.__sidra!.stop(1);
-    expect(musicKit.pause).toHaveBeenCalledOnce();
-    expect(musicKit.seekToTime).not.toHaveBeenCalled();
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStopped', { requestId: 1, success: true }, 1);
-  });
+  it.each([undefined, Infinity, 0])(
+    "pauses without an invented seek when duration is %s",
+    async (duration) => {
+      const { window, bridgeSend, musicKit } = createHarness({
+        musicKitOverrides: {
+          nowPlayingItem: { id: "radio" },
+          currentPlaybackDuration: duration,
+        },
+      });
+      await window.__sidra!.stop(1);
+      expect(musicKit.pause).toHaveBeenCalledOnce();
+      expect(musicKit.seekToTime).not.toHaveBeenCalled();
+      expect(bridgeSend).toHaveBeenCalledWith(
+        "playbackStopped",
+        { requestId: 1, success: true },
+        1,
+      );
+    },
+  );
 
-  it('keeps the position for ordinary Pause followed by Play', async () => {
+  it("keeps the position for ordinary Pause followed by Play", async () => {
     const { window, musicKit } = createHarness();
     window.__sidra!.pause();
     await window.__sidra!.play();
@@ -589,228 +774,370 @@ describe('MusicKit Stop', () => {
   });
 });
 
-describe('MusicKit initial state and capabilities', () => {
-  const item = { id: 'episode', attributes: { name: 'Episode', playParams: { kind: 'radioStation' } } };
+describe("MusicKit initial state and capabilities", () => {
+  const item = {
+    id: "episode",
+    attributes: { name: "Episode", playParams: { kind: "radioStation" } },
+  };
 
-  it('publishes current metadata, playback state, position and modes on attach', () => {
-    const { bridgeSend } = createHarness({ musicKitOverrides: {
-      nowPlayingItem: item, playbackState: 3, isPlaying: false,
-      currentPlaybackDuration: 600, currentPlaybackTime: 42, repeatMode: 2, shuffleMode: 1,
-    } });
+  it("publishes current metadata, playback state, position and modes on attach", () => {
+    const { bridgeSend } = createHarness({
+      musicKitOverrides: {
+        nowPlayingItem: item,
+        playbackState: 3,
+        isPlaying: false,
+        currentPlaybackDuration: 600,
+        currentPlaybackTime: 42,
+        repeatMode: 2,
+        shuffleMode: 1,
+      },
+    });
 
-    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
-      canPlay: true, canPause: true, canSeek: true, durationUs: 600_000_000,
-    }, 1);
-    expect(bridgeSend).toHaveBeenCalledWith('nowPlayingItemDidChange', expect.objectContaining({ trackId: 'episode', name: 'Episode' }), 1);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackStateDidChange', { status: false, state: 3 }, 1);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackTimeDidChange', 42_000_000, 1);
-    expect(bridgeSend).toHaveBeenCalledWith('repeatModeDidChange', 2, 1);
-    expect(bridgeSend).toHaveBeenCalledWith('shuffleModeDidChange', 1, 1);
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackCapabilitiesDidChange",
+      {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        durationUs: 600_000_000,
+      },
+      1,
+    );
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "nowPlayingItemDidChange",
+      expect.objectContaining({ trackId: "episode", name: "Episode" }),
+      1,
+    );
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackStateDidChange",
+      { status: false, state: 3 },
+      1,
+    );
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackTimeDidChange",
+      42_000_000,
+      1,
+    );
+    expect(bridgeSend).toHaveBeenCalledWith("repeatModeDidChange", 2, 1);
+    expect(bridgeSend).toHaveBeenCalledWith("shuffleModeDidChange", 1, 1);
   });
 
-  it('keeps radio seekability unknown without duration and refreshes through the existing poll', () => {
-    const { bridgeSend, musicKit, musicKitListeners, runVolumePoll } = createHarness({
-      musicKitOverrides: { nowPlayingItem: item },
-    });
-    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
-      canPlay: true, canPause: true, canSeek: null, durationUs: null,
-    }, 1);
+  it("keeps radio seekability unknown without duration and refreshes through the existing poll", () => {
+    const { bridgeSend, musicKit, musicKitListeners, runVolumePoll } =
+      createHarness({
+        musicKitOverrides: { nowPlayingItem: item },
+      });
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackCapabilitiesDidChange",
+      {
+        canPlay: true,
+        canPause: true,
+        canSeek: null,
+        durationUs: null,
+      },
+      1,
+    );
     bridgeSend.mockClear();
     Object.assign(musicKit, { currentPlaybackDuration: 123.456789 });
-    musicKitListeners.get('playbackTimeDidChange')?.();
-    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackCapabilitiesDidChange')).toBe(false);
+    musicKitListeners.get("playbackTimeDidChange")?.();
+    expect(
+      bridgeSend.mock.calls.some(
+        ([channel]) => channel === "playbackCapabilitiesDidChange",
+      ),
+    ).toBe(false);
     runVolumePoll();
     runVolumePoll();
-    expect(bridgeSend.mock.calls.filter(([channel]) => channel === 'playbackCapabilitiesDidChange')).toEqual([
-      ['playbackCapabilitiesDidChange', { canPlay: true, canPause: true, canSeek: true, durationUs: 123_456_789 }, 1],
+    expect(
+      bridgeSend.mock.calls.filter(
+        ([channel]) => channel === "playbackCapabilitiesDidChange",
+      ),
+    ).toEqual([
+      [
+        "playbackCapabilitiesDidChange",
+        {
+          canPlay: true,
+          canPause: true,
+          canSeek: true,
+          durationUs: 123_456_789,
+        },
+        1,
+      ],
     ]);
     Object.assign(musicKit, { currentPlaybackDuration: Infinity });
     runVolumePoll();
-    expect(bridgeSend).toHaveBeenLastCalledWith('playbackCapabilitiesDidChange', {
-      canPlay: true, canPause: true, canSeek: null, durationUs: null,
-    }, 1);
-  });
-
-  it('disables capabilities when the item clears and restores them on item change', () => {
-    const { bridgeSend, musicKit, musicKitListeners } = createHarness({ musicKitOverrides: { nowPlayingItem: item } });
-    Object.assign(musicKit, { nowPlayingItem: null });
-    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
-    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
-      canPlay: false, canPause: false, canSeek: false, durationUs: null,
-    }, 1);
-    Object.assign(musicKit, { nowPlayingItem: item });
-    musicKitListeners.get('nowPlayingItemDidChange')?.({ item });
-    expect(bridgeSend.mock.calls.filter(([channel]) => channel === 'playbackCapabilitiesDidChange')).toHaveLength(3);
-  });
-
-  it('uses callable controls as capability evidence', () => {
-    const { bridgeSend } = createHarness({ musicKitOverrides: {
-      nowPlayingItem: item, currentPlaybackDuration: 600, play: undefined, pause: undefined, seekToTime: undefined,
-    } });
-    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
-      canPlay: false, canPause: false, canSeek: false, durationUs: 600_000_000,
-    }, 1);
-  });
-
-  it('publishes the replacement instance and ignores capability reports from the old instance', () => {
-    const { bridgeSend, musicKit, musicKitListeners, replaceInstance, runMonitorCycles } = createHarness({
-      musicKitOverrides: { nowPlayingItem: item },
-    });
-    const replacement = replaceInstance();
-    Object.assign(replacement, { nowPlayingItem: null, playbackState: 0, isPlaying: false });
-    runMonitorCycles(1);
-    expect(bridgeSend).toHaveBeenCalledWith('playbackCapabilitiesDidChange', {
-      canPlay: false, canPause: false, canSeek: false, durationUs: null,
-    }, 1);
-    bridgeSend.mockClear();
-    Object.assign(musicKit, { currentPlaybackDuration: 20 });
-    musicKitListeners.get('playbackStateDidChange')?.({ state: 2 });
-    expect(bridgeSend.mock.calls.some(([channel]) => channel === 'playbackCapabilitiesDidChange')).toBe(false);
-  });
-});
-
-describe('musicKitHook', () => {
-  const radioItem = {
-    attributes: {
-      playParams: { kind: 'radioStation' },
-      streamingRadioSubType: 'Episode',
-    },
-  };
-  const timedSong = {
-    title: 'Blue Monday',
-    performer: 'New Order',
-    album: 'Power, Corruption & Lies',
-    links: [{ description: 'artworkURL_390x', url: 'https://is1-ssl.mzstatic.com/image/thumb/radio.jpg' }],
-    storefrontAdamIds: { gb: '12345' },
-  };
-
-  it('forwards complete timed metadata for a live radio station or archived episode', () => {
-    const { bridgeSend, musicKitListeners } = createHarness({
-      musicKitOverrides: { nowPlayingItem: radioItem },
-    });
-
-    musicKitListeners.get('timedMetadataDidChange')?.(timedSong);
-
-    expect(bridgeSend).toHaveBeenCalledWith('timedMetadataDidChange', {
-      name: 'Blue Monday',
-      artistName: 'New Order',
-      albumName: 'Power, Corruption & Lies',
-      trackId: '12345',
-      playParams: { catalogId: '12345', kind: 'song' },
-    }, 1);
-  });
-
-  it('omits an unsafe catalogue identity from timed metadata', () => {
-    const { bridgeSend, musicKitListeners } = createHarness({
-      musicKitOverrides: { nowPlayingItem: radioItem },
-    });
-
-    musicKitListeners.get('timedMetadataDidChange')?.({
-      ...timedSong,
-      storefrontAdamIds: { gb: '123\u0001' },
-    });
-
-    expect(bridgeSend).toHaveBeenCalledWith('timedMetadataDidChange', {
-      name: 'Blue Monday',
-      artistName: 'New Order',
-      albumName: 'Power, Corruption & Lies',
-      trackId: undefined,
-      playParams: undefined,
-    }, 1);
-  });
-
-  it.each([
-    ['normalises surrounding whitespace', '  Radio Album  ', 'Radio Album'],
-    ['omits forbidden controls', 'Radio\u202eAlbum', undefined],
-  ])('%s in optional album metadata', (_description, album, expected) => {
-    const { bridgeSend, musicKitListeners } = createHarness({
-      musicKitOverrides: { nowPlayingItem: radioItem },
-    });
-
-    musicKitListeners.get('timedMetadataDidChange')?.({ ...timedSong, album });
-
-    expect(bridgeSend).toHaveBeenCalledWith(
-      'timedMetadataDidChange',
-      expect.objectContaining({ albumName: expected }), 1,
+    expect(bridgeSend).toHaveBeenLastCalledWith(
+      "playbackCapabilitiesDidChange",
+      {
+        canPlay: true,
+        canPause: true,
+        canSeek: null,
+        durationUs: null,
+      },
+      1,
     );
   });
 
-  it('marks two distinct radio songs as an initial item and a clean boundary', () => {
+  it("disables capabilities when the item clears and restores them on item change", () => {
+    const { bridgeSend, musicKit, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: item },
+    });
+    Object.assign(musicKit, { nowPlayingItem: null });
+    musicKitListeners.get("nowPlayingItemDidChange")?.({ item: null });
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackCapabilitiesDidChange",
+      {
+        canPlay: false,
+        canPause: false,
+        canSeek: false,
+        durationUs: null,
+      },
+      1,
+    );
+    Object.assign(musicKit, { nowPlayingItem: item });
+    musicKitListeners.get("nowPlayingItemDidChange")?.({ item });
+    expect(
+      bridgeSend.mock.calls.filter(
+        ([channel]) => channel === "playbackCapabilitiesDidChange",
+      ),
+    ).toHaveLength(3);
+  });
+
+  it("uses callable controls as capability evidence", () => {
+    const { bridgeSend } = createHarness({
+      musicKitOverrides: {
+        nowPlayingItem: item,
+        currentPlaybackDuration: 600,
+        play: undefined,
+        pause: undefined,
+        seekToTime: undefined,
+      },
+    });
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackCapabilitiesDidChange",
+      {
+        canPlay: false,
+        canPause: false,
+        canSeek: false,
+        durationUs: 600_000_000,
+      },
+      1,
+    );
+  });
+
+  it("publishes the replacement instance and ignores capability reports from the old instance", () => {
+    const {
+      bridgeSend,
+      musicKit,
+      musicKitListeners,
+      replaceInstance,
+      runMonitorCycles,
+    } = createHarness({
+      musicKitOverrides: { nowPlayingItem: item },
+    });
+    const replacement = replaceInstance();
+    Object.assign(replacement, {
+      nowPlayingItem: null,
+      playbackState: 0,
+      isPlaying: false,
+    });
+    runMonitorCycles(1);
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "playbackCapabilitiesDidChange",
+      {
+        canPlay: false,
+        canPause: false,
+        canSeek: false,
+        durationUs: null,
+      },
+      1,
+    );
+    bridgeSend.mockClear();
+    Object.assign(musicKit, { currentPlaybackDuration: 20 });
+    musicKitListeners.get("playbackStateDidChange")?.({ state: 2 });
+    expect(
+      bridgeSend.mock.calls.some(
+        ([channel]) => channel === "playbackCapabilitiesDidChange",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("musicKitHook", () => {
+  const radioItem = {
+    attributes: {
+      playParams: { kind: "radioStation" },
+      streamingRadioSubType: "Episode",
+    },
+  };
+  const timedSong = {
+    title: "Blue Monday",
+    performer: "New Order",
+    album: "Power, Corruption & Lies",
+    links: [
+      {
+        description: "artworkURL_390x",
+        url: "https://is1-ssl.mzstatic.com/image/thumb/radio.jpg",
+      },
+    ],
+    storefrontAdamIds: { gb: "12345" },
+  };
+
+  it("forwards complete timed metadata for a live radio station or archived episode", () => {
     const { bridgeSend, musicKitListeners } = createHarness({
       musicKitOverrides: { nowPlayingItem: radioItem },
     });
-    const listener = musicKitListeners.get('timedMetadataDidChange');
+
+    musicKitListeners.get("timedMetadataDidChange")?.(timedSong);
+
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "timedMetadataDidChange",
+      {
+        name: "Blue Monday",
+        artistName: "New Order",
+        albumName: "Power, Corruption & Lies",
+        trackId: "12345",
+        playParams: { catalogId: "12345", kind: "song" },
+      },
+      1,
+    );
+  });
+
+  it("omits an unsafe catalogue identity from timed metadata", () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+
+    musicKitListeners.get("timedMetadataDidChange")?.({
+      ...timedSong,
+      storefrontAdamIds: { gb: "123\u0001" },
+    });
+
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "timedMetadataDidChange",
+      {
+        name: "Blue Monday",
+        artistName: "New Order",
+        albumName: "Power, Corruption & Lies",
+        trackId: undefined,
+        playParams: undefined,
+      },
+      1,
+    );
+  });
+
+  it.each([
+    ["normalises surrounding whitespace", "  Radio Album  ", "Radio Album"],
+    ["omits forbidden controls", "Radio\u202eAlbum", undefined],
+  ])("%s in optional album metadata", (_description, album, expected) => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+
+    musicKitListeners.get("timedMetadataDidChange")?.({ ...timedSong, album });
+
+    expect(bridgeSend).toHaveBeenCalledWith(
+      "timedMetadataDidChange",
+      expect.objectContaining({ albumName: expected }),
+      1,
+    );
+  });
+
+  it("marks two distinct radio songs as an initial item and a clean boundary", () => {
+    const { bridgeSend, musicKitListeners } = createHarness({
+      musicKitOverrides: { nowPlayingItem: radioItem },
+    });
+    const listener = musicKitListeners.get("timedMetadataDidChange");
 
     listener?.(timedSong);
     listener?.({
       ...timedSong,
-      title: 'Temptation',
-      storefrontAdamIds: { gb: '67890' },
+      title: "Temptation",
+      storefrontAdamIds: { gb: "67890" },
     });
 
-    const sends = bridgeSend.mock.calls.filter(([channel]) => channel === 'timedMetadataDidChange');
+    const sends = bridgeSend.mock.calls.filter(
+      ([channel]) => channel === "timedMetadataDidChange",
+    );
     const player = new Player();
     const transitions: string[] = [];
-    player.on('timedMetadataDidChange', payload => transitions.push(payload.transition));
+    player.on("timedMetadataDidChange", (payload) =>
+      transitions.push(payload.transition),
+    );
     vi.useFakeTimers();
     try {
-      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+      player.handleNowPlayingItemDidChange({
+        name: "Station",
+        playParams: { kind: "radioStation" },
+      });
       player.handleTimedMetadataDidChange(sends[0][1]);
       vi.advanceTimersByTime(1500);
       player.handleTimedMetadataDidChange(sends[1][1]);
-      expect(transitions).toEqual(['initial', 'clean']);
+      expect(transitions).toEqual(["initial", "clean"]);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('ignores timed metadata outside a radioStation queue item', () => {
+  it("ignores timed metadata outside a radioStation queue item", () => {
     const { bridgeSend, musicKitListeners } = createHarness({
-      musicKitOverrides: { nowPlayingItem: { attributes: { playParams: { kind: 'song' } } } },
+      musicKitOverrides: {
+        nowPlayingItem: { attributes: { playParams: { kind: "song" } } },
+      },
     });
 
-    musicKitListeners.get('timedMetadataDidChange')?.(timedSong);
+    musicKitListeners.get("timedMetadataDidChange")?.(timedSong);
 
-    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything(), 1);
+    expect(bridgeSend).not.toHaveBeenCalledWith(
+      "timedMetadataDidChange",
+      expect.anything(),
+      1,
+    );
   });
 
-  it('forwards incomplete and repeated radio metadata for main-process classification', () => {
+  it("forwards incomplete and repeated radio metadata for main-process classification", () => {
     const { bridgeSend, musicKitListeners } = createHarness({
       musicKitOverrides: { nowPlayingItem: radioItem },
     });
-    const listener = musicKitListeners.get('timedMetadataDidChange');
+    const listener = musicKitListeners.get("timedMetadataDidChange");
 
-    listener?.({ ...timedSong, performer: '' });
+    listener?.({ ...timedSong, performer: "" });
     listener?.(timedSong);
     listener?.(timedSong);
-    listener?.({ ...timedSong, title: '' });
+    listener?.({ ...timedSong, title: "" });
     listener?.(timedSong);
 
-    const sends = bridgeSend.mock.calls.filter(([channel]) => channel === 'timedMetadataDidChange');
+    const sends = bridgeSend.mock.calls.filter(
+      ([channel]) => channel === "timedMetadataDidChange",
+    );
     expect(sends.filter(([, payload]) => payload !== null)).toHaveLength(3);
     expect(sends.filter(([, payload]) => payload === null)).toHaveLength(2);
   });
 
-  it('preserves distinct catalogue identities end to end for the same artist and title', () => {
+  it("preserves distinct catalogue identities end to end for the same artist and title", () => {
     const { bridgeSend, musicKitListeners } = createHarness({
       musicKitOverrides: { nowPlayingItem: radioItem },
     });
-    const listener = musicKitListeners.get('timedMetadataDidChange');
+    const listener = musicKitListeners.get("timedMetadataDidChange");
     const withoutId = { ...timedSong, storefrontAdamIds: {} };
 
     listener?.(withoutId);
-    listener?.({ ...withoutId, storefrontAdamIds: { gb: '12345' } });
-    listener?.({ ...withoutId, storefrontAdamIds: { gb: '67890' } });
+    listener?.({ ...withoutId, storefrontAdamIds: { gb: "12345" } });
+    listener?.({ ...withoutId, storefrontAdamIds: { gb: "67890" } });
 
-    const sends = bridgeSend.mock.calls.filter(([channel]) => channel === 'timedMetadataDidChange');
+    const sends = bridgeSend.mock.calls.filter(
+      ([channel]) => channel === "timedMetadataDidChange",
+    );
     expect(sends).toHaveLength(3);
 
     vi.useFakeTimers();
     try {
       const player = new Player();
       const delivered: Array<{ trackId?: string; transition: string }> = [];
-      player.on('timedMetadataDidChange', payload => delivered.push(payload));
-      player.handleNowPlayingItemDidChange({ name: 'Station', playParams: { kind: 'radioStation' } });
+      player.on("timedMetadataDidChange", (payload) => delivered.push(payload));
+      player.handleNowPlayingItemDidChange({
+        name: "Station",
+        playParams: { kind: "radioStation" },
+      });
 
       player.handleTimedMetadataDidChange(sends[0][1]);
       vi.advanceTimersByTime(1500);
@@ -819,28 +1146,32 @@ describe('musicKitHook', () => {
       player.handleTimedMetadataDidChange(sends[2][1]);
 
       expect(delivered).toEqual([
-        expect.objectContaining({ trackId: undefined, transition: 'initial' }),
-        expect.objectContaining({ trackId: '67890', transition: 'clean' }),
+        expect.objectContaining({ trackId: undefined, transition: "initial" }),
+        expect.objectContaining({ trackId: "67890", transition: "clean" }),
       ]);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('waits for unique artwork links during a radio transition', () => {
+  it("waits for unique artwork links during a radio transition", () => {
     const { bridgeSend, musicKitListeners } = createHarness({
       musicKitOverrides: { nowPlayingItem: radioItem },
     });
 
-    musicKitListeners.get('timedMetadataDidChange')?.({
+    musicKitListeners.get("timedMetadataDidChange")?.({
       ...timedSong,
       links: [timedSong.links[0], timedSong.links[0]],
     });
 
-    expect(bridgeSend).not.toHaveBeenCalledWith('timedMetadataDidChange', expect.anything(), 1);
+    expect(bridgeSend).not.toHaveBeenCalledWith(
+      "timedMetadataDidChange",
+      expect.anything(),
+      1,
+    );
   });
 
-  it('handles one player command after repeated injection before MusicKit loads', () => {
+  it("handles one player command after repeated injection before MusicKit loads", () => {
     const skipToNextItem = vi.fn();
     const { messageListeners, window } = createHarness({
       musicKitOverrides: { skipToNextItem },
@@ -848,7 +1179,7 @@ describe('musicKitHook', () => {
     });
 
     const event = {
-      data: { type: 'sidra:command', channel: 'player:next', args: [] },
+      data: { type: "sidra:command", channel: "player:next", args: [] },
       source: window,
     };
     for (const listener of messageListeners) listener(event);
@@ -856,17 +1187,21 @@ describe('musicKitHook', () => {
     expect(skipToNextItem).toHaveBeenCalledTimes(1);
   });
 
-  it('does not throw when MusicKit.getInstance() throws during injection', () => {
-    expect(() => createHarness({ musicKitThrowsAtInjection: true })).not.toThrow();
+  it("does not throw when MusicKit.getInstance() throws during injection", () => {
+    expect(() =>
+      createHarness({ musicKitThrowsAtInjection: true }),
+    ).not.toThrow();
   });
 
-  it('still hooks MusicKit after a getInstance() that threw during injection', () => {
-    const { musicKitListeners } = createHarness({ musicKitThrowsAtInjection: true });
+  it("still hooks MusicKit after a getInstance() that threw during injection", () => {
+    const { musicKitListeners } = createHarness({
+      musicKitThrowsAtInjection: true,
+    });
 
-    expect(musicKitListeners.has('playbackStateDidChange')).toBe(true);
+    expect(musicKitListeners.has("playbackStateDidChange")).toBe(true);
   });
 
-  it('keeps polling and attaches after getInstance() throws on the first poll', () => {
+  it("keeps polling and attaches after getInstance() throws on the first poll", () => {
     // window.MusicKit exists at the first poll, but getInstance() still throws.
     // The poll must survive that lookup, because __sidraHookInjected blocks
     // re-injection and a cleared poll would leave native controls dead.
@@ -874,12 +1209,12 @@ describe('musicKitHook', () => {
       musicKitThrowsAtFirstPoll: true,
     });
 
-    expect(musicKitListeners.has('playbackStateDidChange')).toBe(true);
+    expect(musicKitListeners.has("playbackStateDidChange")).toBe(true);
     expect(window.__sidraHookedMk).toBe(musicKit);
-    expect(bridgeSend).toHaveBeenCalledWith('hookReady', 1, 1);
+    expect(bridgeSend).toHaveBeenCalledWith("hookReady", 1, 1);
   });
 
-  it('installs no second message listener when the script is injected again', () => {
+  it("installs no second message listener when the script is injected again", () => {
     const { messageListeners, reinject } = createHarness();
 
     expect(messageListeners).toHaveLength(1);
@@ -891,8 +1226,10 @@ describe('musicKitHook', () => {
 
   // Claim __sidraHookedMk before attachment can throw.
   // Otherwise the 5-second monitor sees a stale marker and adds another set of listeners on every cycle.
-  it('attaches each MusicKit listener once when the IPC bridge is missing', () => {
-    const { musicKit, runMonitorCycles } = createHarness({ bridgeMissing: true });
+  it("attaches each MusicKit listener once when the IPC bridge is missing", () => {
+    const { musicKit, runMonitorCycles } = createHarness({
+      bridgeMissing: true,
+    });
 
     const afterInjection = musicKit.addEventListener.mock.calls.length;
     runMonitorCycles(3);
@@ -900,8 +1237,10 @@ describe('musicKitHook', () => {
     expect(musicKit.addEventListener.mock.calls.length).toBe(afterInjection);
   });
 
-  it('attaches each MusicKit listener once when a volume read throws', () => {
-    const { musicKit, runMonitorCycles } = createHarness({ volumeThrows: true });
+  it("attaches each MusicKit listener once when a volume read throws", () => {
+    const { musicKit, runMonitorCycles } = createHarness({
+      volumeThrows: true,
+    });
 
     const afterInjection = musicKit.addEventListener.mock.calls.length;
     runMonitorCycles(3);
@@ -909,13 +1248,13 @@ describe('musicKitHook', () => {
     expect(musicKit.addEventListener.mock.calls.length).toBe(afterInjection);
   });
 
-  it('marks the instance as hooked even when the attach throws part way', () => {
+  it("marks the instance as hooked even when the attach throws part way", () => {
     const { musicKit, window } = createHarness({ volumeThrows: true });
 
     expect(window.__sidraHookedMk).toBe(musicKit);
   });
 
-  it('drops a player command quietly when the initial attach threw', () => {
+  it("drops a player command quietly when the initial attach threw", () => {
     // attachSafely() contains the failure and installs the message listener
     // anyway, so the listener is live with no window.__sidra behind it. An
     // unguarded index on undefined throws a TypeError out of the listener.
@@ -924,7 +1263,7 @@ describe('musicKitHook', () => {
     expect(window.__sidra).toBeUndefined();
 
     const event = {
-      data: { type: 'sidra:command', channel: 'player:next', args: [] },
+      data: { type: "sidra:command", channel: "player:next", args: [] },
       source: window,
     };
 
@@ -933,7 +1272,7 @@ describe('musicKitHook', () => {
     }).not.toThrow();
   });
 
-  it('re-attaches once when MusicKit replaces its instance', () => {
+  it("re-attaches once when MusicKit replaces its instance", () => {
     const { musicKit, replaceInstance, runMonitorCycles } = createHarness();
 
     const before = musicKit.addEventListener.mock.calls.length;
@@ -946,8 +1285,14 @@ describe('musicKitHook', () => {
     expect(musicKit.addEventListener.mock.calls.length).toBe(before);
   });
 
-  it('ignores every event from a replaced instance while the replacement still reports', () => {
-    const { bridgeSend, musicKit, musicKitListeners, replaceInstance, runMonitorCycles } = createHarness({
+  it("ignores every event from a replaced instance while the replacement still reports", () => {
+    const {
+      bridgeSend,
+      musicKit,
+      musicKitListeners,
+      replaceInstance,
+      runMonitorCycles,
+    } = createHarness({
       musicKitOverrides: { nowPlayingItem: radioItem },
     });
     const stale = new Map(musicKitListeners);
@@ -958,28 +1303,36 @@ describe('musicKitHook', () => {
     // The old instance keeps its listeners after re-attachment, and its events
     // carry the current document generation, so only the hook can reject them.
     // A delayed empty-item event from it must not clear the replacement's track.
-    Object.assign(musicKit, { volume: 0.2, repeatMode: 1, shuffleMode: 1, currentPlaybackTime: 9 });
-    stale.get('nowPlayingItemDidChange')?.({ item: null });
-    stale.get('playbackStateDidChange')?.({ state: 0 });
-    stale.get('playbackTimeDidChange')?.();
-    stale.get('repeatModeDidChange')?.();
-    stale.get('shuffleModeDidChange')?.();
-    stale.get('playbackVolumeDidChange')?.();
-    stale.get('timedMetadataDidChange')?.(timedSong);
+    Object.assign(musicKit, {
+      volume: 0.2,
+      repeatMode: 1,
+      shuffleMode: 1,
+      currentPlaybackTime: 9,
+    });
+    stale.get("nowPlayingItemDidChange")?.({ item: null });
+    stale.get("playbackStateDidChange")?.({ state: 0 });
+    stale.get("playbackTimeDidChange")?.();
+    stale.get("repeatModeDidChange")?.();
+    stale.get("shuffleModeDidChange")?.();
+    stale.get("playbackVolumeDidChange")?.();
+    stale.get("timedMetadataDidChange")?.(timedSong);
     expect(bridgeSend).not.toHaveBeenCalled();
 
     const fresh = new Map(replacement.addEventListener.mock.calls);
     Object.assign(replacement, { volume: 0.3 });
-    fresh.get('playbackVolumeDidChange')?.();
-    fresh.get('nowPlayingItemDidChange')?.({ item: { id: 'next-song', attributes: { name: 'Next' } } });
-    expect(bridgeSend).toHaveBeenCalledWith('volumeDidChange', 0.3, 1);
+    fresh.get("playbackVolumeDidChange")?.();
+    fresh.get("nowPlayingItemDidChange")?.({
+      item: { id: "next-song", attributes: { name: "Next" } },
+    });
+    expect(bridgeSend).toHaveBeenCalledWith("volumeDidChange", 0.3, 1);
     expect(bridgeSend).toHaveBeenCalledWith(
-      'nowPlayingItemDidChange',
-      expect.objectContaining({ trackId: 'next-song' }), 1,
+      "nowPlayingItemDidChange",
+      expect.objectContaining({ trackId: "next-song" }),
+      1,
     );
   });
 
-  it('reports explicit media session position state on playback time changes', () => {
+  it("reports explicit media session position state on playback time changes", () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -987,7 +1340,9 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("playbackTimeDidChange")?.(),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith({
       duration: 180,
@@ -996,16 +1351,18 @@ describe('musicKitHook', () => {
     });
   });
 
-  it('clears media session position state when the now-playing item becomes null', () => {
+  it("clears media session position state when the now-playing item becomes null", () => {
     const { mediaSession, musicKitListeners } = createHarness();
 
-    expect(() => musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null })).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("nowPlayingItemDidChange")?.({ item: null }),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith();
   });
 
   it.each([0, undefined])(
-    'clears media session position state when duration is %s',
+    "clears media session position state when duration is %s",
     (currentPlaybackDuration) => {
       const { mediaSession, musicKitListeners } = createHarness({
         musicKitOverrides: {
@@ -1014,13 +1371,15 @@ describe('musicKitHook', () => {
         },
       });
 
-      expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+      expect(() =>
+        musicKitListeners.get("playbackTimeDidChange")?.(),
+      ).not.toThrow();
 
       expect(mediaSession.setPositionState).toHaveBeenCalledWith();
     },
   );
 
-  it('still forwards playback events over IPC when navigator.mediaSession is unavailable', () => {
+  it("still forwards playback events over IPC when navigator.mediaSession is unavailable", () => {
     // Position-state failures must not suppress IPC forwarding to integrations.
     // Assert the sends because a caught exception alone does not prove that the listener completes.
     const { bridgeSend, musicKitListeners } = createHarness({
@@ -1031,20 +1390,18 @@ describe('musicKitHook', () => {
       },
     });
 
-    musicKitListeners.get('playbackTimeDidChange')?.();
-    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
+    musicKitListeners.get("playbackTimeDidChange")?.();
+    musicKitListeners.get("nowPlayingItemDidChange")?.({ item: null });
 
     expect(bridgeSend).toHaveBeenCalledWith(
-      'playbackTimeDidChange',
-      42 * 1_000_000, 1,
+      "playbackTimeDidChange",
+      42 * 1_000_000,
+      1,
     );
-    expect(bridgeSend).toHaveBeenCalledWith(
-      'nowPlayingItemDidChange',
-      null, 1,
-    );
+    expect(bridgeSend).toHaveBeenCalledWith("nowPlayingItemDidChange", null, 1);
   });
 
-  it('still forwards playback events over IPC when setPositionState is missing', () => {
+  it("still forwards playback events over IPC when setPositionState is missing", () => {
     // A mediaSession object does not guarantee a setPositionState method.
     // Both calls catch exceptions, so IPC sends establish that a missing method does not interrupt forwarding.
     const { bridgeSend, musicKitListeners } = createHarness({
@@ -1055,20 +1412,18 @@ describe('musicKitHook', () => {
       },
     });
 
-    musicKitListeners.get('playbackTimeDidChange')?.();
-    musicKitListeners.get('nowPlayingItemDidChange')?.({ item: null });
+    musicKitListeners.get("playbackTimeDidChange")?.();
+    musicKitListeners.get("nowPlayingItemDidChange")?.({ item: null });
 
     expect(bridgeSend).toHaveBeenCalledWith(
-      'playbackTimeDidChange',
-      42 * 1_000_000, 1,
+      "playbackTimeDidChange",
+      42 * 1_000_000,
+      1,
     );
-    expect(bridgeSend).toHaveBeenCalledWith(
-      'nowPlayingItemDidChange',
-      null, 1,
-    );
+    expect(bridgeSend).toHaveBeenCalledWith("nowPlayingItemDidChange", null, 1);
   });
 
-  it('reports the item duration in seconds when the playback duration is unavailable', () => {
+  it("reports the item duration in seconds when the playback duration is unavailable", () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
         currentPlaybackDuration: undefined,
@@ -1077,7 +1432,9 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("playbackTimeDidChange")?.(),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith({
       duration: 180,
@@ -1086,7 +1443,7 @@ describe('musicKitHook', () => {
     });
   });
 
-  it('prefers the playback duration over the item duration when both are usable', () => {
+  it("prefers the playback duration over the item duration when both are usable", () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -1095,7 +1452,9 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("playbackTimeDidChange")?.(),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith({
       duration: 180,
@@ -1104,7 +1463,7 @@ describe('musicKitHook', () => {
     });
   });
 
-  it('clamps a position that runs past the duration', () => {
+  it("clamps a position that runs past the duration", () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -1112,7 +1471,9 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("playbackTimeDidChange")?.(),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith({
       duration: 180,
@@ -1121,7 +1482,7 @@ describe('musicKitHook', () => {
     });
   });
 
-  it('clears media session position state rather than reporting a negative position', () => {
+  it("clears media session position state rather than reporting a negative position", () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
         currentPlaybackDuration: 180,
@@ -1129,7 +1490,9 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("playbackTimeDidChange")?.(),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith();
     expect(mediaSession.setPositionState).not.toHaveBeenCalledWith(
@@ -1137,34 +1500,34 @@ describe('musicKitHook', () => {
     );
   });
 
-  it('forwards a MusicKit volume change over the volumeDidChange IPC channel', () => {
+  it("forwards a MusicKit volume change over the volumeDidChange IPC channel", () => {
     // Attachment already sends volume 1. Change the volume so that an attachment send cannot satisfy the listener assertion.
     const { bridgeSend, musicKit, musicKitListeners } = createHarness();
 
     musicKit.volume = 0.42;
-    musicKitListeners.get('playbackVolumeDidChange')?.();
+    musicKitListeners.get("playbackVolumeDidChange")?.();
 
-    expect(bridgeSend).toHaveBeenCalledWith('volumeDidChange', 0.42, 1);
+    expect(bridgeSend).toHaveBeenCalledWith("volumeDidChange", 0.42, 1);
   });
 
   it.each([
-    ['music', musicVolumeTarget],
-    ['classical', classicalVolumeTarget],
-  ])('lowers the volume a step when the wheel turns down over the %s volume control', (
-    _service,
-    makeTarget,
-  ) => {
-    const { dispatchWheel, musicKit } = createHarness({
-      musicKitOverrides: { volume: 0.5 },
-    });
+    ["music", musicVolumeTarget],
+    ["classical", classicalVolumeTarget],
+  ])(
+    "lowers the volume a step when the wheel turns down over the %s volume control",
+    (_service, makeTarget) => {
+      const { dispatchWheel, musicKit } = createHarness({
+        musicKitOverrides: { volume: 0.5 },
+      });
 
-    const event = dispatchWheel({ deltaY: 100, target: makeTarget() });
+      const event = dispatchWheel({ deltaY: 100, target: makeTarget() });
 
-    expect(musicKit.volume).toBe(0.45);
-    expect(event.preventDefault).toHaveBeenCalled();
-  });
+      expect(musicKit.volume).toBe(0.45);
+      expect(event.preventDefault).toHaveBeenCalled();
+    },
+  );
 
-  it('raises the volume a step when the wheel turns up over the volume control', () => {
+  it("raises the volume a step when the wheel turns up over the volume control", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
@@ -1174,7 +1537,7 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(0.55);
   });
 
-  it('leaves the volume and the page scroll alone away from the volume control', () => {
+  it("leaves the volume and the page scroll alone away from the volume control", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
@@ -1185,18 +1548,22 @@ describe('musicKitHook', () => {
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
-  it('leaves a Ctrl+wheel zoom over the volume control alone', () => {
+  it("leaves a Ctrl+wheel zoom over the volume control alone", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
 
-    const event = dispatchWheel({ ctrlKey: true, deltaY: 100, target: musicVolumeTarget() });
+    const event = dispatchWheel({
+      ctrlKey: true,
+      deltaY: 100,
+      target: musicVolumeTarget(),
+    });
 
     expect(musicKit.volume).toBe(0.5);
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
-  it('clamps the volume at 0 when the wheel turns down past silence', () => {
+  it("clamps the volume at 0 when the wheel turns down past silence", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.02 },
     });
@@ -1206,7 +1573,7 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(0);
   });
 
-  it('clamps the volume at 1 when the wheel turns up past full', () => {
+  it("clamps the volume at 1 when the wheel turns up past full", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.98 },
     });
@@ -1216,7 +1583,7 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(1);
   });
 
-  it('rounds away the binary floating point artefact of a step', () => {
+  it("rounds away the binary floating point artefact of a step", () => {
     // 0.7 - 0.05 is 0.6499999999999999, which a volume readout would show as
     // 64% and MPRIS would report unrounded.
     const { dispatchWheel, musicKit } = createHarness({
@@ -1228,7 +1595,7 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(0.65);
   });
 
-  it('accumulates two half-notch wheel events into one volume step', () => {
+  it("accumulates two half-notch wheel events into one volume step", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
@@ -1243,7 +1610,7 @@ describe('musicKitHook', () => {
     expect(musicKit.volume).toBe(0.45);
   });
 
-  it('steps immediately when the wheel direction reverses mid-accumulation', () => {
+  it("steps immediately when the wheel direction reverses mid-accumulation", () => {
     const { dispatchWheel, musicKit } = createHarness({
       musicKitOverrides: { volume: 0.5 },
     });
@@ -1258,13 +1625,15 @@ describe('musicKitHook', () => {
 
   // preventDefault requires a non-passive listener. Keep it on the control so only that region needs main-thread scrolling.
   // A window or document listener moves all scrolling off the compositor thread, even when the handler ignores unrelated wheel events.
-  it('registers no wheel listener on window', () => {
+  it("registers no wheel listener on window", () => {
     const { globalRegistrations } = createHarness();
 
-    expect(globalRegistrations.filter((entry) => entry.type === 'wheel')).toEqual([]);
+    expect(
+      globalRegistrations.filter((entry) => entry.type === "wheel"),
+    ).toEqual([]);
   });
 
-  it('registers the wheel listener on the volume control, non-passive', () => {
+  it("registers the wheel listener on the volume control, non-passive", () => {
     const { hoverOver } = createHarness();
     const target = musicVolumeTarget();
 
@@ -1277,23 +1646,27 @@ describe('musicKitHook', () => {
     expect(volumeControl(target).registrations).toHaveLength(1);
   });
 
-  it('registers the pointerover listener as passive so scrolling is unaffected', () => {
+  it("registers the pointerover listener as passive so scrolling is unaffected", () => {
     const { globalRegistrations } = createHarness();
 
-    const pointerOver = globalRegistrations.filter((entry) => entry.type === 'pointerover');
+    const pointerOver = globalRegistrations.filter(
+      (entry) => entry.type === "pointerover",
+    );
     expect(pointerOver).toHaveLength(1);
     expect(pointerOver[0].options).toEqual({ passive: true });
   });
 
-  it('binds nothing until the pointer reaches the control', () => {
+  it("binds nothing until the pointer reaches the control", () => {
     const { globalRegistrations } = createHarness();
     const target = musicVolumeTarget();
 
     expect(wheelRegistrations(target)).toEqual([]);
-    expect(globalRegistrations.some((entry) => entry.type === 'pointerover')).toBe(true);
+    expect(
+      globalRegistrations.some((entry) => entry.type === "pointerover"),
+    ).toBe(true);
   });
 
-  it('leaves the pointer over a non-volume element unbound', () => {
+  it("leaves the pointer over a non-volume element unbound", () => {
     const { hoverOver } = createHarness();
     const target = nonVolumeTarget();
 
@@ -1302,7 +1675,7 @@ describe('musicKitHook', () => {
     expect(wheelRegistrations(target)).toEqual([]);
   });
 
-  it('binds once however often the pointer re-enters the same control', () => {
+  it("binds once however often the pointer re-enters the same control", () => {
     const { hoverOver } = createHarness();
     const target = musicVolumeTarget();
 
@@ -1315,7 +1688,7 @@ describe('musicKitHook', () => {
 
   // Apple Music replaces the player bar on navigation and on a service switch,
   // so the binding has to move rather than accumulate on dead elements.
-  it('moves the listener to a replacement control and releases the old one', () => {
+  it("moves the listener to a replacement control and releases the old one", () => {
     const { hoverOver } = createHarness();
     const first = musicVolumeTarget();
     const second = musicVolumeTarget();
@@ -1327,7 +1700,7 @@ describe('musicKitHook', () => {
     expect(wheelRegistrations(second)).toHaveLength(1);
   });
 
-  it('installs no second pointerover listener when the script is injected again', () => {
+  it("installs no second pointerover listener when the script is injected again", () => {
     const { reinject, pointerOverListeners } = createHarness();
 
     reinject();
@@ -1335,7 +1708,7 @@ describe('musicKitHook', () => {
     expect(pointerOverListeners).toHaveLength(1);
   });
 
-  it('clears media session position state for a radio stream with no duration', () => {
+  it("clears media session position state for a radio stream with no duration", () => {
     const { mediaSession, musicKitListeners } = createHarness({
       musicKitOverrides: {
         currentPlaybackDuration: Number.POSITIVE_INFINITY,
@@ -1344,7 +1717,9 @@ describe('musicKitHook', () => {
       },
     });
 
-    expect(() => musicKitListeners.get('playbackTimeDidChange')?.()).not.toThrow();
+    expect(() =>
+      musicKitListeners.get("playbackTimeDidChange")?.(),
+    ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith();
   });

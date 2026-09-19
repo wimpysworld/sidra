@@ -1,11 +1,11 @@
-import fs from 'fs';
-import path from 'path';
-import { app, type WebContents } from 'electron';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from "fs";
+import path from "path";
+import { app, type WebContents } from "electron";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock('../src/config', () => ({
+vi.mock("../src/config", () => ({
   getTheme: vi.fn(),
-  getMusicService: vi.fn(() => 'music'),
+  getMusicService: vi.fn(() => "music"),
 }));
 
 // Hoisting keeps the same filesystem mocks across vi.resetModules() when watcher-failure tests load a fresh theme module.
@@ -16,15 +16,15 @@ const fsMock = vi.hoisted(() => ({
   mkdirSync: vi.fn(),
 }));
 
-vi.mock('fs', () => ({ default: fsMock, ...fsMock }));
+vi.mock("fs", () => ({ default: fsMock, ...fsMock }));
 
-import { customThemeFixture } from './mocks/customTheme';
-import { quit } from './mocks/appLifecycle';
+import { customThemeFixture } from "./mocks/customTheme";
+import { quit } from "./mocks/appLifecycle";
 
 const redTheme = customThemeFixture();
-const blueTheme = customThemeFixture('#0000ff');
+const blueTheme = customThemeFixture("#0000ff");
 
-import { getMusicService, getTheme } from '../src/config';
+import { getMusicService, getTheme } from "../src/config";
 import {
   applyTheme,
   customThemePath,
@@ -36,16 +36,16 @@ import {
   notifyDocumentReplacing,
   resolveTheme,
   setThemeChangedCallback,
-} from '../src/theme';
+} from "../src/theme";
 
-describe('theme helpers', () => {
+describe("theme helpers", () => {
   beforeEach(() => {
     vi.mocked(app.on).mockClear();
-    vi.mocked(getTheme).mockReturnValue('apple-music');
+    vi.mocked(getTheme).mockReturnValue("apple-music");
     // Reset per test, so a switch to classical cannot leak into the next one.
-    vi.mocked(getMusicService).mockReturnValue('music');
+    vi.mocked(getMusicService).mockReturnValue("music");
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fs.readFileSync).mockReturnValue('');
+    vi.mocked(fs.readFileSync).mockReturnValue("");
     vi.mocked(fs.readFileSync).mockClear();
     vi.mocked(fs.watch).mockReset();
     // The cache is module state, so clear it between tests.
@@ -66,22 +66,26 @@ describe('theme helpers', () => {
 
   // Captured watcher events and fake timers let tests control the 150ms debounce.
   // Cache-disable tests supply a fresh module so its permanent flag cannot affect other tests.
-  function watcherHarness(options: { isDestroyed?: boolean; init?: typeof initThemeCSS } = {}) {
+  function watcherHarness(
+    options: { isDestroyed?: boolean; init?: typeof initThemeCSS } = {},
+  ) {
     vi.useFakeTimers();
     const removeInsertedCSS = vi.fn().mockResolvedValue(undefined);
-    const insertCSS = vi.fn().mockResolvedValue('unused');
+    const insertCSS = vi.fn().mockResolvedValue("unused");
     const close = vi.fn();
     let watchHandler: fs.WatchListener<string | Buffer> | undefined;
     const watcherListeners = new Map<string, (error: Error) => void>();
-    vi.mocked(fs.watch as unknown as WatchWithOptions).mockImplementation((_filename, _options, listener) => {
-      watchHandler = listener;
-      return {
-        on: vi.fn((event: string, handler: (error: Error) => void) => {
-          watcherListeners.set(event, handler);
-        }),
-        close,
-      } as unknown as fs.FSWatcher;
-    });
+    vi.mocked(fs.watch as unknown as WatchWithOptions).mockImplementation(
+      (_filename, _options, listener) => {
+        watchHandler = listener;
+        return {
+          on: vi.fn((event: string, handler: (error: Error) => void) => {
+            watcherListeners.set(event, handler);
+          }),
+          close,
+        } as unknown as fs.FSWatcher;
+      },
+    );
     const contentsListeners = new Map<string, () => void>();
     const win = {
       isDestroyed: vi.fn().mockReturnValue(options.isDestroyed ?? false),
@@ -100,22 +104,23 @@ describe('theme helpers', () => {
       insertCSS,
       removeInsertedCSS,
       win,
-      start: () => { (options.init ?? initThemeCSS)(win); },
-      // Commit a main-frame navigation, which replaces the document.
+      start: () => {
+        (options.init ?? initThemeCSS)(win);
+      },
       navigate() {
-        contentsListeners.get('did-navigate')?.();
+        contentsListeners.get("did-navigate")?.();
       },
-      // Fire the watcher's own error event, which Node follows by closing it.
-      fireError(error: Error = new Error('EBADF: bad file descriptor')) {
-        watcherListeners.get('error')?.(error);
+      fireError(error: Error = new Error("EBADF: bad file descriptor")) {
+        watcherListeners.get("error")?.(error);
       },
-      // Fire a watcher event without running the debounce.
-      fire(eventType: 'rename' | 'change', filename: string | null = 'custom-theme.json') {
+      fire(
+        eventType: "rename" | "change",
+        filename: string | null = "custom-theme.json",
+      ) {
         watchHandler?.(eventType, filename);
       },
-      // Fire a watcher event, then run the debounce and the CSS promise chain.
-      async emit(eventType: 'rename' | 'change') {
-        watchHandler?.(eventType, 'custom-theme.json');
+      async emit(eventType: "rename" | "change") {
+        watchHandler?.(eventType, "custom-theme.json");
         vi.advanceTimersByTime(151);
         await Promise.resolve();
         await Promise.resolve();
@@ -127,11 +132,13 @@ describe('theme helpers', () => {
   // failToStart simulates a watcher setup failure instead of a later watcher error.
   async function loadThemeWithWatcher(options: { failToStart?: boolean } = {}) {
     vi.resetModules();
-    const theme = await import('../src/theme');
+    const theme = await import("../src/theme");
     const harness = watcherHarness({ init: theme.initThemeCSS });
     // After watcherHarness(), so this implementation is the one initThemeCSS calls.
     if (options.failToStart) {
-      vi.mocked(fs.watch).mockImplementation(() => { throw new Error('EMFILE: too many open files'); });
+      vi.mocked(fs.watch).mockImplementation(() => {
+        throw new Error("EMFILE: too many open files");
+      });
     }
     harness.start();
     return { theme, harness };
@@ -145,172 +152,198 @@ describe('theme helpers', () => {
 
   // Install a tracked key through the real CSS queue, its only writer.
   // Clear any previous key first to avoid a removal, then clear the setup insert so assertions count only test operations.
-  async function trackKey(harness: ReturnType<typeof watcherHarness>, key: string): Promise<void> {
+  async function trackKey(
+    harness: ReturnType<typeof watcherHarness>,
+    key: string,
+  ): Promise<void> {
     notifyDocumentReplacing();
     harness.insertCSS.mockResolvedValue(key);
-    applyTheme('catppuccin');
+    applyTheme("catppuccin");
     await flushCssQueue();
     harness.insertCSS.mockClear();
   }
 
   function throwEnoent(): void {
-    const enoent: NodeJS.ErrnoException = new Error('ENOENT: no such file or directory');
-    enoent.code = 'ENOENT';
-    vi.mocked(fs.readFileSync).mockImplementation(() => { throw enoent; });
+    const enoent: NodeJS.ErrnoException = new Error(
+      "ENOENT: no such file or directory",
+    );
+    enoent.code = "ENOENT";
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw enoent;
+    });
   }
 
-  it('builds the custom-theme.json path from userData', () => {
-    expect(customThemePath()).toBe(path.join(app.getPath('userData'), 'custom-theme.json'));
+  it("builds the custom-theme.json path from userData", () => {
+    expect(customThemePath()).toBe(
+      path.join(app.getPath("userData"), "custom-theme.json"),
+    );
   });
 
-  it('ignores legacy CSS files and preserves them while a stored custom selection recovers', async () => {
-    const legacyPath = path.join(app.getPath('userData'), 'custom.css');
-    const files = new Map([[legacyPath, 'body { color: red; }']]);
-    vi.mocked(fs.readFileSync).mockImplementation(filename => {
+  it("ignores legacy CSS files and preserves them while a stored custom selection recovers", async () => {
+    const legacyPath = path.join(app.getPath("userData"), "custom.css");
+    const files = new Map([[legacyPath, "body { color: red; }"]]);
+    vi.mocked(fs.readFileSync).mockImplementation((filename) => {
       const value = files.get(filename.toString());
-      if (value === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      if (value === undefined)
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
       return value;
     });
-    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(getTheme).mockReturnValue("custom");
     const harness = watcherHarness();
     harness.start();
-    expect(resolveTheme()).toBe('apple-music');
+    expect(resolveTheme()).toBe("apple-music");
     expect(hasCustomTheme()).toBe(false);
-    expect(fs.readFileSync).toHaveBeenCalledWith(customThemePath(), 'utf-8');
-    expect(fs.readFileSync).not.toHaveBeenCalledWith(legacyPath, expect.anything());
+    expect(fs.readFileSync).toHaveBeenCalledWith(customThemePath(), "utf-8");
+    expect(fs.readFileSync).not.toHaveBeenCalledWith(
+      legacyPath,
+      expect.anything(),
+    );
     files.set(customThemePath(), redTheme.json);
-    await harness.emit('rename');
+    await harness.emit("rename");
     await flushCssQueue();
-    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe("custom");
     expect(harness.insertCSS).toHaveBeenLastCalledWith(redTheme.css);
-    expect(getTheme()).toBe('custom');
-    expect(files.get(legacyPath)).toBe('body { color: red; }');
+    expect(getTheme()).toBe("custom");
+    expect(files.get(legacyPath)).toBe("body { color: red; }");
   });
 
-  it('rejects raw CSS in the JSON file', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue('body { color: red; }');
-    expect(getThemeCss('custom')).toBeNull();
+  it("rejects raw CSS in the JSON file", () => {
+    vi.mocked(fs.readFileSync).mockReturnValue("body { color: red; }");
+    expect(getThemeCss("custom")).toBeNull();
   });
 
-  it('reports custom-theme.json presence from file content', () => {
+  it("reports custom-theme.json presence from file content", () => {
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
     expect(hasCustomTheme()).toBe(true);
   });
 
-  it('reports no custom-theme.json when the file is missing', () => {
+  it("reports no custom-theme.json when the file is missing", () => {
     throwEnoent();
     expect(hasCustomTheme()).toBe(false);
   });
 
-  it('agrees with resolveTheme for whitespace-only custom-theme.json', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("agrees with resolveTheme for whitespace-only custom-theme.json", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     // The file is on disk, so an existence check would call it present.
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue('   \n');
+    vi.mocked(fs.readFileSync).mockReturnValue("   \n");
     expect(hasCustomTheme()).toBe(false);
-    expect(resolveTheme()).toBe('apple-music');
+    expect(resolveTheme()).toBe("apple-music");
   });
 
-  it('agrees with resolveTheme for populated custom-theme.json', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("agrees with resolveTheme for populated custom-theme.json", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
     expect(hasCustomTheme()).toBe(true);
-    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe("custom");
   });
 
-  it('falls back to apple-music for unknown stored themes', () => {
-    vi.mocked(getTheme).mockReturnValue('not-a-theme' as never);
-    expect(resolveTheme()).toBe('apple-music');
+  it("falls back to apple-music for unknown stored themes", () => {
+    vi.mocked(getTheme).mockReturnValue("not-a-theme" as never);
+    expect(resolveTheme()).toBe("apple-music");
   });
 
-  it('falls back to apple-music when custom theme is selected without custom-theme.json', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("falls back to apple-music when custom theme is selected without custom-theme.json", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    expect(resolveTheme()).toBe('apple-music');
+    expect(resolveTheme()).toBe("apple-music");
   });
 
-  it('keeps custom when custom-theme.json exists', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("keeps custom when custom-theme.json exists", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe("custom");
   });
 
-  it('falls back to apple-music when custom-theme.json is empty or whitespace', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
-    vi.mocked(fs.readFileSync).mockReturnValue('\n  \n');
-    expect(resolveTheme()).toBe('apple-music');
+  it("falls back to apple-music when custom-theme.json is empty or whitespace", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
+    vi.mocked(fs.readFileSync).mockReturnValue("\n  \n");
+    expect(resolveTheme()).toBe("apple-music");
   });
 
-  it('keeps a bundled theme on classical', () => {
-    vi.mocked(getTheme).mockReturnValue('catppuccin');
-    vi.mocked(getMusicService).mockReturnValue('classical');
-    expect(resolveTheme()).toBe('catppuccin');
+  it("keeps a bundled theme on classical", () => {
+    vi.mocked(getTheme).mockReturnValue("catppuccin");
+    vi.mocked(getMusicService).mockReturnValue("classical");
+    expect(resolveTheme()).toBe("catppuccin");
   });
 
-  it('keeps custom on classical with populated custom-theme.json', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("keeps custom on classical with populated custom-theme.json", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    vi.mocked(getMusicService).mockReturnValue('classical');
-    expect(resolveTheme()).toBe('custom');
+    vi.mocked(getMusicService).mockReturnValue("classical");
+    expect(resolveTheme()).toBe("custom");
   });
 
-  it('resolves the same theme across a music to classical to music switch', () => {
+  it("resolves the same theme across a music to classical to music switch", () => {
     // The active service is not an input to resolveTheme().
-    vi.mocked(getTheme).mockReturnValue('catppuccin');
-    expect(resolveTheme()).toBe('catppuccin');
+    vi.mocked(getTheme).mockReturnValue("catppuccin");
+    expect(resolveTheme()).toBe("catppuccin");
 
-    vi.mocked(getMusicService).mockReturnValue('classical');
-    expect(resolveTheme()).toBe('catppuccin');
+    vi.mocked(getMusicService).mockReturnValue("classical");
+    expect(resolveTheme()).toBe("catppuccin");
 
-    vi.mocked(getMusicService).mockReturnValue('music');
-    expect(resolveTheme()).toBe('catppuccin');
+    vi.mocked(getMusicService).mockReturnValue("music");
+    expect(resolveTheme()).toBe("catppuccin");
   });
 
   // Test the page-load CSS path directly, without running main.ts application startup.
-  describe('injectThemeCss', () => {
+  describe("injectThemeCss", () => {
     beforeEach(() => {
       // The module retains its key between tests. Queue the clear first so test operations start without a tracked sheet.
       notifyDocumentReplacing();
     });
 
     function fakeContents() {
-      const insertCSS = vi.fn().mockResolvedValue('key');
+      const insertCSS = vi.fn().mockResolvedValue("key");
       return { insertCSS, contents: { insertCSS } as unknown as WebContents };
     }
 
     // A WebContents whose insertCSS stays pending until release() is called, so
     // a test can hold a page-load injection open and queue work behind it.
     function heldContents() {
-      let release: (key: string) => void = () => { /* replaced below */ };
-      const pending = new Promise<string>((resolve) => { release = resolve; });
+      let release: (key: string) => void = () => {
+        /* replaced below */
+      };
+      const pending = new Promise<string>((resolve) => {
+        release = resolve;
+      });
       const insertCSS = vi.fn().mockReturnValue(pending);
-      return { insertCSS, release: (key: string) => { release(key); }, contents: { insertCSS } as unknown as WebContents };
+      return {
+        insertCSS,
+        release: (key: string) => {
+          release(key);
+        },
+        contents: { insertCSS } as unknown as WebContents,
+      };
     }
 
-    it('injects bundled theme CSS while classical is active', async () => {
-      vi.mocked(getTheme).mockReturnValue('catppuccin');
-      vi.mocked(getMusicService).mockReturnValue('classical');
+    it("injects bundled theme CSS while classical is active", async () => {
+      vi.mocked(getTheme).mockReturnValue("catppuccin");
+      vi.mocked(getMusicService).mockReturnValue("classical");
       const { insertCSS, contents } = fakeContents();
 
       await injectThemeCss(contents);
 
       expect(insertCSS).toHaveBeenCalledTimes(1);
       const [css] = insertCSS.mock.calls[0] as [string];
-      expect(css).toContain('--pageBG');
+      expect(css).toContain("--pageBG");
     });
 
-    it.each(['music', 'classical'] as const)('injects the same custom palette on %s', async service => {
-      vi.mocked(getTheme).mockReturnValue('custom');
-      vi.mocked(getMusicService).mockReturnValue(service);
-      vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-      const { insertCSS, contents } = fakeContents();
-      await injectThemeCss(contents);
-      expect(insertCSS).toHaveBeenCalledWith(redTheme.css);
-    });
+    it.each(["music", "classical"] as const)(
+      "injects the same custom palette on %s",
+      async (service) => {
+        vi.mocked(getTheme).mockReturnValue("custom");
+        vi.mocked(getMusicService).mockReturnValue(service);
+        vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
+        const { insertCSS, contents } = fakeContents();
+        await injectThemeCss(contents);
+        expect(insertCSS).toHaveBeenCalledWith(redTheme.css);
+      },
+    );
 
-    it('injects nothing for the apple-music theme', async () => {
-      vi.mocked(getTheme).mockReturnValue('apple-music');
+    it("injects nothing for the apple-music theme", async () => {
+      vi.mocked(getTheme).mockReturnValue("apple-music");
       const { insertCSS, contents } = fakeContents();
 
       await injectThemeCss(contents);
@@ -318,67 +351,69 @@ describe('theme helpers', () => {
       expect(insertCSS).not.toHaveBeenCalled();
     });
 
-    it('clears a stale key on the apple-music path', async () => {
+    it("clears a stale key on the apple-music path", async () => {
       // The load replaced the document, so a key held from the previous one is
       // stale. removeInsertedCSS rejects on a stale key and that rejection
       // aborts the theme change that follows, so the key must not survive here.
       const harness = watcherHarness();
       harness.start();
-      await trackKey(harness, 'stale-key');
-      vi.mocked(getTheme).mockReturnValue('apple-music');
+      await trackKey(harness, "stale-key");
+      vi.mocked(getTheme).mockReturnValue("apple-music");
       const { insertCSS, contents } = fakeContents();
 
       await injectThemeCss(contents);
       expect(insertCSS).not.toHaveBeenCalled();
 
       // The next theme change must reach its insert, with no removal attempted.
-      applyTheme('catppuccin');
+      applyTheme("catppuccin");
       await flushCssQueue();
 
       expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
       expect(harness.insertCSS).toHaveBeenCalledTimes(1);
     });
 
-    it('leaves one stylesheet when a theme change lands during a page load', async () => {
+    it("leaves one stylesheet when a theme change lands during a page load", async () => {
       // Both entry points share one queue, so the theme change waits for the
       // in-flight injection and removes the key that injection produced.
       // Interleaved, the change would insert against a null key and strand the
       // page-load stylesheet with nothing left holding its key.
       const harness = watcherHarness();
-      harness.insertCSS.mockResolvedValue('theme-key');
+      harness.insertCSS.mockResolvedValue("theme-key");
       harness.start();
-      vi.mocked(getTheme).mockReturnValue('catppuccin');
+      vi.mocked(getTheme).mockReturnValue("catppuccin");
       const { insertCSS, release, contents } = heldContents();
 
       const loading = injectThemeCss(contents);
       await flushCssQueue();
       expect(insertCSS).toHaveBeenCalledTimes(1);
 
-      applyTheme('nord');
+      applyTheme("nord");
       await flushCssQueue();
 
       // The theme change is queued behind the load, not racing it.
       expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
       expect(harness.insertCSS).not.toHaveBeenCalled();
 
-      release('load-key');
+      release("load-key");
       await loading;
       await flushCssQueue();
 
       // Two inserts, one removal of the first insert's key: one sheet survives.
       expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
-      expect(harness.removeInsertedCSS).toHaveBeenCalledWith('load-key');
+      expect(harness.removeInsertedCSS).toHaveBeenCalledWith("load-key");
       expect(insertCSS).toHaveBeenCalledTimes(1);
       expect(harness.insertCSS).toHaveBeenCalledTimes(1);
     });
 
-    it('settles the returned promise when the operation itself fails', async () => {
+    it("settles the returned promise when the operation itself fails", async () => {
       // applyTheme() discards the promise the queue returns, so a rejection left
       // on it has no handler and surfaces as an unhandled rejection in the main
       // process until some later operation happens to chain its own catch on.
-      const insertCSS = vi.fn().mockRejectedValue(new Error('Failed to insert CSS'));
+      const insertCSS = vi
+        .fn()
+        .mockRejectedValue(new Error("Failed to insert CSS"));
       const failing = { insertCSS } as unknown as WebContents;
-      vi.mocked(getTheme).mockReturnValue('catppuccin');
+      vi.mocked(getTheme).mockReturnValue("catppuccin");
 
       await expect(injectThemeCss(failing)).resolves.toBeUndefined();
       expect(insertCSS).toHaveBeenCalledTimes(1);
@@ -389,14 +424,14 @@ describe('theme helpers', () => {
       expect(next.insertCSS).toHaveBeenCalledTimes(1);
     });
 
-    it('drops queued work when the document is replaced before it runs', async () => {
+    it("drops queued work when the document is replaced before it runs", async () => {
       // insertCSS reaches whatever document the WebContents holds at call time.
       // Queued behind an in-flight operation, an injection for the old page
       // would land on the new one, beside that page's own injection, and only
       // the later key would be tracked.
       const harness = watcherHarness();
       harness.start();
-      vi.mocked(getTheme).mockReturnValue('catppuccin');
+      vi.mocked(getTheme).mockReturnValue("catppuccin");
       const held = heldContents();
       const stale = fakeContents();
 
@@ -407,7 +442,7 @@ describe('theme helpers', () => {
       // A second load queues behind the first, then its document is replaced.
       const queued = injectThemeCss(stale.contents);
       harness.navigate();
-      held.release('load-key');
+      held.release("load-key");
       await inFlight;
       await queued;
       await flushCssQueue();
@@ -416,7 +451,7 @@ describe('theme helpers', () => {
 
       // The key the released operation wrote belongs to the replaced document,
       // so the next theme change must insert without attempting a removal.
-      applyTheme('nord');
+      applyTheme("nord");
       await flushCssQueue();
       expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
       expect(harness.insertCSS).toHaveBeenCalledTimes(1);
@@ -428,20 +463,26 @@ describe('theme helpers', () => {
     });
   });
 
-  it('drops a live theme replacement when the document is replaced mid-removal', async () => {
+  it("drops a live theme replacement when the document is replaced mid-removal", async () => {
     // The removal and the insert are two awaits, so a navigation that commits
     // between them lands after the pre-flight generation check has passed. The
     // insert would then reach the new document beside that document's own
     // injection, leaving a sheet nothing holds the key for.
     const harness = watcherHarness();
     harness.start();
-    await trackKey(harness, 'live-key');
-    let releaseRemoval: () => void = () => { /* replaced below */ };
-    harness.removeInsertedCSS.mockReturnValue(new Promise<void>((resolve) => { releaseRemoval = resolve; }));
+    await trackKey(harness, "live-key");
+    let releaseRemoval: () => void = () => {
+      /* replaced below */
+    };
+    harness.removeInsertedCSS.mockReturnValue(
+      new Promise<void>((resolve) => {
+        releaseRemoval = resolve;
+      }),
+    );
 
-    applyTheme('catppuccin');
+    applyTheme("catppuccin");
     await flushCssQueue();
-    expect(harness.removeInsertedCSS).toHaveBeenCalledWith('live-key');
+    expect(harness.removeInsertedCSS).toHaveBeenCalledWith("live-key");
     expect(harness.insertCSS).not.toHaveBeenCalled();
 
     harness.navigate();
@@ -453,35 +494,37 @@ describe('theme helpers', () => {
     // The key belonged to the replaced document, so the next theme change must
     // reach its insert with no removal attempted.
     harness.removeInsertedCSS.mockResolvedValue(undefined);
-    applyTheme('nord');
+    applyTheme("nord");
     await flushCssQueue();
 
     expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
     expect(harness.insertCSS).toHaveBeenCalledTimes(1);
   });
 
-  it('recovers the theme after a failed CSS operation', async () => {
+  it("recovers the theme after a failed CSS operation", async () => {
     // A rejected removal leaves the tracked key naming a sheet that cannot be
     // removed, so keeping it would send every later theme change back down the
     // same removal and no theme would ever reach the page again.
     const harness = watcherHarness();
     harness.start();
-    await trackKey(harness, 'doomed-key');
-    harness.removeInsertedCSS.mockRejectedValue(new Error('Failed to remove inserted CSS'));
+    await trackKey(harness, "doomed-key");
+    harness.removeInsertedCSS.mockRejectedValue(
+      new Error("Failed to remove inserted CSS"),
+    );
 
-    applyTheme('catppuccin');
+    applyTheme("catppuccin");
     await flushCssQueue();
     expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
     expect(harness.insertCSS).not.toHaveBeenCalled();
 
-    applyTheme('nord');
+    applyTheme("nord");
     await flushCssQueue();
 
     expect(harness.removeInsertedCSS).toHaveBeenCalledTimes(1);
     expect(harness.insertCSS).toHaveBeenCalledTimes(1);
   });
 
-  it('warns and applies nothing when a theme is requested before initThemeCSS', async () => {
+  it("warns and applies nothing when a theme is requested before initThemeCSS", async () => {
     // The tray Style items are live from createTray(), which main.ts calls
     // before it awaits the session and then calls initThemeCSS(), so a click can
     // land here. Nothing is applied because there is no document yet; the tray
@@ -492,252 +535,254 @@ describe('theme helpers', () => {
     // module the other tests share. electron-log is re-imported after the same
     // reset, so the logger read here is the one the fresh copy scoped.
     vi.resetModules();
-    const logModule = await import('electron-log/main');
-    const theme = await import('../src/theme');
+    const logModule = await import("electron-log/main");
+    const theme = await import("../src/theme");
     // The scoped logger shares one mock function across every level, so it is
     // cleared first and the single call below is the warning.
-    const warn = vi.mocked(logModule.default.scope('theme').warn);
+    const warn = vi.mocked(logModule.default.scope("theme").warn);
     warn.mockClear();
 
-    theme.applyTheme('nord');
+    theme.applyTheme("nord");
     await flushCssQueue();
 
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toContain('nord');
+    expect(warn.mock.calls[0][0]).toContain("nord");
   });
 
-  it('returns null for apple-music even with populated custom-theme.json', () => {
+  it("returns null for apple-music even with populated custom-theme.json", () => {
     // apple-music means "inject no override CSS", so it must never pick up the
     // custom-theme.json a fall-through past the guard would reach.
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(getThemeCss('apple-music')).toBeNull();
+    expect(getThemeCss("apple-music")).toBeNull();
     expect(fs.readFileSync).not.toHaveBeenCalled();
   });
 
-  it('returns null for missing custom-theme.json', () => {
+  it("returns null for missing custom-theme.json", () => {
     throwEnoent();
-    expect(getThemeCss('custom')).toBeNull();
+    expect(getThemeCss("custom")).toBeNull();
   });
 
-  it('returns null for empty or whitespace custom-theme.json', () => {
-    vi.mocked(fs.readFileSync).mockReturnValue('\n  \n');
-    expect(getThemeCss('custom')).toBeNull();
+  it("returns null for empty or whitespace custom-theme.json", () => {
+    vi.mocked(fs.readFileSync).mockReturnValue("\n  \n");
+    expect(getThemeCss("custom")).toBeNull();
   });
 
-  it('renders custom-theme.json through the shared CSS template', () => {
+  it("renders custom-theme.json through the shared CSS template", () => {
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(getThemeCss('custom')).toBe(redTheme.css);
+    expect(getThemeCss("custom")).toBe(redTheme.css);
   });
 
-  it('reads custom-theme.json once across repeated resolveTheme calls', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("reads custom-theme.json once across repeated resolveTheme calls", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(resolveTheme()).toBe('custom');
-    expect(resolveTheme()).toBe('custom');
-    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe("custom");
+    expect(resolveTheme()).toBe("custom");
+    expect(resolveTheme()).toBe("custom");
     expect(fs.readFileSync).toHaveBeenCalledTimes(1);
   });
 
-  it('serves hasCustomTheme and getThemeCss from the same cached read', () => {
-    vi.mocked(getTheme).mockReturnValue('custom');
+  it("serves hasCustomTheme and getThemeCss from the same cached read", () => {
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
     expect(hasCustomTheme()).toBe(true);
-    expect(getThemeCss('custom')).toBe(redTheme.css);
-    expect(resolveTheme()).toBe('custom');
+    expect(getThemeCss("custom")).toBe(redTheme.css);
+    expect(resolveTheme()).toBe("custom");
     expect(fs.readFileSync).toHaveBeenCalledTimes(1);
   });
 
-  it('caches the absence of custom-theme.json rather than retrying the read', () => {
+  it("caches the absence of custom-theme.json rather than retrying the read", () => {
     throwEnoent();
     expect(hasCustomTheme()).toBe(false);
     expect(hasCustomTheme()).toBe(false);
     expect(fs.readFileSync).toHaveBeenCalledTimes(1);
   });
 
-  it('re-reads custom-theme.json as soon as the watcher fires, before the debounce', () => {
+  it("re-reads custom-theme.json as soon as the watcher fires, before the debounce", () => {
     const harness = watcherHarness();
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
     harness.start();
-    expect(getThemeCss('custom')).toBe(redTheme.css);
+    expect(getThemeCss("custom")).toBe(redTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(1);
 
     vi.mocked(fs.readFileSync).mockReturnValue(blueTheme.json);
-    harness.fire('change');
-    expect(getThemeCss('custom')).toBe(blueTheme.css);
+    harness.fire("change");
+    expect(getThemeCss("custom")).toBe(blueTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the cache when the watcher event names another file', () => {
+  it("keeps the cache when the watcher event names another file", () => {
     const harness = watcherHarness();
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
     harness.start();
-    expect(getThemeCss('custom')).toBe(redTheme.css);
+    expect(getThemeCss("custom")).toBe(redTheme.css);
 
-    harness.fire('change', 'config.json');
-    expect(getThemeCss('custom')).toBe(redTheme.css);
+    harness.fire("change", "config.json");
+    expect(getThemeCss("custom")).toBe(redTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(1);
   });
 
-  it('invalidates the cache for an unnamed directory event', async () => {
+  it("invalidates the cache for an unnamed directory event", async () => {
     const harness = watcherHarness();
     harness.start();
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(getThemeCss('custom')).toBe(redTheme.css);
+    expect(getThemeCss("custom")).toBe(redTheme.css);
     vi.mocked(fs.readFileSync).mockReturnValue(blueTheme.json);
-    harness.fire('rename', null);
-    expect(getThemeCss('custom')).toBe(blueTheme.css);
+    harness.fire("rename", null);
+    expect(getThemeCss("custom")).toBe(blueTheme.css);
     await vi.advanceTimersByTimeAsync(151);
   });
 
-  it('removes an invalid edited theme and restores it after a valid replacement', async () => {
+  it("removes an invalid edited theme and restores it after a valid replacement", async () => {
     const harness = watcherHarness();
     harness.start();
     notifyDocumentReplacing();
-    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    await harness.emit('rename');
+    await harness.emit("rename");
     await flushCssQueue();
     expect(harness.insertCSS).toHaveBeenLastCalledWith(redTheme.css);
     vi.mocked(fs.readFileSync).mockReturnValue('{"dark":{}}');
-    await harness.emit('change');
+    await harness.emit("change");
     await flushCssQueue();
-    expect(harness.removeInsertedCSS).toHaveBeenCalledWith('unused');
-    expect(resolveTheme()).toBe('apple-music');
-    expect(getTheme()).toBe('custom');
+    expect(harness.removeInsertedCSS).toHaveBeenCalledWith("unused");
+    expect(resolveTheme()).toBe("apple-music");
+    expect(getTheme()).toBe("custom");
     vi.mocked(fs.readFileSync).mockReturnValue(blueTheme.json);
-    await harness.emit('rename');
+    await harness.emit("rename");
     await flushCssQueue();
-    expect(resolveTheme()).toBe('custom');
+    expect(resolveTheme()).toBe("custom");
     expect(harness.insertCSS).toHaveBeenLastCalledWith(blueTheme.css);
   });
 
-  it('closes the directory watcher and cancels a pending reload on quit', async () => {
+  it("closes the directory watcher and cancels a pending reload on quit", async () => {
     const changed = vi.fn();
     setThemeChangedCallback(changed);
     const harness = watcherHarness();
     harness.start();
-    harness.fire('change');
+    harness.fire("change");
     expect(app.on).toHaveBeenCalledOnce();
-    expect(app.on).toHaveBeenCalledWith('will-quit', expect.any(Function));
+    expect(app.on).toHaveBeenCalledWith("will-quit", expect.any(Function));
     quit();
     await vi.advanceTimersByTimeAsync(151);
     expect(harness.close).toHaveBeenCalledOnce();
     expect(changed).not.toHaveBeenCalled();
   });
 
-  it('stops caching when the watcher cannot start', async () => {
+  it("stops caching when the watcher cannot start", async () => {
     // Nothing would clear a cache the watcher never populates events for, so a
     // failed watcher has to fall back to reading on every call. Two reads, two
     // filesystem calls: the cache is off, not merely cleared.
     const { theme } = await loadThemeWithWatcher({ failToStart: true });
 
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(theme.getThemeCss('custom')).toBe(redTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(redTheme.css);
     vi.mocked(fs.readFileSync).mockReturnValue(blueTheme.json);
-    expect(theme.getThemeCss('custom')).toBe(blueTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(blueTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
-  it('drops the warm custom-theme.json cache when the watcher reports an error', async () => {
+  it("drops the warm custom-theme.json cache when the watcher reports an error", async () => {
     // Node closes the watcher on error, so the cache it warmed is now stale
     // with nothing left to clear it.
     const { theme, harness } = await loadThemeWithWatcher();
 
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(theme.getThemeCss('custom')).toBe(redTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(redTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(1);
 
     harness.fireError();
 
     vi.mocked(fs.readFileSync).mockReturnValue(blueTheme.json);
-    expect(theme.getThemeCss('custom')).toBe(blueTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(blueTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
-  it('reads custom-theme.json on every call after a watcher error', async () => {
+  it("reads custom-theme.json on every call after a watcher error", async () => {
     const { theme, harness } = await loadThemeWithWatcher();
 
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    expect(theme.getThemeCss('custom')).toBe(redTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(redTheme.css);
     harness.fireError();
 
     // Two reads after the error, two filesystem calls: caching stays off rather
     // than warming again on the next read.
     vi.mocked(fs.readFileSync).mockClear();
-    expect(theme.getThemeCss('custom')).toBe(redTheme.css);
-    expect(theme.getThemeCss('custom')).toBe(redTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(redTheme.css);
+    expect(theme.getThemeCss("custom")).toBe(redTheme.css);
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
   });
 
-  it('renders bundled theme CSS', () => {
-    const css = getThemeCss('catppuccin');
-    expect(css).toContain('@media (prefers-color-scheme: dark)');
-    expect(css).toContain('@media (prefers-color-scheme: light)');
-    expect(css).toContain('--pageBG: #1e1e2e !important;');
+  it("renders bundled theme CSS", () => {
+    const css = getThemeCss("catppuccin");
+    expect(css).toContain("@media (prefers-color-scheme: dark)");
+    expect(css).toContain("@media (prefers-color-scheme: light)");
+    expect(css).toContain("--pageBG: #1e1e2e !important;");
   });
 
-  it('removes injected css when custom-theme.json disappears for stored custom theme', async () => {
+  it("removes injected css when custom-theme.json disappears for stored custom theme", async () => {
     const harness = watcherHarness();
     harness.start();
-    await trackKey(harness, 'stale-theme-css-key');
-    vi.mocked(getTheme).mockReturnValue('custom');
+    await trackKey(harness, "stale-theme-css-key");
+    vi.mocked(getTheme).mockReturnValue("custom");
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    await harness.emit('change');
-    expect(harness.removeInsertedCSS).toHaveBeenCalledWith('stale-theme-css-key');
+    await harness.emit("change");
+    expect(harness.removeInsertedCSS).toHaveBeenCalledWith(
+      "stale-theme-css-key",
+    );
     expect(harness.insertCSS).not.toHaveBeenCalled();
   });
 
-  it('rebuilds the tray menu after create, write and delete events', async () => {
+  it("rebuilds the tray menu after create, write and delete events", async () => {
     const rebuildTray = vi.fn();
     setThemeChangedCallback(rebuildTray);
     const harness = watcherHarness();
-    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(getTheme).mockReturnValue("custom");
     notifyDocumentReplacing();
     harness.start();
 
     // Create: the file appears with content.
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    await harness.emit('rename');
+    await harness.emit("rename");
     expect(rebuildTray).toHaveBeenCalledTimes(1);
 
     // Write: the content changes.
     vi.mocked(fs.readFileSync).mockReturnValue(blueTheme.json);
-    await harness.emit('change');
+    await harness.emit("change");
     expect(rebuildTray).toHaveBeenCalledTimes(2);
 
     // Delete: the file is gone.
     throwEnoent();
-    await harness.emit('rename');
+    await harness.emit("rename");
     expect(rebuildTray).toHaveBeenCalledTimes(3);
   });
 
-  it('rebuilds the tray menu when the stored theme is not custom', async () => {
+  it("rebuilds the tray menu when the stored theme is not custom", async () => {
     const rebuildTray = vi.fn();
     setThemeChangedCallback(rebuildTray);
     const harness = watcherHarness();
-    vi.mocked(getTheme).mockReturnValue('catppuccin');
+    vi.mocked(getTheme).mockReturnValue("catppuccin");
     notifyDocumentReplacing();
     harness.start();
 
     // A custom theme file does not change active bundled CSS, but Settings still needs the new theme entry.
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    await harness.emit('rename');
+    await harness.emit("rename");
     expect(rebuildTray).toHaveBeenCalledTimes(1);
     expect(harness.insertCSS).not.toHaveBeenCalled();
     expect(harness.removeInsertedCSS).not.toHaveBeenCalled();
   });
 
-  it('does not rebuild the tray menu when the window is destroyed', async () => {
+  it("does not rebuild the tray menu when the window is destroyed", async () => {
     const rebuildTray = vi.fn();
     setThemeChangedCallback(rebuildTray);
     const harness = watcherHarness({ isDestroyed: true });
-    vi.mocked(getTheme).mockReturnValue('custom');
+    vi.mocked(getTheme).mockReturnValue("custom");
     notifyDocumentReplacing();
     harness.start();
 
     vi.mocked(fs.readFileSync).mockReturnValue(redTheme.json);
-    await harness.emit('change');
+    await harness.emit("change");
     expect(rebuildTray).not.toHaveBeenCalled();
   });
 });

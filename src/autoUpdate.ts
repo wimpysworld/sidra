@@ -1,17 +1,17 @@
-import { app, dialog, Tray } from 'electron';
-import log from 'electron-log/main';
-import { getAutoUpdateEnabled } from './config';
-import { getAutoUpdateStrings } from './i18n';
-import { setUpdateReady, showUpdateNotification } from './update';
+import { app, dialog, Tray } from "electron";
+import log from "electron-log/main";
+import { getAutoUpdateEnabled } from "./config";
+import { getAutoUpdateStrings } from "./i18n";
+import { setUpdateReady, showUpdateNotification } from "./update";
 
-const autoUpdateLog = log.scope('autoUpdate');
+const autoUpdateLog = log.scope("autoUpdate");
 
 /**
  * Load electron-updater only after the caller checks platform support.
  * The return type adds compile-time checks without a top-level runtime import.
  */
-function loadAutoUpdater(): typeof import('electron-updater') {
-  return require('electron-updater');
+function loadAutoUpdater(): typeof import("electron-updater") {
+  return require("electron-updater");
 }
 
 /**
@@ -20,34 +20,36 @@ function loadAutoUpdater(): typeof import('electron-updater') {
  * app-update.yml ships in all packaged builds, so its presence cannot determine support.
  */
 export function isAutoUpdateSupported(): boolean {
-  if (process.env.SIDRA_DISABLE_AUTO_UPDATE === '1') {
-    autoUpdateLog.info('auto-update disabled via SIDRA_DISABLE_AUTO_UPDATE');
+  if (process.env.SIDRA_DISABLE_AUTO_UPDATE === "1") {
+    autoUpdateLog.info("auto-update disabled via SIDRA_DISABLE_AUTO_UPDATE");
     return false;
   }
 
   if (!getAutoUpdateEnabled()) {
-    autoUpdateLog.info('auto-update disabled via config');
+    autoUpdateLog.info("auto-update disabled via config");
     return false;
   }
 
-  // Linux snap: snapd handles refresh, so electron-updater must stay disabled
+  // Snap packages use snapd for refresh, so electron-updater must stay disabled.
   if (process.env.SNAP) {
-    autoUpdateLog.info('auto-update not supported: snap detected (snapd handles refresh)');
+    autoUpdateLog.info(
+      "auto-update not supported: snap detected (snapd handles refresh)",
+    );
     return false;
   }
 
-  // Linux AppImage: process.env.APPIMAGE is set only when running as an AppImage
+  // process.env.APPIMAGE is set only when the Linux build runs as an AppImage.
   if (process.env.APPIMAGE) {
-    autoUpdateLog.info('auto-update supported: AppImage detected');
+    autoUpdateLog.info("auto-update supported: AppImage detected");
     return true;
   }
 
-  if (process.platform === 'win32' && app.isPackaged) {
-    autoUpdateLog.info('auto-update supported: Windows NSIS detected');
+  if (process.platform === "win32" && app.isPackaged) {
+    autoUpdateLog.info("auto-update supported: Windows NSIS detected");
     return true;
   }
 
-  autoUpdateLog.info('auto-update not supported on this platform');
+  autoUpdateLog.info("auto-update not supported on this platform");
   return false;
 }
 
@@ -56,7 +58,10 @@ export function quitAndInstall(): void {
   loadAutoUpdater().autoUpdater.quitAndInstall();
 }
 
-type AutoUpdaterModule = Pick<typeof import('electron-updater'), 'autoUpdater' | 'NsisUpdater'>;
+type AutoUpdaterModule = Pick<
+  typeof import("electron-updater"),
+  "autoUpdater" | "NsisUpdater"
+>;
 
 /**
  * Check for an update and download it. Call only when isAutoUpdateSupported()
@@ -68,7 +73,6 @@ export async function configureAutoUpdate(
   tray: Tray,
   rebuildMenu: (tray: Tray) => void,
 ): Promise<void> {
-
   // electron-updater's own logger is off; this module logs under its own scope,
   // which is what makes an updater load on deb, rpm or Nix visible in the log
   autoUpdater.logger = null;
@@ -88,22 +92,22 @@ export async function configureAutoUpdate(
     autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
   }
 
-  autoUpdater.on('update-available', (info) => {
-    autoUpdateLog.info('update available:', info.version);
+  autoUpdater.on("update-available", (info) => {
+    autoUpdateLog.info("update available:", info.version);
   });
 
-  autoUpdater.on('update-downloaded', async (info) => {
-    autoUpdateLog.info('update downloaded:', info.version);
+  autoUpdater.on("update-downloaded", async (info) => {
+    autoUpdateLog.info("update downloaded:", info.version);
     setUpdateReady(info.version);
     rebuildMenu(tray);
 
-    showUpdateNotification(info.version, 'update-downloaded', () => {
+    showUpdateNotification(info.version, "update-downloaded", () => {
       autoUpdater.quitAndInstall();
     });
 
     const autoUpdateStrings = getAutoUpdateStrings();
     const result = await dialog.showMessageBox({
-      type: 'info',
+      type: "info",
       title: autoUpdateStrings.ready,
       message: `${app.getName()} ${info.version}`,
       buttons: [autoUpdateStrings.restartNow, autoUpdateStrings.later],
@@ -116,12 +120,12 @@ export async function configureAutoUpdate(
     }
   });
 
-  autoUpdater.on('error', (error) => {
-    // A repository with no release yet is a normal state, not a fault
-    if (error.message.includes('No published versions')) {
-      autoUpdateLog.info('no published releases found; skipping update check');
+  autoUpdater.on("error", (error) => {
+    // A repository with no release yet is a normal state, not a fault.
+    if (error.message.includes("No published versions")) {
+      autoUpdateLog.info("no published releases found; skipping update check");
     } else {
-      autoUpdateLog.error('update error:', error.message);
+      autoUpdateLog.error("update error:", error.message);
     }
   });
 
@@ -129,11 +133,14 @@ export async function configureAutoUpdate(
 }
 
 /** Initialise the updater after a support check, logging setup failures without rejecting. */
-export async function initAutoUpdate(tray: Tray, rebuildMenu: (tray: Tray) => void): Promise<void> {
+export async function initAutoUpdate(
+  tray: Tray,
+  rebuildMenu: (tray: Tray) => void,
+): Promise<void> {
   try {
     await configureAutoUpdate(loadAutoUpdater(), tray, rebuildMenu);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    autoUpdateLog.error('auto-update initialisation failed:', message);
+    autoUpdateLog.error("auto-update initialisation failed:", message);
   }
 }

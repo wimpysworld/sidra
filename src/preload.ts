@@ -1,24 +1,31 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from "electron";
 
 import type {
   ControllerAction,
   ControllerActionChannel,
   ControllerResetChannel,
-} from './controller';
+} from "./controller";
 
-const CONTROLLER_ACTION_CHANNEL = 'controller:action' satisfies ControllerActionChannel;
-const CONTROLLER_RESET_CHANNEL = 'controller:reset' satisfies ControllerResetChannel;
+const CONTROLLER_ACTION_CHANNEL =
+  "controller:action" satisfies ControllerActionChannel;
+const CONTROLLER_RESET_CHANNEL =
+  "controller:reset" satisfies ControllerResetChannel;
 
 const ACTION_BUTTONS: readonly [ControllerAction, number][] = [
-  ['up', 12],
-  ['down', 13],
-  ['left', 14],
-  ['right', 15],
-  ['select', 0],
-  ['back', 1],
+  ["up", 12],
+  ["down", 13],
+  ["left", 14],
+  ["right", 15],
+  ["select", 0],
+  ["back", 1],
 ];
 
-const DIRECTION_ACTIONS = new Set<ControllerAction>(['up', 'down', 'left', 'right']);
+const DIRECTION_ACTIONS = new Set<ControllerAction>([
+  "up",
+  "down",
+  "left",
+  "right",
+]);
 const INITIAL_REPEAT_DELAY_MS = 400;
 const REPEAT_INTERVAL_MS = 100;
 const FRAME_GAP_RESET_MS = 1000;
@@ -46,15 +53,21 @@ function createPadState(): PadState {
   };
 }
 
-// Keep controller runtime code here: a sandboxed preload can require only electron.
+// Keep controller runtime code in preload.ts because a sandboxed preload can require only electron.
 // Reset samples suppress held buttons until release, preventing input across document and focus changes.
 class ControllerState {
   private readonly pads = new Map<number, PadState>();
   private lastFrameAt: number | null = null;
   private resetPending = true;
 
-  update(gamepads: readonly (Gamepad | null)[], now: number): ControllerAction[] {
-    if (this.lastFrameAt !== null && now - this.lastFrameAt > FRAME_GAP_RESET_MS) {
+  update(
+    gamepads: readonly (Gamepad | null)[],
+    now: number,
+  ): ControllerAction[] {
+    if (
+      this.lastFrameAt !== null &&
+      now - this.lastFrameAt > FRAME_GAP_RESET_MS
+    ) {
       this.suppressHeldButtons();
       this.resetPending = true;
     }
@@ -64,7 +77,7 @@ class ControllerState {
     const actions: ControllerAction[] = [];
 
     for (const gamepad of gamepads) {
-      if (!gamepad?.connected || gamepad.mapping !== 'standard') continue;
+      if (!gamepad?.connected || gamepad.mapping !== "standard") continue;
       activeIndexes.add(gamepad.index);
 
       const state = this.pads.get(gamepad.index) ?? createPadState();
@@ -136,7 +149,7 @@ class ControllerState {
 
 /**
  * Build an exhaustive channel allowlist, making missing and unknown keys compile errors.
- * Keep the Object.keys() cast here, while allows() narrows untrusted main-world strings to the channel union.
+ * channelSet() owns the Object.keys() cast, while allows() narrows untrusted main-world strings to the channel union.
  */
 function channelSet<C extends string>(
   channels: Record<C, true>,
@@ -159,27 +172,27 @@ const SEND_CHANNELS = channelSet<SendChannel>({
   repeatModeDidChange: true,
   shuffleModeDidChange: true,
   volumeDidChange: true,
-  'nav:back': true,
-  'nav:forward': true,
-  'nav:reload': true,
-  'nav:settings': true,
+  "nav:back": true,
+  "nav:forward": true,
+  "nav:reload": true,
+  "nav:settings": true,
 });
 
 // Channels the main process is allowed to send to the renderer.
 // Each channel maps to a window.__sidra method dispatched via ipcRenderer.on().
 // The command allowlist in assets/musicKitHook.js must stay in sync.
 const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
-  'player:play': true,
-  'player:openUri': true,
-  'player:pause': true,
-  'player:stop': true,
-  'player:playPause': true,
-  'player:next': true,
-  'player:previous': true,
-  'player:seek': true,
-  'player:setVolume': true,
-  'player:setRepeat': true,
-  'player:setShuffle': true,
+  "player:play": true,
+  "player:openUri": true,
+  "player:pause": true,
+  "player:stop": true,
+  "player:playPause": true,
+  "player:next": true,
+  "player:previous": true,
+  "player:seek": true,
+  "player:setVolume": true,
+  "player:setRepeat": true,
+  "player:setShuffle": true,
 });
 
 const controllerState = new ControllerState();
@@ -192,11 +205,15 @@ function gamepads(): readonly (Gamepad | null)[] {
 }
 
 function hasStandardController(pads: readonly (Gamepad | null)[]): boolean {
-  return pads.some((pad) => pad?.connected === true && pad.mapping === 'standard');
+  return pads.some(
+    (pad) => pad?.connected === true && pad.mapping === "standard",
+  );
 }
 
 function canPollController(): boolean {
-  return pageIsActive && windowIsFocused && document.visibilityState === 'visible';
+  return (
+    pageIsActive && windowIsFocused && document.visibilityState === "visible"
+  );
 }
 
 function pollController(now: number): void {
@@ -214,8 +231,11 @@ function pollController(now: number): void {
 
 function startControllerPolling(connectedPad?: Gamepad): void {
   if (controllerFrame !== null || !canPollController()) return;
-  if (!hasStandardController(gamepads()) &&
-      !(connectedPad?.connected === true && connectedPad.mapping === 'standard')) return;
+  if (
+    !hasStandardController(gamepads()) &&
+    !(connectedPad?.connected === true && connectedPad.mapping === "standard")
+  )
+    return;
 
   controllerFrame = requestAnimationFrame(pollController);
 }
@@ -241,7 +261,7 @@ function handleWindowFocus(): void {
 }
 
 function handleVisibilityChange(): void {
-  if (document.visibilityState === 'hidden') {
+  if (document.visibilityState === "hidden") {
     stopControllerPolling();
     return;
   }
@@ -272,24 +292,27 @@ function handleGamepadDisconnected(event: GamepadEvent): void {
 }
 
 ipcRenderer.on(CONTROLLER_RESET_CHANNEL, handleControllerReset);
-window.addEventListener('blur', handleWindowBlur);
-window.addEventListener('focus', handleWindowFocus);
-window.addEventListener('gamepadconnected', handleGamepadConnected);
-window.addEventListener('gamepaddisconnected', handleGamepadDisconnected);
-window.addEventListener('pagehide', handlePageHide);
-window.addEventListener('pageshow', handlePageShow);
-document.addEventListener('visibilitychange', handleVisibilityChange);
+window.addEventListener("blur", handleWindowBlur);
+window.addEventListener("focus", handleWindowFocus);
+window.addEventListener("gamepadconnected", handleGamepadConnected);
+window.addEventListener("gamepaddisconnected", handleGamepadDisconnected);
+window.addEventListener("pagehide", handlePageHide);
+window.addEventListener("pageshow", handlePageShow);
+document.addEventListener("visibilitychange", handleVisibilityChange);
 startControllerPolling();
 
 // The preload runs in the isolated world (contextIsolation: true), so it cannot
-// call window.__sidra directly - that object lives in the main world, set up by
+// call window.__sidra directly. That object lives in the main world, set up by
 // musicKitHook.js. window.postMessage() crosses the isolation boundary, and the
 // hook dispatches each sidra:command message to the matching __sidra method.
 // The target origin is window.location.origin, so the bridge works on either
 // service host without naming one.
 for (const channel of RECEIVE_CHANNELS.all) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
-    window.postMessage({ type: 'sidra:command', channel, args }, window.location.origin);
+    window.postMessage(
+      { type: "sidra:command", channel, args },
+      window.location.origin,
+    );
   });
 }
 
@@ -297,11 +320,13 @@ for (const channel of RECEIVE_CHANNELS.all) {
  * Expose only allowlisted sends through window.AMWrapper for the hook's sendToMain().
  * satisfies checks the bridge contract because exposeInMainWorld() does not type-check its payload.
  */
-contextBridge.exposeInMainWorld('AMWrapper', {
+contextBridge.exposeInMainWorld("AMWrapper", {
   ipcRenderer: {
     send: (channel: string, data: unknown, generation?: number) => {
       if (!SEND_CHANNELS.allows(channel)) {
-        console.warn(`AMWrapper: blocked send on unlisted channel "${channel}"`);
+        console.warn(
+          `AMWrapper: blocked send on unlisted channel "${channel}"`,
+        );
         return;
       }
       ipcRenderer.send(channel, data, generation);

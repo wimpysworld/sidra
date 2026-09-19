@@ -1,25 +1,36 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock('../src/config', () => ({
+vi.mock("../src/config", () => ({
   getZoomFactor: vi.fn(() => 1.0),
 }));
 
-vi.mock('../src/i18n', () => ({
-  getTrayStrings: () => ({ about: 'About Sidra' }),
-  getAboutStrings: () => ({ description: 'Un client Apple Music minimaliste.', close: 'Close', versionPrefix: 'Version', copyrightSuffix: 'All rights reserved', licensePrefix: 'License' }),
-  getLoadingText: () => ({ lang: 'fr', text: 'Chargement...' }),
+vi.mock("../src/i18n", () => ({
+  getTrayStrings: () => ({ about: "About Sidra" }),
+  getAboutStrings: () => ({
+    description: "Un client Apple Music minimaliste.",
+    close: "Close",
+    versionPrefix: "Version",
+    copyrightSuffix: "All rights reserved",
+    licensePrefix: "License",
+  }),
+  getLoadingText: () => ({ lang: "fr", text: "Chargement..." }),
 }));
 
-vi.mock('../src/paths', () => ({
-  getAssetPath: vi.fn((...parts: string[]) => parts.join('/')),
-  getProductInfo: () => ({ productName: 'Test Player', description: 'Apple Music client', author: 'Test', license: 'MIT' }),
+vi.mock("../src/paths", () => ({
+  getAssetPath: vi.fn((...parts: string[]) => parts.join("/")),
+  getProductInfo: () => ({
+    productName: "Test Player",
+    description: "Apple Music client",
+    author: "Test",
+    license: "MIT",
+  }),
 }));
 
-import { BrowserWindow, app } from 'electron';
-import { showAboutWindow } from '../src/aboutWindow';
-import { getZoomFactor } from '../src/config';
+import { BrowserWindow, app } from "electron";
+import { showAboutWindow } from "../src/aboutWindow";
+import { getZoomFactor } from "../src/config";
 
-// Event handlers stay accessible so tests can drive the window lifecycle.
+// Stored event handlers let tests drive the window lifecycle.
 interface MockWebContents {
   setZoomFactor: ReturnType<typeof vi.fn>;
 }
@@ -57,10 +68,10 @@ function createMockBrowserWindow(): MockBrowserWindowInstance {
 
 let latestMockInstance: MockBrowserWindowInstance;
 
-describe('showAboutWindow', () => {
+describe("showAboutWindow", () => {
   beforeEach(() => {
     latestMockInstance = createMockBrowserWindow();
-    // BrowserWindow is called with `new`, so the mock must be a constructor function
+    // BrowserWindow is constructed with `new`, so the mock must be a constructor function.
     vi.mocked(BrowserWindow).mockImplementation(function (this: unknown) {
       return latestMockInstance as unknown as BrowserWindow;
     } as unknown as () => BrowserWindow);
@@ -68,66 +79,73 @@ describe('showAboutWindow', () => {
     vi.mocked(BrowserWindow).mockClear();
   });
 
-  // Only the latest window's 'closed' handler clears the module-scoped window reference.
+  // Close the active fixture so its module-scoped reference cannot leak into the next test.
   afterEach(() => {
-    latestMockInstance._listeners['closed']?.[0]?.();
+    latestMockInstance._listeners["closed"]?.[0]?.();
   });
 
-  it('creates a BrowserWindow with correct options', () => {
+  it("creates a BrowserWindow with correct options", () => {
     showAboutWindow();
 
     expect(BrowserWindow).toHaveBeenCalledOnce();
-    expect(BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
-      width: 400,
-      height: 400,
-      frame: false,
-      resizable: false,
-      fullscreenable: false,
-      fullscreen: false,
-      center: true,
-      skipTaskbar: true,
-      backgroundColor: '#1a0a10',
-      show: false,
-      webPreferences: expect.objectContaining({
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
+    expect(BrowserWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 400,
+        height: 400,
+        frame: false,
+        resizable: false,
+        fullscreenable: false,
+        fullscreen: false,
+        center: true,
+        skipTaskbar: true,
+        backgroundColor: "#1a0a10",
+        show: false,
+        webPreferences: expect.objectContaining({
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+        }),
       }),
-    }));
+    );
   });
 
-  it('scales window dimensions by zoom factor', () => {
+  it("scales window dimensions by zoom factor", () => {
     vi.mocked(getZoomFactor).mockReturnValue(1.5);
     showAboutWindow();
 
-    expect(BrowserWindow).toHaveBeenCalledWith(expect.objectContaining({
-      width: 600,
-      height: 600,
-    }));
+    expect(BrowserWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 600,
+        height: 600,
+      }),
+    );
   });
 
-  it('calls loadFile with correct query params', () => {
+  it("calls loadFile with correct query params", () => {
     showAboutWindow();
 
-    expect(latestMockInstance.loadFile).toHaveBeenCalledWith('assets/about.html', {
-      query: {
-        name: 'Test Player',
-        version: app.getVersion(),
-        description: 'Un client Apple Music minimaliste.',
-        lang: 'fr',
-        author: 'Test',
-        license: 'MIT',
-        about: 'About Sidra',
-        close: 'Close',
-        versionPrefix: 'Version',
-        copyrightSuffix: 'All rights reserved',
-        licensePrefix: 'License',
-        year: String(new Date().getFullYear()),
+    expect(latestMockInstance.loadFile).toHaveBeenCalledWith(
+      "assets/about.html",
+      {
+        query: {
+          name: "Test Player",
+          version: app.getVersion(),
+          description: "Un client Apple Music minimaliste.",
+          lang: "fr",
+          author: "Test",
+          license: "MIT",
+          about: "About Sidra",
+          close: "Close",
+          versionPrefix: "Version",
+          copyrightSuffix: "All rights reserved",
+          licensePrefix: "License",
+          year: String(new Date().getFullYear()),
+        },
       },
-    });
+    );
   });
 
-  it('focuses existing window instead of creating a new one', () => {
+  it("focuses existing window instead of creating a new one", () => {
     showAboutWindow();
     vi.mocked(BrowserWindow).mockClear();
 
@@ -137,10 +155,10 @@ describe('showAboutWindow', () => {
     expect(latestMockInstance.focus).toHaveBeenCalledOnce();
   });
 
-  it('resets aboutWindow to null on closed event', () => {
+  it("resets aboutWindow to null on closed event", () => {
     showAboutWindow();
 
-    const closedHandlers = latestMockInstance._listeners['closed'];
+    const closedHandlers = latestMockInstance._listeners["closed"];
     expect(closedHandlers).toBeDefined();
     expect(closedHandlers.length).toBeGreaterThan(0);
     closedHandlers[0]();
@@ -157,16 +175,18 @@ describe('showAboutWindow', () => {
     expect(BrowserWindow).toHaveBeenCalledOnce();
   });
 
-  it('shows window and sets zoom on ready-to-show', () => {
+  it("shows window and sets zoom on ready-to-show", () => {
     showAboutWindow();
 
-    const readyHandlers = latestMockInstance._listeners['ready-to-show'];
+    const readyHandlers = latestMockInstance._listeners["ready-to-show"];
     expect(readyHandlers).toBeDefined();
     expect(readyHandlers.length).toBeGreaterThan(0);
 
     readyHandlers[0]();
 
-    expect(latestMockInstance.webContents.setZoomFactor).toHaveBeenCalledWith(1.0);
+    expect(latestMockInstance.webContents.setZoomFactor).toHaveBeenCalledWith(
+      1.0,
+    );
     expect(latestMockInstance.show).toHaveBeenCalledOnce();
   });
 });

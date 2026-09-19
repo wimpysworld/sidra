@@ -1,10 +1,11 @@
 .direnv/
+.vitest/json/output.json
 dist/
 node_modules/
 result/
 release/
 *.log
 
-# scripts/inject-lastfm-credentials.cjs generates this file at build time.
-# It contains the Last.fm API secret and must never be committed.
+# The build generates this file with scripts/inject-lastfm-credentials.cjs.
+# It contains the shared Last.fm API secret and must never be committed.
 assets/lastfm-credentials.json

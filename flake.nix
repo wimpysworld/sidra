@@ -18,7 +18,7 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-      # Systems that have release artefacts available
+      # Release packages exist only for these systems.
       packageSystems = [
         "x86_64-linux"
         "aarch64-darwin"
@@ -49,8 +49,8 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          # Sidra needs only Chromium. Override both browser references to exclude
-          # Firefox, WebKit and the headless shell from the dependency closure.
+          # The Playwright MCP server needs only Chromium. Override both browser
+          # references to exclude Firefox, WebKit and the headless shell from its closure.
           # PLAYWRIGHT_MCP_BROWSER defaults to the chromium channel, which uses
           # full Chrome for Testing even in headless mode.
           playwrightMcpChromium =

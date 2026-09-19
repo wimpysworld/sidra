@@ -50,8 +50,8 @@
 let
   pname = "sidra";
 
-  # The nix-hash CI job updates each URL and hash together from published assets.
-  # Do not edit these pairs by hand.
+  # The nix-hash CI job updates each URL and hash as one pair from each release.
+  # Do not edit these values by hand, because each pair must stay in sync.
   sources = {
     x86_64-linux = {
       url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
@@ -65,8 +65,8 @@ let
 
   src = fetchurl sources.${stdenv.hostPlatform.system};
 
-  # Unpack the deb into a plain derivation. No patching - the CastLabs
-  # Electron binary is VMP-signed for Widevine DRM and must not be modified.
+  # Unpack the deb without patching it. The CastLabs Electron binary is
+  # VMP-signed for Widevine DRM, so a modification invalidates the signature.
   unpacked = stdenvNoCC.mkDerivation {
     pname = "${pname}-unpacked";
     inherit version src;

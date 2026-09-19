@@ -1,126 +1,137 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // 'construct' mode exposes notification construction to assertions while preserving the D-Bus daemon gate.
 // Constructing a notification without a daemon can freeze Electron on Linux.
-import { resetNotifyFake, notifyFake } from './mocks/notify';
+import { resetNotifyFake, notifyFake } from "./mocks/notify";
 
-import { createHash } from 'crypto';
-import { net, shell, Notification } from 'electron';
-import log from 'electron-log/main';
-import { signParams, scrobbleThresholdMs } from '../src/integrations/lastfm';
-import type { PendingScrobble } from '../src/config';
-import { PlaybackState, NowPlayingPayload } from '../src/player';
-import type { TimedMetadataPayload } from '../src/player';
-import { FakePlayer } from './mocks/player';
-import { quit } from './mocks/appLifecycle';
+import { createHash } from "crypto";
+import { net, shell, Notification } from "electron";
+import log from "electron-log/main";
+import { signParams, scrobbleThresholdMs } from "../src/integrations/lastfm";
+import type { PendingScrobble } from "../src/config";
+import { PlaybackState, NowPlayingPayload } from "../src/player";
+import type { TimedMetadataPayload } from "../src/player";
+import { FakePlayer } from "./mocks/player";
+import { quit } from "./mocks/appLifecycle";
 
 // The stored session key drives both the request path and the tray's connected
 // state, so the mock holds it as state rather than a constant: a test can then
 // see clearLastfmSession() take effect the way production does.
-const session = vi.hoisted(() => ({ key: 'session-key' as string | null, enabled: true }));
+const session = vi.hoisted(() => ({
+  key: "session-key" as string | null,
+  enabled: true,
+}));
 
-// The pending queue is persisted config, so it outlives the process: the mock
-// holds it as state a test can seed before the module loads, which is what a
-// previous run leaving plays behind looks like.
+// The pending queue is persisted config, so the mock keeps seedable state across module loads.
+// Seeded entries model plays that an earlier process could not submit.
 const queue = vi.hoisted(() => ({ pending: [] as PendingScrobble[] }));
 
-vi.mock('../src/config', () => ({
+vi.mock("../src/config", () => ({
   getLastfmEnabled: vi.fn(() => session.enabled),
   getLastfmSessionKey: vi.fn(() => session.key),
-  setLastfmSession: vi.fn((key: string) => { session.key = key; }),
-  clearLastfmSession: vi.fn(() => { session.key = null; }),
-  setLastfmEnabled: vi.fn((enabled: boolean) => { session.enabled = enabled; }),
+  setLastfmSession: vi.fn((key: string) => {
+    session.key = key;
+  }),
+  clearLastfmSession: vi.fn(() => {
+    session.key = null;
+  }),
+  setLastfmEnabled: vi.fn((enabled: boolean) => {
+    session.enabled = enabled;
+  }),
   getNotificationsEnabled: vi.fn(() => true),
-  getMusicService: vi.fn(() => 'music'),
+  getMusicService: vi.fn(() => "music"),
   getPendingScrobbles: vi.fn(() => [...queue.pending]),
-  setPendingScrobbles: vi.fn((entries: PendingScrobble[]) => { queue.pending = entries; }),
+  setPendingScrobbles: vi.fn((entries: PendingScrobble[]) => {
+    queue.pending = entries;
+  }),
 }));
 
-vi.mock('../src/i18n', () => ({
-  getLastfmConnectedText: vi.fn(() => 'Connected'),
-  getLastfmConnectFailedText: vi.fn(() => 'Could not connect'),
+vi.mock("../src/i18n", () => ({
+  getLastfmConnectedText: vi.fn(() => "Connected"),
+  getLastfmConnectFailedText: vi.fn(() => "Could not connect"),
 }));
 
-describe('signParams', () => {
-  it('sorts params by name, concatenates name+value, appends secret, then MD5', () => {
-    const expected = createHash('md5').update('a1b2secret', 'utf8').digest('hex');
-    expect(signParams({ b: '2', a: '1' }, 'secret')).toBe(expected);
+describe("signParams", () => {
+  it("sorts params by name, concatenates name+value, appends secret, then MD5", () => {
+    const expected = createHash("md5")
+      .update("a1b2secret", "utf8")
+      .digest("hex");
+    expect(signParams({ b: "2", a: "1" }, "secret")).toBe(expected);
   });
 
-  it('is independent of insertion order', () => {
-    const secret = 'shh';
-    const a = signParams({ method: 'auth.getToken', api_key: 'k' }, secret);
-    const b = signParams({ api_key: 'k', method: 'auth.getToken' }, secret);
+  it("is independent of insertion order", () => {
+    const secret = "shh";
+    const a = signParams({ method: "auth.getToken", api_key: "k" }, secret);
+    const b = signParams({ api_key: "k", method: "auth.getToken" }, secret);
     expect(a).toBe(b);
   });
 });
 
-describe('scrobbleThresholdMs', () => {
-  it('returns null for tracks shorter than 30 seconds', () => {
+describe("scrobbleThresholdMs", () => {
+  it("returns null for tracks shorter than 30 seconds", () => {
     expect(scrobbleThresholdMs(20_000)).toBeNull();
   });
 
-  it('returns null for tracks of exactly 30 seconds', () => {
+  it("returns null for tracks of exactly 30 seconds", () => {
     expect(scrobbleThresholdMs(30_000)).toBeNull();
   });
 
-  it('returns null for sub-30-second tracks that would round up to 30', () => {
+  it("returns null for sub-30-second tracks that would round up to 30", () => {
     expect(scrobbleThresholdMs(29_600)).toBeNull();
   });
 
-  it('returns half the duration for typical tracks', () => {
+  it("returns half the duration for typical tracks", () => {
     expect(scrobbleThresholdMs(180_000)).toBe(90_000);
   });
 
-  it('caps at 4 minutes for long tracks', () => {
+  it("caps at 4 minutes for long tracks", () => {
     expect(scrobbleThresholdMs(1_200_000)).toBe(240_000);
   });
 
-  it('falls back to the 4 minute cap when duration is unknown', () => {
+  it("falls back to the 4 minute cap when duration is unknown", () => {
     expect(scrobbleThresholdMs(0)).toBe(240_000);
   });
 });
 
-// A 400 second track, so the scrobble threshold is 200 seconds.
+// A 400-second track has a 200-second scrobble threshold.
 const TRACK: NowPlayingPayload = {
-  name: 'Blue Monday',
-  artistName: 'New Order',
-  albumName: 'Power, Corruption & Lies',
+  name: "Blue Monday",
+  artistName: "New Order",
+  albumName: "Power, Corruption & Lies",
   durationInMillis: 400_000,
 };
 
-// A 60 second track, so the scrobble threshold is 30 seconds: well inside the
-// playhead a longer track leaves behind.
+// A 60-second track has a 30-second threshold, which is shorter than the first track's carried playhead.
 const SHORT_TRACK: NowPlayingPayload = {
-  name: 'Temptation',
-  artistName: 'New Order',
+  name: "Temptation",
+  artistName: "New Order",
   durationInMillis: 60_000,
 };
 
 const RADIO_STATION: NowPlayingPayload = {
-  name: 'Apple Music 1',
-  playParams: { kind: 'radioStation' },
+  name: "Apple Music 1",
+  playParams: { kind: "radioStation" },
 };
 
 const RADIO_A: TimedMetadataPayload = {
-  name: 'Radio Song A',
-  artistName: 'Radio Artist A',
-  transition: 'initial',
+  name: "Radio Song A",
+  artistName: "Radio Artist A",
+  transition: "initial",
 };
 
 const RADIO_B: TimedMetadataPayload = {
-  name: 'Radio Song B',
-  artistName: 'Radio Artist B',
-  albumName: 'Radio Album',
-  transition: 'clean',
+  name: "Radio Song B",
+  artistName: "Radio Artist B",
+  albumName: "Radio Album",
+  transition: "clean",
 };
 
 const RADIO_C: TimedMetadataPayload = {
-  name: 'Radio Song C',
-  artistName: 'Radio Artist C',
-  transition: 'clean',
+  name: "Radio Song C",
+  artistName: "Radio Artist C",
+  transition: "clean",
 };
 
-const START = new Date('2026-01-01T00:00:00Z');
+const START = new Date("2026-01-01T00:00:00Z");
 const START_UNIX = String(Math.floor(START.getTime() / 1000));
 
 /**
@@ -128,11 +139,13 @@ const START_UNIX = String(Math.floor(START.getTime() / 1000));
  * API_SECRET resolve once at module load, so a statically imported module reads
  * empty credentials and every request path short-circuits.
  */
-async function loadLastfm(): Promise<typeof import('../src/integrations/lastfm')> {
+async function loadLastfm(): Promise<
+  typeof import("../src/integrations/lastfm")
+> {
   vi.resetModules();
-  vi.stubEnv('SIDRA_LASTFM_API_KEY', 'test-key');
-  vi.stubEnv('SIDRA_LASTFM_API_SECRET', 'test-secret');
-  return import('../src/integrations/lastfm');
+  vi.stubEnv("SIDRA_LASTFM_API_KEY", "test-key");
+  vi.stubEnv("SIDRA_LASTFM_API_SECRET", "test-secret");
+  return import("../src/integrations/lastfm");
 }
 
 /**
@@ -140,7 +153,7 @@ async function loadLastfm(): Promise<typeof import('../src/integrations/lastfm')
  * credentials present, wired to a fresh player.
  */
 async function startIntegration(): Promise<{
-  lastfm: typeof import('../src/integrations/lastfm');
+  lastfm: typeof import("../src/integrations/lastfm");
   player: FakePlayer;
 }> {
   const lastfm = await loadLastfm();
@@ -153,8 +166,11 @@ async function startIntegration(): Promise<{
 function scrobbles(): URLSearchParams[] {
   return vi
     .mocked(net.fetch)
-    .mock.calls.map(([, init]) => new URLSearchParams(typeof init?.body === 'string' ? init.body : ''))
-    .filter((params) => params.get('method') === 'track.scrobble');
+    .mock.calls.map(
+      ([, init]) =>
+        new URLSearchParams(typeof init?.body === "string" ? init.body : ""),
+    )
+    .filter((params) => params.get("method") === "track.scrobble");
 }
 
 /**
@@ -170,7 +186,7 @@ function play(player: FakePlayer, ms: number): void {
 }
 
 function playExact(player: FakePlayer, ms: number): void {
-  for (let remaining = ms; remaining > 0;) {
+  for (let remaining = ms; remaining > 0; ) {
     const step = Math.min(remaining, 1000);
     vi.advanceTimersByTime(step);
     player.advancePositionMs(step);
@@ -181,12 +197,16 @@ function playExact(player: FakePlayer, ms: number): void {
 /** A connected account, an accepting API and a clock under test control. */
 function startFromConnected(): void {
   vi.clearAllMocks();
-  resetNotifyFake('construct');
-  session.key = 'session-key';
+  resetNotifyFake("construct");
+  session.key = "session-key";
   session.enabled = true;
   queue.pending = [];
-  vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
-  vi.mocked(Notification).mockImplementation(() => ({ on: vi.fn(), show: vi.fn() }) as unknown as Notification);
+  vi.mocked(net.fetch).mockImplementation(() =>
+    Promise.resolve(new Response("{}")),
+  );
+  vi.mocked(Notification).mockImplementation(
+    () => ({ on: vi.fn(), show: vi.fn() }) as unknown as Notification,
+  );
   vi.useFakeTimers();
   vi.setSystemTime(START);
 }
@@ -196,11 +216,11 @@ function restoreRealTime(): void {
   vi.unstubAllEnvs();
 }
 
-describe('scrobble submission', () => {
+describe("scrobble submission", () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
-  it('does not scrobble a stalled track when its state event is missing', async () => {
+  it("does not scrobble a stalled track when its state event is missing", async () => {
     const { player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
@@ -215,7 +235,7 @@ describe('scrobble submission', () => {
     expect(scrobbles()).toHaveLength(0);
   });
 
-  it('does not scrobble a new track on the playhead the last one left behind', async () => {
+  it("does not scrobble a new track on the playhead the last one left behind", async () => {
     const { player } = await startIntegration();
 
     // 100 seconds of the 400 second track: short of its own 200 second
@@ -234,7 +254,7 @@ describe('scrobble submission', () => {
     expect(scrobbles()).toHaveLength(0);
   });
 
-  it('scrobbles a new track once its own playhead reaches the threshold', async () => {
+  it("scrobbles a new track once its own playhead reaches the threshold", async () => {
     const { player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
@@ -249,10 +269,10 @@ describe('scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('track')).toBe('Temptation');
+    expect(submitted[0].get("track")).toBe("Temptation");
   });
 
-  it('scrobbles once when a track plays past its threshold', async () => {
+  it("scrobbles once when a track plays past its threshold", async () => {
     const { player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
@@ -261,13 +281,13 @@ describe('scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('artist')).toBe('New Order');
-    expect(submitted[0].get('track')).toBe('Blue Monday');
-    expect(submitted[0].get('timestamp')).toBe(START_UNIX);
-    expect(submitted[0].has('chosenByUser')).toBe(false);
+    expect(submitted[0].get("artist")).toBe("New Order");
+    expect(submitted[0].get("track")).toBe("Blue Monday");
+    expect(submitted[0].get("timestamp")).toBe(START_UNIX);
+    expect(submitted[0].has("chosenByUser")).toBe(false);
   });
 
-  it('scrobbles once across a pause and a long gap', async () => {
+  it("scrobbles once across a pause and a long gap", async () => {
     const { player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
@@ -281,10 +301,10 @@ describe('scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('timestamp')).toBe(START_UNIX);
+    expect(submitted[0].get("timestamp")).toBe(START_UNIX);
   });
 
-  it('timestamps a scrobble from the moment playback starts', async () => {
+  it("timestamps a scrobble from the moment playback starts", async () => {
     const { player } = await startIntegration();
 
     // The track is selected while paused and only played a minute later, so
@@ -296,10 +316,10 @@ describe('scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('timestamp')).toBe(String(Number(START_UNIX) + 60));
+    expect(submitted[0].get("timestamp")).toBe(String(Number(START_UNIX) + 60));
   });
 
-  it('scrobbles a track once, however often it is paused and resumed after the threshold', async () => {
+  it("scrobbles a track once, however often it is paused and resumed after the threshold", async () => {
     const { player } = await startIntegration();
 
     playPastThreshold(player);
@@ -311,7 +331,7 @@ describe('scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
-  it('keeps the play time already earned when scrobbling is toggled off and on', async () => {
+  it("keeps the play time already earned when scrobbling is toggled off and on", async () => {
     const { lastfm, player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
@@ -333,7 +353,7 @@ describe('scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
-  it('counts playback from opt-in when the track started while scrobbling was off', async () => {
+  it("counts playback from opt-in when the track started while scrobbling was off", async () => {
     session.enabled = false;
     const { lastfm, player } = await startIntegration();
 
@@ -351,10 +371,12 @@ describe('scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('timestamp')).toBe(String(Number(START_UNIX) + 100));
+    expect(submitted[0].get("timestamp")).toBe(
+      String(Number(START_UNIX) + 100),
+    );
   });
 
-  it('scrobbles each pass of a repeated track with its own timestamp', async () => {
+  it("scrobbles each pass of a repeated track with its own timestamp", async () => {
     const { player } = await startIntegration();
 
     player.emitNowPlaying(TRACK);
@@ -368,12 +390,14 @@ describe('scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(2);
-    expect(submitted[0].get('timestamp')).toBe(START_UNIX);
-    expect(submitted[1].get('timestamp')).toBe(String(Number(START_UNIX) + 400));
+    expect(submitted[0].get("timestamp")).toBe(START_UNIX);
+    expect(submitted[1].get("timestamp")).toBe(
+      String(Number(START_UNIX) + 400),
+    );
   });
 });
 
-describe('radio scrobble submission', () => {
+describe("radio scrobble submission", () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
@@ -391,17 +415,17 @@ describe('radio scrobble submission', () => {
     play(player, 1_000);
   }
 
-  it('sends Now Playing and uses the four-minute fallback for the initial radio song', async () => {
+  it("sends Now Playing and uses the four-minute fallback for the initial radio song", async () => {
     const player = await startRadio();
 
     play(player, 300_000);
 
-    expect(nowPlayingRequests().at(-1)?.get('track')).toBe('Radio Song A');
+    expect(nowPlayingRequests().at(-1)?.get("track")).toBe("Radio Song A");
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song A');
+    expect(scrobbles()[0].get("track")).toBe("Radio Song A");
   });
 
-  it('scrobbles an observed radio song at the next confirmed clean boundary', async () => {
+  it("scrobbles an observed radio song at the next confirmed clean boundary", async () => {
     const player = await startRadio();
     reachCleanSong(player);
     play(player, 31_000);
@@ -411,15 +435,15 @@ describe('radio scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('artist')).toBe('Radio Artist B');
-    expect(submitted[0].get('track')).toBe('Radio Song B');
-    expect(submitted[0].get('album')).toBe('Radio Album');
-    expect(submitted[0].get('chosenByUser')).toBe('0');
-    expect(submitted[0].has('duration')).toBe(false);
-    expect(submitted[0].has('streamId')).toBe(false);
+    expect(submitted[0].get("artist")).toBe("Radio Artist B");
+    expect(submitted[0].get("track")).toBe("Radio Song B");
+    expect(submitted[0].get("album")).toBe("Radio Album");
+    expect(submitted[0].get("chosenByUser")).toBe("0");
+    expect(submitted[0].has("duration")).toBe(false);
+    expect(submitted[0].has("streamId")).toBe(false);
   });
 
-  it('scrobbles an observed radio song after four minutes of active playback', async () => {
+  it("scrobbles an observed radio song after four minutes of active playback", async () => {
     const player = await startRadio();
     reachCleanSong(player);
 
@@ -427,11 +451,11 @@ describe('radio scrobble submission', () => {
 
     const submitted = scrobbles();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('track')).toBe('Radio Song B');
-    expect(submitted[0].get('chosenByUser')).toBe('0');
+    expect(submitted[0].get("track")).toBe("Radio Song B");
+    expect(submitted[0].get("chosenByUser")).toBe("0");
   });
 
-  it('requires a current advancing position report for the four-minute fallback', async () => {
+  it("requires a current advancing position report for the four-minute fallback", async () => {
     const player = await startRadio();
     reachCleanSong(player);
 
@@ -445,7 +469,7 @@ describe('radio scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
-  it('does not confirm a pending fallback until the position increases', async () => {
+  it("does not confirm a pending fallback until the position increases", async () => {
     const player = await startRadio();
     play(player, 10_000);
     player.emitTimedMetadata(RADIO_B);
@@ -460,21 +484,21 @@ describe('radio scrobble submission', () => {
 
     playExact(player, 240_000);
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+    expect(scrobbles()[0].get("track")).toBe("Radio Song B");
   });
 
-  it('uses only the four-minute fallback for an ambiguous radio candidate', async () => {
+  it("uses only the four-minute fallback for an ambiguous radio candidate", async () => {
     const player = await startRadio();
     play(player, 10_000);
 
-    player.emitTimedMetadata({ ...RADIO_B, transition: 'ambiguous' });
+    player.emitTimedMetadata({ ...RADIO_B, transition: "ambiguous" });
     play(player, 300_000);
 
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+    expect(scrobbles()[0].get("track")).toBe("Radio Song B");
   });
 
-  it('invalidates boundary eligibility when Last.fm is enabled mid-song', async () => {
+  it("invalidates boundary eligibility when Last.fm is enabled mid-song", async () => {
     const { lastfm, player } = await startIntegration();
     player.emitNowPlaying(RADIO_STATION);
     player.emitPlaybackState(PlaybackState.Playing);
@@ -492,7 +516,7 @@ describe('radio scrobble submission', () => {
     expect(scrobbles()).toHaveLength(0);
   });
 
-  it('confirms a pending boundary after Last.fm is re-enabled', async () => {
+  it("confirms a pending boundary after Last.fm is re-enabled", async () => {
     const { lastfm, player } = await startIntegration();
     player.emitNowPlaying(RADIO_STATION);
     player.emitPlaybackState(PlaybackState.Playing);
@@ -509,10 +533,10 @@ describe('radio scrobble submission', () => {
     play(player, 1_000);
 
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+    expect(scrobbles()[0].get("track")).toBe("Radio Song B");
   });
 
-  it('starts radio timing again when the Last.fm session changes', async () => {
+  it("starts radio timing again when the Last.fm session changes", async () => {
     const { lastfm, player } = await startIntegration();
     player.emitNowPlaying(RADIO_STATION);
     player.emitPlaybackState(PlaybackState.Playing);
@@ -522,9 +546,14 @@ describe('radio scrobble submission', () => {
 
     lastfm.disconnect();
     session.enabled = true;
-    respondToAuth(() => new Response(JSON.stringify({
-      session: { key: 'new-key', name: 'wimpy' },
-    })));
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({
+            session: { key: "new-key", name: "wimpy" },
+          }),
+        ),
+    );
     lastfm.startAuth();
     await flush();
     play(player, 60_000);
@@ -533,10 +562,10 @@ describe('radio scrobble submission', () => {
 
     play(player, 180_000);
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('sk')).toBe('new-key');
+    expect(scrobbles()[0].get("sk")).toBe("new-key");
   });
 
-  it('excludes a pause from the four-minute radio threshold', async () => {
+  it("excludes a pause from the four-minute radio threshold", async () => {
     const player = await startRadio();
     reachCleanSong(player);
     play(player, 120_000);
@@ -551,7 +580,7 @@ describe('radio scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
-  it('invalidates a pending boundary when seeking follows its metadata', async () => {
+  it("invalidates a pending boundary when seeking follows its metadata", async () => {
     const player = await startRadio();
     reachCleanSong(player);
     play(player, 31_000);
@@ -563,42 +592,48 @@ describe('radio scrobble submission', () => {
     play(player, 300_000);
 
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song C');
+    expect(scrobbles()[0].get("track")).toBe("Radio Song C");
   });
 
   it.each([
-    ['backwards', 0],
-    ['too far forwards', 3_600_000_000],
-  ])('rejects a pending boundary when the position jumps %s', async (_description, positionUs) => {
-    const player = await startRadio();
-    reachCleanSong(player);
-    play(player, 31_000);
+    ["backwards", 0],
+    ["too far forwards", 3_600_000_000],
+  ])(
+    "rejects a pending boundary when the position jumps %s",
+    async (_description, positionUs) => {
+      const player = await startRadio();
+      reachCleanSong(player);
+      play(player, 31_000);
 
-    player.emitTimedMetadata(RADIO_C);
-    player.setPositionUs(positionUs);
-    play(player, 300_000);
+      player.emitTimedMetadata(RADIO_C);
+      player.setPositionUs(positionUs);
+      play(player, 300_000);
 
-    expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song C');
-  });
+      expect(scrobbles()).toHaveLength(1);
+      expect(scrobbles()[0].get("track")).toBe("Radio Song C");
+    },
+  );
 
   it.each([
     [30_000, 0],
     [30_001, 1],
-  ])('submits %i ms at a clean boundary %i time(s)', async (playedMs, expected) => {
-    const player = await startRadio();
-    play(player, 10_000);
-    player.emitTimedMetadata(RADIO_B);
-    playExact(player, 1);
-    playExact(player, playedMs - 1);
+  ])(
+    "submits %i ms at a clean boundary %i time(s)",
+    async (playedMs, expected) => {
+      const player = await startRadio();
+      play(player, 10_000);
+      player.emitTimedMetadata(RADIO_B);
+      playExact(player, 1);
+      playExact(player, playedMs - 1);
 
-    player.emitTimedMetadata(RADIO_C);
-    playExact(player, 1);
+      player.emitTimedMetadata(RADIO_C);
+      playExact(player, 1);
 
-    expect(scrobbles()).toHaveLength(expected);
-  });
+      expect(scrobbles()).toHaveLength(expected);
+    },
+  );
 
-  it('submits at 240,000 ms but not at 239,999 ms', async () => {
+  it("submits at 240,000 ms but not at 239,999 ms", async () => {
     const player = await startRadio();
     reachCleanSong(player);
 
@@ -609,7 +644,7 @@ describe('radio scrobble submission', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
-  it('treats the first metadata after a seek as a partial song', async () => {
+  it("treats the first metadata after a seek as a partial song", async () => {
     const player = await startRadio();
 
     player.emitPlaybackState(PlaybackState.Seeking);
@@ -619,35 +654,39 @@ describe('radio scrobble submission', () => {
     play(player, 300_000);
 
     expect(scrobbles()).toHaveLength(1);
-    expect(scrobbles()[0].get('track')).toBe('Radio Song B');
+    expect(scrobbles()[0].get("track")).toBe("Radio Song B");
   });
 
-  it('retains chosenByUser in a queued radio scrobble', async () => {
+  it("retains chosenByUser in a queued radio scrobble", async () => {
     const player = await startRadio();
     reachCleanSong(player);
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
-      const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
-      return method === 'track.scrobble'
-        ? Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'))
-        : Promise.resolve(new Response('{}'));
+      const method = new URLSearchParams(
+        typeof init?.body === "string" ? init.body : "",
+      ).get("method");
+      return method === "track.scrobble"
+        ? Promise.reject(new Error("net::ERR_INTERNET_DISCONNECTED"))
+        : Promise.resolve(new Response("{}"));
     });
 
     play(player, 240_000);
     await flush();
 
     expect(queue.pending).toEqual([
-      expect.objectContaining({ track: 'Radio Song B', chosenByUser: 0 }),
+      expect.objectContaining({ track: "Radio Song B", chosenByUser: 0 }),
     ]);
 
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("{}")),
+    );
     player.emitNowPlaying(TRACK);
     await flush();
 
-    const batch = scrobbles().find((params) => params.has('track[0]'));
-    expect(batch?.get('chosenByUser[0]')).toBe('0');
+    const batch = scrobbles().find((params) => params.has("track[0]"));
+    expect(batch?.get("chosenByUser[0]")).toBe("0");
   });
 
-  it('clears radio state and listeners on document replacement and quit', async () => {
+  it("clears radio state and listeners on document replacement and quit", async () => {
     const player = await startRadio();
     reachCleanSong(player);
 
@@ -657,9 +696,9 @@ describe('radio scrobble submission', () => {
     expect(scrobbles()).toHaveLength(0);
 
     quit();
-    expect(player.listenerCount('timedMetadataDidChange')).toBe(0);
+    expect(player.listenerCount("timedMetadataDidChange")).toBe(0);
     player.emitTimedMetadata(RADIO_C);
-    expect(nowPlayingRequests().at(-1)?.get('track')).toBe('Radio Song B');
+    expect(nowPlayingRequests().at(-1)?.get("track")).toBe("Radio Song B");
   });
 });
 
@@ -667,12 +706,17 @@ describe('radio scrobble submission', () => {
 function nowPlayingRequests(): URLSearchParams[] {
   return vi
     .mocked(net.fetch)
-    .mock.calls.map(([, init]) => new URLSearchParams(typeof init?.body === 'string' ? init.body : ''))
-    .filter((params) => params.get('method') === 'track.updateNowPlaying');
+    .mock.calls.map(
+      ([, init]) =>
+        new URLSearchParams(typeof init?.body === "string" ? init.body : ""),
+    )
+    .filter((params) => params.get("method") === "track.updateNowPlaying");
 }
 
 /** Starts playing `payload` and returns the one now-playing request it sends. */
-async function nowPlayingFor(payload: NowPlayingPayload): Promise<URLSearchParams> {
+async function nowPlayingFor(
+  payload: NowPlayingPayload,
+): Promise<URLSearchParams> {
   const { player } = await startIntegration();
 
   player.emitNowPlaying(payload);
@@ -683,46 +727,46 @@ async function nowPlayingFor(payload: NowPlayingPayload): Promise<URLSearchParam
   return sent[0];
 }
 
-describe('now playing request', () => {
+describe("now playing request", () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
-  it('names the track, the album, the duration and the session', async () => {
+  it("names the track, the album, the duration and the session", async () => {
     const params = await nowPlayingFor(TRACK);
 
-    expect(params.get('method')).toBe('track.updateNowPlaying');
-    expect(params.get('artist')).toBe('New Order');
-    expect(params.get('track')).toBe('Blue Monday');
-    expect(params.get('album')).toBe('Power, Corruption & Lies');
-    expect(params.get('duration')).toBe('400');
-    expect(params.get('api_key')).toBe('test-key');
-    expect(params.get('sk')).toBe('session-key');
+    expect(params.get("method")).toBe("track.updateNowPlaying");
+    expect(params.get("artist")).toBe("New Order");
+    expect(params.get("track")).toBe("Blue Monday");
+    expect(params.get("album")).toBe("Power, Corruption & Lies");
+    expect(params.get("duration")).toBe("400");
+    expect(params.get("api_key")).toBe("test-key");
+    expect(params.get("sk")).toBe("session-key");
     // This request says what is playing now, not what was played, so Last.fm
     // takes no timestamp on it.
-    expect(params.has('timestamp')).toBe(false);
+    expect(params.has("timestamp")).toBe(false);
   });
 
-  it('omits the album when the track has none', async () => {
+  it("omits the album when the track has none", async () => {
     const params = await nowPlayingFor(SHORT_TRACK);
 
-    expect(params.has('album')).toBe(false);
+    expect(params.has("album")).toBe(false);
   });
 
-  it('omits the duration when the track reports none', async () => {
+  it("omits the duration when the track reports none", async () => {
     const params = await nowPlayingFor({ ...TRACK, durationInMillis: 0 });
 
-    expect(params.has('duration')).toBe(false);
+    expect(params.has("duration")).toBe(false);
   });
 
-  it('sends a duration of 0 for a track under half a second', async () => {
+  it("sends a duration of 0 for a track under half a second", async () => {
     // Now-playing retains a duration that rounds to zero, while trackParams() omits it for scrobbles.
     // A 400ms track distinguishes the two request formats.
     const params = await nowPlayingFor({ ...TRACK, durationInMillis: 400 });
 
-    expect(params.get('duration')).toBe('0');
+    expect(params.get("duration")).toBe("0");
   });
 
-  it('aborts a now-playing request that does not settle', async () => {
+  it("aborts a now-playing request that does not settle", async () => {
     const { player } = await startIntegration();
     let signal: AbortSignal | null | undefined;
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
@@ -742,14 +786,18 @@ describe('now playing request', () => {
 
 /** A Last.fm API refusal: HTTP 200 with an error code in the body. */
 function apiError(code: number): Response {
-  return new Response(JSON.stringify({ error: code, message: 'refused' }));
+  return new Response(JSON.stringify({ error: code, message: "refused" }));
 }
 
 /** Refuses scrobbles with `code` while still accepting now-playing updates. */
 function refuseScrobbles(code: number): void {
   vi.mocked(net.fetch).mockImplementation((_input, init) => {
-    const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
-    return Promise.resolve(method === 'track.scrobble' ? apiError(code) : new Response('{}'));
+    const method = new URLSearchParams(
+      typeof init?.body === "string" ? init.body : "",
+    ).get("method");
+    return Promise.resolve(
+      method === "track.scrobble" ? apiError(code) : new Response("{}"),
+    );
   });
 }
 
@@ -758,9 +806,13 @@ async function flush(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
 }
 
-function hangUntilAbort(signal: AbortSignal | null | undefined): Promise<Response> {
+function hangUntilAbort(
+  signal: AbortSignal | null | undefined,
+): Promise<Response> {
   return new Promise<Response>((_resolve, reject) => {
-    signal?.addEventListener('abort', () => reject(new Error('The operation was aborted.')));
+    signal?.addEventListener("abort", () =>
+      reject(new Error("The operation was aborted.")),
+    );
   });
 }
 
@@ -771,11 +823,11 @@ function playPastThreshold(player: FakePlayer): void {
   play(player, 210_000);
 }
 
-describe('revoked session', () => {
+describe("revoked session", () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
-  it('disconnects the account when the API returns error 9', async () => {
+  it("disconnects the account when the API returns error 9", async () => {
     const { player, lastfm } = await startIntegration();
     const changed = vi.fn();
     lastfm.setStateChangedCallback(changed);
@@ -792,7 +844,7 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
-  it('constructs no notification for the forced failure when no daemon is available', async () => {
+  it("constructs no notification for the forced failure when no daemon is available", async () => {
     const { player } = await startIntegration();
     notifyFake.available = false;
     refuseScrobbles(9);
@@ -806,11 +858,13 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).not.toHaveBeenCalled();
   });
 
-  it('notifies once when requests already in flight are refused too', async () => {
+  it("notifies once when requests already in flight are refused too", async () => {
     const { player } = await startIntegration();
 
     const pending: Array<(response: Response) => void> = [];
-    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => pending.push(resolve)));
+    vi.mocked(net.fetch).mockImplementation(
+      () => new Promise<Response>((resolve) => pending.push(resolve)),
+    );
 
     playPastThreshold(player);
 
@@ -824,11 +878,13 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a reconnected session when a request signed with the old key is refused', async () => {
+  it("keeps a reconnected session when a request signed with the old key is refused", async () => {
     const { lastfm, player } = await startIntegration();
 
     const pending: Array<(response: Response) => void> = [];
-    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => pending.push(resolve)));
+    vi.mocked(net.fetch).mockImplementation(
+      () => new Promise<Response>((resolve) => pending.push(resolve)),
+    );
 
     // The now-playing update and the scrobble are both signed with the key the
     // account is connected with, and both are still awaiting a response.
@@ -842,28 +898,35 @@ describe('revoked session', () => {
 
     // The user reconnects from the tray and approves a new key. The tray sets
     // the preference before starting the flow, as buildLastfmSubmenu does.
-    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'wimpy' } })));
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({ session: { key: "new-key", name: "wimpy" } }),
+        ),
+    );
     session.enabled = true;
     lastfm.startAuth();
     await flush();
-    expect(session.key).toBe('new-key');
+    expect(session.key).toBe("new-key");
 
     // Only now does the second request fail, still carrying the dead key. It
     // says nothing about the session that replaced it.
     pending[1](apiError(9));
     await flush();
 
-    expect(session.key).toBe('new-key');
+    expect(session.key).toBe("new-key");
     expect(session.enabled).toBe(true);
     // The failure and the reconnection, and nothing from the stale refusal.
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps a reconnected session when Last.fm hands back the key it refused', async () => {
+  it("keeps a reconnected session when Last.fm hands back the key it refused", async () => {
     const { lastfm, player } = await startIntegration();
 
     const pending: Array<(response: Response) => void> = [];
-    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => pending.push(resolve)));
+    vi.mocked(net.fetch).mockImplementation(
+      () => new Promise<Response>((resolve) => pending.push(resolve)),
+    );
 
     playPastThreshold(player);
     expect(pending).toHaveLength(2);
@@ -876,11 +939,16 @@ describe('revoked session', () => {
     // The user reconnects the same account and Last.fm returns the key it
     // issued before: a session key belongs to the account, not to the
     // authorisation, so re-approving Sidra hands the same one back.
-    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'session-key', name: 'wimpy' } })));
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({ session: { key: "session-key", name: "wimpy" } }),
+        ),
+    );
     session.enabled = true;
     lastfm.startAuth();
     await flush();
-    expect(session.key).toBe('session-key');
+    expect(session.key).toBe("session-key");
 
     // The reconnected session earns a play the network drops, so it has a queue
     // of its own for the stale refusal to empty.
@@ -896,24 +964,29 @@ describe('revoked session', () => {
     pending[1](apiError(9));
     await flush();
 
-    expect(session.key).toBe('session-key');
+    expect(session.key).toBe("session-key");
     expect(session.enabled).toBe(true);
     expect(queue.pending).toHaveLength(1);
     // The failure and the reconnection, and nothing from the stale refusal.
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(2);
   });
 
-  it('disconnects when the refusal belongs to the reconnected session', async () => {
+  it("disconnects when the refusal belongs to the reconnected session", async () => {
     const { lastfm, player } = await startIntegration();
 
     // Reconnecting the same account moves the generation on while leaving the
     // stored key exactly as it was, so only a live refusal may act from here.
     lastfm.disconnect();
-    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'session-key', name: 'wimpy' } })));
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({ session: { key: "session-key", name: "wimpy" } }),
+        ),
+    );
     session.enabled = true;
     lastfm.startAuth();
     await flush();
-    expect(session.key).toBe('session-key');
+    expect(session.key).toBe("session-key");
 
     vi.mocked(Notification).mockClear();
     refuseScrobbles(9);
@@ -925,7 +998,7 @@ describe('revoked session', () => {
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the session through a transient error', async () => {
+  it("keeps the session through a transient error", async () => {
     const { player } = await startIntegration();
     // 16: the service is temporarily unavailable, so the session is still good.
     refuseScrobbles(16);
@@ -933,12 +1006,12 @@ describe('revoked session', () => {
     playPastThreshold(player);
     await flush();
 
-    expect(session.key).toBe('session-key');
+    expect(session.key).toBe("session-key");
     expect(session.enabled).toBe(true);
     expect(vi.mocked(Notification)).not.toHaveBeenCalled();
   });
 
-  it('submits a track once, even when that submission fails', async () => {
+  it("submits a track once, even when that submission fails", async () => {
     const { player } = await startIntegration();
     // 6: invalid parameters, a refusal of this play rather than a report on the
     // service, so nothing queues it and only a re-arm could submit it again.
@@ -958,25 +1031,32 @@ describe('revoked session', () => {
     expect(scrobbles()).toHaveLength(1);
   });
 
-  it('reports the HTTP status when a failure carries no JSON body', async () => {
+  it("reports the HTTP status when a failure carries no JSON body", async () => {
     const { player } = await startIntegration();
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('<html>500</html>', { status: 500 })));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("<html>500</html>", { status: 500 })),
+    );
 
     playPastThreshold(player);
     await flush();
 
-    const logged = vi.mocked(log.scope('lastfm').warn).mock.calls.flat().join(' ');
-    expect(logged).toContain('HTTP 500');
+    const logged = vi
+      .mocked(log.scope("lastfm").warn)
+      .mock.calls.flat()
+      .join(" ");
+    expect(logged).toContain("HTTP 500");
   });
 
-  it('keeps the session through a failure with no JSON body', async () => {
+  it("keeps the session through a failure with no JSON body", async () => {
     const { player } = await startIntegration();
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('<html>502</html>', { status: 502 })));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("<html>502</html>", { status: 502 })),
+    );
 
     playPastThreshold(player);
     await flush();
 
-    expect(session.key).toBe('session-key');
+    expect(session.key).toBe("session-key");
     expect(session.enabled).toBe(true);
     expect(vi.mocked(Notification)).not.toHaveBeenCalled();
   });
@@ -988,16 +1068,18 @@ describe('revoked session', () => {
  */
 function failScrobbleTransport(): void {
   vi.mocked(net.fetch).mockImplementation((_input, init) => {
-    const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
-    return method === 'track.scrobble'
-      ? Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'))
-      : Promise.resolve(new Response('{}'));
+    const method = new URLSearchParams(
+      typeof init?.body === "string" ? init.body : "",
+    ).get("method");
+    return method === "track.scrobble"
+      ? Promise.reject(new Error("net::ERR_INTERNET_DISCONNECTED"))
+      : Promise.resolve(new Response("{}"));
   });
 }
 
 /** The batched track.scrobble requests, which carry indexed parameter names. */
 function batches(): URLSearchParams[] {
-  return scrobbles().filter((params) => params.has('artist[0]'));
+  return scrobbles().filter((params) => params.has("artist[0]"));
 }
 
 /**
@@ -1008,14 +1090,18 @@ function batches(): URLSearchParams[] {
  */
 function answerBatchWith(body: string): void {
   vi.mocked(net.fetch).mockImplementation((_input, init) => {
-    const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
-    return Promise.resolve(params.has('artist[0]') ? new Response(body) : new Response('{}'));
+    const params = new URLSearchParams(
+      typeof init?.body === "string" ? init.body : "",
+    );
+    return Promise.resolve(
+      params.has("artist[0]") ? new Response(body) : new Response("{}"),
+    );
   });
 }
 
 /** Everything the integration logged, joined: one mock stands behind every level. */
 function loggedLines(): string {
-  return vi.mocked(log.scope('lastfm').info).mock.calls.flat().join(' ');
+  return vi.mocked(log.scope("lastfm").info).mock.calls.flat().join(" ");
 }
 
 /**
@@ -1031,11 +1117,16 @@ function loggedLines(): string {
 function holdBatches(): Array<(response: Response) => void> {
   const held: Array<(response: Response) => void> = [];
   vi.mocked(net.fetch).mockImplementation((input, init) => {
-    const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
-    if (params.has('artist[0]')) return new Promise<Response>((resolve) => held.push(resolve));
-    if (params.get('method') === 'track.scrobble') return Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED'));
-    if (String(input).includes('auth.')) return authResponse(input, 'new-key', 'someone-else');
-    return Promise.resolve(new Response('{}'));
+    const params = new URLSearchParams(
+      typeof init?.body === "string" ? init.body : "",
+    );
+    if (params.has("artist[0]"))
+      return new Promise<Response>((resolve) => held.push(resolve));
+    if (params.get("method") === "track.scrobble")
+      return Promise.reject(new Error("net::ERR_INTERNET_DISCONNECTED"));
+    if (String(input).includes("auth."))
+      return authResponse(input, "new-key", "someone-else");
+    return Promise.resolve(new Response("{}"));
   });
   return held;
 }
@@ -1053,7 +1144,7 @@ function holdBatches(): Array<(response: Response) => void> {
  * drains.
  */
 async function drainHeldAcrossReconnect(
-  lastfm: typeof import('../src/integrations/lastfm'),
+  lastfm: typeof import("../src/integrations/lastfm"),
   player: FakePlayer,
 ): Promise<Array<(response: Response) => void>> {
   const held = holdBatches();
@@ -1079,11 +1170,11 @@ async function drainHeldAcrossReconnect(
   return held;
 }
 
-describe('queued scrobbles', () => {
+describe("queued scrobbles", () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
-  it('keeps a play the request never delivered', async () => {
+  it("keeps a play the request never delivered", async () => {
     const { player } = await startIntegration();
     failScrobbleTransport();
 
@@ -1094,17 +1185,21 @@ describe('queued scrobbles', () => {
     // track, so dropping it would cost the user a play for a network blip.
     expect(queue.pending).toHaveLength(1);
     expect(queue.pending[0]).toMatchObject({
-      artist: 'New Order',
-      track: 'Blue Monday',
+      artist: "New Order",
+      track: "Blue Monday",
       timestamp: Number(START_UNIX),
     });
   });
 
-  it('queues a live scrobble when its request times out', async () => {
+  it("queues a live scrobble when its request times out", async () => {
     const { player } = await startIntegration();
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
-      const method = new URLSearchParams(typeof init?.body === 'string' ? init.body : '').get('method');
-      return method === 'track.scrobble' ? hangUntilAbort(init?.signal) : Promise.resolve(new Response('{}'));
+      const method = new URLSearchParams(
+        typeof init?.body === "string" ? init.body : "",
+      ).get("method");
+      return method === "track.scrobble"
+        ? hangUntilAbort(init?.signal)
+        : Promise.resolve(new Response("{}"));
     });
 
     playPastThreshold(player);
@@ -1114,10 +1209,10 @@ describe('queued scrobbles', () => {
     await vi.advanceTimersByTimeAsync(30_000);
 
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Blue Monday');
+    expect(queue.pending[0].track).toBe("Blue Monday");
   });
 
-  it('drops a play the API refused', async () => {
+  it("drops a play the API refused", async () => {
     const { player } = await startIntegration();
     // 6: invalid parameters. Last.fm judged this play and refused it, so no
     // later request can make it land and the track is spent.
@@ -1129,7 +1224,7 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('keeps a play a temporary service error never recorded', async () => {
+  it("keeps a play a temporary service error never recorded", async () => {
     const { player } = await startIntegration();
     // 16: the service is temporarily unavailable. It answered about itself, not
     // about the play, so the play is as unrecorded as one the network dropped.
@@ -1140,15 +1235,17 @@ describe('queued scrobbles', () => {
 
     expect(queue.pending).toHaveLength(1);
     expect(queue.pending[0]).toMatchObject({
-      artist: 'New Order',
-      track: 'Blue Monday',
+      artist: "New Order",
+      track: "Blue Monday",
       timestamp: Number(START_UNIX),
     });
   });
 
-  it('keeps a batch a temporary service error never recorded, and submits it once the service answers', async () => {
-    // A previous run left this behind, so the first request out drains it.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("keeps a batch a temporary service error never recorded, and submits it once the service answers", async () => {
+    // A persisted entry makes the first outbound request drain the queue.
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
     // 11: service offline.
@@ -1160,7 +1257,7 @@ describe('queued scrobbles', () => {
 
     expect(batches()).toHaveLength(1);
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Ceremony');
+    expect(queue.pending[0].track).toBe("Ceremony");
 
     // Nothing re-fires on the failure: the batch waits for the next request the
     // user's own playback triggers, which is what stops it wedging the queue.
@@ -1168,18 +1265,22 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(1);
 
     // The service comes back and the next now-playing update carries it out.
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("{}")),
+    );
     player.setPositionUs(0);
     player.emitNowPlaying(SHORT_TRACK);
     await flush();
 
     expect(batches()).toHaveLength(2);
-    expect(batches()[1].get('track[0]')).toBe('Ceremony');
+    expect(batches()[1].get("track[0]")).toBe("Ceremony");
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('keeps a batch the API key was rejected on, and submits it once the key works again', async () => {
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("keeps a batch the API key was rejected on, and submits it once the key works again", async () => {
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
     // 10: invalid API key. That is Sidra's own credential, not a judgement on
@@ -1192,9 +1293,9 @@ describe('queued scrobbles', () => {
 
     expect(batches()).toHaveLength(1);
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Ceremony');
+    expect(queue.pending[0].track).toBe("Ceremony");
     // The user's account is untouched: the fault is in the application key.
-    expect(session.key).toBe('session-key');
+    expect(session.key).toBe("session-key");
     expect(session.enabled).toBe(true);
 
     // Nothing re-fires on the failure: the batch waits for the next request the
@@ -1203,18 +1304,22 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(1);
 
     // The key is accepted again and the next now-playing update carries it out.
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("{}")),
+    );
     player.setPositionUs(0);
     player.emitNowPlaying(SHORT_TRACK);
     await flush();
 
     expect(batches()).toHaveLength(2);
-    expect(batches()[1].get('track[0]')).toBe('Ceremony');
+    expect(batches()[1].get("track[0]")).toBe("Ceremony");
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('keeps a batch the API key was suspended on', async () => {
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("keeps a batch the API key was suspended on", async () => {
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
     // 26: suspended API key. A suspension is lifted server-side, so these plays
@@ -1228,8 +1333,8 @@ describe('queued scrobbles', () => {
 
     expect(batches()).toHaveLength(1);
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Ceremony');
-    expect(session.key).toBe('session-key');
+    expect(queue.pending[0].track).toBe("Ceremony");
+    expect(session.key).toBe("session-key");
     expect(session.enabled).toBe(true);
 
     // Nothing re-fires while the suspension stands.
@@ -1237,8 +1342,10 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(1);
   });
 
-  it('drops a batch the API refused', async () => {
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("drops a batch the API refused", async () => {
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
     // 6: invalid parameters. No later drain can make this batch land, so
@@ -1253,8 +1360,10 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('drops a batch and disconnects when the API rejects the session key', async () => {
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("drops a batch and disconnects when the API rejects the session key", async () => {
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
     refuseScrobbles(9);
@@ -1267,7 +1376,7 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('submits a queued play with its original timestamp once a request succeeds', async () => {
+  it("submits a queued play with its original timestamp once a request succeeds", async () => {
     const { player } = await startIntegration();
     failScrobbleTransport();
 
@@ -1278,24 +1387,27 @@ describe('queued scrobbles', () => {
     // the queue out with it. Nothing else would: no timer retries. Only what
     // the recovered network carries counts, so the earlier attempts go.
     vi.mocked(net.fetch).mockClear();
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("{}")),
+    );
     player.setPositionUs(0);
     player.emitNowPlaying(SHORT_TRACK);
     await flush();
 
     const submitted = batches();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('artist[0]')).toBe('New Order');
-    expect(submitted[0].get('track[0]')).toBe('Blue Monday');
+    expect(submitted[0].get("artist[0]")).toBe("New Order");
+    expect(submitted[0].get("track[0]")).toBe("Blue Monday");
     // The timestamp is when the play started, not when it was finally sent.
-    expect(submitted[0].get('timestamp[0]')).toBe(START_UNIX);
+    expect(submitted[0].get("timestamp[0]")).toBe(START_UNIX);
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('submits a play queued before the app restarted', async () => {
-    // A previous run left this behind, which is the whole point of persisting
-    // the queue: a dropped connection often ends in a restart.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("submits a play queued before the app restarted", async () => {
+    // A persisted entry survives a restart after a dropped connection.
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
 
@@ -1305,18 +1417,18 @@ describe('queued scrobbles', () => {
 
     const submitted = batches();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('track[0]')).toBe('Ceremony');
-    expect(submitted[0].get('timestamp[0]')).toBe('1700000000');
+    expect(submitted[0].get("track[0]")).toBe("Ceremony");
+    expect(submitted[0].get("timestamp[0]")).toBe("1700000000");
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('sends at most 50 plays in one request and leaves the surplus queued', async () => {
+  it("sends at most 50 plays in one request and leaves the surplus queued", async () => {
     // A hand-edited or older config.json is the only way past the cap, and
     // Last.fm refuses a request carrying more than 50 tracks. Sending the whole
     // queue would lose the backlog to a refusal, or resend the same over-long
     // batch forever when the request never reached Last.fm at all.
     queue.pending = Array.from({ length: 60 }, (_, i) => ({
-      artist: 'New Order',
+      artist: "New Order",
       track: `Track ${i}`,
       timestamp: 1_700_000_000 + i,
     }));
@@ -1329,25 +1441,25 @@ describe('queued scrobbles', () => {
 
     const submitted = batches();
     expect(submitted).toHaveLength(1);
-    expect(submitted[0].get('track[49]')).toBe('Track 49');
-    expect(submitted[0].has('artist[50]')).toBe(false);
+    expect(submitted[0].get("track[49]")).toBe("Track 49");
+    expect(submitted[0].has("artist[50]")).toBe(false);
 
     // The 10 the batch left behind go out with the next request playback
     // triggers. Nothing here schedules that: one batch per drain.
     expect(queue.pending).toHaveLength(10);
-    expect(queue.pending[0].track).toBe('Track 50');
-    expect(queue.pending[9].track).toBe('Track 59');
+    expect(queue.pending[0].track).toBe("Track 50");
+    expect(queue.pending[9].track).toBe("Track 59");
 
     player.setPositionUs(0);
     player.emitNowPlaying(SHORT_TRACK);
     await flush();
 
     expect(batches()).toHaveLength(2);
-    expect(batches()[1].get('track[0]')).toBe('Track 50');
+    expect(batches()[1].get("track[0]")).toBe("Track 50");
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('holds the newest 50 plays and submits none of them twice', async () => {
+  it("holds the newest 50 plays and submits none of them twice", async () => {
     const { player } = await startIntegration();
     failScrobbleTransport();
 
@@ -1359,20 +1471,22 @@ describe('queued scrobbles', () => {
       await flush();
     }
 
-    // Last.fm accepts at most 50 plays per batch. The queue keeps the newest 50 by dropping the oldest play on overflow.
+    // Last.fm accepts at most 50 plays per batch. The queue drops the oldest play on overflow to keep the newest 50.
     expect(queue.pending).toHaveLength(50);
-    expect(queue.pending[0].track).toBe('Track 1');
-    expect(queue.pending[49].track).toBe('Track 50');
+    expect(queue.pending[0].track).toBe("Track 1");
+    expect(queue.pending[49].track).toBe("Track 50");
 
     // Only what the recovered network carries counts from here.
     vi.mocked(net.fetch).mockClear();
-    vi.mocked(net.fetch).mockImplementation(() => Promise.resolve(new Response('{}')));
+    vi.mocked(net.fetch).mockImplementation(() =>
+      Promise.resolve(new Response("{}")),
+    );
     player.setPositionUs(0);
     player.emitNowPlaying(TRACK);
     await flush();
 
     expect(batches()).toHaveLength(1);
-    expect(batches()[0].get('track[49]')).toBe('Track 50');
+    expect(batches()[0].get("track[49]")).toBe("Track 50");
     expect(queue.pending).toHaveLength(0);
 
     // The request after the drain finds an empty queue, so no play is sent a
@@ -1384,11 +1498,11 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(1);
   });
 
-  it('keeps a play queued while a full queue was draining', async () => {
-    // A previous run left the queue at its cap, so the drain covers every slot
-    // and a play queued while it is in flight has to displace one of them.
+  it("keeps a play queued while a full queue was draining", async () => {
+    // A queue at its cap makes the in-flight drain cover every slot.
+    // A new play must then displace one submitted entry without being dropped on settlement.
     queue.pending = Array.from({ length: 50 }, (_, i) => ({
-      artist: 'New Order',
+      artist: "New Order",
       track: `Track ${i}`,
       timestamp: 1_700_000_000 + i,
     }));
@@ -1408,22 +1522,22 @@ describe('queued scrobbles', () => {
     play(player, 210_000);
     await flush();
     expect(queue.pending).toHaveLength(50);
-    expect(queue.pending[49].track).toBe('Blue Monday');
+    expect(queue.pending[49].track).toBe("Blue Monday");
 
-    held[0](new Response('{}'));
+    held[0](new Response("{}"));
     await flush();
 
     // The drain removes the plays it submitted and nothing else. Last.fm never
     // saw the one that failed mid-flight, so dropping it would cost a play.
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Blue Monday');
+    expect(queue.pending[0].track).toBe("Blue Monday");
   });
 
-  it('keeps a play queued for the new account when a drain from the old one settles', async () => {
-    // A previous run left plays behind, so the first request out drains them.
+  it("keeps a play queued for the new account when a drain from the old one settles", async () => {
+    // Persisted entries make the first outbound request drain the queue.
     queue.pending = [
-      { artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 },
-      { artist: 'New Order', track: 'Procession', timestamp: 1_700_000_100 },
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+      { artist: "New Order", track: "Procession", timestamp: 1_700_000_100 },
     ];
 
     const { lastfm, player } = await startIntegration();
@@ -1444,7 +1558,7 @@ describe('queued scrobbles', () => {
     session.enabled = true;
     lastfm.startAuth();
     await flush();
-    expect(session.key).toBe('new-key');
+    expect(session.key).toBe("new-key");
 
     // The new account plays a track and the network drops the scrobble, so the
     // queue now holds a play that belongs to them alone.
@@ -1457,16 +1571,18 @@ describe('queued scrobbles', () => {
     // The old account's drain finally answers. It submitted plays that left
     // with the account, so it takes nothing off a queue that is no longer its
     // own.
-    held[0](new Response('{}'));
+    held[0](new Response("{}"));
     await flush();
 
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Temptation');
+    expect(queue.pending[0].track).toBe("Temptation");
   });
 
-  it('drains the new account queue while a drain from the old one is still out', async () => {
-    // A previous run left a play behind, so the first request out drains it.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("drains the new account queue while a drain from the old one is still out", async () => {
+    // A persisted entry makes the first outbound request drain the queue.
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { lastfm, player } = await startIntegration();
 
@@ -1478,16 +1594,18 @@ describe('queued scrobbles', () => {
     // account's plays for as long as it stays out, and forever if it never
     // settles.
     expect(held).toHaveLength(2);
-    expect(batches()[1].get('track[0]')).toBe('Temptation');
+    expect(batches()[1].get("track[0]")).toBe("Temptation");
 
-    held[1](new Response('{}'));
+    held[1](new Response("{}"));
     await flush();
 
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('starts no second live drain when the old account drain settles late', async () => {
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("starts no second live drain when the old account drain settles late", async () => {
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { lastfm, player } = await startIntegration();
 
@@ -1496,11 +1614,11 @@ describe('queued scrobbles', () => {
 
     // The old account's drain finally answers while the live one is still out.
     // It only ever held its own place, so the live drain keeps the queue.
-    held[0](new Response('{}'));
+    held[0](new Response("{}"));
     await flush();
 
     player.setPositionUs(0);
-    player.emitNowPlaying({ ...SHORT_TRACK, name: 'Leave Me Alone' });
+    player.emitNowPlaying({ ...SHORT_TRACK, name: "Leave Me Alone" });
     await flush();
 
     // Two live drains at once would share the mid-drain trim count between
@@ -1509,17 +1627,21 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(1);
   });
 
-  it('queues no play for the account that has gone', async () => {
+  it("queues no play for the account that has gone", async () => {
     const { lastfm, player } = await startIntegration();
 
     // The live scrobble is held open, and auth answers so a different account
     // can be linked while it is still out.
     const held: Array<(err: Error) => void> = [];
     vi.mocked(net.fetch).mockImplementation((input, init) => {
-      const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
-      if (params.get('method') === 'track.scrobble') return new Promise<Response>((_ok, fail) => held.push(fail));
-      if (String(input).includes('auth.')) return authResponse(input, 'new-key', 'someone-else');
-      return Promise.resolve(new Response('{}'));
+      const params = new URLSearchParams(
+        typeof init?.body === "string" ? init.body : "",
+      );
+      if (params.get("method") === "track.scrobble")
+        return new Promise<Response>((_ok, fail) => held.push(fail));
+      if (String(input).includes("auth."))
+        return authResponse(input, "new-key", "someone-else");
+      return Promise.resolve(new Response("{}"));
     });
 
     playPastThreshold(player);
@@ -1530,18 +1652,18 @@ describe('queued scrobbles', () => {
     session.enabled = true;
     lastfm.startAuth();
     await flush();
-    expect(session.key).toBe('new-key');
+    expect(session.key).toBe("new-key");
 
     // The network finally gives up on the request the old account made. That
     // play belongs to an account Sidra no longer holds, so it cannot go on a
     // queue the next request submits under someone else's key.
-    held[0](new Error('net::ERR_INTERNET_DISCONNECTED'));
+    held[0](new Error("net::ERR_INTERNET_DISCONNECTED"));
     await flush();
 
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('sends no queued play to the account connected after a disconnect', async () => {
+  it("sends no queued play to the account connected after a disconnect", async () => {
     const { lastfm, player } = await startIntegration();
     failScrobbleTransport();
 
@@ -1559,7 +1681,12 @@ describe('queued scrobbles', () => {
     // back. Only what it carries from here counts: the attempts made while it
     // was down were addressed to the account that has gone.
     vi.mocked(net.fetch).mockClear();
-    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'someone-else' } })));
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({ session: { key: "new-key", name: "someone-else" } }),
+        ),
+    );
     session.enabled = true;
     lastfm.startAuth();
     await flush();
@@ -1572,15 +1699,19 @@ describe('queued scrobbles', () => {
     expect(batches()).toHaveLength(0);
   });
 
-  it('sends no queued play once the user turns scrobbling off while a request is out', async () => {
-    // A previous run left this behind, so the next request to succeed drains it.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("sends no queued play once the user turns scrobbling off while a request is out", async () => {
+    // A persisted entry waits for the next successful request to drain it.
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { lastfm, player } = await startIntegration();
 
     // Every request is held open, so the toggle lands while one is still out.
     const held: Array<(response: Response) => void> = [];
-    vi.mocked(net.fetch).mockImplementation(() => new Promise<Response>((resolve) => held.push(resolve)));
+    vi.mocked(net.fetch).mockImplementation(
+      () => new Promise<Response>((resolve) => held.push(resolve)),
+    );
 
     // The now-playing update goes out while the feature is still on.
     player.emitNowPlaying(TRACK);
@@ -1595,17 +1726,19 @@ describe('queued scrobbles', () => {
 
     // The request that went out while the feature was on now answers. Off is an
     // instruction to stop sending, so its success must carry nothing out.
-    held[0](new Response('{}'));
+    held[0](new Response("{}"));
     await flush();
 
     expect(batches()).toHaveLength(0);
     expect(queue.pending).toHaveLength(1);
-    expect(queue.pending[0].track).toBe('Ceremony');
+    expect(queue.pending[0].track).toBe("Ceremony");
   });
 
-  it('drains again after a drain request that never answers is cut off', async () => {
-    // A previous run left this behind, so the first request out drains it.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+  it("drains again after a drain request that never answers is cut off", async () => {
+    // A persisted entry makes the first outbound request drain the queue.
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
 
@@ -1613,10 +1746,14 @@ describe('queued scrobbles', () => {
     // Sidra passes aborts it, which is what a connection that hangs rather than
     // failing looks like.
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
-      const params = new URLSearchParams(typeof init?.body === 'string' ? init.body : '');
-      if (!params.has('artist[0]')) return Promise.resolve(new Response('{}'));
+      const params = new URLSearchParams(
+        typeof init?.body === "string" ? init.body : "",
+      );
+      if (!params.has("artist[0]")) return Promise.resolve(new Response("{}"));
       return new Promise<Response>((_ok, fail) => {
-        init?.signal?.addEventListener('abort', () => fail(new Error('The operation was aborted.')));
+        init?.signal?.addEventListener("abort", () =>
+          fail(new Error("The operation was aborted.")),
+        );
       });
     });
 
@@ -1638,17 +1775,17 @@ describe('queued scrobbles', () => {
     await flush();
 
     expect(batches()).toHaveLength(2);
-    expect(batches()[1].get('track[0]')).toBe('Ceremony');
+    expect(batches()[1].get("track[0]")).toBe("Ceremony");
     expect(queue.pending).toHaveLength(1);
   });
 
-  it('reports a batch Last.fm kept nothing from, and still clears it', async () => {
+  it("reports a batch Last.fm kept nothing from, and still clears it", async () => {
     // Filtering is not an error. Last.fm answers status ok with no error field,
     // so a batch it stored nothing from settles on the success path beside one
     // it stored whole. Without the counts, the log reads the same either way
     // and fifty plays never reaching the user's profile are invisible.
     queue.pending = Array.from({ length: 50 }, (_, i) => ({
-      artist: 'New Order',
+      artist: "New Order",
       track: `Track ${i}`,
       timestamp: 1_700_000_000 + i,
     }));
@@ -1659,11 +1796,16 @@ describe('queued scrobbles', () => {
     answerBatchWith(
       JSON.stringify({
         scrobbles: {
-          '@attr': { accepted: 0, ignored: 50 },
+          "@attr": { accepted: 0, ignored: 50 },
           scrobble: Array.from({ length: 50 }, (_, i) =>
             i % 2 === 0
-              ? { ignoredMessage: { code: '1', '#text': 'Artist was ignored' } }
-              : { ignoredMessage: { code: '5', '#text': 'Daily scrobble limit exceeded' } },
+              ? { ignoredMessage: { code: "1", "#text": "Artist was ignored" } }
+              : {
+                  ignoredMessage: {
+                    code: "5",
+                    "#text": "Daily scrobble limit exceeded",
+                  },
+                },
           ),
         },
       }),
@@ -1674,9 +1816,9 @@ describe('queued scrobbles', () => {
     await flush();
 
     const logged = loggedLines();
-    expect(logged).toContain('Last.fm accepted 0, ignored 50');
+    expect(logged).toContain("Last.fm accepted 0, ignored 50");
     // Each distinct code once, however many entries carried it.
-    expect(logged).toContain('ignored codes: 1, 5');
+    expect(logged).toContain("ignored codes: 1, 5");
 
     // Filtered plays are not retained. The daily limit can clear later, but retrying it needs a different queue policy.
     // The outcome log records the loss.
@@ -1684,19 +1826,21 @@ describe('queued scrobbles', () => {
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('reads a result that describes a single play as a bare object', async () => {
+  it("reads a result that describes a single play as a bare object", async () => {
     // Last.fm's JSON transform groups repeated nodes into an array and leaves a
     // lone one as an object, so a one-play batch answers with `scrobble` as an
     // object. Treating it as an array throws, and the throw would be reported
     // as a request that never reached Last.fm.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
     answerBatchWith(
       JSON.stringify({
         scrobbles: {
-          '@attr': { accepted: 1, ignored: 0 },
-          scrobble: { ignoredMessage: { code: '0', '#text': '' } },
+          "@attr": { accepted: 1, ignored: 0 },
+          scrobble: { ignoredMessage: { code: "0", "#text": "" } },
         },
       }),
     );
@@ -1706,30 +1850,32 @@ describe('queued scrobbles', () => {
     await flush();
 
     const logged = loggedLines();
-    expect(logged).toContain('Last.fm accepted 1, ignored 0');
+    expect(logged).toContain("Last.fm accepted 1, ignored 0");
     // "0" is the code a stored play carries, so it is a reason for nothing.
-    expect(logged).not.toContain('ignored codes');
+    expect(logged).not.toContain("ignored codes");
     // Nothing threw: a failure here reports the batch as still queued.
-    expect(logged).not.toContain('queued scrobbles not sent');
+    expect(logged).not.toContain("queued scrobbles not sent");
     expect(queue.pending).toHaveLength(0);
   });
 
-  it('reports a response carrying no counts exactly as it always did', async () => {
+  it("reports a response carrying no counts exactly as it always did", async () => {
     // An absent `scrobbles` field is not a batch of nothing. Counting it as
     // zero accepted would report a loss for every response that merely does not
     // carry the counts, which is what every other test here answers with.
-    queue.pending = [{ artist: 'New Order', track: 'Ceremony', timestamp: 1_700_000_000 }];
+    queue.pending = [
+      { artist: "New Order", track: "Ceremony", timestamp: 1_700_000_000 },
+    ];
 
     const { player } = await startIntegration();
-    answerBatchWith('{}');
+    answerBatchWith("{}");
 
     player.emitNowPlaying(TRACK);
     player.emitPlaybackState(PlaybackState.Playing);
     await flush();
 
     const logged = loggedLines();
-    expect(logged).toContain('queued scrobbles submitted: 1');
-    expect(logged).not.toContain('Last.fm accepted');
+    expect(logged).toContain("queued scrobbles submitted: 1");
+    expect(logged).not.toContain("Last.fm accepted");
     expect(queue.pending).toHaveLength(0);
   });
 });
@@ -1738,7 +1884,7 @@ describe('queued scrobbles', () => {
 // interval until the user approves the token in their browser.
 const AUTH_POLL_INTERVAL_MS = 4000;
 
-/** No linked account, as it is before the first successful authentication. */
+/** Clear the linked-account state before authentication. */
 function noSession(): void {
   session.key = null;
   session.enabled = false;
@@ -1749,10 +1895,14 @@ function noSession(): void {
  * auth.getSession. For tests whose fetch mock has to serve scrobbles too, so
  * respondToAuth() cannot own the whole implementation.
  */
-function authResponse(input: unknown, key: string, name: string): Promise<Response> {
+function authResponse(
+  input: unknown,
+  key: string,
+  name: string,
+): Promise<Response> {
   return Promise.resolve(
-    String(input).includes('auth.getToken')
-      ? new Response(JSON.stringify({ token: 'auth-token' }))
+    String(input).includes("auth.getToken")
+      ? new Response(JSON.stringify({ token: "auth-token" }))
       : new Response(JSON.stringify({ session: { key, name } })),
   );
 }
@@ -1761,41 +1911,48 @@ function authResponse(input: unknown, key: string, name: string): Promise<Respon
 function respondToAuth(sessionResponse: () => Response): void {
   vi.mocked(net.fetch).mockImplementation((input) =>
     Promise.resolve(
-      String(input).includes('auth.getToken')
-        ? new Response(JSON.stringify({ token: 'auth-token' }))
+      String(input).includes("auth.getToken")
+        ? new Response(JSON.stringify({ token: "auth-token" }))
         : sessionResponse(),
     ),
   );
 }
 
-/** Load through loadLastfm() so credentials exist before module-level initialisation. */
-describe('authentication', () => {
+// Authentication tests use loadLastfm() so credentials exist before module-level initialisation.
+describe("authentication", () => {
   beforeEach(startFromConnected);
   afterEach(restoreRealTime);
 
-  it('opens the browser, then stores and announces the session the user approves', async () => {
+  it("opens the browser, then stores and announces the session the user approves", async () => {
     const lastfm = await loadLastfm();
     const changed = vi.fn();
     lastfm.setStateChangedCallback(changed);
     noSession();
-    respondToAuth(() => new Response(JSON.stringify({ session: { key: 'new-key', name: 'wimpy' } })));
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({ session: { key: "new-key", name: "wimpy" } }),
+        ),
+    );
 
     lastfm.startAuth();
     await flush();
 
-    expect(vi.mocked(shell.openExternal)).toHaveBeenCalledWith(expect.stringContaining('token=auth-token'));
-    expect(session.key).toBe('new-key');
+    expect(vi.mocked(shell.openExternal)).toHaveBeenCalledWith(
+      expect.stringContaining("token=auth-token"),
+    );
+    expect(session.key).toBe("new-key");
     expect(changed).toHaveBeenCalledOnce();
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
-  it('percent-encodes the token it puts in the approval URL', async () => {
+  it("percent-encodes the token it puts in the approval URL", async () => {
     const lastfm = await loadLastfm();
     noSession();
     vi.mocked(net.fetch).mockImplementation((input) =>
       Promise.resolve(
-        String(input).includes('auth.getToken')
-          ? new Response(JSON.stringify({ token: 'tok&foo=bar#frag' }))
+        String(input).includes("auth.getToken")
+          ? new Response(JSON.stringify({ token: "tok&foo=bar#frag" }))
           : apiError(14),
       ),
     );
@@ -1804,14 +1961,16 @@ describe('authentication', () => {
     await flush();
 
     // Raw interpolation treats `&` as a parameter separator and `#` as the end of the query.
-    const opened = new URL(String(vi.mocked(shell.openExternal).mock.calls[0][0]));
-    expect(opened.searchParams.get('token')).toBe('tok&foo=bar#frag');
-    expect(opened.hash).toBe('');
+    const opened = new URL(
+      String(vi.mocked(shell.openExternal).mock.calls[0][0]),
+    );
+    expect(opened.searchParams.get("token")).toBe("tok&foo=bar#frag");
+    expect(opened.hash).toBe("");
 
     lastfm.disconnect();
   });
 
-  it('releases authentication when the token request times out', async () => {
+  it("releases authentication when the token request times out", async () => {
     const lastfm = await loadLastfm();
     const changed = vi.fn();
     lastfm.setStateChangedCallback(changed);
@@ -1819,7 +1978,9 @@ describe('authentication', () => {
     let attempt = 0;
     vi.mocked(net.fetch).mockImplementation((_input, init) => {
       attempt += 1;
-      return attempt === 1 ? hangUntilAbort(init?.signal) : Promise.resolve(apiError(10));
+      return attempt === 1
+        ? hangUntilAbort(init?.signal)
+        : Promise.resolve(apiError(10));
     });
 
     lastfm.startAuth();
@@ -1833,12 +1994,12 @@ describe('authentication', () => {
     expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(2);
   });
 
-  it('ends authentication at the two-minute deadline when session requests hang', async () => {
+  it("ends authentication at the two-minute deadline when session requests hang", async () => {
     const lastfm = await loadLastfm();
     noSession();
     vi.mocked(net.fetch).mockImplementation((input, init) =>
-      String(input).includes('auth.getToken')
-        ? Promise.resolve(new Response(JSON.stringify({ token: 'auth-token' })))
+      String(input).includes("auth.getToken")
+        ? Promise.resolve(new Response(JSON.stringify({ token: "auth-token" })))
         : hangUntilAbort(init?.signal),
     );
 
@@ -1854,7 +2015,7 @@ describe('authentication', () => {
     expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(5);
   });
 
-  it('stops polling for a session when the app quits', async () => {
+  it("stops polling for a session when the app quits", async () => {
     const { lastfm } = await startIntegration();
     noSession();
     respondToAuth(() => apiError(14));
@@ -1871,7 +2032,7 @@ describe('authentication', () => {
     expect(vi.mocked(net.fetch)).toHaveBeenCalledTimes(2);
   });
 
-  it('stops polling for a session once the account is disconnected', async () => {
+  it("stops polling for a session once the account is disconnected", async () => {
     const lastfm = await loadLastfm();
     noSession();
     // 14: the token is not yet authorised, which is every poll until the user

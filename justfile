@@ -8,7 +8,7 @@ install:
     @just _fix-frameworks
     @just _sign-evs
 
-# Restore macOS framework symlinks broken by extract-zip during npm install
+# Restore macOS framework symlinks that extract-zip breaks during npm install
 [macos]
 [private]
 _fix-frameworks:
@@ -41,7 +41,7 @@ _fix-frameworks:
 [private]
 _fix-frameworks:
 
-# Apply CastLabs EVS VMP signing to local Electron binary
+# Sign the local Electron binary with CastLabs EVS VMP
 [macos]
 [private]
 _sign-evs:
@@ -57,7 +57,7 @@ _sign-evs:
 [private]
 _sign-evs:
 
-# Build TypeScript to dist/ (writes the Last.fm credentials too, as npx tsc fires no npm hook)
+# Build TypeScript into dist/ and write credentials because npx tsc runs no npm hook
 build: _fix-frameworks _sign-evs
     node scripts/inject-lastfm-credentials.cjs
     npx tsc
@@ -98,7 +98,7 @@ run-cdp-fast PORT="9222":
 watch:
     npx tsc --watch
 
-# Run linters
+# Run static checks
 lint:
     @actionlint
     npx tsc --noEmit
@@ -108,9 +108,8 @@ lint:
 test:
     npm test
 
-# The audit gate covers registry dependencies that ship. A package that ships
-# from devDependencies, as electron does, falls outside it.
-# Validate electron-builder configuration
+# npm audit omits devDependencies even when a dependency, such as electron, ships.
+# Validate electron-builder configuration and audit runtime dependencies
 validate:
     @ELECTRON_SKIP_BINARY_DOWNLOAD=1 node scripts/validate-build-config.cjs
     npm audit --omit=dev
@@ -216,10 +215,9 @@ clear:
     rm -rf ~/.cache/sidra
     @echo "Sidra data cleared"
 
-# A fast local package, not a release build. The full release set is built by
-# .github/workflows/builder.yml, so a new target belongs there and in
-# package.json build.linux.target, not here.
-# Build a package for the current platform
+# This recipe makes a fast local package, not a release build. Add release targets to
+# .github/workflows/builder.yml and package.json build.linux.target instead.
+# Build a local development package for Linux or macOS
 package: build
     #!/usr/bin/env bash
     set -euo pipefail

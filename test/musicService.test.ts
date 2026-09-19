@@ -271,6 +271,8 @@ describe('preload contract', () => {
       path.join(__dirname, '..', 'src', 'preload.ts'),
       'utf-8',
     );
-    expect(preload).toMatch(/window\.postMessage\(.*window\.location\.origin\)/);
+    expect(preload).toMatch(
+      /window\.postMessage\(\s*(?:\{[^{}]*\}|[A-Za-z_$][\w$]*)\s*,\s*window\.location\.origin\s*,?\s*\)/,
+    );
   });
 });

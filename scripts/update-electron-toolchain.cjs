@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
-// Update package.json to the latest stable CastLabs Electron, electron-builder
-// and electron-updater releases. The weekly "Update Electron Toolchain"
-// workflow calls this script, which neither installs nor builds dependencies.
+// Keep package.json on stable CastLabs Electron, electron-builder and
+// electron-updater releases without installing or building dependencies.
 //
 // Read git tags because the Widevine-enabled Electron dependency comes from
 // castlabs/electron-releases, not the npm registry.
@@ -14,7 +13,8 @@ const fs = require("node:fs");
 const packageJsonPath = "package.json";
 // Require the Widevine CDM variant for DRM playback and exclude prereleases.
 const castLabsStableTagPattern = /^v(\d+)\.(\d+)\.(\d+)\+wvcus$/;
-const electronBuilderRepo = "https://github.com/electron-userland/electron-builder.git";
+const electronBuilderRepo =
+  "https://github.com/electron-userland/electron-builder.git";
 
 function run(command, args) {
   return execFileSync(command, args, {
@@ -127,12 +127,25 @@ const targets = {
 
 const changed = [
   setDependency(packageJson, "devDependencies", "electron", targets.electron),
-  setDependency(packageJson, "devDependencies", "electron-builder", targets["electron-builder"]),
-  setDependency(packageJson, "dependencies", "electron-updater", targets["electron-updater"]),
+  setDependency(
+    packageJson,
+    "devDependencies",
+    "electron-builder",
+    targets["electron-builder"],
+  ),
+  setDependency(
+    packageJson,
+    "dependencies",
+    "electron-updater",
+    targets["electron-updater"],
+  ),
 ].some(Boolean);
 
 if (changed) {
-  fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  fs.writeFileSync(
+    packageJsonPath,
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
 } else {
   console.log("Electron toolchain is current");
 }

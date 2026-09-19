@@ -1,9 +1,9 @@
-import { Notification } from 'electron';
-import log from 'electron-log/main';
+import { Notification } from "electron";
+import log from "electron-log/main";
 
-import { errorMessage } from './utils';
+import { errorMessage } from "./utils";
 
-const notifyLog = log.scope('notify');
+const notifyLog = log.scope("notify");
 
 // The only place in Sidra a Notification is constructed, because on Linux
 // Notification.show() blocks the browser UI thread when nothing owns
@@ -19,10 +19,10 @@ const notifyLog = log.scope('notify');
 // notification raised before the reply lands has no verified answer, and
 // guessing wrong costs a 100 second freeze. macOS and Windows have no daemon
 // to probe, so the gate is open from the start and no bus is ever opened.
-let daemonAvailable = process.platform !== 'linux';
+let daemonAvailable = process.platform !== "linux";
 let failureLatched = false;
 
-/** True when a notification can be raised without risking the freeze above. */
+/** True when a notification can be raised without risking the Linux D-Bus freeze. */
 export function notificationsAvailable(): boolean {
   return daemonAvailable && !failureLatched;
 }
@@ -32,7 +32,7 @@ export function notificationsAvailable(): boolean {
  * Call once from app.whenReady(). Other platforms need no probe.
  */
 export function initNotificationProbe(): void {
-  if (process.platform !== 'linux') {
+  if (process.platform !== "linux") {
     return;
   }
 
@@ -40,7 +40,8 @@ export function initNotificationProbe(): void {
     // ./notificationDaemon bare-requires @holusion/dbus-next, so it is
     // lazy-required after the platform check to keep D-Bus out of the import
     // graph on macOS and Windows
-    const { initDaemonProbe } = require('./notificationDaemon') as typeof import('./notificationDaemon');
+    const { initDaemonProbe } =
+      require("./notificationDaemon") as typeof import("./notificationDaemon");
 
     initDaemonProbe((hasOwner: boolean) => {
       const wasAvailable = notificationsAvailable();
@@ -51,13 +52,18 @@ export function initNotificationProbe(): void {
         failureLatched = false;
       }
       if (notificationsAvailable() !== wasAvailable) {
-        notifyLog.info(hasOwner
-          ? 'notifications enabled'
-          : 'notifications disabled: no notification daemon');
+        notifyLog.info(
+          hasOwner
+            ? "notifications enabled"
+            : "notifications disabled: no notification daemon",
+        );
       }
     });
   } catch (err: unknown) {
-    notifyLog.warn('notification daemon probe unavailable; notifications disabled:', errorMessage(err));
+    notifyLog.warn(
+      "notification daemon probe unavailable; notifications disabled:",
+      errorMessage(err),
+    );
   }
 }
 
@@ -69,18 +75,21 @@ export function createNotification(
   options: Electron.NotificationConstructorOptions,
 ): Notification | null {
   if (!notificationsAvailable()) {
-    notifyLog.debug('notification suppressed; no notification daemon:', options.title);
+    notifyLog.debug(
+      "notification suppressed; no notification daemon:",
+      options.title,
+    );
     return null;
   }
 
   const notification = new Notification(options);
 
-  notification.on('failed', (_event, error) => {
-    notifyLog.error('notification failed:', options.title, error);
+  notification.on("failed", (_event, error) => {
+    notifyLog.error("notification failed:", options.title, error);
     // Linux only: NameOwnerChanged re-opens the gate when a daemon appears.
     // macOS and Windows have no such recovery path, so a latch there would
-    // kill notifications for the rest of the session.
-    if (process.platform === 'linux') {
+    // disable notifications for the rest of the session.
+    if (process.platform === "linux") {
       failureLatched = true;
     }
   });

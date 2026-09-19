@@ -1,14 +1,9 @@
-// Pure module: no electron imports so tests can exercise it directly.
+// Keep this palette renderer free of Electron so unit tests can import it.
 //
-// Render an Apple Music override stylesheet from a 12-slot palette.
-// test/themes.test.ts checks the generated Catppuccin values and output format.
-//
-// Everything inside the template literals below is output, comments included:
-// the string ships to the renderer with insertCSS() on every page load. A
-// comment there is therefore a one-line section label, so a reader of a
-// DevTools style pane can find their place; the banner naming this file is the
-// one exception. Why a rule exists goes in a TypeScript comment outside the
-// literals, like this one.
+// Everything inside the template literals below is runtime output. The string
+// ships to the renderer through insertCSS() on every page load. Comments inside
+// a literal must be one-line section labels for the DevTools style pane, except
+// for the leading banner. Keep design rationale in TypeScript comments.
 
 /** The 12 semantic colour slots a palette fills for one colour scheme. */
 export interface SchemeColours {
@@ -47,7 +42,7 @@ export interface ThemeDefinition {
 }
 
 function rgbTriplet(hex: string): string {
-  const value = hex.replace('#', '');
+  const value = hex.replace("#", "");
   const r = parseInt(value.slice(0, 2), 16);
   const g = parseInt(value.slice(2, 4), 16);
   const b = parseInt(value.slice(4, 6), 16);
@@ -58,9 +53,8 @@ function rgba(hex: string, alpha: number): string {
   return `rgba(${rgbTriplet(hex)},${alpha})`;
 }
 
-// The side-panel block uses spaced rgba(), as required by test/themes.test.ts.
 function rgbaSpaced(hex: string, alpha: number): string {
-  return `rgba(${rgbTriplet(hex).split(',').join(', ')}, ${alpha})`;
+  return `rgba(${rgbTriplet(hex).split(",").join(", ")}, ${alpha})`;
 }
 
 // Four notes on the rules below, kept here because a comment beside a rule
@@ -220,9 +214,9 @@ function schemeBlock(c: SchemeColours): string {
  * included. Everything inside the returned literal, comments as well as rules,
  * ships to the renderer, so keep rationale in the source and out of the output.
  *
- * The trailing .button.primary button.click-action rule is here because Apple
- * hardcodes background-color: rgb(214, 0, 23) on that button and never reads
- * --keyColor there, so an accent-coloured button needs the direct override.
+ * Apple hardcodes background-color: rgb(214, 0, 23) on
+ * .button.primary button.click-action and never reads --keyColor there.
+ * The direct override is therefore necessary for accent-coloured buttons.
  */
 export function buildThemeCss(theme: ThemeDefinition): string {
   return `/*

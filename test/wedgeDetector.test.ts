@@ -1,24 +1,27 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { BrowserWindow } from 'electron';
-import type electronLog from 'electron-log/main';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { BrowserWindow } from "electron";
+import type electronLog from "electron-log/main";
 
-import { Player, PlaybackState } from '../src/player';
-import type { IntegrationContext } from '../src/player';
+import { Player, PlaybackState } from "../src/player";
+import type { IntegrationContext } from "../src/player";
 
-type WedgeDetector = typeof import('../src/wedgeDetector');
+type WedgeDetector = typeof import("../src/wedgeDetector");
 type ScopedLog = ReturnType<typeof electronLog.scope>;
 
 // init() refuses repeat calls and keeps module-level state, so each test needs a fresh module.
 async function loadWedgeDetector(): Promise<WedgeDetector> {
   vi.resetModules();
-  return import('../src/wedgeDetector');
+  return import("../src/wedgeDetector");
 }
 
-describe('wedgeDetector', () => {
+describe("wedgeDetector", () => {
   let player: Player;
   let mockWin: {
     isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
-    webContents: { send: ReturnType<typeof vi.fn>; isDestroyed: ReturnType<typeof vi.fn<() => boolean>> };
+    webContents: {
+      send: ReturnType<typeof vi.fn>;
+      isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
+    };
   };
   let mainWindow: BrowserWindow | null;
   let getMainWindow: () => BrowserWindow | null;
@@ -39,7 +42,7 @@ describe('wedgeDetector', () => {
     getMainWindow = () => mainWindow;
 
     wedgeDetector = await loadWedgeDetector();
-    wedgeLog = (await import('electron-log/main')).default.scope('wedge');
+    wedgeLog = (await import("electron-log/main")).default.scope("wedge");
     const ctx: IntegrationContext = { player, getMainWindow };
     wedgeDetector.init(ctx);
     vi.clearAllMocks();
@@ -50,52 +53,64 @@ describe('wedgeDetector', () => {
     vi.useRealTimers();
   });
 
-  it('fires skip after STALL_THRESHOLD_MS of stalled playback', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("fires skip after STALL_THRESHOLD_MS of stalled playback", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     // The check runs on a 1000ms interval and proceeds once the elapsed time is
     // no longer below the 5000ms threshold, so the 5000ms tick fires the skip.
     // Advance past it to keep the test off the boundary.
     vi.advanceTimersByTime(6000);
 
-    expect(mockWin.webContents.send).toHaveBeenCalledWith(
-      'player:next'
-    );
+    expect(mockWin.webContents.send).toHaveBeenCalledWith("player:next");
   });
 
-  it('does not fire skip before stall threshold', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("does not fire skip before stall threshold", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
-    // Advance less than the stall threshold
     vi.advanceTimersByTime(4000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it('logs sent command provenance when stalled playback is skipped', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("logs sent command provenance when stalled playback is skipped", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     vi.advanceTimersByTime(6000);
 
     expect(wedgeLog.warn).toHaveBeenCalledWith(
-      'source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=sent',
+      "source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=sent",
     );
   });
 
-  it('logs dropped command provenance when the main window is missing', () => {
+  it("logs dropped command provenance when the main window is missing", () => {
     mainWindow = null;
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     vi.advanceTimersByTime(6000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
     expect(wedgeLog.warn).toHaveBeenCalledWith(
-      'source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=dropped',
+      "source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=dropped",
     );
   });
 
-  it('does not fire skip when position advances', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("does not fire skip when position advances", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     for (let i = 1; i <= 8; i++) {
       vi.advanceTimersByTime(1000);
@@ -105,8 +120,11 @@ describe('wedgeDetector', () => {
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it('respects MAX_SKIP_ATTEMPTS (3)', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("respects MAX_SKIP_ATTEMPTS (3)", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     // Each skip resets lastAdvanceTime, so the next attempt needs another full stall interval.
     vi.advanceTimersByTime(6000);
@@ -123,8 +141,11 @@ describe('wedgeDetector', () => {
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
   });
 
-  it('reset() clears state and stops timer', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("reset() clears state and stops timer", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     // Keep the timer active without reaching the stall threshold.
     vi.advanceTimersByTime(3000);
@@ -137,8 +158,11 @@ describe('wedgeDetector', () => {
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it('track change resets skip counter', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("track change resets skip counter", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     vi.advanceTimersByTime(6000);
     vi.advanceTimersByTime(6000);
@@ -146,7 +170,10 @@ describe('wedgeDetector', () => {
 
     // A new track is a fresh recovery budget: the cap bounds the attempts spent
     // on one track, not on the session.
-    player.handleNowPlayingItemDidChange({ name: 'New Track', durationInMillis: 180000 });
+    player.handleNowPlayingItemDidChange({
+      name: "New Track",
+      durationInMillis: 180000,
+    });
 
     vi.advanceTimersByTime(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
@@ -155,20 +182,32 @@ describe('wedgeDetector', () => {
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(4);
   });
 
-  it('does not fire skip when playback is paused', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("does not fire skip when playback is paused", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
     vi.advanceTimersByTime(2000);
 
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Paused });
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Paused,
+    });
 
     vi.advanceTimersByTime(10000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it('does not fire skip near end of track (within END_SAFETY_MARGIN_MS)', () => {
-    player.handleNowPlayingItemDidChange({ name: 'Track', durationInMillis: 200000 });
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  it("does not fire skip near end of track (within END_SAFETY_MARGIN_MS)", () => {
+    player.handleNowPlayingItemDidChange({
+      name: "Track",
+      durationInMillis: 200000,
+    });
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
 
     // A track about to finish reports the same still playhead as a stall, so the
     // last END_SAFETY_MARGIN_MS of it are out of scope. The detector compares
@@ -181,35 +220,42 @@ describe('wedgeDetector', () => {
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  // The timer outlives the window: a stall detected during quit fires after the
-  // window is destroyed, and reading win.webContents then throws (#257).
-  it('drops the skip without throwing once the window is destroyed', () => {
-    player.handlePlaybackStateDidChange({ status: true, state: PlaybackState.Playing });
+  // A stall callback can run after quit destroys the window. liveWebContents()
+  // must reject the destroyed window before its native webContents getter throws.
+  it("drops the skip without throwing once the window is destroyed", () => {
+    player.handlePlaybackStateDidChange({
+      status: true,
+      state: PlaybackState.Playing,
+    });
     mockWin.isDestroyed.mockReturnValue(true);
 
     expect(() => vi.advanceTimersByTime(6000)).not.toThrow();
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
-    expect(wedgeLog.warn).toHaveBeenCalledWith(expect.stringContaining('result=dropped'));
+    expect(wedgeLog.warn).toHaveBeenCalledWith(
+      expect.stringContaining("result=dropped"),
+    );
   });
 
-  it('requires getMainWindow in context', () => {
+  it("requires getMainWindow in context", () => {
     const playerOnly: IntegrationContext = { player: new Player() };
-    expect(() => wedgeDetector.init(playerOnly)).toThrow('wedgeDetector requires getMainWindow');
+    expect(() => wedgeDetector.init(playerOnly)).toThrow(
+      "wedgeDetector requires getMainWindow",
+    );
   });
 
-  it('ignores a second init so each listener is attached once', () => {
+  it("ignores a second init so each listener is attached once", () => {
     // Count registrations because timer reuse and idempotent state writes hide duplicate listeners from playback assertions.
     const events = [
-      'playbackStateDidChange',
-      'nowPlayingItemDidChange',
-      'playbackTimeDidChange',
+      "playbackStateDidChange",
+      "nowPlayingItemDidChange",
+      "playbackTimeDidChange",
     ] as const;
-    const before = events.map(event => player.listenerCount(event));
+    const before = events.map((event) => player.listenerCount(event));
 
     wedgeDetector.init({ player, getMainWindow });
 
-    expect(events.map(event => player.listenerCount(event))).toEqual(before);
-    expect(before.every(count => count === 1)).toBe(true);
+    expect(events.map((event) => player.listenerCount(event))).toEqual(before);
+    expect(before.every((count) => count === 1)).toBe(true);
   });
 });

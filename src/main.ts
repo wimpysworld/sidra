@@ -1,37 +1,78 @@
-import { app, BrowserWindow, components, dialog, ipcMain, Menu, session, Tray, webFrameMain } from 'electron';
-import fs from 'fs';
-import path from 'path';
-import log from 'electron-log/main';
-import { AUTH_FIX_TOKEN, PASSKEY_CONTAINER_SELECTORS } from './authFrame';
-import { getZoomFactor, getCloseToTrayEnabled, getMusicService } from './config';
-import { getLoadingText, getNavigationStrings, getTrayStrings, NAV_LABELS_TOKEN } from './i18n';
-import { getAssetPath } from './paths';
-import { Player, IntegrationContext } from './player';
-import { buildAppleMusicURL, buildItmsRouteURL, handleStorefrontNavigation, handleLastPageNavigation } from './storefront';
-import { extractItmsUrlFromArgv, type ItmsTarget } from './itms';
-import { initServiceSwitch, routeToMusicService, switchService } from './serviceSwitch';
-import { initThemeCSS, injectThemeCss, setThemeChangedCallback } from './theme';
-import { createTray, getMenuIcon, initTrayStateManager, rebuildTrayMenu, setGetMainWindowCallback } from './tray';
-import { initSettingsActions, notifySettingsChanged } from './settings';
-import { handleSettingsNavigation, initSettingsWindow } from './settingsWindow';
-import { initCommandBridge } from './commandBridge';
-import { initControllerIPC, goBackIfPossible } from './controllerIPC';
-import { CONTROLLER_RESET_CHANNEL } from './controller';
-import { showAboutWindow } from './aboutWindow';
-import { checkForUpdates } from './update';
-import { isAutoUpdateSupported, initAutoUpdate } from './autoUpdate';
-import { getService, allServices, isAllowedNavigationUrl } from './musicService';
-import { init as initNotifications } from './integrations/notifications';
-import { init as initDiscordPresence } from './integrations/discord-presence';
-import { init as initLastfm } from './integrations/lastfm';
-import { init as initDock } from './integrations/macos-dock';
-import { init as initWindowsTaskbar } from './integrations/windows-taskbar';
-import { cleanArtworkCache } from './artwork';
-import { init as initWedgeDetector, reset as resetWedgeDetector } from './wedgeDetector';
-import { contentReadyProbeScript } from './contentReady';
-import { initNotificationProbe } from './notify';
-import { liveWebContents, runSteps } from './utils';
-import { openExternalUrl } from './utils/openExternal';
+import {
+  app,
+  BrowserWindow,
+  components,
+  dialog,
+  ipcMain,
+  Menu,
+  session,
+  Tray,
+  webFrameMain,
+} from "electron";
+import fs from "fs";
+import path from "path";
+import log from "electron-log/main";
+import { AUTH_FIX_TOKEN, PASSKEY_CONTAINER_SELECTORS } from "./authFrame";
+import {
+  getZoomFactor,
+  getCloseToTrayEnabled,
+  getMusicService,
+} from "./config";
+import {
+  getLoadingText,
+  getNavigationStrings,
+  getTrayStrings,
+  NAV_LABELS_TOKEN,
+} from "./i18n";
+import { getAssetPath } from "./paths";
+import { Player, IntegrationContext } from "./player";
+import {
+  buildAppleMusicURL,
+  buildItmsRouteURL,
+  handleStorefrontNavigation,
+  handleLastPageNavigation,
+} from "./storefront";
+import { extractItmsUrlFromArgv, type ItmsTarget } from "./itms";
+import {
+  initServiceSwitch,
+  routeToMusicService,
+  switchService,
+} from "./serviceSwitch";
+import { initThemeCSS, injectThemeCss, setThemeChangedCallback } from "./theme";
+import {
+  createTray,
+  getMenuIcon,
+  initTrayStateManager,
+  rebuildTrayMenu,
+  setGetMainWindowCallback,
+} from "./tray";
+import { initSettingsActions, notifySettingsChanged } from "./settings";
+import { handleSettingsNavigation, initSettingsWindow } from "./settingsWindow";
+import { initCommandBridge } from "./commandBridge";
+import { initControllerIPC, goBackIfPossible } from "./controllerIPC";
+import { CONTROLLER_RESET_CHANNEL } from "./controller";
+import { showAboutWindow } from "./aboutWindow";
+import { checkForUpdates } from "./update";
+import { isAutoUpdateSupported, initAutoUpdate } from "./autoUpdate";
+import {
+  getService,
+  allServices,
+  isAllowedNavigationUrl,
+} from "./musicService";
+import { init as initNotifications } from "./integrations/notifications";
+import { init as initDiscordPresence } from "./integrations/discord-presence";
+import { init as initLastfm } from "./integrations/lastfm";
+import { init as initDock } from "./integrations/macos-dock";
+import { init as initWindowsTaskbar } from "./integrations/windows-taskbar";
+import { cleanArtworkCache } from "./artwork";
+import {
+  init as initWedgeDetector,
+  reset as resetWedgeDetector,
+} from "./wedgeDetector";
+import { contentReadyProbeScript } from "./contentReady";
+import { initNotificationProbe } from "./notify";
+import { liveWebContents, runSteps } from "./utils";
+import { openExternalUrl } from "./utils/openExternal";
 
 const SPLASH_MIN_DISPLAY_MS = 500;
 const CONTENT_READY_POLL_MS = 100;
@@ -43,26 +84,33 @@ const SPLASH_HEIGHT_PX = 350;
 const MAIN_WINDOW_WIDTH_PX = 1280;
 const MAIN_WINDOW_HEIGHT_PX = 800;
 const PRELOAD_ERROR_NAMES = new Set([
-  'AggregateError',
-  'Error',
-  'EvalError',
-  'RangeError',
-  'ReferenceError',
-  'SyntaxError',
-  'TypeError',
-  'URIError',
+  "AggregateError",
+  "Error",
+  "EvalError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
 ]);
 
 // --- Logging: initialise before anything else ---
 log.initialize();
-log.transports.file.level = 'info';
-log.transports.console.level = app.isPackaged ? false : 'debug';
-log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {text}';
-log.transports.console.format = '{h}:{i}:{s}.{ms} [{level}]{scope} {text}';
+log.transports.file.level = "info";
+log.transports.console.level = app.isPackaged ? false : "debug";
+log.transports.file.format =
+  "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {text}";
+log.transports.console.format = "{h}:{i}:{s}.{ms} [{level}]{scope} {text}";
 
 // Override log levels via environment variable (used by `just run-debug`).
-type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silly';
-const VALID_LEVELS = new Set<LogLevel>(['error', 'warn', 'info', 'debug', 'silly']);
+type LogLevel = "error" | "warn" | "info" | "debug" | "silly";
+const VALID_LEVELS = new Set<LogLevel>([
+  "error",
+  "warn",
+  "info",
+  "debug",
+  "silly",
+]);
 const envLevel = process.env.ELECTRON_LOG_LEVEL;
 if (envLevel && VALID_LEVELS.has(envLevel as LogLevel)) {
   const level = envLevel as LogLevel;
@@ -70,14 +118,15 @@ if (envLevel && VALID_LEVELS.has(envLevel as LogLevel)) {
   log.transports.console.level = level;
 }
 
-const mainLog = log.scope('main');
-const splashLog = log.scope('splash');
+const mainLog = log.scope("main");
+const splashLog = log.scope("splash");
 mainLog.info(`${app.name} ${app.getVersion()}`);
 
-app.on('child-process-gone', (_event, details) => {
-  const serviceName = details.serviceName === undefined
-    ? ''
-    : ` serviceName=${JSON.stringify(details.serviceName)}`;
+app.on("child-process-gone", (_event, details) => {
+  const serviceName =
+    details.serviceName === undefined
+      ? ""
+      : ` serviceName=${JSON.stringify(details.serviceName)}`;
   mainLog.warn(
     `event=child-process-gone processType=${details.type} reason=${details.reason} exitCode=${details.exitCode}${serviceName}`,
   );
@@ -85,28 +134,34 @@ app.on('child-process-gone', (_event, details) => {
 
 // --- App identity: must be set before app.whenReady() on Windows, or neither
 // desktop notifications nor the GSMTC media identity attach to Sidra ---
-if (process.platform === 'win32') {
-  app.setAppUserModelId('com.wimpysworld.sidra');
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.wimpysworld.sidra");
 }
 
 // --- Platform switches: must run before app.whenReady() ---
-if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations');
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch(
+    "enable-features",
+    "UseOzonePlatform,WaylandWindowDecorations",
+  );
   // MediaSessionService off: Sidra registers its own MPRIS service, and
   // Chromium's would be a second, conflicting registration on the same bus.
   // AudioServiceOutOfProcess off: it moves audio back in-process, which is
   // where SetGlobalAppName can reach PulseAudio at all.
-  app.commandLine.appendSwitch('disable-features', 'MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess');
+  app.commandLine.appendSwitch(
+    "disable-features",
+    "MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess",
+  );
   // Set the XDG desktop name so GetXdgAppId() returns 'sidra' and
   // GetPossiblyOverriddenApplicationName() can read Name= from sidra.desktop.
   // Pairs with the AudioServiceOutOfProcess switch above: without both, the
   // PulseAudio stream is labelled "Chromium" and no PULSE_PROP_* override helps.
-  app.setDesktopName('sidra.desktop');
-  mainLog.info('Linux platform switches applied');
+  app.setDesktopName("sidra.desktop");
+  mainLog.info("Linux platform switches applied");
 }
 
-// Ensure Discord IPC socket path resolves correctly on macOS GUI launch
-if (process.platform === 'darwin') process.env.TMPDIR = app.getPath('temp');
+// macOS GUI launches can omit TMPDIR, which prevents Discord IPC socket discovery.
+if (process.platform === "darwin") process.env.TMPDIR = app.getPath("temp");
 
 // Use a platform-accurate Chrome UA, stripping Electron identifiers that
 // Apple Music detects and blocks. The platform component must be truthful
@@ -114,13 +169,13 @@ if (process.platform === 'darwin') process.env.TMPDIR = app.getPath('temp');
 // Read the Chrome major from process.versions.chrome so CastLabs ECS updates
 // also update the UA. Chrome's reduced UA fixes the other components at 0.
 function chromeUA(): string {
-  const version = `${process.versions.chrome.split('.')[0]}.0.0.0`;
-  const webkit = 'AppleWebKit/537.36 (KHTML, like Gecko)';
-  const safari = 'Safari/537.36';
-  if (process.platform === 'darwin') {
+  const version = `${process.versions.chrome.split(".")[0]}.0.0.0`;
+  const webkit = "AppleWebKit/537.36 (KHTML, like Gecko)";
+  const safari = "Safari/537.36";
+  if (process.platform === "darwin") {
     return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ${webkit} Chrome/${version} ${safari}`;
   }
-  if (process.platform === 'win32') {
+  if (process.platform === "win32") {
     return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) ${webkit} Chrome/${version} ${safari}`;
   }
   return `Mozilla/5.0 (X11; Linux x86_64) ${webkit} Chrome/${version} ${safari}`;
@@ -134,9 +189,10 @@ app.userAgentFallback = UA;
 let appTray: Tray | null = null;
 
 let isQuitting = false;
-app.on('before-quit', () => { isQuitting = true; });
+app.on("before-quit", () => {
+  isQuitting = true;
+});
 
-// Shared by second-instance and pending-target handlers.
 let win: BrowserWindow | null = null;
 let rendererDocumentGeneration = 0;
 
@@ -144,7 +200,8 @@ let rendererDocumentGeneration = 0;
 // itms:// URLs from a second invocation are routed instead of opening a new
 // window. macOS uses LSOpenURLSpec (open-url event) and never spawns a second
 // process, so the lock is unnecessary there.
-const gotLock = process.platform === 'darwin' || app.requestSingleInstanceLock();
+const gotLock =
+  process.platform === "darwin" || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 }
@@ -153,7 +210,7 @@ if (!gotLock) {
 // via the open-url event, not argv, and itms:// is not registered there
 // (Music.app handles it natively).
 let pendingItmsTarget: ItmsTarget | null =
-  process.platform !== 'darwin' ? extractItmsUrlFromArgv(process.argv) : null;
+  process.platform !== "darwin" ? extractItmsUrlFromArgv(process.argv) : null;
 
 function focusMainWindow(): void {
   if (!win) return;
@@ -171,7 +228,8 @@ function routeItmsTarget(target: ItmsTarget | null): void {
     return;
   }
   // Resolved before the switch; buildItmsRouteURL pins the music origin itself.
-  const url = target.kind === 'url' ? target.url : buildItmsRouteURL(target.token);
+  const url =
+    target.kind === "url" ? target.url : buildItmsRouteURL(target.token);
   routeToMusicService(url);
   mainLog.info(`itms target routed: kind=${target.kind}`);
 }
@@ -184,7 +242,12 @@ export interface Assets {
   hookScript: string;
 }
 
-function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; cssReady: Promise<void>; markCssReady: () => void } {
+function createSplash(): {
+  splash: BrowserWindow;
+  minDisplay: Promise<void>;
+  cssReady: Promise<void>;
+  markCssReady: () => void;
+} {
   const splashZoom = getZoomFactor();
   const splash = new BrowserWindow({
     width: Math.round(SPLASH_WIDTH_PX * splashZoom),
@@ -195,7 +258,7 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
     fullscreen: false,
     center: true,
     skipTaskbar: true,
-    backgroundColor: '#1a0a10',
+    backgroundColor: "#1a0a10",
     show: false,
     webPreferences: {
       contextIsolation: true,
@@ -204,50 +267,68 @@ function createSplash(): { splash: BrowserWindow; minDisplay: Promise<void>; css
     },
   });
   const { text: loadingText, lang: loadingLang } = getLoadingText();
-  splash.loadFile(getAssetPath('assets', 'splash.html'), { query: { text: loadingText, lang: loadingLang } });
+  splash.loadFile(getAssetPath("assets", "splash.html"), {
+    query: { text: loadingText, lang: loadingLang },
+  });
   splash.show();
-  splashLog.info('splash shown');
-  splash.webContents.on('did-finish-load', () => {
+  splashLog.info("splash shown");
+  splash.webContents.on("did-finish-load", () => {
     splash.webContents.setZoomFactor(getZoomFactor());
   });
   let resolveMinDisplay!: () => void;
-  const minDisplay = new Promise<void>(resolve => { resolveMinDisplay = resolve; });
+  const minDisplay = new Promise<void>((resolve) => {
+    resolveMinDisplay = resolve;
+  });
   setTimeout(resolveMinDisplay, SPLASH_MIN_DISPLAY_MS);
   let resolveCssReady!: () => void;
-  // Raced against a timeout rather than left open-ended. Every other path that
-  // resolves this sits inside an event handler that can fail, and an unsettled
-  // cssReady holds the Promise.all in setupSplashTransition() forever, so the
-  // splash never closes and the main window never shows.
+  // The timeout guarantees that setupSplashTransition() can finish if an event
+  // handler fails before it calls markCssReady(). An unsettled cssReady would
+  // otherwise keep the splash open and the main window hidden.
   const cssReady = Promise.race([
-    new Promise<void>(resolve => { resolveCssReady = resolve; }),
-    new Promise<void>(resolve => setTimeout(resolve, CSS_READY_TIMEOUT_MS)),
+    new Promise<void>((resolve) => {
+      resolveCssReady = resolve;
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, CSS_READY_TIMEOUT_MS)),
   ]);
-  splashLog.info('splash created');
-  return { splash, minDisplay, cssReady, markCssReady: () => resolveCssReady() };
+  splashLog.info("splash created");
+  return {
+    splash,
+    minDisplay,
+    cssReady,
+    markCssReady: () => resolveCssReady(),
+  };
 }
 
 function setupApplicationMenu(): void {
-  if (process.env.SIDRA_DEVTOOLS === '1') {
+  if (process.env.SIDRA_DEVTOOLS === "1") {
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
-        role: 'viewMenu',
-        submenu: [{ role: 'toggleDevTools' }],
+        role: "viewMenu",
+        submenu: [{ role: "toggleDevTools" }],
       },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
-  } else if (process.platform === 'darwin') {
-    Menu.setApplicationMenu(Menu.buildFromTemplate([{
-      label: app.name,
-      submenu: [
-        { label: getTrayStrings().about, ...(getMenuIcon('about') ? { icon: getMenuIcon('about') } : {}), click: () => showAboutWindow() },
-        { type: 'separator' },
-        { role: 'quit' },
-      ],
-    }]));
+  } else if (process.platform === "darwin") {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        {
+          label: app.name,
+          submenu: [
+            {
+              label: getTrayStrings().about,
+              ...(getMenuIcon("about") ? { icon: getMenuIcon("about") } : {}),
+              click: () => showAboutWindow(),
+            },
+            { type: "separator" },
+            { role: "quit" },
+          ],
+        },
+      ]),
+    );
   } else {
     Menu.setApplicationMenu(null);
   }
-  mainLog.info('application menu set');
+  mainLog.info("application menu set");
 }
 
 // The renderer→main channels split by owner: the nav: prefix is the navigation
@@ -263,46 +344,72 @@ type SendListener = Parameters<typeof ipcMain.on>[1];
 // the table lists them.
 function onSendChannels<C extends SendChannel>(
   listeners: Record<C, SendListener>,
-  accepts?: (event: Electron.IpcMainEvent, data: unknown, generation: unknown) => boolean,
+  accepts?: (
+    event: Electron.IpcMainEvent,
+    data: unknown,
+    generation: unknown,
+  ) => boolean,
 ): void {
   for (const channel of Object.keys(listeners) as C[]) {
-    ipcMain.on(channel, accepts ? (event, data, generation) => {
-      if (accepts(event, data, generation)) listeners[channel](event, data);
-    } : listeners[channel]);
+    ipcMain.on(
+      channel,
+      accepts
+        ? (event, data, generation) => {
+            if (accepts(event, data, generation))
+              listeners[channel](event, data);
+          }
+        : listeners[channel],
+    );
   }
 }
 
 function initPlayerIPC(): Player {
   const player = new Player();
-  onSendChannels<PlayerSendChannel>({
-    hookReady: (event, generation) => {
-      if (generation !== rendererDocumentGeneration || event.sender !== win?.webContents ||
-        event.senderFrame !== win.webContents.mainFrame) return;
-      player.handleHookReady(event.senderFrame.url);
+  onSendChannels<PlayerSendChannel>(
+    {
+      hookReady: (event, generation) => {
+        if (
+          generation !== rendererDocumentGeneration ||
+          event.sender !== win?.webContents ||
+          event.senderFrame !== win.webContents.mainFrame
+        )
+          return;
+        player.handleHookReady(event.senderFrame.url);
+      },
+      playbackCapabilitiesDidChange: (_event, data) =>
+        player.handlePlaybackCapabilitiesDidChange(data),
+      playbackStopped: (_event, data) => player.handlePlaybackStopped(data),
+      playbackStateDidChange: (_event, data) =>
+        player.handlePlaybackStateDidChange(data),
+      nowPlayingItemDidChange: (_event, data) =>
+        player.handleNowPlayingItemDidChange(data),
+      timedMetadataDidChange: (_event, data) =>
+        player.handleTimedMetadataDidChange(data),
+      playbackTimeDidChange: (_event, data) =>
+        player.handlePlaybackTimeDidChange(data),
+      repeatModeDidChange: (_event, data) =>
+        player.handleRepeatModeDidChange(data),
+      shuffleModeDidChange: (_event, data) =>
+        player.handleShuffleModeDidChange(data),
+      volumeDidChange: (_event, data) => player.handleVolumeDidChange(data),
     },
-    playbackCapabilitiesDidChange: (_event, data) => player.handlePlaybackCapabilitiesDidChange(data),
-    playbackStopped: (_event, data) => player.handlePlaybackStopped(data),
-    playbackStateDidChange: (_event, data) => player.handlePlaybackStateDidChange(data),
-    nowPlayingItemDidChange: (_event, data) => player.handleNowPlayingItemDidChange(data),
-    timedMetadataDidChange: (_event, data) => player.handleTimedMetadataDidChange(data),
-    playbackTimeDidChange: (_event, data) => player.handlePlaybackTimeDidChange(data),
-    repeatModeDidChange: (_event, data) => player.handleRepeatModeDidChange(data),
-    shuffleModeDidChange: (_event, data) => player.handleShuffleModeDidChange(data),
-    volumeDidChange: (_event, data) => player.handleVolumeDidChange(data),
-  }, (event, _data, generation) => generation === rendererDocumentGeneration &&
-    event.sender === win?.webContents && event.senderFrame === win.webContents.mainFrame);
+    (event, _data, generation) =>
+      generation === rendererDocumentGeneration &&
+      event.sender === win?.webContents &&
+      event.senderFrame === win.webContents.mainFrame,
+  );
   return player;
 }
 
 async function initSession(): Promise<Electron.Session> {
-  // Clear stale service workers concurrently with Widevine CDM init - both are
-  // independent async operations and navigation has not started yet.
-  const ses = session.fromPartition('persist:sidra');
+  // Clear stale service worker and cache data while Widevine initialises.
+  // Both operations are independent, and navigation has not started.
+  const ses = session.fromPartition("persist:sidra");
   await Promise.all([
     components.whenReady(),
     ses.clearData({
-      dataTypes: ['serviceWorkers', 'cache'],
-      origins: allServices().map(svc => svc.origin),
+      dataTypes: ["serviceWorkers", "cache"],
+      origins: allServices().map((svc) => svc.origin),
     }),
   ]);
   interface CdmComponentStatus {
@@ -311,11 +418,15 @@ async function initSession(): Promise<Electron.Session> {
     version: string;
   }
 
-  const cdmStatus = Object.values(components.status())[0] as CdmComponentStatus | undefined;
+  const cdmStatus = Object.values(components.status())[0] as
+    | CdmComponentStatus
+    | undefined;
   if (cdmStatus) {
-    mainLog.info(`Widevine CDM ready: ${cdmStatus.title} v${cdmStatus.version} (${cdmStatus.status})`);
+    mainLog.info(
+      `Widevine CDM ready: ${cdmStatus.title} v${cdmStatus.version} (${cdmStatus.status})`,
+    );
   } else {
-    mainLog.warn('Widevine CDM ready: status unavailable');
+    mainLog.warn("Widevine CDM ready: status unavailable");
   }
 
   // Set UA on the default session (updates navigator.userAgentData Client Hints)
@@ -325,39 +436,47 @@ async function initSession(): Promise<Electron.Session> {
 }
 
 function loadAssets(): Assets {
-  const styleFixCssPath = getAssetPath('assets', 'styleFix.css');
-  const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, 'utf-8');
-  const authStyleFixCssPath = getAssetPath('assets', 'authStyleFix.css');
-  const authCss = fs.readFileSync(authStyleFixCssPath, 'utf-8');
-  const authFramePath = getAssetPath('assets', 'authFrameFix.js');
+  const styleFixCssPath = getAssetPath("assets", "styleFix.css");
+  const STYLE_FIX_CSS = fs.readFileSync(styleFixCssPath, "utf-8");
+  const authStyleFixCssPath = getAssetPath("assets", "authStyleFix.css");
+  const authCss = fs.readFileSync(authStyleFixCssPath, "utf-8");
+  const authFramePath = getAssetPath("assets", "authFrameFix.js");
   const authFrameScript = fs
-    .readFileSync(authFramePath, 'utf-8')
-    .replace(AUTH_FIX_TOKEN, () => JSON.stringify({
-      css: authCss,
-      containerSelectors: PASSKEY_CONTAINER_SELECTORS,
-      logPrefix: AUTH_FRAME_LOG_PREFIX,
-    }));
-  const navBarPath = getAssetPath('assets', 'navigationBar.js');
+    .readFileSync(authFramePath, "utf-8")
+    .replace(AUTH_FIX_TOKEN, () =>
+      JSON.stringify({
+        css: authCss,
+        containerSelectors: PASSKEY_CONTAINER_SELECTORS,
+        logPrefix: AUTH_FRAME_LOG_PREFIX,
+      }),
+    );
+  const navBarPath = getAssetPath("assets", "navigationBar.js");
   const navBarScript = fs
-    .readFileSync(navBarPath, 'utf-8')
+    .readFileSync(navBarPath, "utf-8")
     .replace(NAV_LABELS_TOKEN, () => JSON.stringify(getNavigationStrings()));
-  const hookPath = getAssetPath('assets', 'musicKitHook.js');
-  const hookScript = fs.readFileSync(hookPath, 'utf-8')
-    .replace('__SIDRA_SERVICE_HOSTS__', () => JSON.stringify(allServices().map(service => service.host)));
+  const hookPath = getAssetPath("assets", "musicKitHook.js");
+  const hookScript = fs
+    .readFileSync(hookPath, "utf-8")
+    .replace("__SIDRA_SERVICE_HOSTS__", () =>
+      JSON.stringify(allServices().map((service) => service.host)),
+    );
   return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript };
 }
 
-function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady: Promise<void> } {
+function createMainWindow(ses: Electron.Session): {
+  win: BrowserWindow;
+  winReady: Promise<void>;
+} {
   const win = new BrowserWindow({
     title: app.getName(),
     width: MAIN_WINDOW_WIDTH_PX,
     height: MAIN_WINDOW_HEIGHT_PX,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#000000',
+    backgroundColor: "#000000",
     webPreferences: {
-      partition: 'persist:sidra',
-      preload: path.join(__dirname, 'preload.js'),
+      partition: "persist:sidra",
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
       spellcheck: false,
@@ -373,34 +492,49 @@ function createMainWindow(ses: Electron.Session): { win: BrowserWindow; winReady
   // selector Apple has renamed delays the launch instead of blocking it.
   let pollCancelled = false;
   const winReady = Promise.race([
-    new Promise<void>(resolve => {
-      win.webContents.once('did-navigate-in-page', () => {
+    new Promise<void>((resolve) => {
+      win.webContents.once("did-navigate-in-page", () => {
         const poll = () => {
           if (pollCancelled) return;
-          // The getter read happens before the promise exists, so the .catch()
-          // below cannot contain its throw. Quitting during startup destroys the
-          // window while this timer is still armed (#257).
+          // Guard the native webContents getter before creating the promise.
+          // The startup timer can run after the window is destroyed.
           const contents = liveWebContents(win);
           if (!contents) return;
           const selector = getService(getMusicService()).contentReadySelector;
-          contents.executeJavaScript(contentReadyProbeScript(selector))
-            .then(ready => { if (ready) resolve(); else if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); })
-            .catch(() => { if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS); });
+          contents
+            .executeJavaScript(contentReadyProbeScript(selector))
+            .then((ready) => {
+              if (ready) resolve();
+              else if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS);
+            })
+            .catch(() => {
+              if (!pollCancelled) setTimeout(poll, CONTENT_READY_POLL_MS);
+            });
         };
         poll();
       });
     }),
-    new Promise<void>(resolve => setTimeout(resolve, CONTENT_READY_TIMEOUT_MS)),
+    new Promise<void>((resolve) =>
+      setTimeout(resolve, CONTENT_READY_TIMEOUT_MS),
+    ),
   ]);
-  winReady.then(() => { pollCancelled = true; });
+  winReady.then(() => {
+    pollCancelled = true;
+  });
 
   return { win, winReady };
 }
 
-function setupSplashTransition(win: BrowserWindow, splash: BrowserWindow, minDisplay: Promise<void>, cssReady: Promise<void>, winReady: Promise<void>): void {
+function setupSplashTransition(
+  win: BrowserWindow,
+  splash: BrowserWindow,
+  minDisplay: Promise<void>,
+  cssReady: Promise<void>,
+  winReady: Promise<void>,
+): void {
   Promise.all([minDisplay, cssReady, winReady]).then(() => {
     win.show();
-    splashLog.info('splash closed');
+    splashLog.info("splash closed");
     splash.close();
   });
 }
@@ -410,26 +544,30 @@ function setupSessionHeaders(ses: Electron.Session): void {
   ses.setUserAgent(UA);
 
   // Strip Electron and app name tokens from outgoing request headers
-  const urlFilters = allServices().map(svc => `${svc.origin}/*`);
-  ses.webRequest.onBeforeSendHeaders({ urls: urlFilters }, (details, callback) => {
-    const ua = details.requestHeaders['User-Agent'];
-    if (ua && ua !== UA) {
-      details.requestHeaders['User-Agent'] = UA;
-    }
-    callback({ requestHeaders: details.requestHeaders });
-  });
+  const urlFilters = allServices().map((svc) => `${svc.origin}/*`);
+  ses.webRequest.onBeforeSendHeaders(
+    { urls: urlFilters },
+    (details, callback) => {
+      const ua = details.requestHeaders["User-Agent"];
+      if (ua && ua !== UA) {
+        details.requestHeaders["User-Agent"] = UA;
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
 }
 
 function setupWindowZoomAndNav(win: BrowserWindow): void {
   win.webContents.setZoomFactor(getZoomFactor());
-  const onSettings: SendListener = event => handleSettingsNavigation(event, win);
-  win.once('closed', () => ipcMain.removeListener('nav:settings', onSettings));
+  const onSettings: SendListener = (event) =>
+    handleSettingsNavigation(event, win);
+  win.once("closed", () => ipcMain.removeListener("nav:settings", onSettings));
 
   onSendChannels<NavSendChannel>({
-    'nav:settings': onSettings,
-    'nav:back': () => goBackIfPossible(win),
-    'nav:forward': () => win.webContents.navigationHistory.goForward(),
-    'nav:reload': () => {
+    "nav:settings": onSettings,
+    "nav:back": () => goBackIfPossible(win),
+    "nav:forward": () => win.webContents.navigationHistory.goForward(),
+    "nav:reload": () => {
       resetWedgeDetector();
       win.webContents.reload();
     },
@@ -439,22 +577,32 @@ function setupWindowZoomAndNav(win: BrowserWindow): void {
 // Contain injection failures in both full-load and in-page navigation handlers.
 // The URL read can throw after WebContents destruction, so it stays inside the catch.
 // Separate catches let navigation controls load even when the MusicKit hook fails.
-async function injectRendererScripts(win: BrowserWindow, assets: Assets, context: string): Promise<void> {
+async function injectRendererScripts(
+  win: BrowserWindow,
+  assets: Assets,
+  context: string,
+): Promise<void> {
   try {
     const currentUrl = win.webContents.getURL();
     if (isAllowedNavigationUrl(currentUrl)) {
-      await win.webContents.executeJavaScript(assets.hookScript
-        .replace('__SIDRA_DOCUMENT_GENERATION__', () => String(rendererDocumentGeneration)));
-      mainLog.debug('MusicKit hook injected');
+      await win.webContents.executeJavaScript(
+        assets.hookScript.replace("__SIDRA_DOCUMENT_GENERATION__", () =>
+          String(rendererDocumentGeneration),
+        ),
+      );
+      mainLog.debug("MusicKit hook injected");
     } else {
-      mainLog.warn('skipped hookScript injection on disallowed host:', currentUrl);
+      mainLog.warn(
+        "skipped hookScript injection on disallowed host:",
+        currentUrl,
+      );
     }
   } catch (e: unknown) {
     mainLog.warn(`failed to inject hookScript ${context}:`, e);
   }
   try {
     await win.webContents.executeJavaScript(assets.navBarScript);
-    mainLog.debug('Navigation bar injected');
+    mainLog.debug("Navigation bar injected");
   } catch (e: unknown) {
     mainLog.warn(`failed to inject navBarScript ${context}:`, e);
   }
@@ -463,62 +611,69 @@ async function injectRendererScripts(win: BrowserWindow, assets: Assets, context
 function setupNavigationHandlers(win: BrowserWindow, player: Player): void {
   // Keep page-initiated main-frame navigation on registered service and authentication hosts.
   // Main-process loadURL() calls bypass this event and need their own validated targets.
-  win.webContents.on('will-navigate', (event, url) => {
+  win.webContents.on("will-navigate", (event, url) => {
     if (!isAllowedNavigationUrl(url)) {
       event.preventDefault();
-      mainLog.warn('blocked navigation to disallowed host:', url);
+      mainLog.warn("blocked navigation to disallowed host:", url);
     }
   });
-  win.webContents.on('did-start-navigation', (details) => {
+  win.webContents.on("did-start-navigation", (details) => {
     if (details.isMainFrame) {
       win.webContents.send(CONTROLLER_RESET_CHANNEL);
-      mainLog.debug('did-start-navigation:', details.url);
+      mainLog.debug("did-start-navigation:", details.url);
     }
   });
-  win.webContents.on('did-navigate', (_event, url) => {
+  win.webContents.on("did-navigate", (_event, url) => {
     rendererDocumentGeneration += 1;
     player.resetForDocumentReplacement();
-    mainLog.debug('did-navigate:', url);
+    mainLog.debug("did-navigate:", url);
     handleStorefrontNavigation(url);
   });
 }
 
-const AUTH_FRAME_HOSTS = new Set<string>(allServices().flatMap(svc => [...svc.authFrameHosts]));
-const AUTH_FRAME_LOG_PREFIX = '[sidra] auth-frame hide:';
+const AUTH_FRAME_HOSTS = new Set<string>(
+  allServices().flatMap((svc) => [...svc.authFrameHosts]),
+);
+const AUTH_FRAME_LOG_PREFIX = "[sidra] auth-frame hide:";
 
 // assets/authFrameFix.js hides the passkey and "Sign in with iPhone" routes in
 // Apple's sign-in iframe, and reports what it hid back over console-message,
 // which is the only channel out of a frame the main process has not preloaded.
 function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
-  const authLog = log.scope('auth-frame');
+  const authLog = log.scope("auth-frame");
 
-  win.webContents.on('did-frame-finish-load', (_event, isMainFrame, frameProcessId, frameRoutingId) => {
-    if (isMainFrame) return;
-    const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
-    if (!frame) {
-      authLog.warn(`webFrameMain.fromId returned null for processId=${frameProcessId} routingId=${frameRoutingId}`);
-      return;
-    }
-    let host: string;
-    try {
-      host = new URL(frame.url).hostname;
-    } catch {
-      return;
-    }
-    if (!AUTH_FRAME_HOSTS.has(host)) return;
-    authLog.info(`auth iframe detected: ${frame.url}`);
-    frame.executeJavaScript(script).catch(err => {
-      authLog.warn('auth iframe injection failed:', (err as Error).message);
-    });
-  });
+  win.webContents.on(
+    "did-frame-finish-load",
+    (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+      if (isMainFrame) return;
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (!frame) {
+        authLog.warn(
+          `webFrameMain.fromId returned null for processId=${frameProcessId} routingId=${frameRoutingId}`,
+        );
+        return;
+      }
+      let host: string;
+      try {
+        host = new URL(frame.url).hostname;
+      } catch {
+        return;
+      }
+      if (!AUTH_FRAME_HOSTS.has(host)) return;
+      authLog.info(`auth iframe detected: ${frame.url}`);
+      frame.executeJavaScript(script).catch((err) => {
+        authLog.warn("auth iframe injection failed:", (err as Error).message);
+      });
+    },
+  );
 
-  win.webContents.on('console-message', (event) => {
+  win.webContents.on("console-message", (event) => {
     if (!event.message.startsWith(AUTH_FRAME_LOG_PREFIX)) return;
     const frameHost = (() => {
       try {
         return new URL(event.frame.url).hostname;
       } catch {
-        return '';
+        return "";
       }
     })();
     if (!AUTH_FRAME_HOSTS.has(frameHost)) return;
@@ -527,108 +682,135 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
 }
 
 function setupWindowEvents(win: BrowserWindow, markCssReady: () => void): void {
-  win.webContents.on('unresponsive', () => {
-    mainLog.warn('event=unresponsive processType=renderer');
+  win.webContents.on("unresponsive", () => {
+    mainLog.warn("event=unresponsive processType=renderer");
   });
-  win.webContents.on('responsive', () => {
-    mainLog.info('event=responsive processType=renderer');
+  win.webContents.on("responsive", () => {
+    mainLog.info("event=responsive processType=renderer");
   });
-  win.webContents.on('render-process-gone', (_event, details) => {
+  win.webContents.on("render-process-gone", (_event, details) => {
     mainLog.error(
       `event=render-process-gone processType=renderer reason=${details.reason} exitCode=${details.exitCode}`,
     );
   });
-  win.webContents.on('preload-error', (_event, preloadPath, error) => {
-    const errorName = PRELOAD_ERROR_NAMES.has(error.name) ? error.name : 'UnknownError';
+  win.webContents.on("preload-error", (_event, preloadPath, error) => {
+    const errorName = PRELOAD_ERROR_NAMES.has(error.name)
+      ? error.name
+      : "UnknownError";
     mainLog.warn(
       `event=preload-error processType=renderer preloadPath=${path.basename(preloadPath)} errorName=${errorName}`,
     );
   });
 
-  // Prevent the web page title from overriding the window title
-  win.on('page-title-updated', (event) => {
+  win.on("page-title-updated", (event) => {
     event.preventDefault();
   });
 
-  // Release the CSS readiness wait on load failure without waiting for its timeout.
+  // A failed load cannot apply CSS, so release the splash without waiting for the fallback timeout.
   let cssMarked = false;
-  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
     if (!cssMarked) {
       markCssReady();
       cssMarked = true;
     }
-    mainLog.error('page load failed:', errorCode, errorDescription);
+    mainLog.error("page load failed:", errorCode, errorDescription);
   });
 
   // Apple Music registers a beforeunload handler while audio plays. Electron
   // shows no confirmation dialog, so the handler silently blocks close() and
   // app.quit() with no error. Overriding it here lets Sidra exit.
-  win.webContents.on('will-prevent-unload', (event) => {
+  win.webContents.on("will-prevent-unload", (event) => {
     event.preventDefault();
   });
 
-  win.on('close', (event) => {
+  win.on("close", (event) => {
     if (!isQuitting && getCloseToTrayEnabled()) {
       event.preventDefault();
       win.hide();
-      mainLog.info('close intercepted: hiding window to tray');
+      mainLog.info("close intercepted: hiding window to tray");
       if (appTray) rebuildTrayMenu(appTray);
     }
   });
 
-  // Open external links in the system browser (only http/https)
+  // Keep external navigation out of the renderer and accept only HTTP or HTTPS URLs.
   win.webContents.setWindowOpenHandler(({ url }) => {
     openExternalUrl(url, mainLog);
-    return { action: 'deny' };
+    return { action: "deny" };
   });
 }
 
-function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: () => void, assets: Assets): void {
+function setupContentHandlers(
+  win: BrowserWindow,
+  player: Player,
+  markCssReady: () => void,
+  assets: Assets,
+): void {
   async function injectContent(): Promise<void> {
-    mainLog.info('page loaded:', win.webContents.getURL());
+    mainLog.info("page loaded:", win.webContents.getURL());
     win.webContents.setZoomFactor(getZoomFactor());
     await win.webContents.insertCSS(assets.STYLE_FIX_CSS);
-    mainLog.debug('CSS fixes injected');
+    mainLog.debug("CSS fixes injected");
     await injectThemeCss(win.webContents);
-    await injectRendererScripts(win, assets, 'on load');
+    await injectRendererScripts(win, assets, "on load");
   }
 
   let initialized = false;
   let integrationsReady = false;
-  win.webContents.on('did-navigate-in-page', async (_event, url) => {
+  win.webContents.on("did-navigate-in-page", async (_event, url) => {
     handleStorefrontNavigation(url);
     handleLastPageNavigation(url);
-    if (integrationsReady) await injectRendererScripts(win, assets, 'on SPA navigation');
+    if (integrationsReady)
+      await injectRendererScripts(win, assets, "on SPA navigation");
   });
-  win.webContents.on('did-finish-load', async () => {
-    // Claimed before the await, not after. injectContent() yields on every call,
-    // so two did-finish-load events inside one round trip would both pass a
-    // check placed below it and register every integration twice.
+  win.webContents.on("did-finish-load", async () => {
+    // Claim initialisation before injectContent() yields. Two did-finish-load
+    // events in one injection round trip must not register every integration twice.
     const firstLoad = !initialized;
     initialized = true;
 
     if (firstLoad) {
       // Isolate initialisers so one failure cannot skip the others or delay
       // markCssReady() until the splash timeout.
-      runSteps([
-        ['notifications', () => initNotifications({ player, getMainWindow: () => win })],
-        ['discord', () => initDiscordPresence({ player })],
-        ['lastfm', () => initLastfm({ player, getMainWindow: () => win })],
-        ['dock', () => initDock({ player, getMainWindow: () => win })],
-        ['windowsTaskbar', () => initWindowsTaskbar({ player, getMainWindow: () => win })],
-        ['mpris', () => {
-          if (process.platform !== 'linux') return;
-          const mpris = require('./integrations/mpris') as { init(ctx: IntegrationContext): void };
-          mpris.init({ player, getMainWindow: () => win });
-        }],
-        ['wedgeDetector', () => initWedgeDetector({ player, getMainWindow: () => win })],
-        ['trayState', () => {
-          if (!appTray) return;
-          // Register teardown so the tray timers and player listeners end on quit.
-          const teardownTrayState = initTrayStateManager(player, appTray);
-          app.on('will-quit', teardownTrayState);
-        }],
-      ], (name, e) => mainLog.error(`integration initialisation failed: ${name}:`, e));
+      runSteps(
+        [
+          [
+            "notifications",
+            () => initNotifications({ player, getMainWindow: () => win }),
+          ],
+          ["discord", () => initDiscordPresence({ player })],
+          ["lastfm", () => initLastfm({ player, getMainWindow: () => win })],
+          ["dock", () => initDock({ player, getMainWindow: () => win })],
+          [
+            "windowsTaskbar",
+            () => initWindowsTaskbar({ player, getMainWindow: () => win }),
+          ],
+          [
+            "mpris",
+            () => {
+              if (process.platform !== "linux") return;
+              const mpris = require("./integrations/mpris") as {
+                init(ctx: IntegrationContext): void;
+              };
+              mpris.init({ player, getMainWindow: () => win });
+            },
+          ],
+          [
+            "wedgeDetector",
+            () => initWedgeDetector({ player, getMainWindow: () => win }),
+          ],
+          [
+            "trayState",
+            () => {
+              if (!appTray) return;
+              // Register teardown so the tray timers and player listeners end on quit.
+              const teardownTrayState = initTrayStateManager(player, appTray);
+              app.on("will-quit", teardownTrayState);
+            },
+          ],
+        ],
+        (name, e) =>
+          mainLog.error(`integration initialisation failed: ${name}:`, e),
+      );
       integrationsReady = true;
     }
 
@@ -637,7 +819,7 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
     try {
       await injectContent();
     } catch (e: unknown) {
-      mainLog.warn('failed to inject content on load:', e);
+      mainLog.warn("failed to inject content on load:", e);
     }
 
     if (firstLoad) {
@@ -656,109 +838,125 @@ function setupContentHandlers(win: BrowserWindow, player: Player, markCssReady: 
 }
 
 if (gotLock) {
-  app.on('second-instance', (_event, argv) => {
+  app.on("second-instance", (_event, argv) => {
     const target = extractItmsUrlFromArgv(argv);
     routeItmsTarget(target);
     focusMainWindow();
   });
 
-  app.whenReady().then(async () => {
-    mainLog.info('app ready, waiting for Widevine CDM...');
-    const { splash, minDisplay, cssReady, markCssReady } = createSplash();
-    setupApplicationMenu();
-    const player = initPlayerIPC();
-    initNotificationProbe();
-    const ses = await initSession();
-    cleanArtworkCache();
+  app
+    .whenReady()
+    .then(async () => {
+      mainLog.info("app ready, waiting for Widevine CDM...");
+      const { splash, minDisplay, cssReady, markCssReady } = createSplash();
+      setupApplicationMenu();
+      const player = initPlayerIPC();
+      initNotificationProbe();
+      const ses = await initSession();
+      cleanArtworkCache();
 
-    if (process.platform === 'linux' || process.platform === 'win32') {
-      const ok = app.setAsDefaultProtocolClient('itms');
-      mainLog.info(`itms protocol registration: ${ok ? 'ok' : 'failed'}`);
-    }
-    // macOS open-url intentionally omitted - Music.app handles itms:// natively.
-
-    const assets = loadAssets();
-    const created = createMainWindow(ses);
-    win = created.win;
-    const winReady = created.winReady;
-    initCommandBridge((channel, ...args) => {
-      const contents = liveWebContents(win);
-      if (!contents) {
-        mainLog.warn(`source=command channel=${channel} reason=renderer-gone result=dropped`);
-        return;
+      if (process.platform === "linux" || process.platform === "win32") {
+        const ok = app.setAsDefaultProtocolClient("itms");
+        mainLog.info(`itms protocol registration: ${ok ? "ok" : "failed"}`);
       }
-      contents.send(channel, ...args);
-    });
-    initControllerIPC(win);
-    setGetMainWindowCallback(() => win);
-    initServiceSwitch({
-      getTray: () => appTray,
-      loadURL: url => {
-        win?.loadURL(url, { userAgent: UA }).catch(err =>
-          mainLog.warn('service navigation loadURL failed:', (err as Error).message)
-        );
+      // macOS omits open-url handling because Music.app handles itms:// natively.
+
+      const assets = loadAssets();
+      const created = createMainWindow(ses);
+      win = created.win;
+      const winReady = created.winReady;
+      initCommandBridge((channel, ...args) => {
+        const contents = liveWebContents(win);
+        if (!contents) {
+          mainLog.warn(
+            `source=command channel=${channel} reason=renderer-gone result=dropped`,
+          );
+          return;
+        }
+        contents.send(channel, ...args);
+      });
+      initControllerIPC(win);
+      setGetMainWindowCallback(() => win);
+      initServiceSwitch({
+        getTray: () => appTray,
+        loadURL: (url) => {
+          win
+            ?.loadURL(url, { userAgent: UA })
+            .catch((err) =>
+              mainLog.warn(
+                "service navigation loadURL failed:",
+                (err as Error).message,
+              ),
+            );
+          notifySettingsChanged();
+        },
+      });
+      const teardownSettingsActions = initSettingsActions({
+        getMainWindow: () => win,
+        applyZoom: (factor) => liveWebContents(win)?.setZoomFactor(factor),
+        switchService,
+        refreshTray: () => {
+          if (appTray) rebuildTrayMenu(appTray);
+        },
+      });
+      app.on("will-quit", teardownSettingsActions);
+      initSettingsWindow(win);
+      setThemeChangedCallback(() => {
+        if (appTray) rebuildTrayMenu(appTray);
         notifySettingsChanged();
-      },
-    });
-    const teardownSettingsActions = initSettingsActions({
-      getMainWindow: () => win,
-      applyZoom: factor => liveWebContents(win)?.setZoomFactor(factor),
-      switchService,
-      refreshTray: () => { if (appTray) rebuildTrayMenu(appTray); },
-    });
-    app.on('will-quit', teardownSettingsActions);
-    initSettingsWindow(win);
-    setThemeChangedCallback(() => {
-      if (appTray) rebuildTrayMenu(appTray);
-      notifySettingsChanged();
-    });
-    setupWindowZoomAndNav(win);
-    initThemeCSS(win);
-    setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
-    setupSessionHeaders(ses);
-    setupContentHandlers(win, player, markCssReady, assets);
-    setupWindowEvents(win, markCssReady);
-    setupNavigationHandlers(win, player);
-    setupAuthFrameInjection(win, assets.authFrameScript);
-    appTray = createTray();
-    if (process.env.SIDRA_DEVTOOLS === '1') {
-      win.webContents.openDevTools();
-      mainLog.info('DevTools opened (SIDRA_DEVTOOLS=1)');
-    }
-    mainLog.info('loading Apple Music...');
-    win.loadURL(buildAppleMusicURL(), { userAgent: UA }).catch(err =>
-      mainLog.warn('initial navigation loadURL failed:', (err as Error).message)
-    );
-
-    // Drain any itms target captured at launch. Routed after the initial home
-    // load so the content-ready probe binds to its first did-navigate-in-page.
-    winReady.then(() => {
-      if (pendingItmsTarget) {
-        routeItmsTarget(pendingItmsTarget);
-        pendingItmsTarget = null;
+      });
+      setupWindowZoomAndNav(win);
+      initThemeCSS(win);
+      setupSplashTransition(win, splash, minDisplay, cssReady, winReady);
+      setupSessionHeaders(ses);
+      setupContentHandlers(win, player, markCssReady, assets);
+      setupWindowEvents(win, markCssReady);
+      setupNavigationHandlers(win, player);
+      setupAuthFrameInjection(win, assets.authFrameScript);
+      appTray = createTray();
+      if (process.env.SIDRA_DEVTOOLS === "1") {
+        win.webContents.openDevTools();
+        mainLog.info("DevTools opened (SIDRA_DEVTOOLS=1)");
       }
+      mainLog.info("loading Apple Music...");
+      win
+        .loadURL(buildAppleMusicURL(), { userAgent: UA })
+        .catch((err) =>
+          mainLog.warn(
+            "initial navigation loadURL failed:",
+            (err as Error).message,
+          ),
+        );
+
+      // Drain any itms target captured at launch. Routed after the initial home
+      // load so the content-ready probe binds to its first did-navigate-in-page.
+      winReady.then(() => {
+        if (pendingItmsTarget) {
+          routeItmsTarget(pendingItmsTarget);
+          pendingItmsTarget = null;
+        }
+      });
+    })
+    .catch((err: unknown) => {
+      // The splash is already on screen and setupSplashTransition() was never
+      // reached, so without this catch a startup failure leaves the splash up
+      // for the life of the process with no message.
+      mainLog.error("startup failed:", err);
+      const detail = err instanceof Error ? err.message : String(err);
+      dialog.showErrorBox(
+        "Sidra failed to start",
+        `Sidra could not finish starting.\n\n${detail}\n\nSee the Sidra log for details, then start Sidra again.`,
+      );
+      app.quit();
     });
-  }).catch((err: unknown) => {
-    // The splash is already on screen and setupSplashTransition() was never
-    // reached, so without this catch a startup failure leaves the splash up
-    // for the life of the process with no message.
-    mainLog.error('startup failed:', err);
-    const detail = err instanceof Error ? err.message : String(err);
-    dialog.showErrorBox(
-      'Sidra failed to start',
-      `Sidra could not finish starting.\n\n${detail}\n\nSee the Sidra log for details, then start Sidra again.`
-    );
-    app.quit();
-  });
 }
 
-app.on('window-all-closed', () => {
-  mainLog.info('all windows closed, quitting');
+app.on("window-all-closed", () => {
+  mainLog.info("all windows closed, quitting");
   app.quit();
 });
 
-// macOS: clicking the dock icon when the window is hidden (close-to-tray)
-// should restore it rather than doing nothing.
-app.on('activate', () => {
+// Restore a close-to-tray window when macOS activates Sidra from the dock.
+app.on("activate", () => {
   focusMainWindow();
 });

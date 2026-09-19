@@ -1,24 +1,29 @@
-import { app, BrowserWindow } from 'electron';
-import log from 'electron-log/main';
+import { app, BrowserWindow } from "electron";
+import log from "electron-log/main";
 
-import { NowPlayingPayload, TimedMetadataPayload, PlaybackState, PlaybackStatePayload, PlaybackCapabilities, PlaybackStopped, IntegrationContext, getShareUrl } from '../../player';
-import { downloadArtwork } from '../../artwork';
-import { errorMessage, liveWebContents } from '../../utils';
-import { getServiceByHost } from '../../musicService';
-import { getMusicService } from '../../config';
-import { switchService } from '../../serviceSwitch';
+import {
+  NowPlayingPayload,
+  TimedMetadataPayload,
+  PlaybackState,
+  PlaybackStatePayload,
+  PlaybackCapabilities,
+  PlaybackStopped,
+  IntegrationContext,
+  getShareUrl,
+} from "../../player";
+import { downloadArtwork } from "../../artwork";
+import { errorMessage, liveWebContents } from "../../utils";
+import { getServiceByHost } from "../../musicService";
+import { getMusicService } from "../../config";
+import { switchService } from "../../serviceSwitch";
 
-// main.ts loads this module only on Linux, keeping dbus-next off other platforms.
-const dbus = require('@holusion/dbus-next');
-const {
-  Interface,
-  ACCESS_READ,
-  ACCESS_READWRITE,
-} = dbus.interface;
-const { Variant } = require('@holusion/dbus-next');
+// `main.ts` loads this module only on Linux, keeping `dbus-next` off other platforms.
+const dbus = require("@holusion/dbus-next");
+const { Interface, ACCESS_READ, ACCESS_READWRITE } = dbus.interface;
+const { Variant } = require("@holusion/dbus-next");
 
-// How close an incoming volume has to be to one this interface set for it to
-// count as that value echoing back rather than as a change made in the app.
+// Maximum difference for identifying a volume report as the echo of a value
+// that this interface sent, rather than as a change from MusicKit.
 const VOLUME_ECHO_TOLERANCE = 0.01;
 // How many unmatched `set Volume` values are tracked at once. A drag issues a
 // burst of sets inside one echo round trip, and a single slot leaves all but
@@ -27,42 +32,48 @@ const VOLUME_ECHO_TOLERANCE = 0.01;
 const MAX_PENDING_VOLUMES = 8;
 const MS_TO_US = 1000;
 
-const mprisLog = log.scope('mpris');
+const mprisLog = log.scope("mpris");
 
-const MPRIS_PATH = '/org/mpris/MediaPlayer2';
+const MPRIS_PATH = "/org/mpris/MediaPlayer2";
 
 function parseServiceUri(uri: string): URL | null {
   try {
     const url = new URL(uri);
     const service = getServiceByHost(url.hostname);
-    return service?.origin === url.origin && !url.username && !url.password ? url : null;
+    return service?.origin === url.origin && !url.username && !url.password
+      ? url
+      : null;
   } catch {
     return null;
   }
 }
 
 type MprisMethod =
-  | 'LoopStatus'
-  | 'Rate'
-  | 'Shuffle'
-  | 'Volume'
-  | 'Next'
-  | 'Previous'
-  | 'Pause'
-  | 'PlayPause'
-  | 'Stop'
-  | 'Play'
-  | 'Seek'
-  | 'SetPosition'
-  | 'OpenUri'
-  | 'Fullscreen'
-  | 'Raise'
-  | 'Quit';
+  | "LoopStatus"
+  | "Rate"
+  | "Shuffle"
+  | "Volume"
+  | "Next"
+  | "Previous"
+  | "Pause"
+  | "PlayPause"
+  | "Stop"
+  | "Play"
+  | "Seek"
+  | "SetPosition"
+  | "OpenUri"
+  | "Fullscreen"
+  | "Raise"
+  | "Quit";
 
-function logCommand(method: MprisMethod, result: 'sent' | 'dropped', channel?: ReceiveChannel): void {
-  const channelField = channel === undefined ? '' : ` channel=${channel}`;
+function logCommand(
+  method: MprisMethod,
+  result: "sent" | "dropped",
+  channel?: ReceiveChannel,
+): void {
+  const channelField = channel === undefined ? "" : ` channel=${channel}`;
   const message = `source=mpris method=${method}${channelField} result=${result}`;
-  if (method === 'Volume' && result === 'sent') {
+  if (method === "Volume" && result === "sent") {
     mprisLog.debug(message);
     return;
   }
@@ -78,7 +89,7 @@ class MediaPlayer2 extends Interface {
 
   /** Creates the root interface with a current-window lookup. */
   constructor(getMainWindow: () => BrowserWindow | null) {
-    super('org.mpris.MediaPlayer2');
+    super("org.mpris.MediaPlayer2");
     this._getMainWindow = getMainWindow;
   }
 
@@ -113,9 +124,9 @@ class MediaPlayer2 extends Interface {
     const win = this._getMainWindow();
     if (win && !win.isDestroyed()) {
       win.setFullScreen(value);
-      logCommand('Fullscreen', 'sent');
+      logCommand("Fullscreen", "sent");
     } else {
-      logCommand('Fullscreen', 'dropped');
+      logCommand("Fullscreen", "dropped");
     }
   }
 
@@ -136,7 +147,7 @@ class MediaPlayer2 extends Interface {
 
   /** Advertises HTTPS for validated service URLs. */
   get SupportedUriSchemes(): string[] {
-    return ['https'];
+    return ["https"];
   }
 
   /** Shows and focuses the current window. */
@@ -145,76 +156,76 @@ class MediaPlayer2 extends Interface {
     if (win) {
       win.show();
       win.focus();
-      logCommand('Raise', 'sent');
+      logCommand("Raise", "sent");
     } else {
-      logCommand('Raise', 'dropped');
+      logCommand("Raise", "dropped");
     }
   }
 
   /** Requests application shutdown. */
   Quit(): void {
     app.quit();
-    logCommand('Quit', 'sent');
+    logCommand("Quit", "sent");
   }
 }
 
 MediaPlayer2.configureMembers({
   properties: {
     Identity: {
-      signature: 's',
+      signature: "s",
       access: ACCESS_READ,
     },
     DesktopEntry: {
-      signature: 's',
+      signature: "s",
       access: ACCESS_READ,
     },
     CanQuit: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     CanRaise: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     Fullscreen: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READWRITE,
     },
     CanSetFullscreen: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     HasTrackList: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     SupportedMimeTypes: {
-      signature: 'as',
+      signature: "as",
       access: ACCESS_READ,
     },
     SupportedUriSchemes: {
-      signature: 'as',
+      signature: "as",
       access: ACCESS_READ,
     },
   },
   methods: {
     Raise: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     Quit: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
   },
 });
 
-const NO_TRACK = '/org/mpris/MediaPlayer2/TrackList/NoTrack';
+const NO_TRACK = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
 
 // `mpris:trackid` is a D-Bus object path ('o'), whose elements accept only
 // [A-Za-z0-9_]. An Apple identifier carrying anything else fails to marshal.
 function sanitiseTrackId(trackId: string): string {
-  return trackId.replace(/[^A-Za-z0-9_]/g, '_');
+  return trackId.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
 function buildTrackId(rawId: string): string {
@@ -222,8 +233,10 @@ function buildTrackId(rawId: string): string {
   return `/org/${appName}/track/${sanitiseTrackId(rawId)}`;
 }
 
-function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<typeof Variant>> {
-  const trackId = buildTrackId(payload.trackId ?? 'unknown');
+function buildMetadata(
+  payload: NowPlayingPayload,
+): Record<string, InstanceType<typeof Variant>> {
+  const trackId = buildTrackId(payload.trackId ?? "unknown");
   // MusicKit leaves `attributes.url` unset on a library item, so `xesam:url`
   // comes from getShareUrl(), which rebuilds the link from the catalogue id.
   // Radio and Classical playParams carry no such id, so it returns undefined
@@ -231,52 +244,55 @@ function buildMetadata(payload: NowPlayingPayload): Record<string, InstanceType<
   const trackUrl = getShareUrl(payload);
 
   const metadata: Record<string, InstanceType<typeof Variant>> = {
-    'mpris:trackid': new Variant('o', trackId),
+    "mpris:trackid": new Variant("o", trackId),
   };
 
   if (payload.durationInMillis != null) {
     // Truncate microseconds because the D-Bus 'x' marshaller rejects fractional values.
-    metadata['mpris:length'] = new Variant('x', Math.trunc(payload.durationInMillis * MS_TO_US));
+    metadata["mpris:length"] = new Variant(
+      "x",
+      Math.trunc(payload.durationInMillis * MS_TO_US),
+    );
   }
 
   if (payload.name != null) {
-    metadata['xesam:title'] = new Variant('s', payload.name);
+    metadata["xesam:title"] = new Variant("s", payload.name);
   }
 
   if (payload.artistName != null) {
-    metadata['xesam:artist'] = new Variant('as', [payload.artistName]);
+    metadata["xesam:artist"] = new Variant("as", [payload.artistName]);
   }
 
   if (payload.albumName != null) {
-    metadata['xesam:album'] = new Variant('s', payload.albumName);
+    metadata["xesam:album"] = new Variant("s", payload.albumName);
   }
 
   if (payload.artworkUrl != null) {
-    metadata['mpris:artUrl'] = new Variant('s', payload.artworkUrl);
+    metadata["mpris:artUrl"] = new Variant("s", payload.artworkUrl);
   }
 
   if (trackUrl != null) {
-    metadata['xesam:url'] = new Variant('s', trackUrl);
+    metadata["xesam:url"] = new Variant("s", trackUrl);
   }
 
   if (payload.genreNames != null && payload.genreNames.length > 0) {
-    metadata['xesam:genre'] = new Variant('as', payload.genreNames);
+    metadata["xesam:genre"] = new Variant("as", payload.genreNames);
   }
 
   if (payload.trackNumber != null) {
-    metadata['xesam:trackNumber'] = new Variant('i', payload.trackNumber);
+    metadata["xesam:trackNumber"] = new Variant("i", payload.trackNumber);
   }
 
   if (payload.discNumber != null) {
-    metadata['xesam:discNumber'] = new Variant('i', payload.discNumber);
+    metadata["xesam:discNumber"] = new Variant("i", payload.discNumber);
   }
 
-  if (payload.composerName != null && payload.composerName !== '') {
-    metadata['xesam:composer'] = new Variant('as', [payload.composerName]);
+  if (payload.composerName != null && payload.composerName !== "") {
+    metadata["xesam:composer"] = new Variant("as", [payload.composerName]);
   }
 
   if (payload.releaseDate != null) {
-    metadata['xesam:contentCreated'] = new Variant('s', payload.releaseDate);
+    metadata["xesam:contentCreated"] = new Variant("s", payload.releaseDate);
   }
 
   return metadata;
@@ -303,18 +319,16 @@ class MediaPlayer2Player extends Interface {
   private _stopTimer: ReturnType<typeof setTimeout> | null = null;
   private _stopped = false;
 
-  // Cached D-Bus property values
-  private _playbackStatus = 'Stopped';
-  private _loopStatus = 'None';
+  private _playbackStatus = "Stopped";
+  private _loopStatus = "None";
   private _shuffle = false;
   private _metadata: Record<string, InstanceType<typeof Variant>> = {
-    'mpris:trackid': new Variant('o', NO_TRACK),
+    "mpris:trackid": new Variant("o", NO_TRACK),
   };
   private _volume = 1.0;
   private _position = 0; // microseconds (int64)
   private _currentTrackId = NO_TRACK;
 
-  // Seek detection state
   private readonly _seekThresholdUs = 1_000_000; // 1 second in microseconds
   private _lastPositionUs = 0;
   private _lastPositionTimestamp = Date.now();
@@ -328,27 +342,34 @@ class MediaPlayer2Player extends Interface {
   private _pendingVolumes: number[] = [];
   private _volumeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Debounce timer for property change emissions
   private readonly _debounceMs = 250;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _pendingChanges: Record<string, unknown> = {};
 
   /** Initialises cached capabilities and the ready hook URL. */
-  constructor(getMainWindow: () => BrowserWindow | null, capabilities: PlaybackCapabilities, readyUrl: string | null) {
-    super('org.mpris.MediaPlayer2.Player');
+  constructor(
+    getMainWindow: () => BrowserWindow | null,
+    capabilities: PlaybackCapabilities,
+    readyUrl: string | null,
+  ) {
+    super("org.mpris.MediaPlayer2.Player");
     this._getMainWindow = getMainWindow;
     this._capabilities = capabilities;
     this._readyUrl = readyUrl;
   }
 
-  private _send(method: MprisMethod, channel: ReceiveChannel, ...args: unknown[]): boolean {
+  private _send(
+    method: MprisMethod,
+    channel: ReceiveChannel,
+    ...args: unknown[]
+  ): boolean {
     const contents = liveWebContents(this._getMainWindow());
     if (contents) {
       contents.send(channel, ...args);
-      logCommand(method, 'sent', channel);
+      logCommand(method, "sent", channel);
       return true;
     } else {
-      logCommand(method, 'dropped', channel);
+      logCommand(method, "dropped", channel);
       return false;
     }
   }
@@ -372,7 +393,7 @@ class MediaPlayer2Player extends Interface {
         try {
           Interface.emitPropertiesChanged(this, this._pendingChanges, []);
         } catch (err: unknown) {
-          mprisLog.warn('failed to emit PropertiesChanged:', errorMessage(err));
+          mprisLog.warn("failed to emit PropertiesChanged:", errorMessage(err));
         }
         this._pendingChanges = {};
       }
@@ -386,20 +407,27 @@ class MediaPlayer2Player extends Interface {
     const previous = this._capabilities;
     this._capabilities = capabilities;
     const changed: Record<string, unknown> = {};
-    if (previous.canPlay !== capabilities.canPlay) changed.CanPlay = this.CanPlay;
-    if (previous.canPause !== capabilities.canPause) changed.CanPause = this.CanPause;
-    if ((previous.canSeek !== false) !== this.CanSeek) changed.CanSeek = this.CanSeek;
-    if (previous.durationUs !== capabilities.durationUs && this._currentTrackId !== NO_TRACK) {
+    if (previous.canPlay !== capabilities.canPlay)
+      changed.CanPlay = this.CanPlay;
+    if (previous.canPause !== capabilities.canPause)
+      changed.CanPause = this.CanPause;
+    if ((previous.canSeek !== false) !== this.CanSeek)
+      changed.CanSeek = this.CanSeek;
+    if (
+      previous.durationUs !== capabilities.durationUs &&
+      this._currentTrackId !== NO_TRACK
+    ) {
       this._updateMetadataLength();
       changed.Metadata = this._metadata;
     }
-    if (Object.keys(changed).length > 0) this._schedulePropertyEmission(changed);
+    if (Object.keys(changed).length > 0)
+      this._schedulePropertyEmission(changed);
   }
 
   private _updateMetadataLength(): void {
     const lengthUs = this._trackLengthUs;
-    if (lengthUs === undefined) delete this._metadata['mpris:length'];
-    else this._metadata['mpris:length'] = new Variant('x', lengthUs);
+    if (lengthUs === undefined) delete this._metadata["mpris:length"];
+    else this._metadata["mpris:length"] = new Variant("x", lengthUs);
   }
 
   /** Maps MusicKit state to MPRIS while preserving an acknowledged Stop. */
@@ -415,11 +443,11 @@ class MediaPlayer2Player extends Interface {
     // map to Stopped so clients do not show controls for the previous state.
     let status: string;
     if (payload.state === PlaybackState.Playing) {
-      status = 'Playing';
+      status = "Playing";
     } else if (payload.state === PlaybackState.Paused && !this._stopped) {
-      status = 'Paused';
+      status = "Paused";
     } else {
-      status = 'Stopped';
+      status = "Stopped";
     }
 
     if (status !== this._playbackStatus) {
@@ -437,12 +465,13 @@ class MediaPlayer2Player extends Interface {
    */
   updateNowPlaying(payload: NowPlayingPayload | null): void {
     const itemGeneration = ++this._itemGeneration;
-    this._radioStation = payload?.playParams?.kind === 'radioStation' ? payload : null;
+    this._radioStation =
+      payload?.playParams?.kind === "radioStation" ? payload : null;
     this._clearPendingStop();
     this._stopped = false;
     if (!payload) {
       const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
-        'mpris:trackid': new Variant('o', NO_TRACK),
+        "mpris:trackid": new Variant("o", NO_TRACK),
       };
       this._metadata = emptyMetadata;
       this._itemLengthUs = undefined;
@@ -456,10 +485,10 @@ class MediaPlayer2Player extends Interface {
     }
 
     const metadata = buildMetadata(payload);
-    const trackId = buildTrackId(payload.trackId ?? 'unknown');
+    const trackId = buildTrackId(payload.trackId ?? "unknown");
 
     this._metadata = metadata;
-    this._itemLengthUs = metadata['mpris:length']?.value;
+    this._itemLengthUs = metadata["mpris:length"]?.value;
     this._updateMetadataLength();
     this._currentTrackId = trackId;
     this._schedulePropertyEmission({ Metadata: metadata });
@@ -469,39 +498,55 @@ class MediaPlayer2Player extends Interface {
     this._position = 0;
     this.Seeked(0);
 
-    if (payload.artworkUrl && payload.artworkUrl.startsWith('https://')) {
-      downloadArtwork(payload.artworkUrl).then((localPath) => {
-        if (!localPath) return;
-        // The download outlives a fast track change, and a late one would
-        // otherwise put the previous cover on the track now playing.
-        if (this._itemGeneration !== itemGeneration) return;
-        const fileUri = `file://${localPath}`;
-        this._metadata = { ...this._metadata, 'mpris:artUrl': new Variant('s', fileUri) };
-        this._schedulePropertyEmission({ Metadata: this._metadata });
-        mprisLog.debug('mpris:artUrl updated to local file:', fileUri);
-      }).catch((err: unknown) => {
-        mprisLog.warn('artwork caching failed:', errorMessage(err));
-      });
+    if (payload.artworkUrl && payload.artworkUrl.startsWith("https://")) {
+      downloadArtwork(payload.artworkUrl)
+        .then((localPath) => {
+          if (!localPath) return;
+          // The download outlives a fast track change, and a late one would
+          // otherwise put the previous cover on the track now playing.
+          if (this._itemGeneration !== itemGeneration) return;
+          const fileUri = `file://${localPath}`;
+          this._metadata = {
+            ...this._metadata,
+            "mpris:artUrl": new Variant("s", fileUri),
+          };
+          this._schedulePropertyEmission({ Metadata: this._metadata });
+          mprisLog.debug("mpris:artUrl updated to local file:", fileUri);
+        })
+        .catch((err: unknown) => {
+          mprisLog.warn("artwork caching failed:", errorMessage(err));
+        });
     }
   }
 
   /** Updates radio song labels without replacing station identity or position. */
   updateTimedMetadata(payload: TimedMetadataPayload): void {
     if (!this._radioStation) return;
-    const url = getShareUrl({ ...payload, sourceHost: this._radioStation.sourceHost }) ?? getShareUrl(this._radioStation);
-    const values = [payload.name, [payload.artistName], payload.albumName ?? null, url ?? null];
-    const current = ['xesam:title', 'xesam:artist', 'xesam:album', 'xesam:url']
-      .map(key => this._metadata[key]?.value ?? null);
+    const url =
+      getShareUrl({ ...payload, sourceHost: this._radioStation.sourceHost }) ??
+      getShareUrl(this._radioStation);
+    const values = [
+      payload.name,
+      [payload.artistName],
+      payload.albumName ?? null,
+      url ?? null,
+    ];
+    const current = [
+      "xesam:title",
+      "xesam:artist",
+      "xesam:album",
+      "xesam:url",
+    ].map((key) => this._metadata[key]?.value ?? null);
     if (JSON.stringify(values) === JSON.stringify(current)) return;
     const metadata: Record<string, InstanceType<typeof Variant>> = {
       ...this._metadata,
-      'xesam:title': new Variant('s', payload.name),
-      'xesam:artist': new Variant('as', [payload.artistName]),
+      "xesam:title": new Variant("s", payload.name),
+      "xesam:artist": new Variant("as", [payload.artistName]),
     };
-    if (payload.albumName === undefined) delete metadata['xesam:album'];
-    else metadata['xesam:album'] = new Variant('s', payload.albumName);
-    if (url === undefined) delete metadata['xesam:url'];
-    else metadata['xesam:url'] = new Variant('s', url);
+    if (payload.albumName === undefined) delete metadata["xesam:album"];
+    else metadata["xesam:album"] = new Variant("s", payload.albumName);
+    if (url === undefined) delete metadata["xesam:url"];
+    else metadata["xesam:url"] = new Variant("s", url);
     this._metadata = metadata;
     this._schedulePropertyEmission({ Metadata: metadata });
   }
@@ -511,13 +556,13 @@ class MediaPlayer2Player extends Interface {
     if (payload == null) return;
 
     const musicKitToLoop: Record<number, string> = {
-      0: 'None',
-      1: 'Track',
-      2: 'Playlist',
+      0: "None",
+      1: "Track",
+      2: "Playlist",
     };
     const loopStatus = musicKitToLoop[payload];
     if (loopStatus === undefined) {
-      mprisLog.warn('unknown repeat mode:', payload);
+      mprisLog.warn("unknown repeat mode:", payload);
       return;
     }
 
@@ -542,7 +587,9 @@ class MediaPlayer2Player extends Interface {
     // matched against every value still pending, not only the newest. Echoes
     // arrive in order, so a match also discards the older entries: those sets
     // were overtaken, and keeping them would suppress a later in-app change.
-    const matched = this._pendingVolumes.findIndex((pending) => Math.abs(payload - pending) < VOLUME_ECHO_TOLERANCE);
+    const matched = this._pendingVolumes.findIndex(
+      (pending) => Math.abs(payload - pending) < VOLUME_ECHO_TOLERANCE,
+    );
     if (matched !== -1) {
       this._pendingVolumes.splice(0, matched + 1);
       if (this._pendingVolumes.length === 0 && this._volumeSafetyTimer) {
@@ -564,7 +611,10 @@ class MediaPlayer2Player extends Interface {
     // position read the integer.
     const newPositionUs = Math.trunc(payload);
     const now = Date.now();
-    const elapsedMs = this._playbackStatus === 'Playing' ? now - this._lastPositionTimestamp : 0;
+    const elapsedMs =
+      this._playbackStatus === "Playing"
+        ? now - this._lastPositionTimestamp
+        : 0;
     const expectedPositionUs = this._lastPositionUs + elapsedMs * MS_TO_US;
 
     if (Math.abs(newPositionUs - expectedPositionUs) > this._seekThresholdUs) {
@@ -663,7 +713,7 @@ class MediaPlayer2Player extends Interface {
 
   /** Treats zero as pause and ignores other rate changes. */
   set Rate(value: number) {
-    if (value === 0) this._send('Rate', 'player:pause');
+    if (value === 0) this._send("Rate", "player:pause");
   }
 
   /** Returns the cached MPRIS repeat mode. */
@@ -674,17 +724,17 @@ class MediaPlayer2Player extends Interface {
   /** Maps a valid MPRIS repeat mode to MusicKit. */
   set LoopStatus(value: string) {
     const loopToMusicKit: Record<string, number> = {
-      'None': 0,
-      'Track': 1,
-      'Playlist': 2,
+      None: 0,
+      Track: 1,
+      Playlist: 2,
     };
     const mode = loopToMusicKit[value];
     if (mode === undefined) {
-      mprisLog.warn('invalid LoopStatus value');
+      mprisLog.warn("invalid LoopStatus value");
       return;
     }
     this._loopStatus = value;
-    this._send('LoopStatus', 'player:setRepeat', mode);
+    this._send("LoopStatus", "player:setRepeat", mode);
   }
 
   /** Returns the cached shuffle setting. */
@@ -696,7 +746,7 @@ class MediaPlayer2Player extends Interface {
   set Shuffle(value: boolean) {
     this._shuffle = value;
     const mode = value ? 1 : 0;
-    this._send('Shuffle', 'player:setShuffle', mode);
+    this._send("Shuffle", "player:setShuffle", mode);
   }
 
   /** Returns cached software volume rounded to two decimal places. */
@@ -722,29 +772,29 @@ class MediaPlayer2Player extends Interface {
       this._pendingVolumes = [];
       this._volumeSafetyTimer = null;
     }, this._volumeSafetyMs);
-    this._send('Volume', 'player:setVolume', clamped);
+    this._send("Volume", "player:setVolume", clamped);
   }
 
   // --- Methods ---
 
   /** Requests the next queue item. */
   Next(): void {
-    this._send('Next', 'player:next');
+    this._send("Next", "player:next");
   }
 
   /** Requests the previous queue item. */
   Previous(): void {
-    this._send('Previous', 'player:previous');
+    this._send("Previous", "player:previous");
   }
 
   /** Requests a playback pause. */
   Pause(): void {
-    this._send('Pause', 'player:pause');
+    this._send("Pause", "player:pause");
   }
 
   /** Requests a play/pause toggle. */
   PlayPause(): void {
-    this._send('PlayPause', 'player:playPause');
+    this._send("PlayPause", "player:playPause");
   }
 
   /** Requests Stop once and waits for acknowledgement with a bounded timeout. */
@@ -753,9 +803,10 @@ class MediaPlayer2Player extends Interface {
     this._pendingStopId = ++this._stopRequestId;
     this._stopTimer = setTimeout(() => {
       this._clearPendingStop();
-      mprisLog.warn('Stop completion timed out');
+      mprisLog.warn("Stop completion timed out");
     }, 6000);
-    if (!this._send('Stop', 'player:stop', this._pendingStopId)) this._clearPendingStop();
+    if (!this._send("Stop", "player:stop", this._pendingStopId))
+      this._clearPendingStop();
   }
 
   private _clearPendingStop(): void {
@@ -770,13 +821,13 @@ class MediaPlayer2Player extends Interface {
     this._clearPendingStop();
     if (!payload.success) return;
     this._stopped = true;
-    this._playbackStatus = 'Stopped';
-    this._schedulePropertyEmission({ PlaybackStatus: 'Stopped' });
+    this._playbackStatus = "Stopped";
+    this._schedulePropertyEmission({ PlaybackStatus: "Stopped" });
   }
 
   /** Requests playback start or resume. */
   Play(): void {
-    this._send('Play', 'player:play');
+    this._send("Play", "player:play");
   }
 
   /** Seeks by a microsecond offset, advancing tracks when the target exceeds known duration. */
@@ -785,48 +836,66 @@ class MediaPlayer2Player extends Interface {
     const targetUs = BigInt(this._position) + offset;
     const lengthUs = this._trackLengthUs;
     if (lengthUs !== undefined && targetUs > BigInt(lengthUs)) {
-      this._send('Seek', 'player:next');
+      this._send("Seek", "player:next");
       return;
     }
     if (targetUs > BigInt(Number.MAX_SAFE_INTEGER)) return;
-    this._send('Seek', 'player:seek', Number(targetUs < 0n ? 0n : targetUs) / 1_000_000);
+    this._send(
+      "Seek",
+      "player:seek",
+      Number(targetUs < 0n ? 0n : targetUs) / 1_000_000,
+    );
   }
 
   /** Seeks to valid microseconds only when the supplied track ID matches. */
   SetPosition(trackId: string, position: bigint): void {
     if (trackId === NO_TRACK || trackId !== this._currentTrackId) {
-      mprisLog.debug('SetPosition trackId mismatch, ignoring');
+      mprisLog.debug("SetPosition trackId mismatch, ignoring");
       return;
     }
     const lengthUs = this._trackLengthUs;
-    if (!this.CanSeek || position < 0n || position > BigInt(Number.MAX_SAFE_INTEGER)
-      || (lengthUs !== undefined && position > BigInt(lengthUs))) return;
+    if (
+      !this.CanSeek ||
+      position < 0n ||
+      position > BigInt(Number.MAX_SAFE_INTEGER) ||
+      (lengthUs !== undefined && position > BigInt(lengthUs))
+    )
+      return;
     const targetSeconds = Number(position) / 1_000_000;
-    this._send('SetPosition', 'player:seek', targetSeconds);
+    this._send("SetPosition", "player:seek", targetSeconds);
   }
 
   private get _trackLengthUs(): number | undefined {
     const length: unknown = this._capabilities.durationUs ?? this._itemLengthUs;
-    return typeof length === 'number' && Number.isSafeInteger(length) && length >= 0 ? length : undefined;
+    return typeof length === "number" &&
+      Number.isSafeInteger(length) &&
+      length >= 0
+      ? length
+      : undefined;
   }
 
   /** Opens a validated service URL, navigating first when its hook is not ready. */
   OpenUri(uri: string): void {
     const parsed = parseServiceUri(uri);
     if (!parsed) {
-      mprisLog.warn('OpenUri rejected');
+      mprisLog.warn("OpenUri rejected");
       return;
     }
     const win = this._getMainWindow();
     if (!win || win.isDestroyed()) {
-      logCommand('OpenUri', 'dropped');
+      logCommand("OpenUri", "dropped");
       return;
     }
     this._clearOpenUri();
     const service = getServiceByHost(parsed.hostname)!;
-    if (!this._navigating && this._readyUrl && getMusicService() === service.id &&
-      parseServiceUri(this._readyUrl)?.origin === parsed.origin && parseServiceUri(win.webContents.getURL())?.origin === parsed.origin) {
-      this._send('OpenUri', 'player:openUri', parsed.href);
+    if (
+      !this._navigating &&
+      this._readyUrl &&
+      getMusicService() === service.id &&
+      parseServiceUri(this._readyUrl)?.origin === parsed.origin &&
+      parseServiceUri(win.webContents.getURL())?.origin === parsed.origin
+    ) {
+      this._send("OpenUri", "player:openUri", parsed.href);
       return;
     }
     this._readyUrl = null;
@@ -834,10 +903,10 @@ class MediaPlayer2Player extends Interface {
     this._navigating = true;
     this._openUriTimer = setTimeout(() => {
       this._clearOpenUri();
-      mprisLog.warn('OpenUri hook readiness timed out');
+      mprisLog.warn("OpenUri hook readiness timed out");
     }, 10_000);
     switchService(service.id, parsed.href);
-    logCommand('OpenUri', 'sent');
+    logCommand("OpenUri", "sent");
   }
 
   private _clearOpenUri(): void {
@@ -852,7 +921,7 @@ class MediaPlayer2Player extends Interface {
     const pending = this._pendingOpenUri;
     if (!pending || this._readyUrl !== pending.navigationUrl) return;
     this._clearOpenUri();
-    this._send('OpenUri', 'player:openUri', pending.url);
+    this._send("OpenUri", "player:openUri", pending.url);
   }
 
   /** Invalidates replaced-document readiness and cancels unrelated pending URL requests. */
@@ -861,7 +930,11 @@ class MediaPlayer2Player extends Interface {
       this._readyUrl = null;
       this._navigating = true;
     }
-    if (this._pendingOpenUri && parseServiceUri(url)?.href !== this._pendingOpenUri.navigationUrl) this._clearOpenUri();
+    if (
+      this._pendingOpenUri &&
+      parseServiceUri(url)?.href !== this._pendingOpenUri.navigationUrl
+    )
+      this._clearOpenUri();
   }
 
   /** Tracks same-service redirects and cancels pending requests that leave the service. */
@@ -869,7 +942,8 @@ class MediaPlayer2Player extends Interface {
     const pending = this._pendingOpenUri;
     if (!pending) return;
     const redirected = parseServiceUri(url);
-    if (redirected?.origin === parseServiceUri(pending.url)?.origin) pending.navigationUrl = redirected!.href;
+    if (redirected?.origin === parseServiceUri(pending.url)?.origin)
+      pending.navigationUrl = redirected!.href;
     else this._clearOpenUri();
   }
 
@@ -887,116 +961,115 @@ class MediaPlayer2Player extends Interface {
 MediaPlayer2Player.configureMembers({
   properties: {
     PlaybackStatus: {
-      signature: 's',
+      signature: "s",
       access: ACCESS_READ,
     },
     LoopStatus: {
-      signature: 's',
+      signature: "s",
       access: ACCESS_READWRITE,
     },
     Rate: {
-      signature: 'd',
+      signature: "d",
       access: ACCESS_READWRITE,
     },
     Shuffle: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READWRITE,
     },
     Metadata: {
-      signature: 'a{sv}',
+      signature: "a{sv}",
       access: ACCESS_READ,
     },
     Volume: {
-      signature: 'd',
+      signature: "d",
       access: ACCESS_READWRITE,
     },
     Position: {
-      signature: 'x',
+      signature: "x",
       access: ACCESS_READ,
     },
     MinimumRate: {
-      signature: 'd',
+      signature: "d",
       access: ACCESS_READ,
     },
     MaximumRate: {
-      signature: 'd',
+      signature: "d",
       access: ACCESS_READ,
     },
     CanGoNext: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     CanGoPrevious: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     CanPlay: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     CanPause: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     CanSeek: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
     CanControl: {
-      signature: 'b',
+      signature: "b",
       access: ACCESS_READ,
     },
   },
   methods: {
     Next: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     Previous: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     Pause: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     PlayPause: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     Stop: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     Play: {
-      inSignature: '',
-      outSignature: '',
+      inSignature: "",
+      outSignature: "",
     },
     Seek: {
-      inSignature: 'x',
-      outSignature: '',
+      inSignature: "x",
+      outSignature: "",
     },
     SetPosition: {
-      inSignature: 'ox',
-      outSignature: '',
+      inSignature: "ox",
+      outSignature: "",
     },
     OpenUri: {
-      inSignature: 's',
-      outSignature: '',
+      inSignature: "s",
+      outSignature: "",
     },
   },
   signals: {
     Seeked: {
-      signature: 'x',
+      signature: "x",
     },
   },
 });
 
-// Module-level bus reference for graceful shutdown
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
-// Typed interface for dbus-next internal socket access.
-// Verified against @holusion/dbus-next 0.11.2.
+// `dbus-next` has no public API that force-closes its socket, so shutdown uses
+// this narrow interface to access the internal stream.
 interface DbusMessageBusInternals {
   _connection?: {
     stream?: {
@@ -1007,12 +1080,12 @@ interface DbusMessageBusInternals {
 
 function disconnectBus(): void {
   if (bus) {
-    mprisLog.info('disconnecting from D-Bus');
-    // bus.disconnect() calls stream.end() which only half-closes the socket.
-    // Force-destroy the underlying stream to release the event loop handle.
+    mprisLog.info("disconnecting from D-Bus");
+    // `bus.disconnect()` calls `stream.end()`, which only half-closes the socket.
+    // Destroy the underlying stream to release the event loop handle.
     const stream = (bus as DbusMessageBusInternals)._connection?.stream;
     bus.disconnect();
-    if (stream && typeof stream.destroy === 'function') {
+    if (stream && typeof stream.destroy === "function") {
       stream.destroy();
     }
     bus = null;
@@ -1028,31 +1101,49 @@ function disconnectBus(): void {
  */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;
-  if (!getMainWindow) throw new Error('MPRIS requires getMainWindow');
+  if (!getMainWindow) throw new Error("MPRIS requires getMainWindow");
 
-  mprisLog.info('MPRIS module initialised');
+  mprisLog.info("MPRIS module initialised");
 
   const rootIface = new MediaPlayer2(getMainWindow);
-  const playerIface = new MediaPlayer2Player(getMainWindow, player.capabilitiesSnapshot(), player.hookReadyUrl());
-  // Captured once, as settingsWindow.ts does. The handle stays usable after the
-  // window is destroyed: removeListener is a Node EventEmitter method and never
-  // reaches the native object. Only the webContents getter itself throws then,
-  // so it is read here, through the guard, and never again at teardown (#257).
+  const playerIface = new MediaPlayer2Player(
+    getMainWindow,
+    player.capabilitiesSnapshot(),
+    player.hookReadyUrl(),
+  );
+  // The `webContents` getter can throw after window destruction, but a captured
+  // EventEmitter handle remains safe for `removeListener()`. Capture it once
+  // through `liveWebContents()` and reuse the handle during teardown.
   const navigationContents = liveWebContents(getMainWindow());
-  const onNavigationStarted = (details: { isMainFrame: boolean; isSameDocument: boolean; url: string }): void => {
-    if (details.isMainFrame) playerIface.navigationStarted(details.url, details.isSameDocument);
+  const onNavigationStarted = (details: {
+    isMainFrame: boolean;
+    isSameDocument: boolean;
+    url: string;
+  }): void => {
+    if (details.isMainFrame)
+      playerIface.navigationStarted(details.url, details.isSameDocument);
   };
-  const onNavigationRedirected = (details: { isMainFrame: boolean; url: string }): void => {
+  const onNavigationRedirected = (details: {
+    isMainFrame: boolean;
+    url: string;
+  }): void => {
     if (details.isMainFrame) playerIface.navigationRedirected(details.url);
   };
-  const onNavigationCommitted = (): void => { playerIface.navigationCommitted(); };
+  const onNavigationCommitted = (): void => {
+    playerIface.navigationCommitted();
+  };
   let fullscreenWindow: BrowserWindow | null = null;
   const onFullscreenChanged = (): void => {
     if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
       try {
-        Interface.emitPropertiesChanged(rootIface, { Fullscreen: rootIface.Fullscreen });
+        Interface.emitPropertiesChanged(rootIface, {
+          Fullscreen: rootIface.Fullscreen,
+        });
       } catch (err: unknown) {
-        mprisLog.warn('failed to emit fullscreen PropertiesChanged:', errorMessage(err));
+        mprisLog.warn(
+          "failed to emit fullscreen PropertiesChanged:",
+          errorMessage(err),
+        );
       }
     }
   };
@@ -1061,14 +1152,20 @@ export function init(ctx: IntegrationContext): void {
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
     playerIface.updatePlaybackStatus(payload);
   };
-  const onHookReady = (url: string | null): void => { playerIface.updateHookReady(url); };
-  const onPlaybackCapabilitiesDidChange = (payload: PlaybackCapabilities): void => {
+  const onHookReady = (url: string | null): void => {
+    playerIface.updateHookReady(url);
+  };
+  const onPlaybackCapabilitiesDidChange = (
+    payload: PlaybackCapabilities,
+  ): void => {
     playerIface.updateCapabilities(payload);
   };
   const onPlaybackStopped = (payload: PlaybackStopped): void => {
     playerIface.updateStopped(payload);
   };
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+  const onNowPlayingItemDidChange = (
+    payload: NowPlayingPayload | null,
+  ): void => {
     playerIface.updateNowPlaying(payload);
   };
   const onTimedMetadataDidChange = (payload: TimedMetadataPayload): void => {
@@ -1087,27 +1184,33 @@ export function init(ctx: IntegrationContext): void {
     playerIface.updatePosition(payload);
   };
 
-  app.on('will-quit', () => {
-    navigationContents?.removeListener('did-start-navigation', onNavigationStarted);
-    navigationContents?.removeListener('will-redirect', onNavigationRedirected);
-    navigationContents?.removeListener('did-navigate', onNavigationCommitted);
-    player.removeListener('hookReady', onHookReady);
-    fullscreenWindow?.removeListener('enter-full-screen', onFullscreenChanged);
-    fullscreenWindow?.removeListener('leave-full-screen', onFullscreenChanged);
-    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-    player.removeListener('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
-    player.removeListener('playbackStopped', onPlaybackStopped);
-    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    player.removeListener('timedMetadataDidChange', onTimedMetadataDidChange);
-    player.removeListener('repeatModeDidChange', onRepeatModeDidChange);
-    player.removeListener('shuffleModeDidChange', onShuffleModeDidChange);
-    player.removeListener('volumeDidChange', onVolumeDidChange);
-    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+  app.on("will-quit", () => {
+    navigationContents?.removeListener(
+      "did-start-navigation",
+      onNavigationStarted,
+    );
+    navigationContents?.removeListener("will-redirect", onNavigationRedirected);
+    navigationContents?.removeListener("did-navigate", onNavigationCommitted);
+    player.removeListener("hookReady", onHookReady);
+    fullscreenWindow?.removeListener("enter-full-screen", onFullscreenChanged);
+    fullscreenWindow?.removeListener("leave-full-screen", onFullscreenChanged);
+    player.removeListener("playbackStateDidChange", onPlaybackStateDidChange);
+    player.removeListener(
+      "playbackCapabilitiesDidChange",
+      onPlaybackCapabilitiesDidChange,
+    );
+    player.removeListener("playbackStopped", onPlaybackStopped);
+    player.removeListener("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.removeListener("timedMetadataDidChange", onTimedMetadataDidChange);
+    player.removeListener("repeatModeDidChange", onRepeatModeDidChange);
+    player.removeListener("shuffleModeDidChange", onShuffleModeDidChange);
+    player.removeListener("volumeDidChange", onVolumeDidChange);
+    player.removeListener("playbackTimeDidChange", onPlaybackTimeDidChange);
     playerIface.cleanup();
     disconnectBus();
   });
 
-  mprisLog.info('enabling MPRIS service');
+  mprisLog.info("enabling MPRIS service");
 
   // Without DBUS_SESSION_BUS_ADDRESS, dbus-next can throw while reading the bus
   // address from disk. Disable MPRIS without exports, subscriptions or retries
@@ -1115,43 +1218,49 @@ export function init(ctx: IntegrationContext): void {
   try {
     bus = dbus.sessionBus();
   } catch (err: unknown) {
-    mprisLog.warn('no D-Bus session bus available, MPRIS disabled:', errorMessage(err));
+    mprisLog.warn(
+      "no D-Bus session bus available, MPRIS disabled:",
+      errorMessage(err),
+    );
     return;
   }
 
-  bus.on('error', (err: Error) => {
-    mprisLog.warn('D-Bus connection error:', err.message);
+  bus.on("error", (err: Error) => {
+    mprisLog.warn("D-Bus connection error:", err.message);
   });
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
-  navigationContents?.on('did-start-navigation', onNavigationStarted);
-  navigationContents?.on('will-redirect', onNavigationRedirected);
-  navigationContents?.on('did-navigate', onNavigationCommitted);
+  navigationContents?.on("did-start-navigation", onNavigationStarted);
+  navigationContents?.on("will-redirect", onNavigationRedirected);
+  navigationContents?.on("did-navigate", onNavigationCommitted);
 
   fullscreenWindow = getMainWindow();
   if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
-    fullscreenWindow.on('enter-full-screen', onFullscreenChanged);
-    fullscreenWindow.on('leave-full-screen', onFullscreenChanged);
+    fullscreenWindow.on("enter-full-screen", onFullscreenChanged);
+    fullscreenWindow.on("leave-full-screen", onFullscreenChanged);
   }
 
   const busName = `org.mpris.MediaPlayer2.${app.getName().toLowerCase()}`;
-  bus.requestName(busName, 0).then(() => {
-    mprisLog.info('bus name acquired:', busName);
-  }).catch((err: Error) => {
-    mprisLog.error('failed to acquire bus name:', busName, err.message);
-  });
+  bus
+    .requestName(busName, 0)
+    .then(() => {
+      mprisLog.info("bus name acquired:", busName);
+    })
+    .catch((err: Error) => {
+      mprisLog.error("failed to acquire bus name:", busName, err.message);
+    });
 
   // Subscribed after the bus, so the return on a missing bus leaves no
   // listener attached to update an interface no client can reach.
-  player.on('playbackStateDidChange', onPlaybackStateDidChange);
-  player.on('hookReady', onHookReady);
-  player.on('playbackCapabilitiesDidChange', onPlaybackCapabilitiesDidChange);
-  player.on('playbackStopped', onPlaybackStopped);
-  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  player.on('timedMetadataDidChange', onTimedMetadataDidChange);
-  player.on('repeatModeDidChange', onRepeatModeDidChange);
-  player.on('shuffleModeDidChange', onShuffleModeDidChange);
-  player.on('volumeDidChange', onVolumeDidChange);
-  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+  player.on("playbackStateDidChange", onPlaybackStateDidChange);
+  player.on("hookReady", onHookReady);
+  player.on("playbackCapabilitiesDidChange", onPlaybackCapabilitiesDidChange);
+  player.on("playbackStopped", onPlaybackStopped);
+  player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("timedMetadataDidChange", onTimedMetadataDidChange);
+  player.on("repeatModeDidChange", onRepeatModeDidChange);
+  player.on("shuffleModeDidChange", onShuffleModeDidChange);
+  player.on("volumeDidChange", onVolumeDidChange);
+  player.on("playbackTimeDidChange", onPlaybackTimeDidChange);
 }

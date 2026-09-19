@@ -1,15 +1,13 @@
-// Pure module: no electron imports so tests can exercise it directly.
+// Keep these palettes free of Electron so unit tests can import them.
+// Each palette maps an upstream colour scheme to the 12 semantic slots in
+// ThemeDefinition. A "derived" shade has no upstream equivalent and is
+// selected to fit the semantic slot.
 //
-// Bundled theme palettes. Each palette maps an upstream colour scheme
-// onto the 12 semantic slots consumed by src/themeTemplate.ts. Shades
-// marked "derived" have no upstream equivalent and are interpolated to
-// fit the slot's role.
-//
-// Two rules, checked by test/themes.test.ts:
-// - overlay differs from subtext0, and crust from surface0. Each pair
-//   paints a different part of the UI, so one hex in both flattens it.
-// - text and subtext0 reach 4.5:1 against base once the template applies
-//   its alpha. Catppuccin Latte holds its shipped 4.37:1 instead.
+// Palette invariants:
+// - overlay differs from subtext0, and crust differs from surface0. Each pair
+//   paints different UI elements, so duplicate values flatten their contrast.
+// - text and subtext0 reach 4.5:1 against base after the template applies
+//   alpha. Catppuccin Latte retains its supplied 4.37:1 ratio.
 //
 // Upstream sources for palette colour values:
 // - Catppuccin (Mocha/Latte)  https://github.com/catppuccin/palette      MIT
@@ -119,7 +117,8 @@ export const BUNDLED_THEMES: readonly BundledTheme[] = [
       accentHover: '#83c092',
     },
     light: {
-      // Light, medium contrast. Darker text keeps 4.5:1 contrast after the template applies alpha.
+      // Light, medium contrast. Darker text keeps 4.5:1 contrast after
+      // buildThemeCss() applies alpha.
       base: '#fdf6e3',
       mantle: '#f4f0d9',
       crust: '#efebd4',

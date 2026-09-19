@@ -1,7 +1,8 @@
 "use strict";
 
 /**
- * Sign Windows packages with CastLabs EVS after PE resource edits and Authenticode.
+ * Sign Windows packages with CastLabs EVS after PE resource edits and
+ * optional Authenticode signing.
  * package.json registers this hook through build.afterSign.
  */
 exports.default = async function afterSign(context) {
