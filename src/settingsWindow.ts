@@ -175,13 +175,8 @@ export function initSettingsWindow(window: BrowserWindow): () => void {
     return applySettingsAction(action);
   });
   const unsubscribe = subscribeSettingsChanges((state) => {
-    if (!settingsWindow || settingsWindow.isDestroyed()) return;
-    const contents = settingsWindow?.webContents;
-    if (
-      contents &&
-      !contents.isDestroyed() &&
-      contents.getURL() === currentSettingsUrl
-    ) {
+    const contents = liveWebContents(settingsWindow);
+    if (contents?.getURL() === currentSettingsUrl) {
       contents.send("settings:state", state);
       void refreshSettingsTheme?.();
     }

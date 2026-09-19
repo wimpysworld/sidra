@@ -290,6 +290,27 @@ describe('Settings window', () => {
     expect(opened.webContents.send).toHaveBeenCalledOnce();
   });
 
+  it.each(['window', 'contents'] as const)(
+    'ignores settings changes without native access when the %s is destroyed',
+    target => {
+      showSettingsWindow();
+      const contents = opened.webContents;
+      if (target === 'window') {
+        opened.destroyed = true;
+        Object.defineProperty(opened, 'webContents', {
+          get: () => { throw new TypeError('Object has been destroyed'); },
+        });
+      } else {
+        contents.isDestroyed = () => true;
+        contents.getURL = () => { throw new TypeError('Object has been destroyed'); };
+      }
+      const listener = vi.mocked(subscribeSettingsChanges).mock.calls[0][0];
+
+      expect(() => listener({ theme: 'custom' } as SettingsState)).not.toThrow();
+      expect(contents.send).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(['linux', 'darwin', 'win32'])('handles a local platform-correct shortcut on %s', platform => {
     setPlatform(platform);
     const input = { type: 'keyDown', key: ',', meta: platform === 'darwin', control: platform !== 'darwin', alt: false, shift: false, isAutoRepeat: false };

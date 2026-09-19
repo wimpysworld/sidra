@@ -881,8 +881,8 @@ class MediaPlayer2Player extends Interface {
       mprisLog.warn("OpenUri rejected");
       return;
     }
-    const win = this._getMainWindow();
-    if (!win || win.isDestroyed()) {
+    const contents = liveWebContents(this._getMainWindow());
+    if (!contents) {
       logCommand("OpenUri", "dropped");
       return;
     }
@@ -893,7 +893,7 @@ class MediaPlayer2Player extends Interface {
       this._readyUrl &&
       getMusicService() === service.id &&
       parseServiceUri(this._readyUrl)?.origin === parsed.origin &&
-      parseServiceUri(win.webContents.getURL())?.origin === parsed.origin
+      parseServiceUri(contents.getURL())?.origin === parsed.origin
     ) {
       this._send("OpenUri", "player:openUri", parsed.href);
       return;

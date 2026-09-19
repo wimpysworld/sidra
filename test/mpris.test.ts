@@ -1146,6 +1146,30 @@ describe("MPRIS OpenUri", () => {
       "source=mpris method=OpenUri result=dropped",
     );
   });
+
+  it.each(["window", "contents"] as const)(
+    "drops an accepted URI without native access when the %s is destroyed",
+    (target) => {
+      player.handleHookReady("https://music.apple.com/gb/new");
+      const iface = initPlayerInterface();
+      if (target === "window") {
+        win.isDestroyed.mockReturnValue(true);
+      } else {
+        winContents.isDestroyed.mockReturnValue(true);
+        winContents.getURL.mockImplementation(() => {
+          throw new TypeError("Object has been destroyed");
+        });
+      }
+
+      expect(() =>
+        iface.OpenUri("https://music.apple.com/gb/album/foo"),
+      ).not.toThrow();
+      expect(winContents.send).not.toHaveBeenCalled();
+      expect(log.scope("mpris").info).toHaveBeenCalledWith(
+        "source=mpris method=OpenUri result=dropped",
+      );
+    },
+  );
 });
 
 // MusicKit states map to three MPRIS statuses. Stopped and transient states report 'Stopped', never the previous status.
