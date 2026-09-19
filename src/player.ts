@@ -287,10 +287,10 @@ export interface PlayerEvents {
   volumeDidChange: [payload: number | null];
 }
 
-/** Player and optional window accessor supplied to integration initialisers. */
+/** Player and window accessor supplied to integration initialisers. */
 export interface IntegrationContext {
   player: Player;
-  getMainWindow?: () => BrowserWindow | null;
+  getMainWindow: () => BrowserWindow | null;
 }
 
 const REPEAT_MODES: Record<number, string> = {

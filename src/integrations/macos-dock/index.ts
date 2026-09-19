@@ -68,13 +68,13 @@ export function init(ctx: IntegrationContext): void {
   let currentPayload: NowPlayingPayload | null = null;
 
   const updateDockProgressBar = (positionUs: number, durationMs: number | undefined): void => {
-    const win = getMainWindow?.();
+    const win = getMainWindow();
     if (!win) return;
     updateProgressBar(win, positionUs, durationMs);
   };
 
   const clearDockProgressBar = (): void => {
-    const win = getMainWindow?.();
+    const win = getMainWindow();
     if (!win) return;
     clearProgressBar(win);
   };

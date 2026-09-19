@@ -777,7 +777,10 @@ function setupContentHandlers(
             "notifications",
             () => initNotifications({ player, getMainWindow: () => win }),
           ],
-          ["discord", () => initDiscordPresence({ player })],
+          [
+            "discord",
+            () => initDiscordPresence({ player, getMainWindow: () => win }),
+          ],
           ["lastfm", () => initLastfm({ player, getMainWindow: () => win })],
           ["dock", () => initDock({ player, getMainWindow: () => win })],
           [

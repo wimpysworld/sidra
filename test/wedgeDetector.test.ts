@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  expectTypeOf,
+  vi,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import { BrowserWindow } from "electron";
 import type electronLog from "electron-log/main";
 
@@ -238,10 +246,9 @@ describe("wedgeDetector", () => {
   });
 
   it("requires getMainWindow in context", () => {
-    const playerOnly: IntegrationContext = { player: new Player() };
-    expect(() => wedgeDetector.init(playerOnly)).toThrow(
-      "wedgeDetector requires getMainWindow",
-    );
+    expectTypeOf<IntegrationContext["getMainWindow"]>().toEqualTypeOf<
+      () => BrowserWindow | null
+    >();
   });
 
   it("ignores a second init so each listener is attached once", () => {

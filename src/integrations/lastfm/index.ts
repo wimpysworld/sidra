@@ -1045,7 +1045,7 @@ export function disconnect(): void {
  */
 export function init(ctx: IntegrationContext): void {
   playerRef = ctx.player;
-  getWindow = ctx.getMainWindow ?? (() => null);
+  getWindow = ctx.getMainWindow;
   lastfmLog.info("Last.fm module initialised");
   if (!isConfigured()) {
     lastfmLog.info(

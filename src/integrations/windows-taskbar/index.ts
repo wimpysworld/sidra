@@ -105,7 +105,7 @@ export function init(ctx: IntegrationContext): void {
 
   // Replay current state to the thumbnail toolbar once the window is visible.
   // setThumbarButtons is silently dropped by Windows when called on a hidden window.
-  const win = getMainWindow?.();
+  const win = getMainWindow();
   if (win) {
     win.once("show", () => {
       const { isPlaying, state } = player.playbackSnapshot();
@@ -118,7 +118,7 @@ export function init(ctx: IntegrationContext): void {
 
   // Named listeners let will-quit remove the same function references.
   const onThemeUpdated = (): void => {
-    const win = getMainWindow?.();
+    const win = getMainWindow();
     if (!win) return;
     const { isPlaying, state } = player.playbackSnapshot();
     if (currentPayload) {
@@ -131,7 +131,7 @@ export function init(ctx: IntegrationContext): void {
   const onNowPlayingItemDidChange = (
     payload: NowPlayingPayload | null,
   ): void => {
-    const win = getMainWindow?.();
+    const win = getMainWindow();
     if (!win) return;
 
     currentPayload = payload;
@@ -148,7 +148,7 @@ export function init(ctx: IntegrationContext): void {
   const onPlaybackStateDidChange = (
     statePayload: PlaybackStatePayload,
   ): void => {
-    const win = getMainWindow?.();
+    const win = getMainWindow();
     if (!win) return;
 
     const state = statePayload?.state ?? 0;
@@ -169,7 +169,7 @@ export function init(ctx: IntegrationContext): void {
   };
 
   const onPlaybackTimeDidChange = (positionUs: number): void => {
-    const win = getMainWindow?.();
+    const win = getMainWindow();
     if (!win) return;
     updateProgressBar(win, positionUs, currentPayload?.durationInMillis);
   };

@@ -251,8 +251,7 @@ async function showNotification(
  * Refreshes playback actions from player state and retires notifications on shutdown.
  */
 export function init(ctx: IntegrationContext): void {
-  const { player, getMainWindow } = ctx;
-  const getWin = getMainWindow ?? (() => null);
+  const { player, getMainWindow: getWin } = ctx;
   clearPlaybackHistory();
 
   notifLog.info("notification module initialised");

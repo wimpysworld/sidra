@@ -73,7 +73,6 @@ export function reset(): void {
 /** Attach the detector once because its state and listeners are module-scoped. */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow: getWin } = ctx;
-  if (!getWin) throw new Error("wedgeDetector requires getMainWindow");
 
   // Module-scoped state requires one set of listeners and one will-quit handler,
   // regardless of whether the caller guards repeated initialisation.

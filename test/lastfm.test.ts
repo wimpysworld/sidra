@@ -158,7 +158,7 @@ async function startIntegration(): Promise<{
 }> {
   const lastfm = await loadLastfm();
   const player = new FakePlayer();
-  lastfm.init({ player });
+  lastfm.init({ player, getMainWindow: () => null });
   return { lastfm, player };
 }
 

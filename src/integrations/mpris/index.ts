@@ -1101,7 +1101,6 @@ function disconnectBus(): void {
  */
 export function init(ctx: IntegrationContext): void {
   const { player, getMainWindow } = ctx;
-  if (!getMainWindow) throw new Error("MPRIS requires getMainWindow");
 
   mprisLog.info("MPRIS module initialised");
 
