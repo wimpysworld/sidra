@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { Message, MessageFlag, MessageType, sessionBus } from '@holusion/dbus-next';
 import { createLinuxNotifications } from '../src/linuxNotifications';
 import { getAssetPath } from '../src/paths';
+import { quit } from './mocks/appLifecycle';
 
 vi.mock('@holusion/dbus-next', async (importOriginal) => ({
   ...await importOriginal<typeof import('@holusion/dbus-next')>(),
@@ -327,6 +328,19 @@ describe('Linux track notifications', () => {
     await adapter.show(track(), () => isCurrent);
     signal('ActionInvoked', [1, 'next']);
     expect(onAction).toHaveBeenCalledExactlyOnceWith('next');
+  });
+
+  it('closes the eager shared connection on quit before playback', async () => {
+    await vi.waitFor(() => {
+      expect(bus.call.mock.calls.some(([message]) => message.member === 'GetNameOwner')).toBe(true);
+    });
+
+    quit();
+    await vi.waitFor(() => expect(bus.disconnect).toHaveBeenCalledOnce());
+
+    expect(bus.listenerCount('message')).toBe(0);
+    expect(bus._connection.stream.destroy).toHaveBeenCalledOnce();
+    expect(notifyCalls()).toEqual([]);
   });
 
   it('detaches listeners and destroys the socket on quit', async () => {

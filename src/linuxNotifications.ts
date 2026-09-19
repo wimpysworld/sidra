@@ -25,13 +25,38 @@ export interface TrackNotification {
   onAction: (action: 'previous' | 'next' | 'default' | 'play' | 'pause') => void;
 }
 
+interface LinuxNotifications {
+  show: (notification: TrackNotification, isCurrent: () => boolean, refreshOnly?: boolean) => Promise<void>;
+  dispose: () => Promise<void>;
+}
+
 interface BusInternals {
   _connection?: { stream?: { destroy: () => void } };
 }
 
-/** Create serialised Linux notification delivery and cleanup, loaded only after the integration's platform check. */
-export function createLinuxNotifications() {
+let sharedAdapter: LinuxNotifications | null = null;
+let ownerKnown = false;
+let ownerAvailable = false;
+const ownerObservers = new Set<(hasOwner: boolean) => void>();
+
+function reportOwner(hasOwner: boolean): void {
+  ownerKnown = true;
+  ownerAvailable = hasOwner;
+  for (const observer of ownerObservers) observer(hasOwner);
+}
+
+/** Create the shared Linux notification connection and optionally observe daemon ownership. */
+export function createLinuxNotifications(
+  onOwnerChange?: (hasOwner: boolean) => void,
+): LinuxNotifications {
+  if (onOwnerChange) {
+    ownerObservers.add(onOwnerChange);
+    if (ownerKnown) onOwnerChange(ownerAvailable);
+  }
+  if (sharedAdapter) return sharedAdapter;
+
   let bus: MessageBus | null = null;
+  let disposed = false;
   let owner = '';
   let generation = 0;
   let notificationId = 0;
@@ -41,6 +66,8 @@ export function createLinuxNotifications() {
   let cancelDelivery: (() => void) | null = null;
 
   const dispose = async (): Promise<void> => {
+    if (disposed) return;
+    disposed = true;
     generation++;
     cancelDelivery?.();
     const previousOwner = owner;
@@ -48,9 +75,15 @@ export function createLinuxNotifications() {
     owner = '';
     notificationId = 0;
     onAction = null;
+    reportOwner(false);
+    if (sharedAdapter === adapter) sharedAdapter = null;
+    ownerObservers.clear();
+    ownerKnown = false;
+    ownerAvailable = false;
     if (!bus) return;
     const connection = bus;
     bus = null;
+    // SAFETY: MessageBus implements EventEmitter, but its declaration omits removeListener().
     (connection as unknown as EventEmitter).removeListener('message', onMessage);
     if (previousOwner && previousId) {
       let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -71,6 +104,7 @@ export function createLinuxNotifications() {
     }
     connection.disconnect();
     // disconnect() only half-closes the socket in dbus-next 0.11.2.
+    // SAFETY: The pinned dbus-next MessageBus owns this internal connection stream.
     (connection as unknown as BusInternals)._connection?.stream?.destroy();
   };
 
@@ -92,6 +126,7 @@ export function createLinuxNotifications() {
       owner = typeof message.body[2] === 'string' ? message.body[2] : '';
       notificationId = 0;
       onAction = null;
+      reportOwner(owner !== '');
       return;
     }
     if (!owner || message.sender !== owner || message.interface !== NAME || message.path !== PATH) return;
@@ -121,22 +156,37 @@ export function createLinuxNotifications() {
     }));
   };
 
-  const ready = (async () => {
+  const ready = Promise.resolve().then(async () => {
     try {
+      if (disposed) return;
       bus = sessionBus();
       bus.on('message', onMessage);
       bus.on('error', onError);
       await call(BUS_NAME, 'AddMatch', 's', [
         `type='signal',sender='${BUS_NAME}',interface='${BUS_NAME}',member='NameOwnerChanged',path='${BUS_PATH}',arg0='${NAME}'`,
       ]);
+      if (disposed) return;
       await call(BUS_NAME, 'AddMatch', 's', [
         `type='signal',sender='${NAME}',interface='${NAME}',path='${PATH}'`,
       ]);
+      if (disposed) return;
+      try {
+        const reply = await call(BUS_NAME, 'GetNameOwner', 's', [NAME]);
+        if (disposed) return;
+        const currentOwner: unknown = reply?.body[0];
+        owner = typeof currentOwner === 'string' && currentOwner.startsWith(':') ? currentOwner : '';
+        reportOwner(owner !== '');
+      } catch {
+        if (disposed) return;
+        owner = '';
+        reportOwner(false);
+      }
     } catch {
+      if (disposed) return;
       notificationLog.warn('notification bus unavailable');
       void dispose();
     }
-  })();
+  });
 
   const deliver = async (
     notification: TrackNotification,
@@ -219,5 +269,10 @@ export function createLinuxNotifications() {
     return pending;
   };
 
-  return { show, dispose };
+  const adapter: LinuxNotifications = { show, dispose };
+  sharedAdapter = adapter;
+  app.on('will-quit', () => {
+    void adapter.dispose();
+  });
+  return adapter;
 }

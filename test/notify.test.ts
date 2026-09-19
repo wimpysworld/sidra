@@ -1,47 +1,46 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Module from 'node:module';
 import type { Notification } from 'electron';
+import { MessageFlag, MessageType, sessionBus } from '@holusion/dbus-next';
 import { setPlatform, restorePlatform } from './mocks/platform';
 
+vi.mock('@holusion/dbus-next', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@holusion/dbus-next')>(),
+  sessionBus: vi.fn(),
+}));
+
 interface DbusMessage {
+  type?: MessageType;
+  sender?: string;
+  interface?: string;
+  path?: string;
   member?: string;
   body?: unknown[];
+  flags?: MessageFlag;
 }
 
 type BusListener = (msg: DbusMessage) => void;
 
-interface DbusBus {
-  on: (event: string, listener: BusListener) => void;
-  call: (msg: DbusMessage) => Promise<DbusMessage | null>;
-}
-
-interface DbusModule {
-  sessionBus: () => DbusBus;
-}
-
-// vi.mock cannot intercept the daemon's bare require of @holusion/dbus-next.
-// Loading the real module opens no socket. Stub sessionBus(), its connection entry point, so no test uses a live bus.
-const dbus = require('@holusion/dbus-next') as DbusModule;
-
 const busStub = {
   on: vi.fn<(event: string, listener: BusListener) => void>(),
   call: vi.fn<(msg: DbusMessage) => Promise<DbusMessage | null>>(),
+  disconnect: vi.fn(),
 };
 
-/** The answer the stubbed bus gives to the NameHasOwner probe. */
-let probeOwner = false;
+/** The owner that the stubbed bus gives to the GetNameOwner probe. */
+let probeOwner = '';
 
 /**
- * Routes initNotificationProbe()'s Node require to the real TypeScript daemon module with its stubbed bus.
+ * Routes initNotificationProbe()'s Node require to the real Linux adapter module with its stubbed bus.
  * Module._load needs patching because Node require bypasses Vitest's module registry and cannot resolve the TypeScript file.
  */
 const moduleApi = Module as unknown as {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
 };
 const realLoad = moduleApi._load;
-let daemonModule: typeof import('../src/notificationDaemon') | null = null;
-/** Makes the lazy require of the daemon module throw, as a packaging fault would. */
-let daemonLoadFails = false;
+let linuxModule: typeof import('../src/linuxNotifications') | null = null;
+/** Makes the lazy require of the Linux adapter module throw, as a packaging fault would. */
+let adapterLoadFails = false;
 
 /** The 'failed' listeners src/notify.ts attached to the notifications it built. */
 const failedListeners: Array<(event: unknown, error: string) => void> = [];
@@ -75,7 +74,7 @@ async function loadNotify(platform: NodeJS.Platform): Promise<Loaded> {
   vi.resetModules();
   failedListeners.length = 0;
 
-  daemonModule = await import('../src/notificationDaemon');
+  linuxModule = await import('../src/linuxNotifications');
   const electron = await import('electron');
   const NotificationMock = vi.mocked(electron.Notification);
   NotificationMock.mockReset();
@@ -92,7 +91,7 @@ function flush(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-/** The listener src/notificationDaemon.ts attached for NameOwnerChanged. */
+/** The listener src/linuxNotifications.ts attached for D-Bus signals. */
 function messageListener(): BusListener {
   const registration = busStub.on.mock.calls.find(([event]) => event === 'message');
   if (!registration) throw new Error('no message listener registered');
@@ -102,27 +101,38 @@ function messageListener(): BusListener {
 /** Delivers a NameOwnerChanged signal for the notifications name. */
 function announceOwner(newOwner: string): void {
   messageListener()({
+    type: MessageType.SIGNAL,
+    sender: 'org.freedesktop.DBus',
+    interface: 'org.freedesktop.DBus',
+    path: '/org/freedesktop/DBus',
     member: 'NameOwnerChanged',
-    body: ['org.freedesktop.Notifications', '', newOwner],
+    body: ['org.freedesktop.Notifications', probeOwner, newOwner],
   });
+  probeOwner = newOwner;
 }
 
 const OPTIONS = { title: 'Blue Monday', body: 'New Order' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  probeOwner = false;
-  daemonModule = null;
-  daemonLoadFails = false;
-  busStub.call.mockImplementation((msg) =>
-    Promise.resolve(msg.member === 'NameHasOwner' ? { body: [probeOwner] } : null));
-  vi.spyOn(dbus, 'sessionBus').mockReturnValue(busStub);
+  probeOwner = '';
+  linuxModule = null;
+  adapterLoadFails = false;
+  busStub.call.mockImplementation((msg) => {
+    if (msg.member === 'GetNameOwner') {
+      return probeOwner
+        ? Promise.resolve({ body: [probeOwner] })
+        : Promise.reject(new Error('Name has no owner'));
+    }
+    return Promise.resolve({ body: [] });
+  });
+  vi.mocked(sessionBus).mockReturnValue(busStub as unknown as ReturnType<typeof sessionBus>);
   moduleApi._load = (request, parent, isMain) => {
-    if (!request.endsWith('notificationDaemon')) {
+    if (request !== './linuxNotifications') {
       return Reflect.apply(realLoad, Module, [request, parent, isMain]);
     }
-    if (daemonLoadFails) throw new Error('cannot find module');
-    return daemonModule;
+    if (adapterLoadFails) throw new Error('cannot find module');
+    return linuxModule;
   };
 });
 
@@ -140,7 +150,7 @@ describe('notification gate on Linux', () => {
 
   it('suppresses notifications when the probe reports no owner', async () => {
     const { notify, NotificationMock } = await loadNotify('linux');
-    probeOwner = false;
+    probeOwner = '';
 
     notify.initNotificationProbe();
     await flush();
@@ -151,7 +161,7 @@ describe('notification gate on Linux', () => {
 
   it('allows notifications when the probe reports an owner', async () => {
     const { notify, NotificationMock } = await loadNotify('linux');
-    probeOwner = true;
+    probeOwner = ':1.42';
 
     notify.initNotificationProbe();
     await flush();
@@ -169,14 +179,18 @@ describe('notification gate on Linux', () => {
     notify.initNotificationProbe();
     await flush();
 
-    const members = busStub.call.mock.calls.map(([msg]) => msg.member);
-    expect(members).toEqual(['AddMatch', 'NameHasOwner']);
-    expect(busStub.call.mock.calls[1][0].body).toEqual(['org.freedesktop.Notifications']);
+    const calls = busStub.call.mock.calls.map(([msg]) => msg);
+    expect(calls.map((msg) => msg.member)).toEqual(['AddMatch', 'AddMatch', 'GetNameOwner']);
+    expect(calls[2].body).toEqual(['org.freedesktop.Notifications']);
+    expect(calls.every((msg) => msg.flags === MessageFlag.NO_AUTO_START)).toBe(true);
+    expect(sessionBus).toHaveBeenCalledOnce();
+    expect(linuxModule?.createLinuxNotifications()).toBe(linuxModule?.createLinuxNotifications());
+    expect(sessionBus).toHaveBeenCalledOnce();
   });
 
   it('opens the gate when NameOwnerChanged reports a new owner', async () => {
     const { notify } = await loadNotify('linux');
-    probeOwner = false;
+    probeOwner = '';
 
     notify.initNotificationProbe();
     await flush();
@@ -189,7 +203,7 @@ describe('notification gate on Linux', () => {
 
   it('closes the gate when NameOwnerChanged reports an empty new owner', async () => {
     const { notify } = await loadNotify('linux');
-    probeOwner = true;
+    probeOwner = ':1.42';
 
     notify.initNotificationProbe();
     await flush();
@@ -202,7 +216,7 @@ describe('notification gate on Linux', () => {
 
   it('latches the gate closed when a notification fails', async () => {
     const { notify } = await loadNotify('linux');
-    probeOwner = true;
+    probeOwner = ':1.42';
 
     notify.initNotificationProbe();
     await flush();
@@ -216,7 +230,7 @@ describe('notification gate on Linux', () => {
 
   it('clears the latch when a daemon appears', async () => {
     const { notify } = await loadNotify('linux');
-    probeOwner = true;
+    probeOwner = ':1.42';
 
     notify.initNotificationProbe();
     await flush();
@@ -231,7 +245,7 @@ describe('notification gate on Linux', () => {
 
   it('leaves the gate closed when the session bus cannot be opened', async () => {
     const { notify } = await loadNotify('linux');
-    vi.mocked(dbus.sessionBus).mockImplementation(() => {
+    vi.mocked(sessionBus).mockImplementation(() => {
       throw new Error('no session bus');
     });
 
@@ -241,12 +255,12 @@ describe('notification gate on Linux', () => {
     expect(notify.createNotification(OPTIONS)).toBeNull();
   });
 
-  // The daemon's own catch cannot cover a module that never loads, so this is
+  // The adapter's own catch cannot cover a module that never loads, so this is
   // the case that guards the try/catch in src/notify.ts. initNotificationProbe
   // runs during app bootstrap, where a throw would take the launch with it.
-  it('leaves the gate closed when the daemon module cannot be loaded', async () => {
+  it('leaves the gate closed when the adapter module cannot be loaded', async () => {
     const { notify } = await loadNotify('linux');
-    daemonLoadFails = true;
+    adapterLoadFails = true;
 
     expect(() => notify.initNotificationProbe()).not.toThrow();
     await flush();
@@ -254,17 +268,18 @@ describe('notification gate on Linux', () => {
     expect(notify.createNotification(OPTIONS)).toBeNull();
   });
 
-  // Test the daemon directly so the gate's catch cannot hide an escaping error.
-  it('does not throw out of the probe when the session bus cannot be opened', async () => {
+  // Test the adapter directly so the gate's catch cannot hide an escaping error.
+  it('closes ownership without throwing when the session bus cannot be opened', async () => {
     await loadNotify('linux');
-    vi.mocked(dbus.sessionBus).mockImplementation(() => {
+    vi.mocked(sessionBus).mockImplementation(() => {
       throw new Error('no session bus');
     });
     const onOwnerChange = vi.fn();
 
-    expect(() => daemonModule?.initDaemonProbe(onOwnerChange)).not.toThrow();
+    expect(() => linuxModule?.createLinuxNotifications(onOwnerChange)).not.toThrow();
+    await flush();
 
-    expect(onOwnerChange).not.toHaveBeenCalled();
+    expect(onOwnerChange).toHaveBeenCalledWith(false);
   });
 });
 
@@ -277,7 +292,7 @@ describe('notification gate off Linux', () => {
     notify.initNotificationProbe();
     await flush();
 
-    expect(dbus.sessionBus).not.toHaveBeenCalled();
+    expect(sessionBus).not.toHaveBeenCalled();
     expect(notify.createNotification(OPTIONS)).not.toBeNull();
     expect(NotificationMock).toHaveBeenCalledTimes(1);
   });

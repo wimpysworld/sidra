@@ -37,13 +37,12 @@ export function initNotificationProbe(): void {
   }
 
   try {
-    // ./notificationDaemon bare-requires @holusion/dbus-next, so it is
-    // lazy-required after the platform check to keep D-Bus out of the import
-    // graph on macOS and Windows
-    const { initDaemonProbe } =
-      require("./notificationDaemon") as typeof import("./notificationDaemon");
+    // linuxNotifications imports @holusion/dbus-next, so load it only after the
+    // platform check to keep D-Bus out of the import graph on macOS and Windows.
+    const { createLinuxNotifications } =
+      require("./linuxNotifications") as typeof import("./linuxNotifications");
 
-    initDaemonProbe((hasOwner: boolean) => {
+    createLinuxNotifications((hasOwner: boolean) => {
       const wasAvailable = notificationsAvailable();
       daemonAvailable = hasOwner;
       if (hasOwner) {
