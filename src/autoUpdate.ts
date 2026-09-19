@@ -3,6 +3,7 @@ import log from "electron-log/main";
 import { getAutoUpdateEnabled } from "./config";
 import { getAutoUpdateStrings } from "./i18n";
 import { setUpdateReady, showUpdateNotification } from "./update";
+import { errorMessage } from "./utils";
 
 const autoUpdateLog = log.scope("autoUpdate");
 
@@ -140,7 +141,7 @@ export async function initAutoUpdate(
   try {
     await configureAutoUpdate(loadAutoUpdater(), tray, rebuildMenu);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     autoUpdateLog.error("auto-update initialisation failed:", message);
   }
 }

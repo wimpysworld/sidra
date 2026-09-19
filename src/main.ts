@@ -71,7 +71,7 @@ import {
 } from "./wedgeDetector";
 import { contentReadyProbeScript } from "./contentReady";
 import { initNotificationProbe } from "./notify";
-import { liveWebContents, runSteps } from "./utils";
+import { errorMessage, liveWebContents, runSteps } from "./utils";
 import { openExternalUrl } from "./utils/openExternal";
 
 const SPLASH_MIN_DISPLAY_MS = 500;
@@ -662,7 +662,7 @@ function setupAuthFrameInjection(win: BrowserWindow, script: string): void {
       if (!AUTH_FRAME_HOSTS.has(host)) return;
       authLog.info(`auth iframe detected: ${frame.url}`);
       frame.executeJavaScript(script).catch((err) => {
-        authLog.warn("auth iframe injection failed:", (err as Error).message);
+        authLog.warn("auth iframe injection failed:", errorMessage(err));
       });
     },
   );
@@ -888,7 +888,7 @@ if (gotLock) {
             .catch((err) =>
               mainLog.warn(
                 "service navigation loadURL failed:",
-                (err as Error).message,
+                errorMessage(err),
               ),
             );
           notifySettingsChanged();
@@ -927,7 +927,7 @@ if (gotLock) {
         .catch((err) =>
           mainLog.warn(
             "initial navigation loadURL failed:",
-            (err as Error).message,
+            errorMessage(err),
           ),
         );
 
@@ -945,7 +945,7 @@ if (gotLock) {
       // reached, so without this catch a startup failure leaves the splash up
       // for the life of the process with no message.
       mainLog.error("startup failed:", err);
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       dialog.showErrorBox(
         "Sidra failed to start",
         `Sidra could not finish starting.\n\n${detail}\n\nSee the Sidra log for details, then start Sidra again.`,
