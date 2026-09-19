@@ -153,7 +153,7 @@ class MediaPlayer2 extends Interface {
   /** Shows and focuses the current window. */
   Raise(): void {
     const win = this._getMainWindow();
-    if (win) {
+    if (win && !win.isDestroyed()) {
       win.show();
       win.focus();
       logCommand("Raise", "sent");

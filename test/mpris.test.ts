@@ -529,17 +529,23 @@ describe("MPRIS command provenance", () => {
     },
   );
 
-  it("logs Raise as dropped when no window exists", () => {
-    const { root } = initInterfaces(() => null);
+  it.each(["missing", "destroyed"])(
+    "logs Raise as dropped when the window is %s",
+    (state) => {
+      win.isDestroyed.mockReturnValue(state === "destroyed");
+      const { root } = initInterfaces(() =>
+        state === "missing" ? null : (win as unknown as BrowserWindow),
+      );
 
-    root.Raise();
+      expect(() => root.Raise()).not.toThrow();
 
-    expect(win.show).not.toHaveBeenCalled();
-    expect(win.focus).not.toHaveBeenCalled();
-    expect(log.scope("mpris").info).toHaveBeenCalledWith(
-      "source=mpris method=Raise result=dropped",
-    );
-  });
+      expect(win.show).not.toHaveBeenCalled();
+      expect(win.focus).not.toHaveBeenCalled();
+      expect(log.scope("mpris").info).toHaveBeenCalledWith(
+        "source=mpris method=Raise result=dropped",
+      );
+    },
+  );
 
   it("logs a sent Volume burst at debug without per-value info records", () => {
     vi.useFakeTimers();
