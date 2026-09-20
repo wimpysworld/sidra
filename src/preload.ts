@@ -309,10 +309,12 @@ startControllerPolling();
 // service host without naming one.
 for (const channel of RECEIVE_CHANNELS.all) {
   ipcRenderer.on(channel, (_event, ...args: unknown[]) => {
-    window.postMessage(
-      { type: "sidra:command", channel, args },
-      window.location.origin,
-    );
+    const message = {
+      type: "sidra:command",
+      channel,
+      args,
+    } satisfies SidraCommandMessage;
+    window.postMessage(message, window.location.origin);
   });
 }
 
