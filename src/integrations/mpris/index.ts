@@ -729,11 +729,11 @@ class MediaPlayer2Player extends Interface {
       Track: 1,
       Playlist: 2,
     };
-    const mode = loopToMusicKit[value];
-    if (mode === undefined) {
+    if (!Object.hasOwn(loopToMusicKit, value)) {
       mprisLog.warn("invalid LoopStatus value");
       return;
     }
+    const mode = loopToMusicKit[value];
     this._loopStatus = value;
     this._send("LoopStatus", "player:setRepeat", mode);
   }

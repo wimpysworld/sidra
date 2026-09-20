@@ -460,6 +460,36 @@ const COMMAND_CASES: ReadonlyArray<{
   },
 ];
 
+describe("MPRIS LoopStatus", () => {
+  it.each([
+    ["None", 0],
+    ["Track", 1],
+    ["Playlist", 2],
+  ] as const)("maps %s to MusicKit mode %i", (status, mode) => {
+    const iface = initPlayerInterface();
+
+    iface.LoopStatus = status;
+
+    expect(iface.LoopStatus).toBe(status);
+    expect(winContents.send).toHaveBeenCalledOnce();
+    expect(winContents.send).toHaveBeenCalledWith("player:setRepeat", mode);
+  });
+
+  it.each(["toString", "__proto__", "unknown"])(
+    "rejects invalid value %s without changing state",
+    (status) => {
+      const iface = initPlayerInterface();
+      iface.LoopStatus = "Track";
+      winContents.send.mockClear();
+
+      iface.LoopStatus = status;
+
+      expect(iface.LoopStatus).toBe("Track");
+      expect(winContents.send).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe("MPRIS command provenance", () => {
   it.each(COMMAND_CASES)(
     "maps $method to $channel with its exact arguments",
