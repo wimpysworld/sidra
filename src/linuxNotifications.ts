@@ -11,6 +11,7 @@ import type { MessageBus } from "@holusion/dbus-next";
 import type { EventEmitter } from "node:events";
 import { pathToFileURL } from "node:url";
 import { getAssetPath } from "./paths";
+import { closeBus } from "./utils/closeBus";
 
 const NAME = "org.freedesktop.Notifications";
 const PATH = "/org/freedesktop/Notifications";
@@ -40,10 +41,6 @@ interface LinuxNotifications {
     refreshOnly?: boolean,
   ) => Promise<void>;
   dispose: () => Promise<void>;
-}
-
-interface BusInternals {
-  _connection?: { stream?: { destroy: () => void } };
 }
 
 let sharedAdapter: LinuxNotifications | null = null;
@@ -125,10 +122,7 @@ export function createLinuxNotifications(
         clearTimeout(timeout);
       }
     }
-    connection.disconnect();
-    // disconnect() only half-closes the socket in dbus-next 0.11.2.
-    // SAFETY: The pinned dbus-next MessageBus owns this internal connection stream.
-    (connection as unknown as BusInternals)._connection?.stream?.destroy();
+    closeBus(connection);
   };
 
   const onError = (): void => {

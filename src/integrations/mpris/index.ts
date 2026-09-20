@@ -16,6 +16,7 @@ import { errorMessage, liveWebContents } from "../../utils";
 import { getServiceByHost } from "../../musicService";
 import { getMusicService } from "../../config";
 import { switchService } from "../../serviceSwitch";
+import { closeBus } from "../../utils/closeBus";
 
 // `main.ts` loads this module only on Linux, keeping `dbus-next` off other platforms.
 const dbus = require("@holusion/dbus-next");
@@ -1068,26 +1069,10 @@ MediaPlayer2Player.configureMembers({
 
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
-// `dbus-next` has no public API that force-closes its socket, so shutdown uses
-// this narrow interface to access the internal stream.
-interface DbusMessageBusInternals {
-  _connection?: {
-    stream?: {
-      destroy: () => void;
-    };
-  };
-}
-
 function disconnectBus(): void {
   if (bus) {
     mprisLog.info("disconnecting from D-Bus");
-    // `bus.disconnect()` calls `stream.end()`, which only half-closes the socket.
-    // Destroy the underlying stream to release the event loop handle.
-    const stream = (bus as DbusMessageBusInternals)._connection?.stream;
-    bus.disconnect();
-    if (stream && typeof stream.destroy === "function") {
-      stream.destroy();
-    }
+    closeBus(bus);
     bus = null;
   }
 }
