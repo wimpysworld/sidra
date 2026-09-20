@@ -18,7 +18,7 @@ import {
 } from "../../player";
 import { getDiscordEnabled, getMusicService } from "../../config";
 import { getService } from "../../musicService";
-import { createPauseTimer } from "../../pauseTimer";
+import { createPauseEdgeTimer } from "../../pauseTimer";
 import { getDiscordArtistText, getDiscordPlayOnText } from "../../i18n";
 
 const discordLog = log.scope("discord");
@@ -68,7 +68,6 @@ function clearTrackMetadata(): void {
 // functions take `Player` directly, so only `enable()` and `disable()` need a
 // nullable reference.
 let playerRef: Player | null = null;
-let previousState = 0;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,7 +75,7 @@ let retryCount = 0;
 
 let client: Client | undefined;
 
-const pauseTimeout = createPauseTimer(PAUSE_TIMEOUT_MS, () => {
+const pauseTimeout = createPauseEdgeTimer(PAUSE_TIMEOUT_MS, () => {
   discordLog.debug("pause timeout reached, clearing activity");
   client?.user?.clearActivity().catch(() => {});
 });
@@ -350,18 +349,7 @@ export function init(ctx: IntegrationContext): void {
   };
 
   const onPlaybackStateDidChange = (payload: PlaybackStatePayload): void => {
-    const wasPlaying = previousState === PlaybackState.Playing;
-    const nowPlaying = payload?.state === PlaybackState.Playing;
-    previousState = payload?.state ?? 0;
-
-    if (nowPlaying) {
-      pauseTimeout.cancel();
-    }
-
-    if (!nowPlaying && wasPlaying) {
-      pauseTimeout.start();
-    }
-
+    pauseTimeout.report(payload?.state === PlaybackState.Playing);
     scheduleUpdate(player);
   };
 
@@ -389,7 +377,6 @@ export function init(ctx: IntegrationContext): void {
     player.removeListener("playbackStateDidChange", onPlaybackStateDidChange);
 
     clearTrackMetadata();
-    previousState = 0;
     retryCount = 0;
   });
 }

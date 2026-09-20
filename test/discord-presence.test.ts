@@ -10,6 +10,7 @@ import { app } from "electron";
 import { PlaybackState, NowPlayingPayload } from "../src/player";
 import { FakePlayer } from "./mocks/player";
 import { restorePlatform, setPlatform } from "./mocks/platform";
+import { quit } from "./mocks/appLifecycle";
 
 // Matches DEBOUNCE_MS and PAUSE_TIMEOUT_MS in
 // src/integrations/discord-presence/index.ts, which keeps them private.
@@ -260,13 +261,14 @@ beforeEach(() => {
 
 describe("discord presence integration", () => {
   let player: FakePlayer;
+  let discord: typeof import("../src/integrations/discord-presence");
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(START);
     player = new FakePlayer();
-    const discord = await loadDiscord();
+    discord = await loadDiscord();
     discord.init({ player, getMainWindow: () => null });
   });
 
@@ -373,6 +375,50 @@ describe("discord presence integration", () => {
 
     await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS);
     expect(rpc.clearActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not postpone the pause timeout after repeated paused states", async () => {
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitPlaybackState(PlaybackState.Paused);
+
+    await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS - 500);
+    player.emitPlaybackState(PlaybackState.Paused);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(rpc.clearActivity).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a pause timeout across disconnect and reconnect", async () => {
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitPlaybackState(PlaybackState.Paused);
+
+    discord.disable();
+    await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS);
+    expect(rpc.clearActivity).toHaveBeenCalledOnce();
+
+    discord.enable();
+    await vi.advanceTimersByTimeAsync(0);
+    player.emitPlaybackState(PlaybackState.Paused);
+    await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS);
+    expect(rpc.clearActivity).toHaveBeenCalledOnce();
+
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitPlaybackState(PlaybackState.Paused);
+    await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS);
+    expect(rpc.clearActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not clear activity after teardown", async () => {
+    player.emitNowPlaying(TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitPlaybackState(PlaybackState.Paused);
+
+    quit();
+    await vi.advanceTimersByTimeAsync(PAUSE_TIMEOUT_MS);
+
+    expect(rpc.clearActivity).not.toHaveBeenCalled();
   });
 });
 
