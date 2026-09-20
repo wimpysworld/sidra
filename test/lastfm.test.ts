@@ -1946,6 +1946,29 @@ describe("authentication", () => {
     expect(vi.mocked(Notification)).toHaveBeenCalledTimes(1);
   });
 
+  it("continues authentication without logging the token when opening the browser fails", async () => {
+    const lastfm = await loadLastfm();
+    noSession();
+    respondToAuth(
+      () =>
+        new Response(
+          JSON.stringify({ session: { key: "new-key", name: "wimpy" } }),
+        ),
+    );
+    vi.mocked(shell.openExternal).mockRejectedValueOnce("spawn failed");
+
+    lastfm.startAuth();
+    await flush();
+
+    expect(session.key).toBe("new-key");
+    const scopedLog = vi.mocked(log.scope("lastfm").warn);
+    expect(scopedLog).toHaveBeenCalledWith(
+      "failed to open browser:",
+      "spawn failed",
+    );
+    expect(scopedLog.mock.calls.flat().join(" ")).not.toContain("auth-token");
+  });
+
   it("percent-encodes the token it puts in the approval URL", async () => {
     const lastfm = await loadLastfm();
     noSession();

@@ -895,7 +895,9 @@ export function disable(): void {
   lastfmLog.info("scrobbling disabled");
 }
 
-/** Restricts external navigation to HTTP and HTTPS URLs before opening them. */
+/**
+ * Opens a Last.fm approval URL without logging its one-use authentication token.
+ */
 function openInBrowser(url: URL): void {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     lastfmLog.warn("refusing to open a non-web URL:", url.protocol);
@@ -903,8 +905,8 @@ function openInBrowser(url: URL): void {
   }
   shell
     .openExternal(url.toString())
-    .catch((err: Error) =>
-      lastfmLog.warn("failed to open browser:", err.message),
+    .catch((err: unknown) =>
+      lastfmLog.warn("failed to open browser:", errorMessage(err)),
     );
 }
 
