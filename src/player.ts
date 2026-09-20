@@ -593,7 +593,10 @@ export class Player extends TypedEmitter<PlayerEvents> {
 
   /** Validate playback reports and derive playing status from the MusicKit state. */
   handlePlaybackStateDidChange(payload: PlaybackStatePayload): void {
-    if (payload != null) {
+    if (payload == null) {
+      this._state = PlaybackState.None;
+      this._isPlaying = false;
+    } else {
       if (typeof payload !== "object" || Array.isArray(payload)) {
         playerLog.warn(
           "playbackStateDidChange: invalid payload, expected object or null",
@@ -614,14 +617,11 @@ export class Player extends TypedEmitter<PlayerEvents> {
       }
       this._state = payload.state;
       this._isPlaying = payload.state === PlaybackState.Playing;
-    } else {
-      this._state = PlaybackState.None;
-      this._isPlaying = false;
     }
     const stateName =
-      payload != null
-        ? (PLAYBACK_STATES[payload.state] ?? String(payload.state))
-        : null;
+      payload == null
+        ? null
+        : (PLAYBACK_STATES[payload.state] ?? String(payload.state));
     playerLog.debug("playbackStateDidChange:", {
       ...payload,
       state: stateName,
@@ -740,7 +740,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     }
     playerLog.debug(
       "volumeDidChange:",
-      payload != null ? Math.round(payload * 100) / 100 : payload,
+      payload == null ? payload : Math.round(payload * 100) / 100,
     );
     this.emit("volumeDidChange", payload);
   }
