@@ -166,7 +166,7 @@ function findCleanupFaults(rawSource: string): string[] {
   // Node exposes the original callback through the once wrapper's `.listener`, so removeListener accepts that reference even after delivery.
   const named = [
     ...source.matchAll(
-      /player\.(?:on|once|addListener)\(\s*(['"])([\w-]+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g,
+      /player\.(?:on|once|addListener)\(\s*(['"])([\w-]+)\1\s*,\s*([A-Za-z_$][\w$]*)\s*,?\s*\)/g,
     ),
   ];
   const total = [...source.matchAll(/player\.(?:on|once|addListener)\(/g)]
@@ -408,6 +408,26 @@ describe("player listener cleanup", () => {
 
       expect(findCleanupFaults(source)).toEqual([]);
     });
+
+    it.each(["on", "once", "addListener"] as const)(
+      "accepts a multiline %s registration with a trailing comma",
+      (method) => {
+        const source = `
+          export function init(): void {
+            player.${method}(
+              'playbackStateDidChange',
+              onPlaybackStateDidChange,
+            );
+
+            app.on('will-quit', () => {
+              ${REMOVE}
+            });
+          }
+        `;
+
+        expect(findCleanupFaults(source)).toEqual([]);
+      },
+    );
 
     // addListener aliases on, so matching only player.on misses valid registrations.
     it("rejects an addListener registration with no removal", () => {
