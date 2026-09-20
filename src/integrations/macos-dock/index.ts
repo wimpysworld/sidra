@@ -1,13 +1,19 @@
-import { app, Menu, ShareMenu } from 'electron';
-import log from 'electron-log/main';
-import { isTerminalPlaybackState, getShareUrl, type NowPlayingPayload, type PlaybackStatePayload, type IntegrationContext } from '../../player';
-import { getTrayStrings } from '../../i18n';
-import { truncateMenuLabel } from '../../tray';
-import { createPauseEdgeTimer } from '../../pauseTimer';
-import { sendCommand } from '../../commandBridge';
-import { updateProgressBar, clearProgressBar } from '../../utils/progressBar';
+import { app, Menu, ShareMenu } from "electron";
+import log from "electron-log/main";
+import {
+  isTerminalPlaybackState,
+  getShareUrl,
+  type NowPlayingPayload,
+  type PlaybackStatePayload,
+  type IntegrationContext,
+} from "../../player";
+import { getTrayStrings } from "../../i18n";
+import { truncateMenuLabel } from "../../tray";
+import { createPauseEdgeTimer } from "../../pauseTimer";
+import { sendCommand } from "../../commandBridge";
+import { updateProgressBar, clearProgressBar } from "../../utils/progressBar";
 
-const dockLog = log.scope('dock');
+const dockLog = log.scope("dock");
 
 const DOCK_PAUSE_TIMEOUT_MS = 30_000;
 
@@ -21,10 +27,14 @@ function buildDockMenu(
 
   if (payload?.name) {
     const trackLabel = truncateMenuLabel(payload.name);
-    const artistLabel = payload.artistName ? truncateMenuLabel(payload.artistName) : null;
-    const nowPlayingText = artistLabel ? `${trackLabel} - ${artistLabel}` : trackLabel;
+    const artistLabel = payload.artistName
+      ? truncateMenuLabel(payload.artistName)
+      : null;
+    const nowPlayingText = artistLabel
+      ? `${trackLabel} - ${artistLabel}`
+      : trackLabel;
     items.push({ label: nowPlayingText, enabled: false });
-    items.push({ type: 'separator' });
+    items.push({ type: "separator" });
 
     const shareUrl = getShareUrl(payload);
     if (shareUrl) {
@@ -35,25 +45,25 @@ function buildDockMenu(
           shareMenu.popup();
         },
       });
-      items.push({ type: 'separator' });
+      items.push({ type: "separator" });
     }
   } else {
     items.push({ label: strings.notPlaying, enabled: false });
-    items.push({ type: 'separator' });
+    items.push({ type: "separator" });
   }
 
   const playPauseLabel = isPlaying ? strings.pause : strings.play;
   items.push({
     label: playPauseLabel,
-    click: () => sendCommand('player:playPause'),
+    click: () => sendCommand("player:playPause"),
   });
   items.push({
     label: strings.next,
-    click: () => sendCommand('player:next'),
+    click: () => sendCommand("player:next"),
   });
   items.push({
     label: strings.previous,
-    click: () => sendCommand('player:previous'),
+    click: () => sendCommand("player:previous"),
   });
 
   return Menu.buildFromTemplate(items);
@@ -61,13 +71,16 @@ function buildDockMenu(
 
 /** Installs the dock menu and progress bar on macOS only. */
 export function init(ctx: IntegrationContext): void {
-  if (process.platform !== 'darwin') return;
+  if (process.platform !== "darwin") return;
 
   const { player, getMainWindow } = ctx;
 
   let currentPayload: NowPlayingPayload | null = null;
 
-  const updateDockProgressBar = (positionUs: number, durationMs: number | undefined): void => {
+  const updateDockProgressBar = (
+    positionUs: number,
+    durationMs: number | undefined,
+  ): void => {
     const win = getMainWindow();
     if (!win) return;
     updateProgressBar(win, positionUs, durationMs);
@@ -84,16 +97,21 @@ export function init(ctx: IntegrationContext): void {
   };
 
   const clearNowPlaying = (): void => {
-    dockLog.debug('dock pause timeout reached, clearing Now Playing');
+    dockLog.debug("dock pause timeout reached, clearing Now Playing");
     currentPayload = null;
     clearDockProgressBar();
     rebuildDock(false);
   };
 
-  const dockPauseTimer = createPauseEdgeTimer(DOCK_PAUSE_TIMEOUT_MS, clearNowPlaying);
+  const dockPauseTimer = createPauseEdgeTimer(
+    DOCK_PAUSE_TIMEOUT_MS,
+    clearNowPlaying,
+  );
 
   // Named listeners let will-quit remove the same function references.
-  const onNowPlayingItemDidChange = (payload: NowPlayingPayload | null): void => {
+  const onNowPlayingItemDidChange = (
+    payload: NowPlayingPayload | null,
+  ): void => {
     dockPauseTimer.cancel();
     currentPayload = payload;
     if (!payload) {
@@ -105,7 +123,9 @@ export function init(ctx: IntegrationContext): void {
     rebuildDock(isPlaying);
   };
 
-  const onPlaybackStateDidChange = (statePayload: PlaybackStatePayload): void => {
+  const onPlaybackStateDidChange = (
+    statePayload: PlaybackStatePayload,
+  ): void => {
     const state = statePayload?.state ?? 0;
     if (isTerminalPlaybackState(state)) {
       dockPauseTimer.cancel();
@@ -126,19 +146,19 @@ export function init(ctx: IntegrationContext): void {
     updateDockProgressBar(positionUs, currentPayload?.durationInMillis);
   };
 
-  player.on('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-  player.on('playbackStateDidChange', onPlaybackStateDidChange);
-  player.on('playbackTimeDidChange', onPlaybackTimeDidChange);
+  player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("playbackStateDidChange", onPlaybackStateDidChange);
+  player.on("playbackTimeDidChange", onPlaybackTimeDidChange);
 
-  app.on('will-quit', () => {
-    player.removeListener('nowPlayingItemDidChange', onNowPlayingItemDidChange);
-    player.removeListener('playbackStateDidChange', onPlaybackStateDidChange);
-    player.removeListener('playbackTimeDidChange', onPlaybackTimeDidChange);
+  app.on("will-quit", () => {
+    player.removeListener("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.removeListener("playbackStateDidChange", onPlaybackStateDidChange);
+    player.removeListener("playbackTimeDidChange", onPlaybackTimeDidChange);
     // Cancel the timer before clearNowPlaying() can call a torn-down dock.
     dockPauseTimer.destroy();
   });
 
   // Show Not Playing from launch, before any player event arrives.
   rebuildDock(false);
-  dockLog.info('dock menu initialised');
+  dockLog.info("dock menu initialised");
 }
