@@ -925,10 +925,7 @@ if (gotLock) {
       win
         .loadURL(buildAppleMusicURL(), { userAgent: UA })
         .catch((err) =>
-          mainLog.warn(
-            "initial navigation loadURL failed:",
-            errorMessage(err),
-          ),
+          mainLog.warn("initial navigation loadURL failed:", errorMessage(err)),
         );
 
       // Drain any itms target captured at launch. Routed after the initial home
