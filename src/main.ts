@@ -383,6 +383,7 @@ function initPlayerIPC(): Player {
         player.handlePlaybackStateDidChange(data),
       nowPlayingItemDidChange: (_event, data) =>
         player.handleNowPlayingItemDidChange(data),
+      queueDidChange: (_event, data) => player.handleQueueDidChange(data),
       timedMetadataDidChange: (_event, data) =>
         player.handleTimedMetadataDidChange(data),
       playbackTimeDidChange: (_event, data) =>

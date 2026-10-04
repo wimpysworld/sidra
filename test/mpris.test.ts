@@ -9,6 +9,8 @@ import { downloadArtwork } from "../src/artwork";
 import { switchService } from "../src/serviceSwitch";
 import type { MusicServiceId } from "../src/musicService";
 import { PlaybackState } from "../src/player";
+import { occurrenceTrackId } from "../src/queue";
+import type { QueueItem } from "../src/queue";
 import type {
   IntegrationContext,
   NowPlayingPayload,
@@ -119,6 +121,7 @@ interface PlayerInterface {
 }
 
 interface RootInterface {
+  readonly HasTrackList: boolean;
   Raise(): void;
   Quit(): void;
   Fullscreen: boolean;
@@ -127,6 +130,22 @@ interface RootInterface {
     property: Array<{ $: { name: string; type: string; access: string } }>;
   };
   readonly SupportedUriSchemes: string[];
+}
+
+interface TrackListInterface {
+  readonly Tracks: string[];
+  readonly CanEditTracks: boolean;
+  GetTracksMetadata(ids: string[]): Record<string, VariantValue>[];
+  GoTo(id: string): void;
+  AddTrack(uri: string, after: string, setAsCurrent: boolean): void;
+  RemoveTrack(id: string): void;
+  TrackListReplaced(tracks: string[], current: string): void;
+  TrackMetadataChanged(id: string, metadata: Record<string, VariantValue>): void;
+  $introspect(): {
+    property: Array<{ $: { name: string; type: string; access: string } }>;
+    method: Array<{ $: { name: string }; arg: Array<{ $: { type: string; direction: string } }> }>;
+    signal: Array<{ $: { name: string }; arg: Array<{ $: { type: string } }> }>;
+  };
 }
 
 /**
@@ -153,16 +172,18 @@ function initInterfaces(
 ): {
   root: RootInterface;
   player: PlayerInterface;
+  trackList: TrackListInterface;
 } {
   const ctx: IntegrationContext = {
     player,
     getMainWindow,
   };
   mpris.init(ctx);
-  expect(busStub.export).toHaveBeenCalledTimes(2);
+  expect(busStub.export).toHaveBeenCalledTimes(3);
   return {
     root: busStub.export.mock.calls[0][1] as RootInterface,
     player: busStub.export.mock.calls[1][1] as PlayerInterface,
+    trackList: busStub.export.mock.calls[2][1] as TrackListInterface,
   };
 }
 
@@ -242,6 +263,193 @@ afterEach(() => {
   // this hook and leave fake timers installed for every later test.
   vi.useRealTimers();
   expect(positionBreaches).toEqual([]);
+});
+
+describe("MPRIS TrackList", () => {
+  function item(n: number, name = "Duplicate"): QueueItem {
+    return { occurrenceId: `d1_i1_o${n}`, trackId: "same-catalogue-id", name,
+      artistName: "Artist", albumName: "Album", durationInMillis: 123_000 };
+  }
+
+  it("exports the read-only interface and its D-Bus signatures", () => {
+    const { root, trackList } = initInterfaces();
+    expect(root.HasTrackList).toBe(true);
+    expect(trackList.CanEditTracks).toBe(false);
+    expect(trackList.Tracks).toEqual([]);
+    const introspection = trackList.$introspect();
+    expect(introspection.property).toEqual([
+      { $: { name: "Tracks", type: "ao", access: "read" } },
+      { $: { name: "CanEditTracks", type: "b", access: "read" } },
+    ]);
+    expect(introspection.method.find(method => method.$.name === "GetTracksMetadata")?.arg).toEqual([
+      { $: { type: "ao", direction: "in" } },
+      { $: { type: "aa{sv}", direction: "out" } },
+    ]);
+    expect(introspection.signal.map(signal => signal.$.name)).toContain("TrackListReplaced");
+    expect(() => trackList.AddTrack("https://music.apple.com/song/1", "/unknown", true))
+      .toThrow("TrackList is read-only");
+    expect(() => trackList.RemoveTrack("/unknown")).toThrow("TrackList is read-only");
+    expect(winContents.send).not.toHaveBeenCalled();
+  });
+
+  it("returns ordered occurrence metadata and matches Player identity for duplicates", () => {
+    const { player: iface, trackList } = initInterfaces();
+    const first = item(1), second = item(2);
+    player.handleQueueDidChange({ items: [first, second], currentOccurrenceId: second.occurrenceId });
+    player.emitNowPlaying(second);
+    const ids = trackList.Tracks;
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids.every(id => /^\/(?:[A-Za-z0-9_]+\/)*[A-Za-z0-9_]+$/.test(id))).toBe(true);
+    expect(iface.Metadata["mpris:trackid"].value).toBe(ids[1]);
+    const metadata = trackList.GetTracksMetadata([ids[1], "/stale", ids[0]]);
+    expect(metadata.map(map => map["mpris:trackid"].value)).toEqual([ids[1], ids[0]]);
+    expect(metadata[0]["mpris:length"]).toEqual(expect.objectContaining({ signature: "x", value: 123_000_000 }));
+    iface.SetPosition(ids[0], 1_000_000n);
+    expect(winContents.send).not.toHaveBeenCalled();
+    iface.SetPosition(ids[1], 1_000_000n);
+    expect(winContents.send).toHaveBeenCalledWith("player:seek", 1);
+  });
+
+  it("routes only currently exposed occurrences and keeps command arguments out of logs", () => {
+    const { trackList } = initInterfaces();
+    player.handleHookReady("https://music.apple.com/gb/new");
+    const first = item(1), second = item(2);
+    player.handleQueueDidChange({ items: [first, second], currentOccurrenceId: first.occurrenceId });
+    const stale = trackList.Tracks[0];
+    trackList.GoTo(trackList.Tracks[1]);
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith("player:goTo", second.occurrenceId);
+    expect(mprisLogText()).toContain("source=mpris method=GoTo channel=player:goTo result=sent");
+    expect(mprisLogText()).not.toContain(second.occurrenceId);
+    winContents.send.mockClear();
+    player.handleQueueDidChange({ items: [second], currentOccurrenceId: second.occurrenceId });
+    trackList.GoTo(stale);
+    trackList.GoTo("/unknown");
+    trackList.GoTo("/org/mpris/MediaPlayer2/TrackList/NoTrack");
+    expect(winContents.send).not.toHaveBeenCalled();
+    win.isDestroyed.mockReturnValue(true);
+    expect(() => trackList.GoTo(trackList.Tracks[0])).not.toThrow();
+    expect(mprisLogText()).toContain("source=mpris method=GoTo channel=player:goTo result=dropped");
+  });
+
+  it("replaces then invalidates Tracks, without embedding its new value", () => {
+    const { trackList } = initInterfaces();
+    const replaced = vi.spyOn(trackList, "TrackListReplaced");
+    const metadata = vi.spyOn(trackList, "TrackMetadataChanged");
+    const first = item(1), second = item(2);
+    player.handleQueueDidChange({ items: [first, second], currentOccurrenceId: first.occurrenceId });
+    expect(replaced).toHaveBeenCalledExactlyOnceWith(trackList.Tracks, occurrenceTrackId(first.occurrenceId));
+    expect(dbus.interface.Interface.emitPropertiesChanged).toHaveBeenLastCalledWith(trackList, {}, ["Tracks"]);
+    expect(replaced.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(dbus.interface.Interface.emitPropertiesChanged).mock.invocationCallOrder.at(-1)!);
+    expect(metadata).not.toHaveBeenCalled();
+    player.handleQueueDidChange({ items: [first, second], currentOccurrenceId: second.occurrenceId });
+    player.emitNowPlaying(second);
+    expect(replaced).toHaveBeenCalledOnce();
+    const changed = { ...first, name: "Corrected title" };
+    player.handleQueueDidChange({ items: [changed, second], currentOccurrenceId: second.occurrenceId });
+    expect(metadata).toHaveBeenCalledExactlyOnceWith(occurrenceTrackId(first.occurrenceId), expect.objectContaining({
+      "xesam:title": expect.objectContaining({ value: "Corrected title" }),
+    }));
+    player.handleQueueDidChange({ items: [], currentOccurrenceId: null });
+    expect(replaced).toHaveBeenLastCalledWith([], "/org/mpris/MediaPlayer2/TrackList/NoTrack");
+  });
+
+  it("reports NoTrack for an unassociated current occurrence", () => {
+    const { trackList } = initInterfaces();
+    const replaced = vi.spyOn(trackList, "TrackListReplaced");
+    player.handleQueueDidChange({ items: [item(1)], currentOccurrenceId: "d1_i1_o99" });
+    expect(replaced).toHaveBeenCalledWith(trackList.Tracks, "/org/mpris/MediaPlayer2/TrackList/NoTrack");
+  });
+
+  it("seeds Player and TrackList consistently when the hook reported before integration init", () => {
+    const current = item(1);
+    player.handleNowPlayingItemDidChange(current);
+    player.handleQueueDidChange({ items: [current], currentOccurrenceId: current.occurrenceId });
+    const { player: iface, trackList } = initInterfaces();
+    expect(iface.Metadata["mpris:trackid"].value).toBe(trackList.Tracks[0]);
+    expect(trackList.GetTracksMetadata(trackList.Tracks)[0]["xesam:title"].value).toBe(current.name);
+  });
+
+  it("uses only already cached current artwork and signals its arrival and removal", async () => {
+    const { trackList } = initInterfaces();
+    const first = { ...item(1), artworkUrl: "https://is1-ssl.mzstatic.com/cover.jpg" };
+    const second = item(2);
+    player.handleQueueDidChange({ items: [first, second], currentOccurrenceId: first.occurrenceId });
+    expect(downloadArtwork).not.toHaveBeenCalled();
+    expect(trackList.GetTracksMetadata(trackList.Tracks)[0]["mpris:artUrl"]).toBeUndefined();
+    vi.mocked(downloadArtwork).mockResolvedValueOnce("/cache/cover.jpg");
+    const changed = vi.spyOn(trackList, "TrackMetadataChanged");
+    player.emitNowPlaying(first);
+    await Promise.resolve();
+    expect(trackList.GetTracksMetadata(trackList.Tracks)[0]["mpris:artUrl"]?.value).toBe("file:///cache/cover.jpg");
+    expect(changed).toHaveBeenCalledWith(trackList.Tracks[0], expect.objectContaining({
+      "mpris:artUrl": expect.objectContaining({ value: "file:///cache/cover.jpg" }),
+    }));
+    changed.mockClear();
+    player.emitNowPlaying(second);
+    expect(trackList.GetTracksMetadata(trackList.Tracks)[0]["mpris:artUrl"]).toBeUndefined();
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
+  it("updates current duration and radio labels without resetting TrackList identity", () => {
+    const { trackList } = initInterfaces();
+    const station = { ...item(1), playParams: { kind: "radioStation" } };
+    player.handleQueueDidChange({ items: [station], currentOccurrenceId: station.occurrenceId });
+    player.emitNowPlaying(station);
+    const id = trackList.Tracks[0];
+    const changed = vi.spyOn(trackList, "TrackMetadataChanged");
+    player.handlePlaybackCapabilitiesDidChange({ canPlay: true, canPause: true, canSeek: true, durationUs: 600_000_000 });
+    expect(trackList.GetTracksMetadata([id])[0]["mpris:length"].value).toBe(600_000_000);
+    player.emitTimedMetadata({ name: "Radio song", artistName: "Performer", transition: "initial" });
+    expect(trackList.GetTracksMetadata([id])[0]["xesam:title"].value).toBe("Radio song");
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(trackList.Tracks).toEqual([id]);
+  });
+
+  it("publishes in-place metadata edits on the current queue occurrence", () => {
+    const { trackList } = initInterfaces();
+    const current = item(1);
+    player.handleQueueDidChange({ items: [current], currentOccurrenceId: current.occurrenceId });
+    player.emitNowPlaying(current);
+    const changed = vi.spyOn(trackList, "TrackMetadataChanged");
+    const replaced = vi.spyOn(trackList, "TrackListReplaced");
+    player.handleQueueDidChange({ items: [{ ...current, name: "Corrected" }], currentOccurrenceId: current.occurrenceId });
+    expect(trackList.GetTracksMetadata(trackList.Tracks)[0]["xesam:title"].value).toBe("Corrected");
+    expect(changed).toHaveBeenCalledOnce();
+    expect(replaced).not.toHaveBeenCalled();
+  });
+
+  it("has no TrackList traffic on position ticks or unrelated Player changes", () => {
+    const { trackList } = initInterfaces();
+    player.handleQueueDidChange({ items: [item(1)], currentOccurrenceId: null });
+    const changed = vi.spyOn(trackList, "TrackMetadataChanged");
+    const replaced = vi.spyOn(trackList, "TrackListReplaced");
+    const properties = vi.mocked(dbus.interface.Interface.emitPropertiesChanged);
+    properties.mockClear();
+    for (let n = 0; n < 100; n++) player.setPositionUs(n * 250_000);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emit("volumeDidChange", 0.5);
+    player.emit("repeatModeDidChange", 2);
+    expect(changed).not.toHaveBeenCalled();
+    expect(replaced).not.toHaveBeenCalled();
+    expect(properties.mock.calls.filter(([iface]) => iface === trackList)).toEqual([]);
+  });
+
+  it("clears document state and detaches the queue listener on shutdown", async () => {
+    const { trackList } = initInterfaces();
+    const first = { ...item(1), artworkUrl: "https://is1-ssl.mzstatic.com/cover.jpg" };
+    let resolveArtwork!: (value: string) => void;
+    vi.mocked(downloadArtwork).mockReturnValueOnce(new Promise(resolve => { resolveArtwork = resolve; }));
+    player.handleQueueDidChange({ items: [first], currentOccurrenceId: first.occurrenceId });
+    player.emitNowPlaying(first);
+    player.resetForDocumentReplacement();
+    expect(trackList.Tracks).toEqual([]);
+    quit();
+    const changed = vi.spyOn(trackList, "TrackMetadataChanged");
+    resolveArtwork("/cache/late.jpg");
+    await Promise.resolve();
+    expect(changed).not.toHaveBeenCalled();
+    expect(player.listenerCount("queueDidChange")).toBe(0);
+  });
 });
 
 describe("MPRIS fullscreen", () => {

@@ -14,6 +14,7 @@
  * entry fail compilation instead of being silently discarded at runtime.
  */
 type SendChannel =
+ | "queueDidChange"
  | "hookReady"
  | "playbackCapabilitiesDidChange"
  | "playbackStopped"
@@ -35,6 +36,7 @@ type SendChannel =
  * compilation instead of being silently dropped by the preload allowlist.
  */
 type ReceiveChannel =
+ | "player:goTo"
  | "player:openUri"
  | "player:play"
  | "player:pause"
@@ -56,6 +58,8 @@ type ReceiveChannel =
  * Contract tests compare the hook command table with this interface.
  */
 interface SidraHook {
+ /** Starts the identified live queue occurrence at its beginning. */
+ goTo(occurrenceId: string): Promise<void>;
  /** Replaces the queue with the supplied URL and starts playback. */
  openUri(uri: string): Promise<void>;
  /** Starts or resumes playback. */

@@ -24,6 +24,7 @@
     let volumePollTimer = null;
     let documentGeneration = 0;
     let documentActive = true;
+    let instanceGeneration = 0;
     let resetStopForDocument = () => {};
     window.addEventListener("pagehide", () => {
       documentGeneration += 1;
@@ -157,6 +158,38 @@
       };
     }
 
+    /** Copy only the metadata fields in the hook contract. */
+    function serialiseItem(item, occurrenceId) {
+      const pp = item.attributes?.playParams;
+      return {
+        occurrenceId,
+        name: item.attributes?.name,
+        albumName: item.attributes?.albumName,
+        artistName: item.attributes?.artistName,
+        durationInMillis: item.attributes?.durationInMillis,
+        genreNames: item.attributes?.genreNames,
+        artworkUrl: item.attributes?.artwork?.url
+          ?.replace("{w}", "512")
+          .replace("{h}", "512"),
+        trackId: item.id,
+        trackNumber: item.attributes?.trackNumber,
+        url: item.attributes?.url,
+        discNumber: item.attributes?.discNumber,
+        composerName: item.attributes?.composerName,
+        releaseDate: item.attributes?.releaseDate,
+        playParams: pp
+          ? {
+              catalogId: pp.catalogId,
+              globalId: pp.globalId,
+              kind: pp.kind,
+              isLibrary: pp.isLibrary,
+            }
+          : undefined,
+        // The persisted service may change before this document's metadata clears.
+        sourceHost: window.location.hostname,
+      };
+    }
+
     /**
      * Register the playback listeners that forward state, metadata, position,
      * repeat and shuffle to the main process.
@@ -165,9 +198,11 @@
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
      * @param {() => void} resetStop - Invalidates stopped intent and pending commands
+     * @param {(item: object) => string | null} occurrenceId - Resolves object identity
+     * @param {() => void} reportQueue - Reports changed queue context
      * @returns {() => void} Refreshes changed playback capabilities
      */
-    function attachPlaybackListeners(mk, resetStop) {
+    function attachPlaybackListeners(mk, resetStop, occurrenceId, reportQueue) {
       let lastCapabilities;
       function reportCapabilities(item = mk.nowPlayingItem) {
         if (window.__sidraHookedMk !== mk) return;
@@ -217,41 +252,20 @@
         if (!item) {
           sendToMain("nowPlayingItemDidChange", null);
           clearPositionState();
+          reportQueue();
           return;
         }
-        const pp = item.attributes?.playParams;
-        sendToMain("nowPlayingItemDidChange", {
-          name: item.attributes?.name,
-          albumName: item.attributes?.albumName,
-          artistName: item.attributes?.artistName,
-          durationInMillis: item.attributes?.durationInMillis,
-          genreNames: item.attributes?.genreNames,
-          artworkUrl: item.attributes?.artwork?.url
-            ?.replace("{w}", "512")
-            .replace("{h}", "512"),
-          trackId: item.id,
-          trackNumber: item.attributes?.trackNumber,
-          url: item.attributes?.url,
-          discNumber: item.attributes?.discNumber,
-          composerName: item.attributes?.composerName,
-          releaseDate: item.attributes?.releaseDate,
-          playParams: pp
-            ? {
-                catalogId: pp.catalogId,
-                globalId: pp.globalId,
-                kind: pp.kind,
-                isLibrary: pp.isLibrary,
-              }
-            : undefined,
-          // Use the item's document host for sharing. The persisted service can
-          // change before the previous service's track metadata disappears.
-          sourceHost: window.location.hostname,
-        });
+        sendToMain(
+          "nowPlayingItemDidChange", serialiseItem(item, occurrenceId(item)),
+        );
+        reportQueue();
       }
       mk.addEventListener(
         "nowPlayingItemDidChange",
         whileHooked(mk, reportNowPlaying),
       );
+      mk.addEventListener("queueItemsDidChange", whileHooked(mk, reportQueue));
+      mk.addEventListener("queuePositionDidChange", whileHooked(mk, reportQueue));
 
       /**
        * Forward complete songs embedded in a radio station or archived show.
@@ -383,9 +397,10 @@
      *
      * @param {object} mk - The MusicKit.getInstance() singleton
      * @param {() => void} reportCapabilities - Refreshes changed playback capabilities
+     * @param {() => void} reportQueue - Catches unannounced queue edits
      * @returns {void}
      */
-    function attachVolume(mk, reportCapabilities) {
+    function attachVolume(mk, reportCapabilities, reportQueue) {
       /**
        * Last value sent over the volumeDidChange IPC channel, so volumePollTimer
        * does not re-send a value that the listener already reported.
@@ -408,6 +423,7 @@
       // The player bar's write path is unknown, so both reporting paths are necessary.
       volumePollTimer = setInterval(() => {
         reportCapabilities();
+        reportQueue();
         const v = mk.volume;
         if (v !== lastVolume) {
           lastVolume = v;
@@ -430,6 +446,64 @@
       // attachSafely() logs partial attachment without retrying the same instance.
       window.__sidraHookedMk = mk;
 
+      // Object identity distinguishes duplicate songs and survives queue edits.
+      const instanceId = ++instanceGeneration;
+      const occurrences = new WeakMap();
+      let nextOccurrence = 0;
+      function occurrenceId(item) {
+        if (!item || typeof item !== "object") return null;
+        if (!occurrences.has(item)) {
+          occurrences.set(
+            item, `d${injectedDocumentGeneration}_i${instanceId}_o${++nextOccurrence}`,
+          );
+        }
+        return occurrences.get(item);
+      }
+      function queueItems() {
+        return Array.isArray(mk.queue?.items) ? mk.queue.items : [];
+      }
+      let lastQueue;
+      let goToArrival = null;
+      function publishQueue(snapshot) {
+        const serialised = JSON.stringify(snapshot);
+        if (serialised === lastQueue) return;
+        lastQueue = serialised;
+        sendToMain("queueDidChange", snapshot);
+      }
+      function reportQueue() {
+        if (!documentActive || window.__sidraHookedMk !== mk) return;
+        try {
+          readQueueContext();
+        } catch (_) {
+          goToArrival?.cancel();
+          publishQueue({ items: [], currentOccurrenceId: null });
+        }
+      }
+      function readQueueContext() {
+        goToArrival?.check();
+        const items = queueItems();
+        const currentOccurrenceId = occurrenceId(mk.nowPlayingItem);
+        const currentIndex = items.indexOf(mk.nowPlayingItem);
+        const position = Number.isSafeInteger(mk.queue?.position)
+          ? mk.queue.position : 0;
+        const anchor = Math.max(
+          0, Math.min(items.length - 1, currentIndex < 0 ? position : currentIndex),
+        );
+        const width = Math.min(21, items.length);
+        const start = Math.min(Math.max(0, anchor - 10), items.length - width);
+        const windowItems = items.slice(start, start + width);
+        // A repeated reference cannot identify a unique occurrence safely.
+        const unambiguous = new Set(items).size === items.length &&
+          windowItems.every((item) => item && typeof item === "object");
+        const snapshot = {
+          currentOccurrenceId,
+          items: unambiguous
+            ? windowItems.map((item) => serialiseItem(item, occurrenceId(item)))
+            : [],
+        };
+        publishQueue(snapshot);
+      }
+
       let generation = 0;
       let resumeGeneration = 0;
       let pendingStop = null;
@@ -442,7 +516,14 @@
         pendingStop = null;
         stopped = false;
       }
-      resetStopForDocument = resetStop;
+      function cancelGoTo(cancelArrival = false) {
+        queueRequest += 1;
+        if (cancelArrival) goToArrival?.cancel();
+      }
+      resetStopForDocument = () => {
+        resetStop();
+        cancelGoTo(true);
+      };
       function current(operationGeneration, pageGeneration) {
         return (
           documentActive &&
@@ -454,12 +535,17 @@
       function stop(requestId) {
         if (!Number.isSafeInteger(requestId) || requestId <= 0)
           return Promise.resolve();
-        if (pendingStop) return pendingStop;
-        const operationGeneration = generation;
+        cancelGoTo();
+        resumeGeneration += 1;
+        if (pendingStop) return pendingStop.task;
+        const intent = { generation, task: null };
         const pageGeneration = documentGeneration;
-        const task = Promise.resolve()
+        const task = queueTask
           .then(async () => {
-            if (!current(operationGeneration, pageGeneration)) return;
+            if (!documentActive || documentGeneration !== pageGeneration ||
+              window.__sidraHookedMk !== mk) return;
+            // A queue operation ahead of Stop can legitimately change the item.
+            intent.generation = generation;
             if (!stopped) {
               mk.pause();
               if (
@@ -483,27 +569,28 @@
                 }
               }
             }
-            if (!current(operationGeneration, pageGeneration)) return;
+            if (!current(intent.generation, pageGeneration)) return;
             stopped = true;
             sendToMain("playbackStopped", { requestId, success: true });
           })
           .catch(() => {
             console.warn("[Sidra] failed to stop playback");
-            if (current(operationGeneration, pageGeneration)) {
+            if (current(intent.generation, pageGeneration)) {
               sendToMain("playbackStopped", { requestId, success: false });
             }
           })
           .finally(() => {
-            if (pendingStop === task) pendingStop = null;
+            if (pendingStop === intent) pendingStop = null;
           });
-        pendingStop = task;
+        intent.task = task;
+        pendingStop = intent;
+        queueTask = task;
         return task;
       }
-      function resume(toggle) {
-        const operationGeneration = generation;
+      function resume(toggle, afterStop = pendingStop) {
+        const operationGeneration = afterStop?.generation ?? generation;
         const resumeToken = resumeGeneration;
         const pageGeneration = documentGeneration;
-        const afterStop = pendingStop;
         const run = () => {
           if (
             resumeToken !== resumeGeneration ||
@@ -516,7 +603,7 @@
         };
         try {
           return (
-            afterStop ? afterStop.then(run) : Promise.resolve(run())
+            afterStop ? afterStop.task.then(run) : Promise.resolve(run())
           ).catch(() => {
             console.warn("[Sidra] failed to resume playback");
           });
@@ -526,11 +613,137 @@
         }
       }
 
+      // Cancellation suppresses GoTo's continuation, not the SDK call already
+      // running. Keep later controls behind its real settlement, even after timeout.
+      function runPlaybackCommand(operation) {
+        cancelGoTo();
+        const pageGeneration = documentGeneration;
+        queueTask = queueTask.then(() => {
+          if (!documentActive || documentGeneration !== pageGeneration ||
+            window.__sidraHookedMk !== mk) return;
+          return operation();
+        }).catch(() => {
+          console.warn("[Sidra] failed to control playback");
+        });
+        return queueTask;
+      }
+
+      function resumeAfterQueue(toggle) {
+        const resumeToken = resumeGeneration;
+        const afterStop = pendingStop;
+        return runPlaybackCommand(() => {
+          if (resumeToken !== resumeGeneration) return;
+          return resume(toggle, afterStop);
+        });
+      }
+
+      // Queue replacement and cursor navigation share one SDK operation chain.
+      async function runQueueCommand(
+        operation, failureMessage = "[Sidra] failed to navigate queue",
+      ) {
+        if (blockedQueue) throw new Error("Queue operation still pending");
+        const request = ++queueRequest;
+        const pageGeneration = documentGeneration;
+        // A later Stop is chained behind this work and must never be awaited here.
+        const afterStop = pendingStop;
+        const valid = () => request === queueRequest &&
+          pageGeneration === documentGeneration && documentActive &&
+          window.__sidraHookedMk === mk;
+        queueTask = queueTask
+          .then(async () => {
+            if (!valid()) return;
+            if (afterStop) await afterStop.task;
+            if (!valid()) return;
+            resetStop();
+            await operation(valid);
+          })
+          .catch(() => { console.warn(failureMessage); });
+        let timeout;
+        try {
+          await Promise.race([
+            queueTask,
+            new Promise((_, reject) => {
+              timeout = setTimeout(() => {
+                if (!blockedQueue) {
+                  cancelGoTo(true);
+                  blockedQueue = queueTask;
+                  // The SDK still owns the queue after the caller stops waiting.
+                  blockedQueue.then(() => { blockedQueue = null; });
+                }
+                reject(new Error("Queue operation timed out"));
+              }, 5000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      async function goTo(id) {
+        try {
+          if (typeof id !== "string" || id.length > 96 ||
+            !/^d\d+_i\d+_o\d+$/.test(id) || !documentActive ||
+            window.__sidraHookedMk !== mk) return;
+          cancelGoTo();
+          await runQueueCommand(async (valid) => {
+            const pageGeneration = documentGeneration;
+            const items = queueItems();
+            const matches = items
+              .map((item, index) => occurrenceId(item) === id ? index : -1)
+              .filter((index) => index !== -1);
+            if (matches.length !== 1) return;
+            const index = matches[0];
+            const target = items[index];
+            if (mk.nowPlayingItem !== target) {
+              if (typeof mk.changeToMediaAtIndex !== "function") return;
+              let timeout;
+              const arrival = new Promise((resolve) => {
+                const finish = (success) => {
+                  clearTimeout(timeout);
+                  goToArrival = null;
+                  resolve(success);
+                };
+                goToArrival = {
+                  cancel: () => finish(false),
+                  check: () => {
+                    if (!documentActive || pageGeneration !== documentGeneration ||
+                      window.__sidraHookedMk !== mk || !queueItems().includes(target)) finish(false);
+                    else if (mk.nowPlayingItem === target) finish(true);
+                  },
+                };
+                timeout = setTimeout(() => finish(false), 4500);
+              });
+              try {
+                await mk.changeToMediaAtIndex(index);
+                goToArrival?.check();
+                if (!(await arrival)) return;
+              } finally {
+                goToArrival?.cancel();
+              }
+            }
+            if (!valid() || mk.nowPlayingItem !== target ||
+              !queueItems().includes(target)) return;
+            const canRewind = typeof mk.seekToTime === "function" &&
+              (effectiveDuration(mk) !== null || target.attributes?.playParams?.kind !== "radioStation");
+            if (canRewind) {
+              await mk.seekToTime(0);
+            }
+            if (valid() && mk.nowPlayingItem === target &&
+              queueItems().includes(target)) await mk.play();
+            reportQueue();
+          });
+        } catch (_) {
+          console.warn("[Sidra] failed to navigate queue");
+        }
+      }
+
       // Stop the old poll before attachPlaybackListeners() or attachVolume() can throw,
       // otherwise two timers can report volumes from different instances.
       stopVolumePoll();
-      const reportCapabilities = attachPlaybackListeners(mk, resetStop);
-      attachVolume(mk, reportCapabilities);
+      const reportCapabilities = attachPlaybackListeners(
+        mk, resetStop, occurrenceId, reportQueue,
+      );
+      attachVolume(mk, reportCapabilities, reportQueue);
 
       /**
        * Control methods exposed to the preload script via window.postMessage.
@@ -542,6 +755,7 @@
        * @see {SidraHook} in src/types/hook.d.ts
        */
       window.__sidra = {
+        goTo,
         openUri: async (uri) => {
           try {
             // Restrict queue changes to credential-free HTTPS URLs for the active service origin.
@@ -556,60 +770,25 @@
               window.__sidraHookedMk !== mk
             )
               return;
-            if (blockedQueue)
-              throw new Error("Queue replacement still pending");
-            const request = ++queueRequest;
-            const pageGeneration = documentGeneration;
-            queueTask = queueTask
-              .then(async () => {
-                if (
-                  request !== queueRequest ||
-                  pageGeneration !== documentGeneration ||
-                  !documentActive ||
-                  window.__sidraHookedMk !== mk
-                )
-                  return;
-                resetStop();
-                await mk.setQueue({ url: url.href, startPlaying: true });
-              })
-              .catch(() => {
-                console.warn("[Sidra] failed to open requested media");
-              });
-            let timeout;
-            try {
-              await Promise.race([
-                queueTask,
-                new Promise((_, reject) => {
-                  timeout = setTimeout(() => {
-                    if (!blockedQueue) {
-                      // Keep the SDK operation serialised after callers stop waiting.
-                      queueRequest += 1;
-                      blockedQueue = queueTask;
-                      blockedQueue.then(() => {
-                        blockedQueue = null;
-                      });
-                    }
-                    reject(new Error("Queue replacement timed out"));
-                  }, 5000);
-                }),
-              ]);
-            } finally {
-              clearTimeout(timeout);
-            }
+            cancelGoTo();
+            await runQueueCommand(async () => {
+              await mk.setQueue({ url: url.href, startPlaying: true });
+              reportQueue();
+            }, "[Sidra] failed to open requested media");
           } catch (_) {
             console.warn("[Sidra] failed to open requested media");
           }
         },
-        play: () => resume(false),
+        play: () => resumeAfterQueue(false),
         pause: () => {
           resumeGeneration += 1;
-          return mk.pause();
+          return runPlaybackCommand(() => mk.pause());
         },
         stop,
-        playPause: () => resume(true),
-        next: () => mk.skipToNextItem(),
-        previous: () => mk.skipToPreviousItem(),
-        seek: (secs) => mk.seekToTime(secs),
+        playPause: () => resumeAfterQueue(true),
+        next: () => runPlaybackCommand(() => mk.skipToNextItem()),
+        previous: () => runPlaybackCommand(() => mk.skipToPreviousItem()),
+        seek: (secs) => runPlaybackCommand(() => mk.seekToTime(secs)),
         setVolume: (v) => {
           mk.volume = v;
         },
@@ -654,6 +833,7 @@
       "next",
       "previous",
       "openUri",
+      "goTo",
       "seek",
       "setVolume",
       "setRepeat",
