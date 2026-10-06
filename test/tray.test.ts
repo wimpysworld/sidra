@@ -35,6 +35,7 @@ vi.mock("../src/config", () => ({
     id === "classical" ? getClassicalStartPage() : "new",
   ),
   setClassicalStartPage: vi.fn(),
+  isManaged: vi.fn(() => false),
 }));
 
 const mockTrayStrings: TrayStrings = {

@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, beforeEach } from "vitest";
+import { describe, it, expect, expectTypeOf, beforeEach, vi } from "vitest";
 import type { ThemeName } from "../src/theme";
 
 // Import the real config module. A hand-written stand-in can reproduce its own defaults and hide production defects.
@@ -40,8 +40,9 @@ import {
   getStartPageFor,
   getLastPageUrlFor,
   setLastPageUrlFor,
+  isManaged,
 } from "../src/config";
-import type { PendingScrobble } from "../src/config";
+import type { PendingScrobble, StoreSchema } from "../src/config";
 import { Conf } from "electron-conf/main";
 import { DEFAULT_SERVICE_ID } from "../src/musicService";
 import type {
@@ -49,6 +50,16 @@ import type {
   ClassicalStartPageId,
   MusicServiceId,
 } from "../src/musicService";
+
+// getManagedConfigValue() reads managed-settings.json on every lookup, so the default
+// implementation reports the file absent, which is the state on a machine without Home Manager.
+const fsMock = vi.hoisted(() => ({
+  readFileSync: vi.fn<(file: string, encoding: string) => string>(() => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  }),
+}));
+
+vi.mock("fs", () => ({ default: fsMock, ...fsMock }));
 
 // Compare accessors with StoreSchema so type drift fails at the config boundary.
 // Vitest does not type-check. `npx tsc -p tsconfig.test.json --noEmit`, run by `just lint`, enforces expectTypeOf assertions.
@@ -194,6 +205,11 @@ describe("Config store type assertions", () => {
       .parameter(0)
       .toEqualTypeOf<PendingScrobble[]>();
   });
+
+  it("isManaged accepts keyof StoreSchema and returns boolean", () => {
+    expectTypeOf(isManaged).parameter(0).toEqualTypeOf<keyof StoreSchema>();
+    expectTypeOf(isManaged).returns.toEqualTypeOf<boolean>();
+  });
 });
 
 describe("Config store runtime behaviour", () => {
@@ -202,6 +218,51 @@ describe("Config store runtime behaviour", () => {
 
   beforeEach(() => {
     store.clear();
+    // A managed file absent is the state on a machine without Home Manager, and is the
+    // default every other case in this file relies on to reach the store.
+    fsMock.readFileSync.mockReset();
+    fsMock.readFileSync.mockImplementation(() => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+  });
+
+  it("a managed value wins over a stored preference", () => {
+    setTheme("nord");
+    fsMock.readFileSync.mockReturnValue('{"theme":"custom"}');
+
+    expect(getTheme()).toBe("custom");
+  });
+
+  it("a managed value wins over a stored optional preference", () => {
+    store.set("storefront", "gb");
+    fsMock.readFileSync.mockReturnValue('{"storefront":"us"}');
+
+    expect(getStorefront()).toBe("us");
+  });
+
+  it("falls back to the stored preference when no managed file exists", () => {
+    setTheme("nord");
+
+    expect(getTheme()).toBe("nord");
+  });
+
+  it("isManaged reports whether a setting is managed declaratively", () => {
+    fsMock.readFileSync.mockReturnValue('{"theme":"custom","zoomFactor":1.25,"notifications":{"enabled":true}}');
+    expect(isManaged("theme")).toBe(true);
+    expect(isManaged("zoomFactor")).toBe(true);
+    expect(isManaged("notifications.enabled")).toBe(true);
+    expect(isManaged("discord.enabled")).toBe(false);
+
+    fsMock.readFileSync.mockImplementation(() => {
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
+    expect(isManaged("theme")).toBe(false);
+  });
+
+  it("setConfigValue ignores changes to declaratively managed keys", () => {
+    fsMock.readFileSync.mockReturnValue('{"theme":"custom"}');
+    setTheme("dracula");
+    expect(store.has("theme")).toBe(false);
   });
 
   it("getStorefront returns undefined when not set", () => {

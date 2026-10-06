@@ -167,6 +167,30 @@ home.packages = [
 These module snippets need `inputs` in their function arguments, passed through NixOS `specialArgs` or Home Manager `extraSpecialArgs`.
 For Home Manager inside NixOS, use `home-manager.extraSpecialArgs`.
 
+Home Manager users can also configure Sidra declaratively:
+
+```nix
+programs.sidra = {
+  enable = true;
+  package = inputs.sidra.packages.${pkgs.system}.default;
+  settings = {
+    theme = "custom";
+    player = {
+      service = "music";
+      musicStartPage = "new";
+      classicalStartPage = "browse";
+      zoomFactor = 1.25;
+    };
+    discord.richPresence.enable = true;
+    notifications.enable = true;
+    closeToTray.enable = false;
+    autoUpdate.enable = true;
+  };
+};
+```
+
+See [default.nix](nix/home-manager/default.nix) for a full list of options.
+
 ### macOS
 
 **DMG** - open and drag Sidra to Applications.
@@ -207,6 +231,35 @@ These theme examples show different artist pages. Select an image to view the fu
 Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
 
 ### Custom theme
+
+Home Manager can define the palette directly without Stylix:
+
+```nix
+programs.sidra = {
+  enable = true;
+  package = inputs.sidra.packages.${pkgs.system}.default;
+  settings.theme = "custom";
+  customTheme = {
+    dark = {
+      base = "#1e1e2e";
+      mantle = "#181825";
+      crust = "#11111b";
+      surface0 = "#313244";
+      surface1 = "#45475a";
+      surface2 = "#585b70";
+      overlay = "#6c7086";
+      text = "#cdd6f4";
+      subtext1 = "#bac2de";
+      subtext0 = "#a6adc8";
+      accent = "#f38ba8";
+      accentHover = "#eba0ac";
+    };
+  };
+};
+```
+
+`customTheme.dark` is required. Add `customTheme.light` with the same keys for
+a separate light palette. Set `settings.theme = "custom"` to activate it.
 
 Copy [custom-theme.json](docs/custom-theme.json) to Sidra's user data directory, then edit its colours:
 

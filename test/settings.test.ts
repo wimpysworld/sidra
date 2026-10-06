@@ -90,6 +90,19 @@ describe('settings actions', () => {
     expect(config.getTheme()).toBe('apple-music');
   });
 
+  it('rejects settings actions for declaratively managed keys without applying side effects', () => {
+    const isManagedSpy = vi.spyOn(config, 'isManaged').mockImplementation((key) => key === 'theme' || key === 'zoomFactor');
+    try {
+      expect(() => applySettingsAction({ type: 'theme', value: 'nord' })).toThrow('Invalid settings action');
+      expect(() => applySettingsAction({ type: 'zoomFactor', value: 1.5 })).toThrow('Invalid settings action');
+      expect(applyTheme).not.toHaveBeenCalled();
+      expect(applyZoom).not.toHaveBeenCalled();
+      expect(refreshTray).not.toHaveBeenCalled();
+    } finally {
+      isManagedSpy.mockRestore();
+    }
+  });
+
   it('translates the Custom Theme label and keeps its option value', async () => {
     vi.resetModules();
     const { app } = await import('electron');

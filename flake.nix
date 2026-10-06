@@ -29,6 +29,9 @@
       version = (nixpkgs.lib.importJSON ./package.json).version;
     in
     {
+      homeModules.default = ./nix/home-manager;
+      homeModules.sidra = ./nix/home-manager;
+
       packages = forPackageSystems (
         system:
         let
@@ -65,10 +68,11 @@
                         builtins.attrNames (builtins.getContext stockBrowsers)
                       )
                       // builtins.getContext "${browsers}";
-                    phaseText = builtins.replaceStrings
-                      [ (builtins.unsafeDiscardStringContext stockBrowsers) ]
-                      [ (builtins.unsafeDiscardStringContext "${browsers}") ]
-                      (builtins.unsafeDiscardStringContext old.installPhase);
+                    phaseText =
+                      builtins.replaceStrings
+                        [ (builtins.unsafeDiscardStringContext stockBrowsers) ]
+                        [ (builtins.unsafeDiscardStringContext "${browsers}") ]
+                        (builtins.unsafeDiscardStringContext old.installPhase);
                   in
                   builtins.appendContext phaseText phaseContext;
               });
@@ -106,7 +110,8 @@
             # expects libraries in standard FHS paths. On NixOS we must set
             # LD_LIBRARY_PATH explicitly for the libraries it links against.
             LD_LIBRARY_PATH = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux (
-              with pkgs; lib.makeLibraryPath [
+              with pkgs;
+              lib.makeLibraryPath [
                 alsa-lib
                 at-spi2-atk
                 cairo
@@ -136,22 +141,24 @@
             );
 
             # Use the NixOS system GPU drivers without pinning a GPU vendor.
-            shellHook = (pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-              if [ -d "/run/opengl-driver/lib" ]; then
-                if [ -z "$LD_LIBRARY_PATH" ]; then
-                  export LD_LIBRARY_PATH="/run/opengl-driver/lib"
-                else
-                  export LD_LIBRARY_PATH="/run/opengl-driver/lib:$LD_LIBRARY_PATH"
+            shellHook =
+              (pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+                if [ -d "/run/opengl-driver/lib" ]; then
+                  if [ -z "$LD_LIBRARY_PATH" ]; then
+                    export LD_LIBRARY_PATH="/run/opengl-driver/lib"
+                  else
+                    export LD_LIBRARY_PATH="/run/opengl-driver/lib:$LD_LIBRARY_PATH"
+                  fi
                 fi
-              fi
-              export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
-            '') + ''
-              echo "Sidra development shell"
-              echo "  node: $(node --version)"
-              echo "  npm:  $(npm --version)"
-              echo ""
-              echo "Run 'just' to see available recipes"
-            '';
+                export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+              '')
+              + ''
+                echo "Sidra development shell"
+                echo "  node: $(node --version)"
+                echo "  npm:  $(npm --version)"
+                echo ""
+                echo "Run 'just' to see available recipes"
+              '';
           };
         }
       );

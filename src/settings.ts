@@ -195,6 +195,29 @@ export function notifySettingsChanged(): void {
   for (const listener of listeners) listener(state);
 }
 
+function actionConfigKey(action: SettingsAction): keyof config.StoreSchema | null {
+  switch (action.type) {
+    case "musicService":
+      return "musicService";
+    case "startPage":
+      return action.serviceId === "music" ? "startPage" : "classical.startPage";
+    case "theme":
+      return "theme";
+    case "zoomFactor":
+      return "zoomFactor";
+    case "closeToTray":
+      return "closeToTray.enabled";
+    case "notifications":
+      return "notifications.enabled";
+    case "discord":
+      return "discord.enabled";
+    case "lastfmEnabled":
+      return "lastfm.enabled";
+    default:
+      return null;
+  }
+}
+
 function isSettingsAction(
   action: unknown,
   state: SettingsState,
@@ -213,6 +236,8 @@ function isSettingsAction(
     !keys.every((key) => Object.hasOwn(data, key))
   )
     return false;
+  const managedKey = actionConfigKey(data as SettingsAction);
+  if (managedKey && Boolean(config.isManaged?.(managedKey))) return false;
   switch (data.type) {
     case "musicService":
       return state.options.musicService.some(
