@@ -123,6 +123,7 @@ interface PlayerInterface {
 }
 
 interface RootInterface {
+  readonly DesktopEntry: string;
   readonly HasTrackList: boolean;
   Raise(): void;
   Quit(): void;
@@ -265,7 +266,23 @@ afterEach(() => {
   // Timers come off first: an assertion that throws would skip the rest of
   // this hook and leave fake timers installed for every later test.
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   expect(positionBreaches).toEqual([]);
+});
+
+describe("MPRIS desktop identity", () => {
+  it.each([
+    [undefined, "sidra"],
+    ["world.wimpys.sidra", "world.wimpys.sidra"],
+  ])("uses the desktop entry for FLATPAK_ID=%s", (flatpakId, desktopId) => {
+    vi.stubEnv("FLATPAK_ID", flatpakId);
+    const { root } = initInterfaces();
+    expect(root.DesktopEntry).toBe(desktopId);
+    expect(busStub.requestName).toHaveBeenCalledWith(
+      "org.mpris.MediaPlayer2.sidra",
+      expect.any(Number),
+    );
+  });
 });
 
 describe("MPRIS TrackList", () => {

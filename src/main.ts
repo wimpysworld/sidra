@@ -24,7 +24,7 @@ import {
   getTrayStrings,
   NAV_LABELS_TOKEN,
 } from "./i18n";
-import { getAssetPath } from "./paths";
+import { getAssetPath, getDesktopId } from "./paths";
 import { Player, IntegrationContext } from "./player";
 import {
   buildAppleMusicURL,
@@ -152,11 +152,11 @@ if (process.platform === "linux") {
     "disable-features",
     "MediaSessionService,WaylandWpColorManagerV1,AudioServiceOutOfProcess",
   );
-  // Set the XDG desktop name so GetXdgAppId() returns 'sidra' and
-  // GetPossiblyOverriddenApplicationName() can read Name= from sidra.desktop.
+  // Match the installed desktop entry so GetXdgAppId() uses its ID and
+  // GetPossiblyOverriddenApplicationName() can read its Name= field.
   // Pairs with the AudioServiceOutOfProcess switch above: without both, the
   // PulseAudio stream is labelled "Chromium" and no PULSE_PROP_* override helps.
-  app.setDesktopName("sidra.desktop");
+  app.setDesktopName(`${getDesktopId()}.desktop`);
   mainLog.info("Linux platform switches applied");
 }
 

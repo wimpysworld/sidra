@@ -102,9 +102,20 @@ beforeEach(() => {
   adapter = createLinuxNotifications();
 });
 
-afterEach(() => adapter.dispose());
+afterEach(async () => {
+  await adapter.dispose();
+  vi.unstubAllEnvs();
+});
 
 describe("Linux track notifications", () => {
+  it("uses the exported Flatpak icon and desktop entry for host notifications", async () => {
+    vi.stubEnv("FLATPAK_ID", "world.wimpys.sidra");
+    await adapter.show(track(), current);
+    const [message] = notifyCalls();
+    expect(message.body[2]).toBe("world.wimpys.sidra");
+    expect(message.body[6]["desktop-entry"].value).toBe("world.wimpys.sidra");
+  });
+
   it("sends localised named actions, artwork and silent hints without service activation", async () => {
     await adapter.show(track(), current);
     const [message] = notifyCalls();

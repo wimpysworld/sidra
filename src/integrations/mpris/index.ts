@@ -18,6 +18,7 @@ import { getMusicService } from "../../config";
 import { switchService } from "../../serviceSwitch";
 import { closeBus } from "../../utils/closeBus";
 import { occurrenceTrackId } from "../../queue";
+import { getDesktopId } from "../../paths";
 import type { QueueItem, QueueSnapshot } from "../../queue";
 
 // `main.ts` loads this module only on Linux, keeping `dbus-next` off other platforms.
@@ -104,7 +105,7 @@ class MediaPlayer2 extends Interface {
 
   /** Returns the desktop entry name without its .desktop suffix. */
   get DesktopEntry(): string {
-    return app.getName().toLowerCase();
+    return getDesktopId();
   }
 
   /** Reports that clients can quit Sidra. */

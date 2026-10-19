@@ -1,6 +1,10 @@
 import { app } from "electron";
 import path from "path";
 
+export function getDesktopId(): string {
+ return process.env.FLATPAK_ID || app.getName().toLowerCase();
+}
+
 /**
  * Resolve a path to a bundled asset in both a checkout and a packaged build. A
  * packaged build reads from app.asar.unpacked, so every asset that getAssetPath()
