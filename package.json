@@ -131,7 +131,11 @@
       "priority": "optional"
     },
     "rpm": {
-      "vendor": "Martin Wimpress"
+      "vendor": "Martin Wimpress",
+      "fpm": [
+        "--rpm-rpmbuild-define",
+        "_build_id_links none"
+      ]
     },
     "snapcraft": {
       "base": "core24",

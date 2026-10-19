@@ -237,6 +237,24 @@ jobs:
         env:
           EVS_ACCOUNT_NAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_ACCOUNT_NAME || '' }}
           EVS_PASSWD: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_PASSWD || '' }}
+      - name: Check RPM build-ID links
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          rpm_files=(release/*.rpm)
+          if [[ ${#rpm_files[@]} -eq 0 ]]; then
+            echo "No RPM packages found in release/" >&2
+            exit 1
+          fi
+          for rpm_file in "${rpm_files[@]}"; do
+            rpm_manifest=$(rpm -qpl "$rpm_file")
+            if grep -qE '^/usr/lib/\.build-id(/|$)' <<< "$rpm_manifest"; then
+              echo "RPM package contains shared build-ID paths: $rpm_file" >&2
+              exit 1
+            fi
+          done
       # Snapcraft host mode needs root, so this cannot join the step above:
       # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
