@@ -226,6 +226,9 @@ On Linux, a set `XDG_CONFIG_HOME` replaces `~/.config`.
 A valid file adds one **Custom Theme** choice under **Style** in Settings.
 Select it once. Saved edits apply without a restart, including in an open Settings window.
 
+Enable Noctalia's [Sidra community template](https://github.com/noctalia-dev/community-templates/tree/main/sidra) and select **Settings → Style → Custom Theme** once.
+Sidra then follows Noctalia's active colour palette automatically.
+
 The example contains all 12 required colours in `dark`:
 
 ```json
@@ -309,7 +312,7 @@ What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md)
 
 I used [Cider](https://cider.sh/) for years, but as time passed and the weight of new features grew the core experience degraded.
 
-Cider hardcodes a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. Common advice in the community is to simply turn it off.
+Cider hardcoded a 96kHz `AudioContext`, so every track Apple delivers at 44.1 or 48kHz gets resampled up, then back down to whatever the hardware expects. Twice, needlessly. All audio routes through a DSP chain regardless of your settings - the "Cider Adrenaline Processor" markets itself as making lossy audio sound lossless, but it is biquad EQ shaping and cannot recover discarded information. Common advice in the community is to simply turn it off.
 
 Reliability followed the same arc. Authentication reported failure after succeeding. Tracks stopped for no reason. Volume reset mid-session. On Linux, MPRIS volume never worked right because Cider's audio engine sat between the system volume curve and the actual output. These were not new bugs; they were architectural, and the architecture was load-bearing.
 
