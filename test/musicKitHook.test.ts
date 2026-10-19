@@ -268,7 +268,7 @@ describe("MusicKit queue context", () => {
 describe("MusicKit queue command ordering", () => {
   const controls = ["next", "previous", "pause", "stop", "play", "playPause", "seek"];
 
-  function pendingQueueHarness(operation: "goTo" | "openUri") {
+  function pendingQueueHarness(operation: "goTo" | "openUri", arrives = true) {
     const items = Array.from({ length: 3 }, (_, index) => ({
       id: `song-${index}`,
       attributes: { name: `Track ${index}`, durationInMillis: 120_000 },
@@ -287,6 +287,7 @@ describe("MusicKit queue command ordering", () => {
     const finishSdk = async () => {
       await sdk;
       events.push("sdk-settled");
+      if (!arrives) return;
       // Model the SDK committing its cursor/queue change and autoplay last.
       Object.assign(musicKit, { nowPlayingItem: items[1], isPlaying: true });
       Object.assign(musicKit.queue, { position: 1 });
@@ -457,25 +458,44 @@ describe("MusicKit queue command ordering", () => {
     expect(musicKit.play).toHaveBeenCalledOnce();
   });
 
-  it("waits for delayed GoTo arrival even after the SDK promise resolves", async () => {
-    const items = Array.from({ length: 3 }, (_, n) => ({
-      id: `song-${n}`, attributes: { durationInMillis: 120_000 },
-    }));
-    const { window, musicKit, bridgeSend, musicKitListeners } = createHarness({ musicKitOverrides: {
-      queue: { items, position: 0 }, nowPlayingItem: items[0],
-    } });
+  it.each([...controls, "goTo", "openUri"].flatMap(control => [
+    [control, "before"], [control, "after"],
+  ] as const))("runs %s without GoTo arrival when cancelled %s SDK settlement", async (control, timing) => {
+    const harness = pendingQueueHarness("goTo", false);
+    const { window, musicKit, bridgeSend, musicKitListeners, items, events, queueCommand, resolveSdk } = harness;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(musicKit.changeToMediaAtIndex).toHaveBeenCalledExactlyOnceWith(1);
+    if (timing === "after") {
+      resolveSdk();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(events).toEqual(["sdk-settled"]);
+    }
     const snapshot = bridgeSend.mock.calls.find(([channel]) => channel === "queueDidChange")![1] as QueueSnapshot;
-    const selected = window.__sidra!.goTo(snapshot.items[1].occurrenceId);
+    const argument = control === "goTo" ? snapshot.items[0].occurrenceId
+      : control === "openUri" ? "https://music.apple.com/album/123"
+      : control === "stop" ? 1 : 42;
+    const command = window.__sidra![control](argument);
+    if (timing === "before") {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(events).toEqual([]);
+      resolveSdk();
+    }
+    let completed = false;
+    const done = Promise.all([queueCommand, command]).then(() => { completed = true; });
     await new Promise<void>(resolve => setImmediate(resolve));
-    const next = window.__sidra!.next();
-    await new Promise<void>(resolve => setImmediate(resolve));
-    expect(musicKit.skipToNextItem).not.toHaveBeenCalled();
+    expect(completed).toBe(true);
+    await done;
+    const action = control === "playPause" ? "pause" : control;
+    const expected = ["sdk-settled", ...(control === "stop" ? ["pause", "seek"]
+      : control === "goTo" ? ["seek", "play"]
+      : control === "openUri" ? ["sdk-settled"] : [action])];
+    expect(events).toEqual(expected);
+    expect(harness.pendingTimeoutCount()).toBe(0);
     Object.assign(musicKit, { nowPlayingItem: items[1] });
     musicKitListeners.get("nowPlayingItemDidChange")?.({ item: items[1] });
-    await Promise.all([selected, next]);
-    expect(musicKit.skipToNextItem).toHaveBeenCalledOnce();
-    expect(musicKit.seekToTime).not.toHaveBeenCalled();
-    expect(musicKit.play).not.toHaveBeenCalled();
+    harness.runTimeouts();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(events).toEqual(expected);
   });
 });
 

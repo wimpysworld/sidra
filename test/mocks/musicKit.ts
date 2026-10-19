@@ -335,6 +335,7 @@ export function createHarness({
       ))
         callback();
     },
+    pendingTimeoutCount: () => timeouts.size,
     runTimeouts: () => {
       for (const [id, callback] of timeouts) {
         timeouts.delete(id);

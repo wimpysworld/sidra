@@ -526,14 +526,14 @@
         }
         stopped = false;
       }
-      function cancelGoTo(cancelArrival = false) {
+      function cancelGoTo() {
         queueRequest += 1;
-        if (cancelArrival) goToArrival?.cancel();
+        goToArrival?.cancel();
       }
       resetStopForDocument = () => {
         resetStop();
         pendingStop = null;
-        cancelGoTo(true);
+        cancelGoTo();
       };
       function current(operationGeneration, pageGeneration) {
         return (
@@ -677,7 +677,7 @@
             new Promise((_, reject) => {
               timeout = setTimeout(() => {
                 if (!blockedQueue) {
-                  cancelGoTo(true);
+                  cancelGoTo();
                   blockedQueue = queueTask;
                   // The SDK still owns the queue after the caller stops waiting.
                   blockedQueue.then(() => { blockedQueue = null; });
