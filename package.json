@@ -73,6 +73,9 @@
     "electronDownload": {
       "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
     },
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
     "linux": {
       "icon": "build/icons",
       "target": [
