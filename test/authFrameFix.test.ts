@@ -23,10 +23,23 @@ const authFixScript = authFixSource.replace(AUTH_FIX_TOKEN, () => JSON.stringify
 const CAPTION_TEXT = 'Requires iOS 16 or later';
 
 class StubStyle {
-  display = '';
+  private readonly properties = new Map<string, { value: string; priority: string }>();
 
-  setProperty(name: string, value: string): void {
-    if (name === 'display') this.display = value;
+  get display(): string {
+    return this.getPropertyValue('display');
+  }
+
+  getPropertyValue(name: string): string {
+    return this.properties.get(name)?.value ?? '';
+  }
+
+  getPropertyPriority(name: string): string {
+    return this.properties.get(name)?.priority ?? '';
+  }
+
+  setProperty(name: string, value: string, priority = ''): void {
+    if (value) this.properties.set(name, { value, priority });
+    else this.properties.delete(name);
   }
 }
 
@@ -361,5 +374,122 @@ describe('authFrameFix', () => {
     observers[0]?.callback();
 
     expect(localised.style.display).toBe('none');
+  });
+
+  const lateInputContainers = [
+    {
+      name: 'feature container',
+      create: () => el('div', {
+        selectors: ['[data-component-name*="passkey" i]'],
+        children: [el('button', { text: 'Mit Sicherheitsschlüssel anmelden' })],
+      }),
+    },
+    {
+      name: 'matched ancestor',
+      create: () => el('div', {
+        selectors: ['[role="group"]'],
+        children: [el('button', { text: 'Use a passkey' })],
+      }),
+    },
+    ...[1, 2].map((depth) => ({
+      name: `caption fallback at depth ${depth}`,
+      create: () => {
+        const button = el('button', { text: 'Sign in with iPhone' });
+        return el('div', {
+          children: [depth === 1 ? button : el('div', { children: [button] }), el('p', { text: CAPTION_TEXT })],
+        });
+      },
+    })),
+    { name: 'standalone caption', create: () => el('p', { text: CAPTION_TEXT }) },
+  ];
+
+  it.each(lateInputContainers)('restores $name when an input arrives', ({ create }) => {
+    const container = create();
+    const { observers, run } = createHarness([container]);
+    run();
+    expect(container.style.display).toBe('none');
+
+    observers[0]?.callback();
+    const input = el('input');
+    container.appendChild(el('div', { children: [input] }));
+    observers[0]?.callback();
+
+    expect(container.style.display).toBe('');
+    expect(container.style.getPropertyPriority('display')).toBe('');
+    expect(input.style.display).toBe('');
+  });
+
+  it.each([['flex', 'important'], ['grid', '']])(
+    'restores the original display %s with priority %s across reinjection',
+    (value, priority) => {
+      const { body, observers, run } = createHarness();
+      run();
+      const { container } = hiddenFixtures();
+      container.style.setProperty('display', value, priority);
+      body.appendChild(container);
+      run();
+      observers[0]?.callback();
+      expect(container.style.display).toBe('none');
+
+      container.style.setProperty('color', 'red', 'important');
+      container.appendChild(el('input'));
+      observers[0]?.callback();
+
+      expect(container.style.display).toBe(value);
+      expect(container.style.getPropertyPriority('display')).toBe(priority);
+      expect(container.style.getPropertyValue('color')).toBe('red');
+      expect(container.style.getPropertyPriority('color')).toBe('important');
+    },
+  );
+
+  it.each(lateInputContainers)('preserves Apple-owned hiding on $name', ({ create }) => {
+    const container = create();
+    container.style.setProperty('display', 'none');
+    const { observers, run } = createHarness([container]);
+    run();
+    container.appendChild(el('input'));
+    observers[0]?.callback();
+
+    expect(container.style.display).toBe('none');
+    expect(container.style.getPropertyPriority('display')).toBe('');
+  });
+
+  it.each([['flex', 'important'], ['grid', ''], ['none', '']])(
+    'preserves a later Apple display %s with priority %s',
+    (value, priority) => {
+      const { container } = hiddenFixtures();
+      const { observers, run } = createHarness([container]);
+      run();
+      container.style.setProperty('display', value, priority);
+      container.appendChild(el('input'));
+      observers[0]?.callback();
+
+      expect(container.style.display).toBe(value);
+      expect(container.style.getPropertyPriority('display')).toBe(priority);
+    },
+  );
+
+  it('restores all hidden ancestors after a detached subtree is reinserted', () => {
+    const { button, container } = hiddenFixtures();
+    const outer = el('div', {
+      selectors: ['[class*="passkey-section" i]'],
+      children: [container],
+    });
+    const { body, observers, run } = createHarness([outer]);
+    run();
+    expect(outer.style.display).toBe('none');
+    expect(container.style.display).toBe('none');
+
+    outer.remove();
+    observers[0]?.callback();
+    outer.selectors.length = 0;
+    container.selectors.length = 0;
+    button.remove();
+    container.appendChild(el('input'));
+    body.appendChild(outer);
+    observers[0]?.callback();
+
+    expect(outer.style.display).toBe('');
+    expect(container.style.display).toBe('');
   });
 });
