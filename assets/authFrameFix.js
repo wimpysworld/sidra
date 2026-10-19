@@ -18,6 +18,9 @@
   const CONTAINER_SELECTOR = sharedContainers.concat(SCRIPT_ONLY_CONTAINERS).join(', ');
   const CAPTION_TAGS = 'p, small, span, div';
   const CAPTION_MAX_LEN = 200;
+  // Share ownership across reinjection without retaining detached elements.
+  const hiddenElements = window.__sidraAuthFixHiddenElements || new WeakMap();
+  window.__sidraAuthFixHiddenElements = hiddenElements;
 
   const root = document.head || document.documentElement;
   if (root) {
@@ -30,6 +33,11 @@
   }
 
   function hideEl(el) {
+    if (isHidden(el)) return;
+    hiddenElements.set(el, {
+      value: el.style.getPropertyValue('display'),
+      priority: el.style.getPropertyPriority('display'),
+    });
     el.style.setProperty('display', 'none', 'important');
   }
 
@@ -40,6 +48,20 @@
   function canHideContainer(el) {
     return el !== document.body && el !== document.documentElement
       && !el.matches('input') && !el.querySelector('input');
+  }
+
+  function restoreInputContainers() {
+    for (const input of document.querySelectorAll('input')) {
+      for (let el = input; el; el = el.parentElement) {
+        const original = hiddenElements.get(el);
+        if (!original) continue;
+        // Leave display changes made by Apple after our hide intact.
+        if (isHidden(el) && el.style.getPropertyPriority('display') === 'important') {
+          el.style.setProperty('display', original.value, original.priority);
+        }
+        hiddenElements.delete(el);
+      }
+    }
   }
 
   function hideMatchingContainers() {
@@ -106,6 +128,7 @@
   }
 
   function runHidePasses() {
+    restoreInputContainers();
     const { buttonsHidden, containersHidden } = hideMatchingButtons();
     const matchingContainersHidden = hideMatchingContainers();
     const captionsHidden = hideCaptionElements();
