@@ -19,6 +19,7 @@ env:
     release/*.AppImage
     release/*.deb
     release/*.rpm
+    release/*.flatpak
     release/*.snap
     release/*.dmg
     release/*.exe
@@ -176,11 +177,11 @@ jobs:
           - os: linux
             arch: amd64
             runner: ubuntu-24.04
-            targets: "--linux AppImage deb rpm"
+            targets: "--linux AppImage deb rpm flatpak"
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-            targets: "--linux AppImage deb rpm --arm64"
+            targets: "--linux AppImage deb rpm flatpak --arm64"
           - os: macos
             arch: universal
             runner: macos-latest
@@ -220,7 +221,17 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y librsvg2-bin rpm
+          sudo apt-get install -y librsvg2-bin rpm flatpak flatpak-builder
+      - name: Install Flatpak build runtimes
+        if: matrix.os == 'linux'
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          runtime_version=$(node -p 'require("./package.json").build.flatpak.runtimeVersion')
+          base_version=$(node -p 'require("./package.json").build.flatpak.baseVersion')
+          flatpak install --user --noninteractive --assumeyes flathub \
+            "org.freedesktop.Platform//$runtime_version" \
+            "org.freedesktop.Sdk//$runtime_version" \
+            "org.electronjs.Electron2.BaseApp//$base_version"
       # Skip the slow snap build on pull requests. Branch, weekly and tag runs
       # check packaging, and publish-snap requires this build to pass.
       # Each Linux architecture needs a separate Snap Store revision.

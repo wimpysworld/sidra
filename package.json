@@ -82,6 +82,7 @@
         "AppImage",
         "deb",
         "rpm",
+        "flatpak",
         "snap"
       ],
       "category": "Audio",
@@ -135,6 +136,25 @@
       "fpm": [
         "--rpm-rpmbuild-define",
         "_build_id_links none"
+      ]
+    },
+    "flatpak": {
+      "runtime": "org.freedesktop.Platform",
+      "runtimeVersion": "26.08",
+      "sdk": "org.freedesktop.Sdk",
+      "base": "org.electronjs.Electron2.BaseApp",
+      "baseVersion": "26.08",
+      "branch": "stable",
+      "finishArgs": [
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--share=ipc",
+        "--device=dri",
+        "--socket=pulseaudio",
+        "--share=network",
+        "--own-name=org.mpris.MediaPlayer2.sidra",
+        "--talk-name=org.freedesktop.Notifications",
+        "--talk-name=org.kde.StatusNotifierWatcher"
       ]
     },
     "snapcraft": {

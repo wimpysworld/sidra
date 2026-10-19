@@ -50,7 +50,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
   - Share current track (macOS), auto-update status
 - 🔄 **Auto-update** via GitHub Releases:
   - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
-  - deb, rpm, Nix, macOS DMG: update notification linking to the release page
+  - deb, rpm, Flatpak, Nix, macOS DMG: update notification linking to the release page
 
 Open **Settings** with the gear button beside Back, Forward and Reload.
 With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.
@@ -126,6 +126,27 @@ sudo apt install ./Sidra-*.deb
 sudo dnf install ./Sidra-*.rpm      # Fedora
 sudo zypper install ./Sidra-*.rpm   # openSUSE
 ```
+
+**Flatpak (experimental)**
+
+Download the `.flatpak` bundle for your CPU from GitHub Releases: `-linux-x86_64.flatpak` or `-linux-aarch64.flatpak`.
+Install Flatpak through your distribution first. The bundle needs the Freedesktop 26.08 runtime, which comes from Flathub.
+Sidra itself is not published on Flathub.
+
+```bash
+flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak install --user flathub org.freedesktop.Platform//26.08
+flatpak install --user --or-update ./Sidra-VERSION-linux-x86_64.flatpak
+flatpak run world.wimpys.sidra
+```
+
+Replace `VERSION` with the downloaded version and `x86_64` with `aarch64` for ARM64.
+For each Sidra update, download the newer bundle and repeat `flatpak install --user --or-update` with that file.
+`flatpak update` updates the runtime, but it does not find new Sidra bundles on GitHub.
+
+Flatpak keeps settings, authentication and downloaded Widevine components in app-private storage under `~/.var/app/world.wimpys.sidra/`.
+This storage is separate from native packages and persists across bundle updates.
+Protected playback and desktop integration still need validation on both architectures. Discord Rich Presence and controller access are not configured in this initial package.
 
 **Snap** - Ubuntu and other snapd-enabled distributions:
 

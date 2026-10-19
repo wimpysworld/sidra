@@ -10,7 +10,7 @@ import {
 import type { MessageBus } from "@holusion/dbus-next";
 import type { EventEmitter } from "node:events";
 import { pathToFileURL } from "node:url";
-import { getAssetPath } from "./paths";
+import { getAssetPath, getDesktopId } from "./paths";
 import { closeBus } from "./utils/closeBus";
 
 const NAME = "org.freedesktop.Notifications";
@@ -280,7 +280,7 @@ export function createLinuxNotifications(
       const hints: Record<string, Variant> = {
         "suppress-sound": new Variant("b", true),
         transient: new Variant("b", true),
-        "desktop-entry": new Variant("s", app.getName().toLowerCase()),
+        "desktop-entry": new Variant("s", getDesktopId()),
       };
       if (notification.icon)
         hints["image-path"] = new Variant(
@@ -292,7 +292,9 @@ export function createLinuxNotifications(
       const result = await call(owner, "Notify", "susssasa{sv}i", [
         app.getName(),
         notificationId,
-        getAssetPath("assets", "sidra-logo.png"),
+        process.env.FLATPAK_ID
+          ? getDesktopId()
+          : getAssetPath("assets", "sidra-logo.png"),
         notification.title,
         Array.isArray(capabilities?.body[0]) &&
         capabilities.body[0].includes("body-markup")

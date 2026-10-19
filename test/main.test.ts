@@ -168,7 +168,8 @@ vi.mock("../src/i18n", () => ({
   NAV_LABELS_TOKEN: "__NAV_LABELS__",
 }));
 
-vi.mock("../src/paths", () => ({
+vi.mock("../src/paths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/paths")>()),
   getAssetPath: vi.fn((...parts: string[]) => parts.join("/")),
 }));
 
@@ -306,6 +307,7 @@ describe("main bootstrap", () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     restorePlatform();
     if (chromeDescriptor) {
       Object.defineProperty(process.versions, "chrome", chromeDescriptor);
@@ -325,6 +327,14 @@ describe("main bootstrap", () => {
     }
     await Promise.resolve();
   }
+
+  it("sets the exported Flatpak desktop name on Linux", async () => {
+    setPlatform("linux");
+    vi.stubEnv("FLATPAK_ID", "world.wimpys.sidra");
+    await startMain();
+    const { app } = await import("electron");
+    expect(app.setDesktopName).toHaveBeenCalledWith("world.wimpys.sidra.desktop");
+  });
 
   it("forwards the About label from getTrayStrings to the macOS menu", async () => {
     setPlatform("darwin");
