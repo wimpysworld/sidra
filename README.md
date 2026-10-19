@@ -95,17 +95,22 @@ Linux builds ship for x86_64 and arm64. Pick the file that matches your CPU: `Si
 
 **AppImage**
 
-On Debian 13 (Trixie) and Ubuntu 24.04 or newer, install the AppImage FUSE dependency first:
+The AppImage runtime bundles its FUSE library. It does not need the host's `libfuse2` or `libfuse2t64` package. Normal launch still needs access to `/dev/fuse` and a working `fusermount` (FUSE 2) or `fusermount3` (FUSE 3) helper from your distribution.
+
+Make the downloaded image executable, then launch it. Replace `x86_64` with `arm64` for an ARM64 build:
 
 ```bash
-sudo apt install libfuse2t64
+chmod +x Sidra-linux-x86_64.AppImage
+./Sidra-linux-x86_64.AppImage
 ```
 
-Runs anywhere, no installation:
+If FUSE mounting is unavailable, extract and run the image without mounting:
 
 ```bash
-chmod +x Sidra-*.AppImage && ./Sidra-*.AppImage
+./Sidra-linux-x86_64.AppImage --appimage-extract-and-run
 ```
+
+Extraction does not remove Electron's system requirements. Older AppImageLauncher releases can reject this runtime. If that happens, update AppImageLauncher or use the `.deb` or `.rpm` package.
 
 **Debian/Ubuntu**
 
