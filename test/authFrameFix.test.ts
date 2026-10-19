@@ -176,10 +176,7 @@ describe('authFrameFix', () => {
 
     const [style] = styles();
     expect(style?.id).toBe('sidra-auth-fix');
-    expect(style?.textContent).toContain(CONFIG.css);
-    for (const selector of PASSKEY_CONTAINER_SELECTORS) {
-      expect(style?.textContent).toContain(selector);
-    }
+    expect(style?.textContent).toBe(CONFIG.css);
   });
 
   it('replaces the stylesheet instead of appending a second one', () => {
@@ -199,6 +196,103 @@ describe('authFrameFix', () => {
 
     expect(button.style.display).toBe('none');
     expect(container.style.display).toBe('none');
+  });
+
+  it.each(PASSKEY_CONTAINER_SELECTORS)('hides localised controls inside %s', (selector) => {
+    const button = el('button', { text: 'Mit Sicherheitsschlüssel anmelden' });
+    const caption = el('p', { text: 'Erfordert iOS 16 oder neuer' });
+    const container = el('div', { selectors: [selector], children: [button, caption] });
+    const { run } = createHarness([container]);
+
+    run();
+
+    expect(container.style.display).toBe('none');
+  });
+
+  it.each([...PASSKEY_CONTAINER_SELECTORS, '[role="group"]', 'fieldset'])(
+    'preserves an input inside a matching %s container',
+    (selector) => {
+      const button = el('button', { text: 'Sign in with iPhone' });
+      const input = el('input');
+      const container = el('div', {
+        selectors: [selector],
+        children: [button, el('div', { children: [input] })],
+      });
+      const { run } = createHarness([container]);
+
+      run();
+
+      expect(button.style.display).toBe('none');
+      expect(container.style.display).toBe('');
+      expect(input.style.display).toBe('');
+    },
+  );
+
+  it('preserves a shared input wrapper around a localised passkey container', () => {
+    const button = el('button', { text: 'Mit Sicherheitsschlüssel anmelden' });
+    const container = el('div', {
+      selectors: ['[data-component-name*="passkey" i]'],
+      children: [button],
+    });
+    const input = el('input');
+    const shared = el('div', {
+      selectors: ['[class*="passkey-section" i]'],
+      children: [input, container],
+    });
+    const { run } = createHarness([shared]);
+
+    run();
+
+    expect(shared.style.display).toBe('');
+    expect(input.style.display).toBe('');
+    expect(container.style.display).toBe('none');
+  });
+
+  it('preserves an input that carries a feature selector itself', () => {
+    const input = el('input', { selectors: ['[data-component-name*="passkey" i]'] });
+    const { run } = createHarness([input]);
+
+    run();
+
+    expect(input.style.display).toBe('');
+  });
+
+  it.each([1, 2])('preserves an input in a caption fallback at depth %i', (depth) => {
+    const button = el('button', { text: 'Sign in with iPhone' });
+    const child = depth === 1 ? button : el('div', { children: [button] });
+    const input = el('input');
+    const container = el('div', {
+      children: [child, input, el('p', { text: CAPTION_TEXT })],
+    });
+    const { run } = createHarness([container]);
+
+    run();
+
+    expect(button.style.display).toBe('none');
+    expect(container.style.display).toBe('');
+    expect(input.style.display).toBe('');
+  });
+
+  it.each([1, 2, 3])('limits caption fallback hiding at depth %i', (depth) => {
+    const button = el('button', { text: 'Sign in with iPhone' });
+    let child = button;
+    for (let level = 1; level < depth; level++) child = el('div', { children: [child] });
+    const container = el('div', { children: [child, el('p', { text: CAPTION_TEXT })] });
+    const { run } = createHarness([container]);
+
+    run();
+
+    expect(button.style.display).toBe('none');
+    expect(container.style.display).toBe(depth <= 2 ? 'none' : '');
+  });
+
+  it('does not hide the document body when it carries a feature selector', () => {
+    const { body, run } = createHarness([el('button', { text: 'Use a passkey' })]);
+    body.selectors.push(PASSKEY_CONTAINER_SELECTORS[0]!);
+
+    run();
+
+    expect(body.style.display).toBe('');
   });
 
   it('hides a caption that names an iOS requirement', () => {
@@ -239,9 +333,8 @@ describe('authFrameFix', () => {
 
     run();
 
-    // Two rules: the payload's own, plus the block the script appends.
     expect(info).toHaveBeenCalledWith(
-      `${CONFIG.logPrefix} 2 CSS rules injected, 1 buttons hidden, 1 captions hidden, 1 containers hidden`,
+      `${CONFIG.logPrefix} 1 CSS rules injected, 1 buttons hidden, 1 captions hidden, 1 containers hidden`,
     );
   });
 
@@ -259,5 +352,14 @@ describe('authFrameFix', () => {
     observers[0]?.callback();
 
     expect(late.style.display).toBe('none');
+
+    const localised = el('div', {
+      selectors: ['[data-component-name*="passkey" i]'],
+      children: [el('button', { text: 'Mit Sicherheitsschlüssel anmelden' })],
+    });
+    body.appendChild(localised);
+    observers[0]?.callback();
+
+    expect(localised.style.display).toBe('none');
   });
 });
