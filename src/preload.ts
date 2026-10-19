@@ -162,6 +162,7 @@ function channelSet<C extends string>(
 // Channels the renderer is allowed to send to the main process.
 // Extend this list and SendChannel in src/types/hook.d.ts together.
 const SEND_CHANNELS = channelSet<SendChannel>({
+  queueDidChange: true,
   playbackStateDidChange: true,
   hookReady: true,
   playbackCapabilitiesDidChange: true,
@@ -182,6 +183,7 @@ const SEND_CHANNELS = channelSet<SendChannel>({
 // Each channel maps to a window.__sidra method dispatched via ipcRenderer.on().
 // The command allowlist in assets/musicKitHook.js must stay in sync.
 const RECEIVE_CHANNELS = channelSet<ReceiveChannel>({
+  "player:goTo": true,
   "player:play": true,
   "player:openUri": true,
   "player:pause": true,

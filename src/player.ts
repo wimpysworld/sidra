@@ -7,6 +7,8 @@ import {
   getServiceByHost,
   isAllowedNavigationUrl,
 } from "./musicService";
+import { isOccurrenceId, TRACK_LIST_LIMIT } from "./queue";
+import type { QueueItem, QueueSnapshot } from "./queue";
 
 const playerLog = log.scope("player");
 
@@ -20,6 +22,8 @@ export interface PlayParams {
 
 /** Queue-item metadata that the main process validates before forwarding to integrations. */
 export interface NowPlayingPayload {
+  /** Process-local identity of this queue occurrence, independent of catalogue IDs. */
+  occurrenceId?: string;
   name?: string;
   artistName?: string;
   albumName?: string;
@@ -137,6 +141,7 @@ function isPlayParams(value: unknown): value is PlayParams {
 }
 
 const NOW_PLAYING_FIELD_VALIDATORS = {
+  occurrenceId: isOccurrenceId,
   name: isString,
   artistName: isString,
   albumName: isString,
@@ -274,6 +279,7 @@ export type PlaybackStatePayload = { status: boolean; state: number } | null;
 
 /** Typed events forwarded from Player to native integrations. */
 export interface PlayerEvents {
+  queueDidChange: [payload: QueueSnapshot];
   hookReady: [url: string | null];
   playbackStopped: [payload: PlaybackStopped];
   playbackCapabilitiesDidChange: [payload: PlaybackCapabilities];
@@ -396,6 +402,8 @@ const EMPTY_CAPABILITIES: PlaybackCapabilities = {
  * Invalid metadata fields are logged and dropped rather than forwarded.
  */
 export class Player extends TypedEmitter<PlayerEvents> {
+  private _queue: QueueSnapshot = { items: [], currentOccurrenceId: null };
+  private _nowPlaying: NowPlayingPayload | null = null;
   private _hookReadyUrl: string | null = null;
   private _capabilities: PlaybackCapabilities = { ...EMPTY_CAPABILITIES };
   private lastTimeLogAt = 0;
@@ -515,6 +523,54 @@ export class Player extends TypedEmitter<PlayerEvents> {
     return this._hookReadyUrl;
   }
 
+  /** Return an independent copy of the last validated queue context. */
+  queueSnapshot(): QueueSnapshot {
+    return structuredClone(this._queue);
+  }
+
+  /** Seed integrations that initialise after the hook's initial metadata report. */
+  nowPlayingSnapshot(): NowPlayingPayload | null {
+    return structuredClone(this._nowPlaying);
+  }
+
+  /** Validate bounded queue metadata without forwarding arbitrary MusicKit objects. */
+  handleQueueDidChange(payload: unknown): void {
+    if (
+      !isRecord(payload) || Object.keys(payload).length !== 2 ||
+      !Array.isArray(payload.items) || payload.items.length > TRACK_LIST_LIMIT ||
+      (payload.currentOccurrenceId !== null &&
+        !isOccurrenceId(payload.currentOccurrenceId))
+    ) {
+      playerLog.warn("queueDidChange: invalid payload");
+      return;
+    }
+    const items: QueueItem[] = [];
+    const ids = new Set<string>();
+    for (const item of payload.items) {
+      if (
+        !isRecord(item) || !isOccurrenceId(item.occurrenceId) ||
+        ids.has(item.occurrenceId) ||
+        !hasValidFields(item, NOW_PLAYING_FIELD_VALIDATORS) ||
+        Object.values(item).some((value) =>
+          typeof value === "string" && value.length > 4096) ||
+        (isRecord(item.playParams) && Object.values(item.playParams).some(
+          (value) => typeof value === "string" && value.length > 128,
+        )) ||
+        (Array.isArray(item.genreNames) && (item.genreNames.length > 32 ||
+          item.genreNames.some((genre) =>
+            typeof genre !== "string" || genre.length > 512)))
+      ) {
+        playerLog.warn("queueDidChange: invalid payload");
+        return;
+      }
+      ids.add(item.occurrenceId);
+      // The allowlisted validators above have checked every field and the required ID.
+      items.push(structuredClone(item) as unknown as QueueItem);
+    }
+    this._queue = { items, currentOccurrenceId: payload.currentOccurrenceId };
+    this.emit("queueDidChange", this.queueSnapshot());
+  }
+
   /** Accept readiness only for a registered service origin without URL credentials. */
   handleHookReady(value: unknown): void {
     if (typeof value !== "string") return;
@@ -576,6 +632,8 @@ export class Player extends TypedEmitter<PlayerEvents> {
 
   /** Clear document-owned state, emitting stopped playback before clearing track metadata. */
   resetForDocumentReplacement(): void {
+    this._nowPlaying = null;
+    this._queue = { items: [], currentOccurrenceId: null };
     this._hookReadyUrl = null;
     this.emit("hookReady", null);
     this._state = PlaybackState.None;
@@ -589,6 +647,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
       state: PlaybackState.None,
     });
     this.emit("nowPlayingItemDidChange", null);
+    this.emit("queueDidChange", this.queueSnapshot());
   }
 
   /** Validate playback reports and derive playing status from the MusicKit state. */
@@ -634,6 +693,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this._isRadioStation = false;
     this.resetTimedMetadata();
     if (payload === null) {
+      this._nowPlaying = null;
       playerLog.debug("nowPlayingItemDidChange:", payload);
       this.emit("nowPlayingItemDidChange", payload);
       return;
@@ -644,6 +704,7 @@ export class Player extends TypedEmitter<PlayerEvents> {
       return;
     }
     this._isRadioStation = sanitised.playParams?.kind === "radioStation";
+    this._nowPlaying = structuredClone(sanitised);
     playerLog.debug("nowPlayingItemDidChange:", sanitised);
     this.emit("nowPlayingItemDidChange", sanitised);
   }

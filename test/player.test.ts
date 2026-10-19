@@ -87,6 +87,7 @@ describe('PlayerEvents', () => {
   it('keys match Player handler event names', () => {
     type EventKeys = keyof PlayerEvents;
     type ExpectedKeys =
+      | 'queueDidChange'
       | 'hookReady'
       | 'playbackStopped'
       | 'playbackCapabilitiesDidChange'
@@ -99,6 +100,57 @@ describe('PlayerEvents', () => {
       | 'volumeDidChange';
 
     expectTypeOf<EventKeys>().toEqualTypeOf<ExpectedKeys>();
+  });
+});
+
+describe('Player queue context', () => {
+  const item = { occurrenceId: 'd1_i1_o1', name: 'Title', durationInMillis: 120_000,
+    genreNames: ['Classical'], playParams: { catalogId: '123', kind: 'song' } };
+  const context = { items: [item], currentOccurrenceId: item.occurrenceId };
+
+  it('caches independent snapshots, forwards typed events and clears on document replacement', () => {
+    const player = new Player();
+    const listener = vi.fn();
+    player.on('queueDidChange', listener);
+    player.handleQueueDidChange(context);
+    expectTypeOf<PlayerEvents['queueDidChange']>().toEqualTypeOf<[payload: import('../src/queue').QueueSnapshot]>();
+    expect(listener).toHaveBeenCalledWith(context);
+    const cached = player.queueSnapshot();
+    cached.items[0].name = 'Mutated';
+    cached.items[0].genreNames!.push('Changed');
+    cached.items[0].playParams!.catalogId = '999';
+    expect(player.queueSnapshot()).toEqual(context);
+    listener.mock.calls[0][0].items.length = 0;
+    expect(player.queueSnapshot()).toEqual(context);
+    player.resetForDocumentReplacement();
+    expect(player.queueSnapshot()).toEqual({ items: [], currentOccurrenceId: null });
+    expect(listener).toHaveBeenLastCalledWith({ items: [], currentOccurrenceId: null });
+  });
+
+  it.each([
+    null, [], {}, { ...context, extra: true }, { items: [] },
+    { ...context, currentOccurrenceId: '/bad/path' },
+    { ...context, items: [null] }, { ...context, items: [{ name: 'Missing identity' }] },
+    { ...context, items: [item, item] },
+    { ...context, items: [{ ...item, secret: 'private' }] },
+    { ...context, items: [{ ...item, durationInMillis: Infinity }] },
+    { ...context, items: [{ ...item, durationInMillis: -1 }] },
+    { ...context, items: [{ ...item, trackNumber: 2_147_483_648 }] },
+    { ...context, items: [{ ...item, name: 'x'.repeat(4097) }] },
+    { ...context, items: [{ ...item, occurrenceId: 'x'.repeat(100) }] },
+    { ...context, items: [{ ...item, artworkUrl: 'file:///private' }] },
+    { ...context, items: [{ ...item, playParams: { ...item.playParams, token: 'private' } }] },
+    { ...context, items: [{ ...item, playParams: { catalogId: 'x'.repeat(129) } }] },
+    { ...context, items: [{ ...item, genreNames: Array(33).fill('genre') }] },
+    { ...context, items: Array.from({ length: 22 }, (_, n) => ({ ...item, occurrenceId: `d1_i1_o${n}` })) },
+  ])('rejects malformed or oversized context without overwriting valid state %#', payload => {
+    const player = new Player();
+    player.handleQueueDidChange(context);
+    const listener = vi.fn();
+    player.on('queueDidChange', listener);
+    player.handleQueueDidChange(payload);
+    expect(listener).not.toHaveBeenCalled();
+    expect(player.queueSnapshot()).toEqual(context);
   });
 });
 
@@ -707,6 +759,7 @@ describe('SidraHook contract', () => {
   it('keyof SidraHook matches the expected command method names', () => {
     type HookKeys = keyof SidraHook;
     type ExpectedKeys =
+      | 'goTo'
       | 'play'
       | 'openUri'
       | 'pause'
@@ -731,6 +784,7 @@ describe('SidraHook contract', () => {
     // Exhaustive over SidraHook: renaming, adding or removing a method in
     // src/types/hook.d.ts without changing this list is a compile error.
     const hookMethods = {
+      goTo: true,
       play: true,
       pause: true,
       playPause: true,
@@ -757,6 +811,7 @@ describe('SidraHook contract', () => {
 
   it('now-playing fields in musicKitHook.js match NowPlayingPayload', () => {
     const payloadFields = {
+      occurrenceId: true,
       name: true,
       artistName: true,
       albumName: true,
@@ -773,10 +828,10 @@ describe('SidraHook contract', () => {
       sourceHost: true,
     } satisfies Record<keyof NowPlayingPayload, true>;
 
-    const block = /sendToMain\((['"])nowPlayingItemDidChange\1, \{\n([\s\S]*?)^ {8}\}\);/m.exec(HOOK_SOURCE);
+    const block = /function serialiseItem\(item, occurrenceId\) \{[\s\S]*?return \{\n([\s\S]*?)^ {6}\};/m.exec(HOOK_SOURCE);
     expect(block, 'now-playing payload not found in assets/musicKitHook.js').not.toBeNull();
 
-    const fields = [...block![2].matchAll(/^ {10}([A-Za-z]\w*):/gm)].map((match) => match[1]).sort();
+    const fields = [...block![1].matchAll(/^ {8}([A-Za-z]\w*)(?:[:,])/gm)].map((match) => match[1]).sort();
     expect(fields).toEqual(Object.keys(payloadFields).sort());
   });
 });
@@ -784,6 +839,7 @@ describe('SidraHook contract', () => {
 describe('Channel contract', () => {
   it('SendChannel matches expected renderer-to-main channels', () => {
     type ExpectedSend =
+      | 'queueDidChange'
       | 'hookReady'
       | 'playbackStopped'
       | 'playbackCapabilitiesDidChange'
@@ -804,6 +860,7 @@ describe('Channel contract', () => {
 
   it('ReceiveChannel matches expected main-to-renderer channels', () => {
     type ExpectedReceive =
+      | 'player:goTo'
       | 'player:openUri'
       | 'player:play'
       | 'player:pause'
