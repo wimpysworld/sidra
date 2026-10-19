@@ -17,6 +17,8 @@ import { getServiceByHost } from "../../musicService";
 import { getMusicService } from "../../config";
 import { switchService } from "../../serviceSwitch";
 import { closeBus } from "../../utils/closeBus";
+import { occurrenceTrackId } from "../../queue";
+import type { QueueItem, QueueSnapshot } from "../../queue";
 
 // `main.ts` loads this module only on Linux, keeping `dbus-next` off other platforms.
 const dbus = require("@holusion/dbus-next");
@@ -63,6 +65,7 @@ type MprisMethod =
   | "Seek"
   | "SetPosition"
   | "OpenUri"
+  | "GoTo"
   | "Fullscreen"
   | "Raise"
   | "Quit";
@@ -136,9 +139,9 @@ class MediaPlayer2 extends Interface {
     return true;
   }
 
-  /** Reports that Sidra exposes no MPRIS TrackList interface. */
+  /** Reports the read-only queue context interface. */
   get HasTrackList(): boolean {
-    return false;
+    return true;
   }
 
   /** Reports no MIME-type-based opening support. */
@@ -237,7 +240,9 @@ function buildTrackId(rawId: string): string {
 function buildMetadata(
   payload: NowPlayingPayload,
 ): Record<string, InstanceType<typeof Variant>> {
-  const trackId = buildTrackId(payload.trackId ?? "unknown");
+  const trackId = payload.occurrenceId
+    ? occurrenceTrackId(payload.occurrenceId)
+    : buildTrackId(payload.trackId ?? "unknown");
   // MusicKit leaves `attributes.url` unset on a library item, so `xesam:url`
   // comes from getShareUrl(), which rebuilds the link from the catalogue id.
   // Radio and Classical playParams carry no such id, so it returns undefined
@@ -316,6 +321,8 @@ class MediaPlayer2Player extends Interface {
   private _pendingOpenUri: { url: string; navigationUrl: string } | null = null;
   private _openUriTimer: ReturnType<typeof setTimeout> | null = null;
   private _stopRequestId = 0;
+  // The hook cancels active Stop requests. Earlier item and Playing reports
+  // can belong to work queued before Stop.
   private _pendingStopId: number | null = null;
   private _stopTimer: ReturnType<typeof setTimeout> | null = null;
   private _stopped = false;
@@ -352,6 +359,7 @@ class MediaPlayer2Player extends Interface {
     getMainWindow: () => BrowserWindow | null,
     capabilities: PlaybackCapabilities,
     readyUrl: string | null,
+    private readonly _metadataChanged: () => void,
   ) {
     super("org.mpris.MediaPlayer2.Player");
     this._getMainWindow = getMainWindow;
@@ -429,13 +437,13 @@ class MediaPlayer2Player extends Interface {
     const lengthUs = this._trackLengthUs;
     if (lengthUs === undefined) delete this._metadata["mpris:length"];
     else this._metadata["mpris:length"] = new Variant("x", lengthUs);
+    this._metadataChanged();
   }
 
   /** Maps MusicKit state to MPRIS while preserving an acknowledged Stop. */
   updatePlaybackStatus(payload: PlaybackStatePayload): void {
     if (!payload) return;
     if (payload.state === PlaybackState.Playing) {
-      this._clearPendingStop();
       this._stopped = false;
     }
 
@@ -468,7 +476,6 @@ class MediaPlayer2Player extends Interface {
     const itemGeneration = ++this._itemGeneration;
     this._radioStation =
       payload?.playParams?.kind === "radioStation" ? payload : null;
-    this._clearPendingStop();
     this._stopped = false;
     if (!payload) {
       const emptyMetadata: Record<string, InstanceType<typeof Variant>> = {
@@ -477,6 +484,7 @@ class MediaPlayer2Player extends Interface {
       this._metadata = emptyMetadata;
       this._itemLengthUs = undefined;
       this._currentTrackId = NO_TRACK;
+      this._metadataChanged();
       this._schedulePropertyEmission({ Metadata: emptyMetadata });
       this._lastPositionUs = 0;
       this._lastPositionTimestamp = Date.now();
@@ -486,7 +494,7 @@ class MediaPlayer2Player extends Interface {
     }
 
     const metadata = buildMetadata(payload);
-    const trackId = buildTrackId(payload.trackId ?? "unknown");
+    const trackId: string = metadata["mpris:trackid"].value;
 
     this._metadata = metadata;
     this._itemLengthUs = metadata["mpris:length"]?.value;
@@ -512,6 +520,7 @@ class MediaPlayer2Player extends Interface {
             "mpris:artUrl": new Variant("s", fileUri),
           };
           this._schedulePropertyEmission({ Metadata: this._metadata });
+          this._metadataChanged();
           mprisLog.debug("mpris:artUrl updated to local file:", fileUri);
         })
         .catch((err: unknown) => {
@@ -549,6 +558,7 @@ class MediaPlayer2Player extends Interface {
     if (url === undefined) delete metadata["xesam:url"];
     else metadata["xesam:url"] = new Variant("s", url);
     this._metadata = metadata;
+    this._metadataChanged();
     this._schedulePropertyEmission({ Metadata: metadata });
   }
 
@@ -632,6 +642,7 @@ class MediaPlayer2Player extends Interface {
    * nothing fires into a bus that has already been disconnected.
    */
   cleanup(): void {
+    this._itemGeneration += 1;
     this._clearOpenUri();
     this._clearPendingStop();
     if (this._volumeSafetyTimer) {
@@ -783,6 +794,11 @@ class MediaPlayer2Player extends Interface {
     this._send("Next", "player:next");
   }
 
+  /** Selects an occurrence that the TrackList has resolved from its current window. */
+  goTo(occurrenceId: string): void {
+    this._send("GoTo", "player:goTo", occurrenceId);
+  }
+
   /** Requests the previous queue item. */
   Previous(): void {
     this._send("Previous", "player:previous");
@@ -918,6 +934,7 @@ class MediaPlayer2Player extends Interface {
 
   /** Dispatches a pending URL only after its navigation target reports hook readiness. */
   updateHookReady(url: string | null): void {
+    if (url === null) this._clearPendingStop();
     this._readyUrl = this._navigating ? null : url;
     const pending = this._pendingOpenUri;
     if (!pending || this._readyUrl !== pending.navigationUrl) return;
@@ -1067,6 +1084,165 @@ MediaPlayer2Player.configureMembers({
   },
 });
 
+type Metadata = Record<string, InstanceType<typeof Variant>>;
+
+/** Read-only MPRIS view of the bounded MusicKit context supplied by the hook. */
+class MediaPlayer2TrackList extends Interface {
+  private _snapshot: QueueSnapshot = { items: [], currentOccurrenceId: null };
+  private _fingerprints = new Map<string, string>();
+
+  constructor(
+    private readonly _playerMetadata: () => Metadata,
+    private readonly _goTo: (occurrenceId: string) => void,
+  ) {
+    super("org.mpris.MediaPlayer2.TrackList");
+  }
+
+  get Tracks(): string[] {
+    return this._snapshot.items.map((item) => occurrenceTrackId(item.occurrenceId));
+  }
+
+  get CanEditTracks(): boolean {
+    return false;
+  }
+
+  GetTracksMetadata(ids: string[]): Metadata[] {
+    return ids.flatMap((id) => {
+      const item = this._snapshot.items.find(
+        (item) => occurrenceTrackId(item.occurrenceId) === id,
+      );
+      return item ? [this._metadata(item)] : [];
+    });
+  }
+
+  AddTrack(_uri: string, _after: string, _setAsCurrent: boolean): void {
+    throw new dbus.DBusError(
+      "org.freedesktop.DBus.Error.NotSupported", "TrackList is read-only",
+    );
+  }
+
+  RemoveTrack(_id: string): void {
+    throw new dbus.DBusError(
+      "org.freedesktop.DBus.Error.NotSupported", "TrackList is read-only",
+    );
+  }
+
+  GoTo(id: string): void {
+    const item = this._snapshot.items.find(
+      (item) => occurrenceTrackId(item.occurrenceId) === id,
+    );
+    if (item) this._goTo(item.occurrenceId);
+  }
+
+  /** Replace and invalidate the exposed sequence synchronously, in signal order. */
+  updateQueue(snapshot: QueueSnapshot): void {
+    const previous = this.Tracks;
+    this._snapshot = snapshot;
+    const tracks = this.Tracks;
+    const replaced = previous.length !== tracks.length ||
+      previous.some((id, index) => id !== tracks[index]);
+    if (replaced) {
+      const current = snapshot.items.find(
+        (item) => item.occurrenceId === snapshot.currentOccurrenceId,
+      );
+      try {
+        this.TrackListReplaced(
+          tracks, current ? occurrenceTrackId(current.occurrenceId) : NO_TRACK,
+        );
+        Interface.emitPropertiesChanged(this, {}, ["Tracks"]);
+      } catch {
+        mprisLog.warn("failed to emit TrackList replacement");
+      }
+    }
+    this.refreshMetadata(replaced);
+  }
+
+  /** Diff metadata only, so position and unrelated Player properties cause no traffic. */
+  refreshMetadata(replaced = false): void {
+    const fingerprints = new Map<string, string>();
+    for (const item of this._snapshot.items) {
+      const id = occurrenceTrackId(item.occurrenceId);
+      const metadata = this._metadata(item);
+      const fingerprint = JSON.stringify(
+        Object.keys(metadata).sort().map((key) =>
+          [key, metadata[key].signature, metadata[key].value]),
+      );
+      fingerprints.set(id, fingerprint);
+      if (!replaced && this._fingerprints.has(id) &&
+        this._fingerprints.get(id) !== fingerprint) {
+        try {
+          this.TrackMetadataChanged(id, metadata);
+        } catch {
+          mprisLog.warn("failed to emit TrackList metadata");
+        }
+      }
+    }
+    this._fingerprints = fingerprints;
+  }
+
+  private _metadata(item: QueueItem): Metadata {
+    const current = this._playerMetadata();
+    const metadata = buildMetadata(item);
+    if (current["mpris:trackid"]?.value === occurrenceTrackId(item.occurrenceId)) {
+      for (const key of ["mpris:length", "mpris:artUrl"]) {
+        if (current[key] === undefined) delete metadata[key];
+        else metadata[key] = current[key];
+      }
+      // Radio labels belong to the timed song; ordinary queue labels come from
+      // the latest snapshot, including in-place edits without an item event.
+      if (item.playParams?.kind === "radioStation") {
+        for (const key of [
+          "xesam:title", "xesam:artist", "xesam:album", "xesam:url",
+        ]) {
+          if (current[key] === undefined) delete metadata[key];
+          else metadata[key] = current[key];
+        }
+      }
+    }
+    // Reuse current cached artwork only; inspecting the queue never downloads it.
+    if (!String(metadata["mpris:artUrl"]?.value ?? "").startsWith("file://")) {
+      delete metadata["mpris:artUrl"];
+    }
+    metadata["xesam:title"] ??= new Variant("s", "");
+    return metadata;
+  }
+
+  TrackListReplaced(tracks: string[], current: string): [string[], string] {
+    return [tracks, current];
+  }
+
+  TrackMetadataChanged(id: string, metadata: Metadata): [string, Metadata] {
+    return [id, metadata];
+  }
+
+  TrackAdded(metadata: Metadata, after: string): [Metadata, string] {
+    return [metadata, after];
+  }
+
+  TrackRemoved(id: string): string {
+    return id;
+  }
+}
+
+MediaPlayer2TrackList.configureMembers({
+  properties: {
+    Tracks: { signature: "ao", access: ACCESS_READ },
+    CanEditTracks: { signature: "b", access: ACCESS_READ },
+  },
+  methods: {
+    GetTracksMetadata: { inSignature: "ao", outSignature: "aa{sv}" },
+    AddTrack: { inSignature: "sob", outSignature: "" },
+    RemoveTrack: { inSignature: "o", outSignature: "" },
+    GoTo: { inSignature: "o", outSignature: "" },
+  },
+  signals: {
+    TrackListReplaced: { signature: "aoo" },
+    TrackMetadataChanged: { signature: "oa{sv}" },
+    TrackAdded: { signature: "a{sv}o" },
+    TrackRemoved: { signature: "o" },
+  },
+});
+
 let bus: InstanceType<typeof dbus.MessageBus> | null = null;
 
 function disconnectBus(): void {
@@ -1080,7 +1256,7 @@ function disconnectBus(): void {
 // --- Public API ---
 
 /**
- * Exports both MPRIS interfaces on the session bus, claims
+ * Exports the root, Player and TrackList interfaces on the session bus, claims
  * `org.mpris.MediaPlayer2.<app name>` and wires the interfaces to player
  * events. Linux only, and required lazily by `main.ts` for that reason.
  */
@@ -1094,6 +1270,11 @@ export function init(ctx: IntegrationContext): void {
     getMainWindow,
     player.capabilitiesSnapshot(),
     player.hookReadyUrl(),
+    () => trackListIface.refreshMetadata(),
+  );
+  const trackListIface = new MediaPlayer2TrackList(
+    () => playerIface.Metadata,
+    (id) => playerIface.goTo(id),
   );
   // The `webContents` getter can throw after window destruction, but a captured
   // EventEmitter handle remains safe for `removeListener()`. Capture it once
@@ -1152,6 +1333,9 @@ export function init(ctx: IntegrationContext): void {
   ): void => {
     playerIface.updateNowPlaying(payload);
   };
+  const onQueueDidChange = (snapshot: QueueSnapshot): void => {
+    trackListIface.updateQueue(snapshot);
+  };
   const onTimedMetadataDidChange = (payload: TimedMetadataPayload): void => {
     playerIface.updateTimedMetadata(payload);
   };
@@ -1185,6 +1369,7 @@ export function init(ctx: IntegrationContext): void {
     );
     player.removeListener("playbackStopped", onPlaybackStopped);
     player.removeListener("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+    player.removeListener("queueDidChange", onQueueDidChange);
     player.removeListener("timedMetadataDidChange", onTimedMetadataDidChange);
     player.removeListener("repeatModeDidChange", onRepeatModeDidChange);
     player.removeListener("shuffleModeDidChange", onShuffleModeDidChange);
@@ -1215,6 +1400,16 @@ export function init(ctx: IntegrationContext): void {
 
   bus.export(MPRIS_PATH, rootIface);
   bus.export(MPRIS_PATH, playerIface);
+  bus.export(MPRIS_PATH, trackListIface);
+  trackListIface.updateQueue(player.queueSnapshot());
+  const nowPlaying = player.nowPlayingSnapshot();
+  if (nowPlaying) {
+    playerIface.updateNowPlaying(nowPlaying);
+    const playback = player.playbackSnapshot();
+    playerIface.updatePlaybackStatus({
+      status: playback.isPlaying, state: playback.state,
+    });
+  }
   navigationContents?.on("did-start-navigation", onNavigationStarted);
   navigationContents?.on("will-redirect", onNavigationRedirected);
   navigationContents?.on("did-navigate", onNavigationCommitted);
@@ -1242,6 +1437,7 @@ export function init(ctx: IntegrationContext): void {
   player.on("playbackCapabilitiesDidChange", onPlaybackCapabilitiesDidChange);
   player.on("playbackStopped", onPlaybackStopped);
   player.on("nowPlayingItemDidChange", onNowPlayingItemDidChange);
+  player.on("queueDidChange", onQueueDidChange);
   player.on("timedMetadataDidChange", onTimedMetadataDidChange);
   player.on("repeatModeDidChange", onRepeatModeDidChange);
   player.on("shuffleModeDidChange", onShuffleModeDidChange);

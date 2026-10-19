@@ -252,6 +252,7 @@ When a full-document navigation commits, `main.ts` calls `Player.resetForDocumen
 |---|---|---|
 | `playbackStateDidChange` | `{ status: bool, state }` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
 | `nowPlayingItemDidChange` | `NowPlayingPayload` (see `src/player.ts`) or `null` | MPRIS, Discord, Last.fm, Notifications, Dock, Taskbar |
+| `queueDidChange` | Validated `QueueSnapshot`, at most 21 occurrences | MPRIS TrackList |
 | `timedMetadataDidChange` | Bounded song candidate, or an incomplete-transition marker | Last.fm, MPRIS, Notifications |
 | `playbackCapabilitiesDidChange` | `PlaybackCapabilities` | MPRIS |
 | `playbackStopped` | `{ requestId, success }` | MPRIS |
@@ -328,6 +329,7 @@ The MPRIS and wedge dispatch sites log command provenance without command argume
 | Set repeat mode | `window.__sidra.setRepeat(mode)` | MPRIS `LoopStatus` |
 | Set shuffle mode | `window.__sidra.setShuffle(mode)` | MPRIS `Shuffle` |
 | Open media URL | `window.__sidra.openUri(url)` | MPRIS `OpenUri()` |
+| Select queued occurrence | `window.__sidra.goTo(occurrenceId)` | MPRIS TrackList `GoTo()` |
 
 ---
 
@@ -587,7 +589,7 @@ MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] 
 
 | MPRIS property | MusicKit source |
 |---|---|
-| `mpris:trackid` | `/org/sidra/track/{item.id}` |
+| `mpris:trackid` | `/org/sidra/tracklist/{occurrenceId}`, matching the TrackList occurrence; legacy payloads without occurrence identity use `/org/sidra/track/{item.id}` |
 | `mpris:length` | Effective finite playback duration in microseconds, with item duration as fallback |
 | `mpris:artUrl` | `artwork.url` (512x512) |
 | `xesam:title` | `attributes.name` |
@@ -599,6 +601,34 @@ MPRIS command provenance uses `source=mpris method=<method> [channel=<channel>] 
 Library items without `attributes.url` use a catalogue ID to reconstruct `/song/{id}`. Without a URL or catalogue ID, Sidra omits `xesam:url`.
 Timed radio metadata updates title, artist, album and share URL while retaining the station track ID, artwork, duration and position.
 Missing song fields clear the previous song's fields. A missing song URL falls back to the station URL when available.
+
+### Read-only TrackList
+
+Sidra exports `org.mpris.MediaPlayer2.TrackList` on the existing `/org/mpris/MediaPlayer2` object and reports `HasTrackList=true`. It exposes the current queue occurrence, up to ten before it and up to ten after it. At either end, the window shifts to retain 21 entries when available; shorter queues expose every entry. A loaded queue with no current item uses the clamped MusicKit queue position as its anchor. An empty queue exposes an empty list.
+
+The hook assigns opaque IDs using a `WeakMap` of MusicKit item objects. Separate appearances of the same catalogue recording receive distinct IDs. Retained objects keep their IDs through queue edits and context slides; document or MusicKit instance replacement starts a new namespace. If MusicKit reuses one object for multiple entries, Sidra declines to publish the ambiguous context. Player metadata still identifies the current item. When the current object cannot be associated with the queue, replacement signals report `NoTrack` as the TrackList's current occurrence.
+
+`queueDidChange` carries only the bounded context through the existing generation-checked renderer IPC. `Player` validates its exact shape, identities, uniqueness and metadata fields, caches independent snapshots, and clears them on committed document replacement. The hook observes `queueItemsDidChange`, `queuePositionDidChange` and item changes. The existing 250 ms poll checks for edits MusicKit does not announce; unchanged snapshots send no IPC. Position ticks do not report the queue.
+
+| Member | Behaviour |
+|---|---|
+| `Tracks` | Ordered occurrence object paths, zero to 21 entries |
+| `CanEditTracks` | Always false |
+| `GetTracksMetadata(ids)` | Metadata for known exposed IDs, in request order; ignores unknown IDs |
+| `GoTo(id)` | Resolve an exposed identity against the live queue, navigate with `changeToMediaAtIndex()`, then rewind seekable media and play; unbounded radio stations resume |
+| `AddTrack`, `RemoveTrack` | Return `org.freedesktop.DBus.Error.NotSupported` |
+
+Queue selection shares the serial SDK command chain with `OpenUri`, waits only for a Stop already pending when enqueued, and never replaces queue contents. Queue commands capture that Stop intent at enqueue time so they cannot depend on a later Stop chained behind them. It checks exact occurrence arrival before seeking to zero, including when identical recordings appear twice or the selected entry is already current. Queue requests have bounded waits; timed-out SDK operations retain ownership until they actually settle. Next, Previous, Pause, Stop, Play, PlayPause and Seek cancel stale selection continuations immediately, but issue their SDK calls in order on that same chain, including after a queue timeout. Pause and Stop suppress superseded pending resumes. Stop captures its item generation when it starts, so the preceding queue operation's item change does not discard the newer Stop. Document changes and replaced instances discard waiting controls. Stale or removed identities cause no navigation.
+
+A changed exposed sequence emits `TrackListReplaced`, followed by `PropertiesChanged` with `Tracks` invalidated and no replacement value. In-place metadata edits emit `TrackMetadataChanged` for affected visible occurrences. Changing the current item within an unchanged window uses Player metadata instead of a false replacement signal. Current duration, cached artwork and timed radio labels also refresh the corresponding TrackList metadata. Queue inspection never downloads artwork; only the current item's existing local cache is exposed. `TrackAdded` and `TrackRemoved` are declared but not emitted. Position, volume, repeat and playback-status changes alone cause no TrackList traffic.
+
+The wire-level test runs on a disposable session bus:
+
+```bash
+dbus-run-session -- env SIDRA_TEST_MPRIS_BUS=1 npm test -- test/mprisBus.test.ts
+```
+
+Live playback verification should additionally cover Apple Music and Classical queues, duplicate recordings, shuffle, service switching and natural gapless advancement. Passing the isolated bus test does not establish MusicKit's behaviour on a live Apple page.
 
 ---
 
