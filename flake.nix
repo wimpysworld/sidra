@@ -100,7 +100,8 @@
               ]
               ++ lib.optionals stdenv.hostPlatform.isLinux [
                 gsettings-desktop-schemas
-              ];
+              ]
+              ++ import ./nix/loader.nix { inherit pkgs; };
 
             # CastLabs Electron (installed via npm) is a prebuilt binary that
             # expects libraries in standard FHS paths. On NixOS we must set
@@ -137,6 +138,7 @@
 
             # Use the NixOS system GPU drivers without pinning a GPU vendor.
             shellHook = (pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+              export NIX_LD="${pkgs.stdenv.cc.bintools.dynamicLinker}"
               if [ -d "/run/opengl-driver/lib" ]; then
                 if [ -z "$LD_LIBRARY_PATH" ]; then
                   export LD_LIBRARY_PATH="/run/opengl-driver/lib"

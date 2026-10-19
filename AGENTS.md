@@ -16,7 +16,9 @@ Minimal Apple Music desktop client. CastLabs Electron wraps `music.apple.com` an
 
 ## Development commands
 
-Run `just --list` to see all available recipes. Key entry points: `just install` → `just run` for a dev build; `just test` for unit tests; `just lint` for type-check and actionlint. Debug variants (`run-debug`, `run-devtools`, `run-inspect`) and style tooling (`measure`, `alter`) are also available.
+Run `just --list` to see all available recipes. Key entry points: `just install` → `just run` for a dev build; `just test` for unit tests; `just lint` for type-check and actionlint. Debug variants (`run-debug`, `run-devtools`, `run-inspect`) are also available.
+
+Keep the root `build`, `test`, `lint`, and `release` recipes for Sidra. Do not import `just/loader.just` into the root: managed build/test have no TypeScript support, and managed release uses incompatible tags. The managed files remain separate, while `flake.nix` imports `nix/loader.nix`. Use `tailor measure` for local project health.
 
 ## User-Agent
 
