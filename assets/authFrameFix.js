@@ -6,12 +6,12 @@
   /** @type {{ css: string, containerSelectors: string[], logPrefix: string }} */
   var CONFIG = __SIDRA_AUTH_FIX__;
 
-  // PASSKEY_CONTAINER_SELECTORS in src/authFrame.ts supplies CSS and ancestor matches.
-  // Broad selectors stay script-only: they start at a matched button, but CSS would hide unrelated form groups.
+  // Broad selectors start at a matched button to protect unrelated form groups.
   const sharedContainers = CONFIG.containerSelectors;
   const SCRIPT_ONLY_CONTAINERS = ['[class*="passkey" i]', '[class*="iphone" i]', '[role="group"]', 'fieldset'];
 
-  const css = CONFIG.css + '\n' + sharedContainers.join(',\n') + ' {\n  display: none !important;\n}\n';
+  // Keep container hiding in the script so shared login inputs remain visible.
+  const css = CONFIG.css;
   const STYLE_ID = 'sidra-auth-fix';
   const TEXT_RE = /(sign in with )?iphone|passkey/i;
   const CAPTION_RE = /requires .{0,30}(ios|iphone|ipad)|(ios|ipados) ?\d+ or later/i;
@@ -37,11 +37,26 @@
     return el.style && el.style.display === 'none';
   }
 
+  function canHideContainer(el) {
+    return el !== document.body && el !== document.documentElement
+      && !el.matches('input') && !el.querySelector('input');
+  }
+
+  function hideMatchingContainers() {
+    let count = 0;
+    for (const el of document.querySelectorAll(sharedContainers.join(', '))) {
+      if (isHidden(el) || !canHideContainer(el)) continue;
+      hideEl(el);
+      count++;
+    }
+    return count;
+  }
+
   function hideContainerFor(btn) {
     // Prefer a matching container. Limit the caption fallback to two parents
     // to avoid hiding the whole form.
     const container = btn.closest(CONTAINER_SELECTOR);
-    if (container && container !== document.body && container !== document.documentElement) {
+    if (container && canHideContainer(container)) {
       hideEl(container);
       return 1;
     }
@@ -49,7 +64,7 @@
     for (let depth = 0; depth < 2 && parent; depth++) {
       if (parent === document.body || parent === document.documentElement) break;
       const text = (parent.textContent || '').trim();
-      if (text && CAPTION_RE.test(text)) {
+      if (text && CAPTION_RE.test(text) && canHideContainer(parent)) {
         hideEl(parent);
         return 1;
       }
@@ -92,8 +107,9 @@
 
   function runHidePasses() {
     const { buttonsHidden, containersHidden } = hideMatchingButtons();
+    const matchingContainersHidden = hideMatchingContainers();
     const captionsHidden = hideCaptionElements();
-    return { buttonsHidden, captionsHidden, containersHidden };
+    return { buttonsHidden, captionsHidden, containersHidden: containersHidden + matchingContainersHidden };
   }
 
   const result = runHidePasses();

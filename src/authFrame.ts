@@ -5,9 +5,9 @@
 export const AUTH_FIX_TOKEN = '__SIDRA_AUTH_FIX__';
 
 /**
- * Feature-specific containers shared by the injected stylesheet and closest() lookup.
+ * Feature-specific containers checked directly and through closest() in the injected script.
+ * Both paths preserve containers with inputs, regardless of the button label.
  * Broad selectors stay in assets/authFrameFix.js, where the lookup starts at a matched button.
- * Used directly in CSS, those selectors would hide unrelated form groups.
  */
 export const PASSKEY_CONTAINER_SELECTORS = [
   '[class*="passkey-option" i]',

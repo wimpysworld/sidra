@@ -774,9 +774,10 @@ Sidra treats these options as unsupported desktop auth paths and hides them befo
 
 Implementation:
 
-- `assets/authStyleFix.css` hides known passkey, iPhone, and cross-device button/container variants using attribute selectors that survive Apple's obfuscated class names.
+- `assets/authStyleFix.css` hides known passkey, iPhone, and cross-device buttons with attribute selectors that tolerate Apple's class names.
 - `setupAuthFrameInjection()` listens for `did-frame-finish-load`, filters subframes to `auth.music.apple.com` and `idmsa.apple.com`, then injects the CSS and fallback script with `webFrameMain.executeJavaScript()`.
-- The fallback scans button text and standalone captions, hides only bounded containers, and installs a `MutationObserver` so Apple auth re-renders are handled.
+- `assets/authFrameFix.js` checks feature-specific containers independently of button text, so localised controls remain covered. It preserves every container with an input.
+- The script also scans button text and standalone captions, limits the caption fallback to two parents, and repeats these checks through a `MutationObserver`.
 - Iframe console messages prefixed with `[sidra] auth-frame hide:` are forwarded to the `auth-frame` log scope.
 - `assets/authStyleFix.css` must stay listed in `asarUnpack`; packaged builds read it from disk at runtime.
 

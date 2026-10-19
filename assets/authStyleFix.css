@@ -1,6 +1,5 @@
 /* Hide iPhone and passkey buttons with attribute selectors that tolerate class
-   renaming. assets/authFrameFix.js also matches button text and appends the
-   PASSKEY_CONTAINER_SELECTORS from src/authFrame.ts, shared with its ancestor search. */
+   renaming. assets/authFrameFix.js checks containers for inputs before hiding them. */
 button[data-component-name*="iphone" i],
 button[data-component-name*="cross-device" i],
 button[data-testid*="passkey" i],
