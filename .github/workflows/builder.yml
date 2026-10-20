@@ -270,7 +270,9 @@ jobs:
       # that would run every Linux target, and EVS signing, as root.
       - name: Build snap
         if: matrix.os == 'linux' && github.event_name != 'pull_request'
-        run: sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
+        run: |
+          node scripts/patch-snap-desktop.cjs
+          sudo env "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=host npx electron-builder --publish never --linux snap
       - name: Upload artefacts
         uses: actions/upload-artifact@v7
         with:
