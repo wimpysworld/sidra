@@ -6,13 +6,21 @@ import { runInNewContext } from "node:vm";
 import { Arch } from "builder-util";
 import { describe, expect, it } from "vitest";
 
-const { patchSnapDesktop } = require("../scripts/patch-snap-desktop.cjs") as {
+const { assertSnapDesktopVersion, patchSnapDesktop } = require("../scripts/patch-snap-desktop.cjs") as {
+  assertSnapDesktopVersion(version: string): void;
   patchSnapDesktop(source: string): string;
 };
 const target = require.resolve("app-builder-lib/out/targets/snap/core24.js");
 const source = readFileSync(target, "utf8");
 
 describe("Snap desktop backport", () => {
+  it("accepts the installed version and rejects an unreviewed upgrade", () => {
+    expect(() => assertSnapDesktopVersion(require("app-builder-lib/package.json").version))
+      .not.toThrow();
+    expect(() => assertSnapDesktopVersion("26.18.0"))
+      .toThrow("Review the Snap desktop backport for app-builder-lib 26.18.0.");
+  });
+
   it("is idempotent and rejects an unknown source layout", () => {
     const patched = patchSnapDesktop(source);
     expect(patchSnapDesktop(patched)).toBe(patched);
