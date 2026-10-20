@@ -145,6 +145,12 @@
       "base": "org.electronjs.Electron2.BaseApp",
       "baseVersion": "26.08",
       "branch": "stable",
+      "files": [
+        [
+          "build/world.wimpys.sidra.metainfo.xml",
+          "/share/metainfo/world.wimpys.sidra.metainfo.xml"
+        ]
+      ],
       "finishArgs": [
         "--socket=wayland",
         "--socket=fallback-x11",

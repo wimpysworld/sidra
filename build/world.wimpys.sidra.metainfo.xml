@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Martin Wimpress -->
+<component type="desktop-application">
+  <id>world.wimpys.sidra</id>
+  <name>Sidra</name>
+  <summary>An elegant Apple Music desktop client for Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BlueOak-1.0.0</project_license>
+  <developer id="https://github.com/wimpysworld">
+    <name>Martin Wimpress</name>
+  </developer>
+  <update_contact>code@wimpress.io</update_contact>
+  <description>
+    <p>
+      Sidra is Apple Music as a proper desktop citizen on Linux. It wraps
+      music.apple.com directly and lets the audio through untouched, wired into
+      the desktop's native media controls instead of covering it with a custom
+      interface. Apple keeps the interface current and Sidra inherits every
+      improvement automatically.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Untouched audio, with lossless playback on macOS and Windows</li>
+      <li>Eight bundled themes, plus a live-reloading custom colour theme</li>
+      <li>Last.fm scrobbling</li>
+      <li>Discord Rich Presence</li>
+      <li>Desktop notifications with playback controls</li>
+      <li>32 languages</li>
+      <li>MPRIS integration, including the tracks around the current one</li>
+      <li>Controller support</li>
+    </ul>
+  </description>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Music</category>
+  </categories>
+  <launchable type="desktop-id">world.wimpys.sidra.desktop</launchable>
+  <url type="homepage">https://github.com/wimpysworld/sidra</url>
+  <url type="bugtracker">https://github.com/wimpysworld/sidra/issues</url>
+  <url type="vcs-browser">https://github.com/wimpysworld/sidra</url>
+  <content_rating type="oars-1.1"/>
+  <icon type="stock">world.wimpys.sidra</icon>
+  <releases>
+    <release version="1.2.0" date="2026-10-20">
+      <description>
+        <p>
+          Apple Account sign-in forms stay visible when Apple places the email
+          or password field beside the passkey options. The queue is available
+          through the MPRIS TrackList, so a compatible desktop can show the
+          tracks around the current one and jump to a selected one.
+        </p>
+        <p>
+          The AppImage bundles its FUSE library, so libfuse2 and libfuse2t64
+          are no longer needed. Experimental Flatpak bundles for x86_64 and
+          aarch64 are available, and the RPM no longer conflicts with Cider.
+        </p>
+      </description>
+    </release>
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/wimpysworld/sidra/main/assets/source/sidra-screenshot-01.png</image>
+      <caption>Sidra artist page with the Everforest theme</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/wimpysworld/sidra/main/assets/source/sidra-screenshot-02.png</image>
+      <caption>Sidra artist page with the Catppuccin theme</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/wimpysworld/sidra/main/assets/source/sidra-screenshot-03.png</image>
+      <caption>Sidra artist page with the Gruvbox theme</caption>
+    </screenshot>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/wimpysworld/sidra/main/assets/source/sidra-screenshot-04.png</image>
+      <caption>Sidra artist page with the Dracula theme</caption>
+    </screenshot>
+  </screenshots>
+</component>
