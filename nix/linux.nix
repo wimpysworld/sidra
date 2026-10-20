@@ -55,11 +55,11 @@ let
   sources = {
     x86_64-linux = {
       url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-amd64.deb";
-      hash = "sha256-lwMzfmwKMu3JViHtnw5fcN5CUyuFUFwbjQDeozU/OHE=";
+      hash = "sha256-UBtROUl6ID1D9vAIuRQr4A9W4BTf4ssUsem9LS0fX3Q=";
     };
     aarch64-linux = {
       url = "https://github.com/wimpysworld/sidra/releases/download/${version}/Sidra-${version}-linux-arm64.deb";
-      hash = "sha256-WTmR2DNSegXEHKF29Bj46MehadPhvGDt9bOluUARqBE=";
+      hash = "sha256-JZ4auCKN4pLOlkoWy/ZFb/t2clSEkoQcLOcA0ebhxbs=";
     };
   };
 
