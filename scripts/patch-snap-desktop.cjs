@@ -5,6 +5,12 @@ const fs = require("node:fs");
 const mapping = '            desktop: `meta/gui/${desktopBaseName}.desktop`,\n';
 const replacement = "            // Sidra: use the generated snap/gui desktop entry.\n";
 
+function assertSnapDesktopVersion(version) {
+  if (version !== "26.17.0") {
+    throw new Error(`Review the Snap desktop backport for app-builder-lib ${version}.`);
+  }
+}
+
 function patchSnapDesktop(source) {
   if (source.includes(replacement) && !source.includes(mapping)) {
     return source;
@@ -16,12 +22,9 @@ function patchSnapDesktop(source) {
 }
 
 if (require.main === module) {
-  const version = require("app-builder-lib/package.json").version;
-  if (version !== "26.17.0") {
-    throw new Error(`Review the Snap desktop backport for app-builder-lib ${version}.`);
-  }
+  assertSnapDesktopVersion(require("app-builder-lib/package.json").version);
   const target = require.resolve("app-builder-lib/out/targets/snap/core24.js");
   fs.writeFileSync(target, patchSnapDesktop(fs.readFileSync(target, "utf8")));
 }
 
-module.exports = { patchSnapDesktop };
+module.exports = { assertSnapDesktopVersion, patchSnapDesktop };
