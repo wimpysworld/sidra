@@ -44,7 +44,7 @@ exports.generateAppStream = function generateAppStream(projectDir) {
  <summary>${escapeXml(snapcraft[snapcraft.base].summary)}</summary>
  <metadata_license>CC0-1.0</metadata_license>
  <project_license>${escapeXml(pkg.license)}</project_license>
- <developer><name>${escapeXml(author)}</name></developer>
+ <developer id="${escapeXml(`io.github.${publish.owner}`)}"><name>${escapeXml(author)}</name></developer>
  <description>
   <p>Listen to Apple Music and Apple Music Classical from your desktop.</p>
   <p>An Apple Music subscription is required for playback.</p>
