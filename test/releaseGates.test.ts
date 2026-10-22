@@ -20,6 +20,7 @@ const { EVS_PACKAGE } = require("../build/evs.cjs") as { EVS_PACKAGE: string };
 interface HookContext {
   appOutDir: string;
   electronPlatformName: string;
+  targets?: { name: string }[];
 }
 
 type BuildHook = (context: HookContext) => Promise<void>;
@@ -100,6 +101,7 @@ describe("release build scripts", () => {
       afterPack({
         appOutDir: "/tmp/sidra-test",
         electronPlatformName: "linux",
+        targets: [],
       }),
     ).resolves.toBeUndefined();
     await expect(

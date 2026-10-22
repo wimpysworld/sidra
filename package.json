@@ -145,6 +145,9 @@
       "base": "org.electronjs.Electron2.BaseApp",
       "baseVersion": "26.08",
       "branch": "stable",
+      "files": [
+        ["release/metainfo", "/share/metainfo"]
+      ],
       "finishArgs": [
         "--socket=wayland",
         "--socket=fallback-x11",
