@@ -60,7 +60,7 @@ describe("AppStream metadata", () => {
     expect(xml).toContain("<id>org.example.Music</id>");
     expect(xml).toContain("org.example.Music.desktop</launchable>");
     expect(xml).toContain("Music &amp; &lt;Friends&gt; &quot;Edition&quot;</name>");
-    expect(xml).toContain("Someone&apos;s Music &amp; Co</name>");
+    expect(xml).toContain('<developer id="io.github.example"><name>Someone&apos;s Music &amp; Co</name></developer>');
     expect(xml).toContain("<summary>Music &amp; more</summary>");
     expect(xml).toContain("<project_license>MIT</project_license>");
     expect(xml).toContain("https://example.com/?one=1&amp;two=2</url>");
