@@ -149,6 +149,7 @@
         ["release/metainfo", "/share/metainfo"]
       ],
       "finishArgs": [
+        "--env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0",
         "--socket=wayland",
         "--socket=fallback-x11",
         "--share=ipc",

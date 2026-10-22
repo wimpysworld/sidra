@@ -61,6 +61,19 @@ function main() {
   }
   console.log("  \u2713 VMP hooks: macOS afterPack, Windows afterSign");
 
+  const zypakStrategy = config.flatpak?.finishArgs?.filter((arg) =>
+    arg.startsWith("--env=ZYPAK_ZYGOTE_STRATEGY_SPAWN="),
+  ) ?? [];
+  if (
+    zypakStrategy.length !== 1 ||
+    zypakStrategy[0] !== "--env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0"
+  ) {
+    throw new Error(
+      "build.flatpak.finishArgs must set --env=ZYPAK_ZYGOTE_STRATEGY_SPAWN=0 exactly once to prevent the CastLabs startup crash",
+    );
+  }
+  console.log("  \u2713 Flatpak: Zypak spawn strategy disabled, sandbox retained");
+
   const nsis = config.nsis;
   if (nsis?.oneClick !== false) {
     throw new Error(
