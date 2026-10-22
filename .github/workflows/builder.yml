@@ -221,7 +221,7 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y librsvg2-bin rpm flatpak flatpak-builder
+          sudo apt-get install -y librsvg2-bin rpm flatpak flatpak-builder appstream
       - name: Install Flatpak build runtimes
         if: matrix.os == 'linux'
         run: |
@@ -248,6 +248,9 @@ jobs:
         env:
           EVS_ACCOUNT_NAME: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_ACCOUNT_NAME || '' }}
           EVS_PASSWD: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EVS_PASSWD || '' }}
+      - name: Validate Flatpak AppStream metadata
+        if: matrix.os == 'linux'
+        run: appstreamcli validate --no-net release/metainfo/*.metainfo.xml
       - name: Check RPM build-ID links
         if: matrix.os == 'linux'
         shell: bash
