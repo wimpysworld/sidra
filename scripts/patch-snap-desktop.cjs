@@ -6,7 +6,7 @@ const mapping = '            desktop: `meta/gui/${desktopBaseName}.desktop`,\n';
 const replacement = "            // Sidra: use the generated snap/gui desktop entry.\n";
 
 function assertSnapDesktopVersion(version) {
-  if (version !== "26.17.0") {
+  if (version !== "26.18.1") {
     throw new Error(`Review the Snap desktop backport for app-builder-lib ${version}.`);
   }
 }
