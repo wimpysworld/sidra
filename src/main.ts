@@ -241,6 +241,7 @@ export interface Assets {
   authFrameScript: string;
   navBarScript: string;
   hookScript: string;
+  fastQueueScript: string;
 }
 
 function createSplash(): {
@@ -462,7 +463,17 @@ function loadAssets(): Assets {
     .replace("__SIDRA_SERVICE_HOSTS__", () =>
       JSON.stringify(allServices().map((service) => service.host)),
     );
-  return { STYLE_FIX_CSS, authFrameScript, navBarScript, hookScript };
+  const fastQueueScript = fs.readFileSync(
+    getAssetPath("assets", "fastPlaylistQueue.js"),
+    "utf-8",
+  );
+  return {
+    STYLE_FIX_CSS,
+    authFrameScript,
+    navBarScript,
+    hookScript,
+    fastQueueScript,
+  };
 }
 
 function createMainWindow(ses: Electron.Session): {
@@ -593,6 +604,13 @@ async function injectRendererScripts(
         ),
       );
       mainLog.debug("MusicKit hook injected");
+      try {
+        await win.webContents.executeJavaScript(assets.fastQueueScript);
+        mainLog.debug("Fast playlist queue injected");
+      } catch (e: unknown) {
+        // Playback still works through Apple's slower queue, so this must not read as a hook failure.
+        mainLog.warn(`failed to inject fastQueueScript ${context}:`, e);
+      }
     } else {
       mainLog.warn(
         "skipped hookScript injection on disallowed host:",
