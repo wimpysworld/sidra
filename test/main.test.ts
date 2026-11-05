@@ -516,7 +516,7 @@ describe("main bootstrap", () => {
     expect(bootstrap.webContents.executeJavaScript).not.toHaveBeenCalled();
 
     await finish?.();
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
     for (const initialise of Object.values(bootstrap.integrations)) {
       expect(initialise.mock.invocationCallOrder[0]).toBeLessThan(
         bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
@@ -524,7 +524,7 @@ describe("main bootstrap", () => {
     }
 
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(6);
     for (const initialise of Object.values(bootstrap.integrations))
       expect(initialise).toHaveBeenCalledOnce();
   });
@@ -554,7 +554,7 @@ describe("main bootstrap", () => {
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(5);
     expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
   });
 
