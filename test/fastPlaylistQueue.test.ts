@@ -130,6 +130,7 @@ function fakeIndexedDB(upgradeFrom?: number) {
     ),
     clear: () => request(() => store.clear()),
     getAllKeys: () => request(() => [...store.keys()]),
+    count: () => request(() => store.size),
     delete: vi.fn((id: string) => request(() => store.delete(id))),
   };
   const songStore = {
@@ -2005,6 +2006,100 @@ describe('fastPlaylistQueue', () => {
   });
 
   describe('signing out', () => {
+    it('checks that the saved data is gone after signing out', async () => {
+      const indexedDB = fakeIndexedDB();
+      const { mk } = fakeMusicKit(tracks);
+      runScript(mk, `/eg/library/playlist/${PLAYLIST}`, { indexedDB });
+      await settle(2000);
+      const countSpy = vi.spyOn(indexedDB.objectStore, 'count');
+      await mk.unauthorize();
+      await settle(100);
+      expect(countSpy).toHaveBeenCalledOnce();
+      expect(indexedDB.store.size).toBe(0);
+    });
+
+    it('tries the clear again when it did not empty the storage', async () => {
+      const indexedDB = fakeIndexedDB();
+      const { mk } = fakeMusicKit(tracks);
+      runScript(mk, `/eg/library/playlist/${PLAYLIST}`, { indexedDB });
+      await settle(2000);
+      const clear = indexedDB.objectStore.clear;
+      let ignored = 1;
+      indexedDB.objectStore.clear = () => {
+        if (ignored > 0) {
+          ignored -= 1;
+          return { onsuccess: undefined } as never;
+        }
+        return clear();
+      };
+      await mk.unauthorize();
+      await settle(5000);
+      expect(ignored).toBe(0);
+      expect(indexedDB.store.size).toBe(0);
+      expect(indexedDB.songs.size).toBe(0);
+    });
+
+    it('gives up on the clear after three attempts and says so', async () => {
+      const indexedDB = fakeIndexedDB();
+      const { mk } = fakeMusicKit(tracks);
+      const warn = vi.fn();
+      runScript(mk, `/eg/library/playlist/${PLAYLIST}`, { indexedDB, console: { warn } });
+      await settle(2000);
+      let attempts = 0;
+      indexedDB.objectStore.clear = () => {
+        attempts += 1;
+        return { onsuccess: undefined } as never;
+      };
+      await mk.unauthorize();
+      await settle(30000);
+      expect(attempts).toBe(3);
+      expect(warn).toHaveBeenCalledWith('[Sidra] failed to delete saved playlist tracks');
+    });
+
+    it('saves for the next account only after the clear has finished', async () => {
+      const indexedDB = fakeIndexedDB();
+      const { mk, originalSetQueue } = fakeMusicKit(tracks);
+      const window = runScript(mk, `/eg/library/playlist/${PLAYLIST}`, { indexedDB });
+      await settle(2000);
+      const clear = indexedDB.objectStore.clear;
+      let ignored = 1;
+      indexedDB.objectStore.clear = () => {
+        if (ignored > 0) {
+          ignored -= 1;
+          return { onsuccess: undefined } as never;
+        }
+        return clear();
+      };
+      await mk.unauthorize();
+      const location = window.location as { pathname: string };
+      location.pathname = '/eg/home';
+      await settle(1100);
+      location.pathname = `/eg/library/playlist/${PLAYLIST}`;
+      await settle(10000);
+      expect(originalSetQueue).not.toHaveBeenCalled();
+      expect(savedItems(indexedDB, PLAYLIST)).toHaveLength(4);
+    });
+
+    it('lets a save that is already being written finish before the clear', async () => {
+      const indexedDB = fakeIndexedDB();
+      const { mk } = fakeMusicKit(tracks);
+      indexedDB.objectStore.put.mockImplementation(((entry: ListRecord) => {
+        const pending: { result?: string; onsuccess?: () => void } = {};
+        setTimeout(() => {
+          indexedDB.store.set(entry.id, structuredClone(entry));
+          pending.result = entry.id;
+          pending.onsuccess?.();
+        }, 300);
+        return pending;
+      }) as never);
+      runScript(mk, `/eg/library/playlist/${PLAYLIST}`, { indexedDB });
+      await settle(1100);
+      await mk.unauthorize();
+      await settle(10000);
+      expect(indexedDB.store.size).toBe(0);
+      expect(indexedDB.songs.size).toBe(0);
+    });
+
     it('lets the original sign-out failure through', async () => {
       const { mk } = fakeMusicKit(tracks);
       Object.assign(mk, { unauthorize: vi.fn(async () => Promise.reject(new Error('denied'))) });
