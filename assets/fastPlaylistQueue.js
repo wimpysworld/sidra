@@ -299,13 +299,22 @@
     songs.clear();
     songBytes.clear();
     usage.clear();
-    writeChain = writeChain.then(() =>
-      withStore("readwrite", (listStore, songStore) => {
-        songStore.clear();
-        return listStore.clear();
-      }),
-    );
+    writeChain = writeChain.then(clearSaved);
     return writeChain;
+  }
+
+  // Signing out must leave nothing behind, so the clear is checked and tried again.
+  async function clearSaved() {
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
+      const remaining = await withStore("readwrite", (listStore, songStore) => {
+        songStore.clear();
+        listStore.clear();
+        return listStore.count();
+      });
+      if (remaining === 0) return;
+      if (attempt < RETRY_ATTEMPTS) await delay(RETRY_BASE_MS * 2 ** (attempt - 1));
+    }
+    console.warn("[Sidra] failed to delete saved playlist tracks");
   }
 
   // MusicKit drops tracks without play parameters, which would shift later queue positions.
