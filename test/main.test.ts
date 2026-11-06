@@ -529,6 +529,39 @@ describe("main bootstrap", () => {
       expect(initialise).toHaveBeenCalledOnce();
   });
 
+  it("does not load the fast playlist queue into a page outside Apple Music", async () => {
+    const { isAllowedNavigationUrl } = await import("../src/musicService");
+    await startMain();
+    const finish = bootstrap.mainWebListeners.get("did-finish-load");
+    vi.mocked(isAllowedNavigationUrl).mockReturnValue(false);
+    try {
+      await finish?.();
+    } finally {
+      vi.mocked(isAllowedNavigationUrl).mockReturnValue(true);
+    }
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      "skipped hookScript injection on disallowed host:",
+      expect.any(String),
+    );
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps injecting when the fast playlist queue fails", async () => {
+    await startMain();
+    const finish = bootstrap.mainWebListeners.get("did-finish-load");
+    bootstrap.webContents.executeJavaScript
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("queue script failed"));
+
+    await finish?.();
+
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      "failed to inject fastQueueScript on load:",
+      expect.any(Error),
+    );
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
+  });
+
   it("permits later SPA injection after initial integration and hook failures", async () => {
     bootstrap.integrations.notifications.mockImplementationOnce(() => {
       throw new Error("integration unavailable");
