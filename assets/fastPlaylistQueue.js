@@ -4,540 +4,255 @@
   if (window.__sidraFastQueueInjected) return;
   window.__sidraFastQueueInjected = true;
 
-  const DB_NAME = "sidra-fast-queue";
-  const DB_VERSION = 2;
-  const LISTS = "playlists";
-  const SONGS = "songs";
   const PAGE_SIZE = 100;
-  const FETCH_CONCURRENCY = 4;
-  const REVALIDATE_INTERVAL_MS = 60000;
-  // Saved data stays bounded however large a playlist is: recently used playlists only, for a
-  // limited time, within a total size.
-  const MAX_SAVED_LISTS = 20;
-  const MAX_SAVED_BYTES = 5 * 1024 * 1024;
+  const FETCH_CONCURRENCY = 8;
+  // Saved data stays bounded: the newest playlists only, within a size and an age.
+  const MAX_LISTS = 20;
+  const MAX_BYTES = 5 * 1024 * 1024;
   const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-  const USAGE_SAVE_INTERVAL_MS = 60000;
-  const USAGE_KEY = "__usage";
-  const INSTALL_POLL_MS = 1000;
-  const FILL_ATTEMPTS = 3;
-  const FILL_RETRY_MS = 2000;
-  // A request that fails for a moment is tried again, waiting twice as long each time.
-  const RETRY_ATTEMPTS = 3;
-  const RETRY_BASE_MS = 500;
-  const SHUFFLE_SONGS = 1;
+  const STORAGE_TIMEOUT_MS = 3000;
   const PLAYLIST_PATH = /\/library\/playlist\/(p\.[^/?#]+)/;
   // MusicKit keeps any request with an option this script does not understand.
-  const HANDLED_OPTIONS = new Set([
-    "context",
-    "parameters",
-    "playlists",
-    "startPlaying",
-    "startWith",
-  ]);
+  const HANDLED_OPTIONS = new Set(["context", "parameters", "playlists", "startPlaying", "startWith"]);
 
-  // A playlist is an ordered list of song IDs. Each song is kept once, however many saved
-  // playlists use it, so a change to a playlist only touches the songs that changed.
-  const lists = new Map();
-  const songs = new Map();
-  const songBytes = new Map();
-  const usage = new Map();
-  const refreshes = new Map();
+  const inflight = new Map();
+  const tooLarge = new Set();
   const installed = new WeakSet();
-  let loaded = null;
-  let usageSavedAt = 0;
-  // Saves run one at a time, so a retried older save can never overwrite a newer one.
-  let writeChain = Promise.resolve();
-  // Late background work must not touch a queue that a newer request has replaced.
+  let database;
+  let pruned;
+  // A newer queue request, or a sign-out, ends work that was started for an older one.
   let queueGeneration = 0;
   let accountGeneration = 0;
   let prewarmedPath = "";
 
-  function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  // A request that fails is tried once more, because one failure should not cost the fast start.
+  const retry = (request) => request().catch(request);
+  // MusicKit returns an HTTP error as a body instead of throwing. That is a failure to retry, except
+  // the 404 Apple gives for a playlist with no tracks.
+  const ok = ({ data }) => {
+    if (data.errors && data.errors[0].status !== "404") throw new Error("request failed");
+    return data;
+  };
 
-  // Runs requests in one transaction and resolves with the result of the last one. Storage is
-  // an optimisation, so every failure resolves to undefined and never leaves a caller waiting.
-  function withStore(mode, operation) {
-    return new Promise((resolve) => {
+  function openDatabase() {
+    database ||= new Promise((resolve) => {
+      // A failed open is not remembered, so the next call tries again.
+      const fail = () => {
+        database = undefined;
+        resolve();
+      };
       try {
-        const open = indexedDB.open(DB_NAME, DB_VERSION);
-        open.onupgradeneeded = (event) => {
-          const db = open.result;
-          for (const name of [LISTS, SONGS]) {
-            if (!db.objectStoreNames || !db.objectStoreNames.contains(name)) {
-              db.createObjectStore(name, { keyPath: "id" });
-            }
-          }
-          // Version 1 saved whole lists in one record, which this version does not read.
-          if (event && event.oldVersion === 1) open.transaction.objectStore(LISTS).clear();
+        const open = indexedDB.open("sidra-fast-queue", 3);
+        open.onupgradeneeded = () => {
+          for (const name of [...open.result.objectStoreNames]) open.result.deleteObjectStore(name);
+          for (const name of ["meta", "lists"]) open.result.createObjectStore(name, { keyPath: "id" });
         };
-        open.onblocked = () => resolve(undefined);
-        open.onerror = () => resolve(undefined);
         open.onsuccess = () => {
           const db = open.result;
-          try {
-            const tx = db.transaction([LISTS, SONGS], mode);
-            const request = operation(tx.objectStore(LISTS), tx.objectStore(SONGS));
-            if (!request) {
-              db.close();
-              resolve(undefined);
-              return;
-            }
-            request.onerror = () => {
-              db.close();
-              resolve(undefined);
-            };
-            request.onsuccess = () => {
-              db.close();
-              resolve(request.result);
-            };
-          } catch (_) {
+          // A newer version, or cleared site data, ends this connection; the next call opens again.
+          db.onclose = () => (database = undefined);
+          db.onversionchange = () => {
             db.close();
-            resolve(undefined);
-          }
+            database = undefined;
+          };
+          resolve(db);
         };
+        open.onerror = open.onblocked = fail;
       } catch (_) {
-        resolve(undefined);
+        fail();
       }
     });
+    return database;
   }
 
-  async function withRetry(operation, account) {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await operation();
-      } catch (error) {
-        if (attempt >= RETRY_ATTEMPTS || account !== accountGeneration) throw error;
-        await delay(RETRY_BASE_MS * 2 ** (attempt - 1));
-        if (account !== accountGeneration) throw error;
-      }
-    }
-  }
-
-  // Saving never holds up a caller. A write that fails is tried again, and one queued before a
-  // sign-out is dropped, so nothing is saved for an account that has gone.
-  function enqueueWrite(account, operation) {
-    writeChain = writeChain.then(async () => {
-      for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
-        if (account !== accountGeneration) return;
-        if ((await withStore("readwrite", operation)) !== undefined) return;
-        if (attempt < RETRY_ATTEMPTS) await delay(RETRY_BASE_MS * 2 ** (attempt - 1));
-      }
-      console.warn("[Sidra] failed to save playlist tracks");
-    });
-    return writeChain;
-  }
-
-  function byteSize(value) {
-    return JSON.stringify(value).length;
-  }
-
-  function referencedSongs() {
-    const ids = new Set();
-    for (const list of lists.values()) for (const id of list.order) ids.add(id);
-    return ids;
-  }
-
-  // Removes songs no saved playlist uses any more, so nothing is left behind.
-  function dropUnreferenced() {
-    const used = referencedSongs();
-    const gone = [];
-    for (const id of songs.keys()) if (!used.has(id)) gone.push(id);
-    for (const id of gone) {
-      songs.delete(id);
-      songBytes.delete(id);
-    }
-    return gone;
-  }
-
-  function savedBytes() {
-    let total = 0;
-    for (const bytes of songBytes.values()) total += bytes;
-    for (const list of lists.values()) total += list.order.join(",").length;
-    return total;
-  }
-
-  function loadSaved() {
-    if (!loaded) {
-      loaded = (async () => {
-        let listRequest;
-        const savedSongs = await withStore("readonly", (listStore, songStore) => {
-          listRequest = listStore.getAll();
-          return songStore.getAll();
-        });
-        if (!savedSongs || !listRequest) return;
-        for (const item of savedSongs) {
-          if (songs.has(item.id)) continue;
-          songs.set(item.id, item);
-          songBytes.set(item.id, byteSize(item));
-        }
-        const unusable = [];
-        for (const record of listRequest.result || []) {
-          if (record.id === USAGE_KEY) {
-            for (const [id, time] of Object.entries(record.used || {})) {
-              if (!usage.has(id)) usage.set(id, time);
-            }
-          } else if (
-            Array.isArray(record.order) &&
-            record.order.every((id) => songs.has(id)) &&
-            !lists.has(record.id)
-          ) {
-            lists.set(record.id, { id: record.id, version: record.version, order: record.order, checkedAt: 0 });
-          } else {
-            unusable.push(record.id);
+  // Runs `work` in one transaction and resolves with `{ value }` once it has committed, or with
+  // undefined when storage is missing, fails or does not answer in time. Storage is an
+  // optimisation, so nothing here ever rejects or leaves a caller waiting.
+  function withStore(mode, work) {
+    const run = openDatabase().then(
+      (db) =>
+        db &&
+        new Promise((resolve) => {
+          let tx;
+          try {
+            tx = db.transaction(["meta", "lists"], mode);
+            const value = work(tx.objectStore("meta"), tx.objectStore("lists"));
+            tx.oncomplete = () => resolve({ value });
+            tx.onabort = tx.onerror = () => resolve();
+          } catch (_) {
+            // Never leave a half-written transaction to commit.
+            tx?.abort();
+            resolve();
           }
-        }
-        for (const id of [...usage.keys()]) if (!lists.has(id)) usage.delete(id);
-        const gone = dropUnreferenced();
-        if (gone.length > 0 || unusable.length > 0) {
-          void withStore("readwrite", (listStore, songStore) => {
-            let last;
-            for (const id of gone) last = songStore.delete(id);
-            for (const id of unusable) last = listStore.delete(id);
-            return last;
-          });
-        }
-      })();
-    }
-    return loaded;
-  }
-
-  async function saveUsage() {
-    await loadSaved();
-    usageSavedAt = Date.now();
-    await withStore("readwrite", (listStore) =>
-      listStore.put({ id: USAGE_KEY, used: Object.fromEntries(usage) }),
+        }),
     );
+    return Promise.race([run, wait(STORAGE_TIMEOUT_MS)]);
   }
 
-  // Playing records use in a small record of its own, so it never rewrites a playlist.
-  function markUsed(id) {
-    if (!lists.has(id)) return;
-    usage.set(id, Date.now());
-    if (Date.now() - usageSavedAt >= USAGE_SAVE_INTERVAL_MS) void saveUsage();
-  }
-
-  // The playlist just saved is never the one removed.
-  function evict(keep) {
-    const rank = (id) => (id === keep ? Infinity : usage.get(id) || 0);
-    const evicted = [];
-    const remove = (id) => {
-      lists.delete(id);
-      usage.delete(id);
-      evicted.push(id);
-    };
-    const ranked = [...lists.keys()].sort((a, b) => rank(b) - rank(a));
-    for (const [index, id] of ranked.entries()) {
-      if (id === keep) continue;
-      if (index >= MAX_SAVED_LISTS || Date.now() - (usage.get(id) || 0) > MAX_AGE_MS) remove(id);
-    }
-    const gone = dropUnreferenced();
-    while (savedBytes() > MAX_SAVED_BYTES) {
-      const victim = [...lists.keys()].filter((id) => id !== keep).sort((a, b) => rank(a) - rank(b))[0];
-      if (victim === undefined) break;
-      remove(victim);
-      gone.push(...dropUnreferenced());
-    }
-    return { evicted, gone };
-  }
-
-  // Saves a playlist by writing only what changed: songs that are new or different, the
-  // order, and the removal of songs nothing uses any more. Returns false when it is too large.
-  function saveList(id, version, items) {
-    const account = accountGeneration;
-    const order = items.map((item) => item.id);
-    const changed = new Map();
-    let incoming = order.join(",").length;
-    for (const item of items) {
-      if (changed.has(item.id)) continue;
-      const known = songs.get(item.id);
-      const text = JSON.stringify(item);
-      if (!known || JSON.stringify(known) !== text) changed.set(item.id, item);
-      incoming += text.length;
-    }
-    if (incoming > MAX_SAVED_BYTES) {
-      if (lists.delete(id)) {
-        usage.delete(id);
-        const gone = dropUnreferenced();
-        enqueueWrite(account, (listStore, songStore) => {
-          for (const songId of gone) songStore.delete(songId);
-          listStore.delete(id);
-          return listStore.put({ id: USAGE_KEY, used: Object.fromEntries(usage) });
-        });
+  // Keeps the newest playlists within the limits. `keep` is never removed.
+  function prune(meta, lists, keep) {
+    const request = meta.getAll();
+    request.onsuccess = () => {
+      let count = 0;
+      let bytes = 0;
+      const newest = request.result.sort(
+        (a, b) => (b.id === keep) - (a.id === keep) || (b.saved || 0) - (a.saved || 0),
+      );
+      for (const { id, saved = 0, size = 0 } of newest) {
+        // The age is absolute, so a clock that moved backwards cannot make a record immortal.
+        const stale = Math.abs(Date.now() - saved) > MAX_AGE_MS;
+        if (id !== keep && (stale || count >= MAX_LISTS || bytes + size > MAX_BYTES)) {
+          meta.delete(id);
+          lists.delete(id);
+        } else {
+          count += 1;
+          bytes += size;
+        }
       }
-      return false;
-    }
-    for (const [songId, item] of changed) {
-      songs.set(songId, item);
-      songBytes.set(songId, byteSize(item));
-    }
-    lists.set(id, { id, version, order, checkedAt: Date.now() });
-    usage.set(id, Date.now());
-    const { evicted, gone } = evict(id);
-    gone.push(...dropUnreferenced());
-    usageSavedAt = Date.now();
-    const used = Object.fromEntries(usage);
-    enqueueWrite(account, (listStore, songStore) => {
-      for (const item of changed.values()) songStore.put(item);
-      for (const songId of gone) songStore.delete(songId);
-      for (const evictedId of evicted) listStore.delete(evictedId);
-      listStore.put({ id: USAGE_KEY, used });
-      return listStore.put({ id, version, order });
+    };
+    return request;
+  }
+
+  async function readSaved(id) {
+    pruned ||= withStore("readwrite", (meta, lists) => prune(meta, lists));
+    const read = await withStore("readonly", (meta, lists) => [meta.get(id), lists.get(id)]);
+    const [meta, list] = read ? read.value.map((request) => request.result) : [];
+    return meta && list && Array.isArray(list.items) ? { version: meta.version, items: list.items } : undefined;
+  }
+
+  function saveList(id, version, items) {
+    const size = new TextEncoder().encode(JSON.stringify(items)).length;
+    if (size > MAX_BYTES) return tooLarge.add(id);
+    void withStore("readwrite", (meta, lists) => {
+      meta.put({ id, version, saved: Date.now(), size });
+      lists.put({ id, items });
+      return prune(meta, lists, id);
     });
-    return true;
   }
 
-  function savedItems(list) {
-    return list.order.map((songId) => songs.get(songId));
-  }
-
-  function forgetSavedLists() {
-    accountGeneration += 1;
-    queueGeneration += 1;
-    lists.clear();
-    songs.clear();
-    songBytes.clear();
-    usage.clear();
-    writeChain = writeChain.then(clearSaved);
-    return writeChain;
-  }
-
-  // Signing out must leave nothing behind, so the clear is checked and tried again.
+  // Signing out must leave nothing behind, so a clear that does not commit is tried again.
   async function clearSaved() {
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1) {
-      const remaining = await withStore("readwrite", (listStore, songStore) => {
-        songStore.clear();
-        listStore.clear();
-        return listStore.count();
-      });
-      if (remaining === 0) return;
-      if (attempt < RETRY_ATTEMPTS) await delay(RETRY_BASE_MS * 2 ** (attempt - 1));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const cleared = await withStore("readwrite", (meta, lists) => (meta.clear(), lists.clear()));
+      if (cleared) return;
+      await wait(500);
     }
     console.warn("[Sidra] failed to delete saved playlist tracks");
   }
 
   // MusicKit drops tracks without play parameters, which would shift later queue positions.
-  function isPlayable(item) {
-    return Boolean(item && item.attributes && item.attributes.playParams);
-  }
+  const isPlayable = (item) => Boolean(item && item.attributes && item.attributes.playParams);
 
-  async function fetchTracks(mk, id, account, retry) {
+  // Throws unless every track was fetched, so a partial list is never queued or saved.
+  async function fetchTracks(mk, id) {
     const path = `/v1/me/library/playlists/${id}/tracks`;
-    const page = (offset) => {
-      const request = () => mk.api.music(path, { limit: PAGE_SIZE, offset });
-      return retry ? withRetry(request, account) : request();
-    };
+    const page = (offset) => retry(async () => ok(await mk.api.music(path, { limit: PAGE_SIZE, offset })));
     const first = await page(0);
-    const total = (first.data.meta && first.data.meta.total) || 0;
+    const total = (first.meta && first.meta.total) || 0;
+    if (!total && first.next) throw new Error("playlist size unknown");
+    const pages = [first.data];
     const offsets = [];
-    for (let offset = PAGE_SIZE; offset < total; offset += PAGE_SIZE) {
-      offsets.push(offset);
-    }
-    const pages = new Array(offsets.length);
-    let next = 0;
+    for (let offset = PAGE_SIZE; offset < total; offset += PAGE_SIZE) offsets.push(offset);
     const workers = Array.from({ length: FETCH_CONCURRENCY }, async () => {
-      while (next < offsets.length) {
-        const index = next++;
-        const response = await page(offsets[index]);
-        pages[index] = response.data.data;
+      while (offsets.length) {
+        const offset = offsets.shift();
+        try {
+          pages[offset / PAGE_SIZE] = (await page(offset)).data;
+        } catch (error) {
+          offsets.length = 0; // one failed page ends the fetch, so the others stop asking
+          throw error;
+        }
       }
     });
     await Promise.all(workers);
-    return [first.data.data, ...pages].flat().filter(isPlayable);
+    // A page without a track list, such as an error body, counts for nothing.
+    const all = pages.filter(Array.isArray).flat();
+    if (all.length < total) throw new Error("playlist incomplete");
+    return all.filter(isPlayable);
   }
 
-  async function fetchVersion(mk, id) {
+  function fetchVersion(mk, id) {
     const path = `/v1/me/library/playlists/${id}`;
-    const [playlist, tracks] = await Promise.all([
-      mk.api.music(path),
-      mk.api.music(`${path}/tracks`, { limit: 1 }),
-    ]);
-    const modified = playlist.data.data[0].attributes.lastModifiedDate;
-    return `${modified}:${tracks.data.meta && tracks.data.meta.total}`;
-  }
-
-  // A failed check keeps the saved list, which is better than a slow start while offline.
-  async function isUpToDate(mk, id, version) {
-    try {
-      return (await fetchVersion(mk, id)) === version;
-    } catch (_) {
-      return true;
-    }
-  }
-
-  function refresh(mk, id, retry = true) {
-    if (refreshes.has(id)) return refreshes.get(id);
-    const account = accountGeneration;
-    const run = (async () => {
-      await loadSaved();
-      const cached = lists.get(id);
-      if (cached && Date.now() - cached.checkedAt < REVALIDATE_INTERVAL_MS) {
-        markUsed(id);
-        return { version: cached.version, items: savedItems(cached) };
-      }
-      if (cached) cached.checkedAt = Date.now();
-      const attempt = (operation) => (retry ? withRetry(operation, account) : operation());
-      const version = await attempt(() => fetchVersion(mk, id));
-      if (cached && cached.version === version) {
-        markUsed(id);
-        return { version, items: savedItems(cached) };
-      }
-      const items = await fetchTracks(mk, id, account, retry);
-      if (account !== accountGeneration) return undefined;
-      saveList(id, version, items);
-      return { version, items };
-    })().finally(() => refreshes.delete(id));
-    refreshes.set(id, run);
-    return run;
-  }
-
-  function refreshQuietly(mk, id, retry = true) {
-    return refresh(mk, id, retry).catch(() => {
-      console.warn("[Sidra] failed to refresh playlist tracks");
-      return undefined;
+    return retry(async () => {
+      const [playlist, tracks] = (
+        await Promise.all([mk.api.music(path), mk.api.music(`${path}/tracks`, { limit: 1 })])
+      ).map(ok);
+      const { lastModifiedDate } = playlist.data[0].attributes;
+      // Without a modified date a change could never be seen.
+      if (!lastModifiedDate) throw new Error("playlist has no modified date");
+      return `${lastModifiedDate}:${(tracks.meta && tracks.meta.total) || 0}`;
     });
   }
 
-  function shuffleInPlace(items) {
-    for (let i = items.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [items[i], items[j]] = [items[j], items[i]];
+  // The complete, current playable tracks of a playlist: the saved list when the playlist has
+  // not changed, otherwise a fresh fetch that is saved for the next play.
+  function currentList(mk, id) {
+    const account = accountGeneration;
+    const key = `${account}:${id}`;
+    if (!inflight.has(key)) {
+      const run = (async () => {
+        const [saved, version] = await Promise.all([readSaved(id), fetchVersion(mk, id)]);
+        if (saved && saved.version === version) return saved.items;
+        const items = await fetchTracks(mk, id);
+        if (account === accountGeneration) saveList(id, version, items);
+        return items;
+      })().finally(() => inflight.delete(key));
+      inflight.set(key, run);
     }
-    return items;
+    return inflight.get(key);
   }
 
   function isLibraryPlaylistRequest(options) {
-    if (!options || typeof options !== "object") return false;
-    const { playlists, startPlaying, startWith } = options;
-    if (startPlaying === false) return false;
+    if (!options || typeof options !== "object" || options.startPlaying === false) return false;
     if (!Object.keys(options).every((key) => HANDLED_OPTIONS.has(key))) return false;
+    const { playlists, startWith } = options;
     if (!Array.isArray(playlists) || playlists.length !== 1) return false;
     if (typeof playlists[0] !== "string" || !playlists[0].startsWith("p.")) return false;
-    if (startWith === undefined) return true;
     return (
-      Boolean(startWith) &&
-      typeof startWith.id === "string" &&
-      (startWith.type === "songs" || startWith.type === "playlists")
+      startWith === undefined ||
+      (Boolean(startWith) && typeof startWith.id === "string" && ["songs", "playlists"].includes(startWith.type))
     );
   }
 
-  // `attempt` records what already ran, so a request is never sent to MusicKit twice once
-  // it has produced a queue or has failed on the original path.
-  async function startQueue(mk, setQueue, options, items, startId, attempt) {
-    const { playlists: _playlists, startWith: _startWith, ...rest } = options;
-    const request = { ...rest, items: structuredClone(items) };
-    if (startId) request.startWith = startId;
-    const queue = await setQueue(request);
-    if (mk.queue && mk.queue.length === 0) throw new Error("empty queue");
-    attempt.queued = true;
-    return queue;
-  }
-
-  function standardQueue(setQueue, options, attempt) {
-    attempt.standard = true;
-    return setQueue(options);
-  }
-
-  async function queueRemainder(mk, id, first, shuffled, generation) {
-    for (let attempt = 0; attempt < FILL_ATTEMPTS; attempt += 1) {
-      if (attempt > 0) await delay(FILL_RETRY_MS);
-      if (generation !== queueGeneration) return;
-      const entry = await refreshQuietly(mk, id, false);
-      if (generation !== queueGeneration) return;
-      if (!entry) continue;
-      const index = entry.items.findIndex((item) => item.id === first.id);
-      let remainder = entry.items.slice(index + 1);
-      if (shuffled) {
-        remainder = entry.items.slice();
-        if (index >= 0) remainder.splice(index, 1);
-        shuffleInPlace(remainder);
-      }
-      if (remainder.length === 0) return;
-      try {
-        await mk.playLater({ items: structuredClone(remainder) });
-        return;
-      } catch (_) {
-        console.warn("[Sidra] failed to queue remaining playlist tracks");
-      }
+  // Apple's own request runs for anything this script cannot queue exactly as Apple would. It
+  // is sent at most once more, and only after the fast request threw or built an empty queue.
+  async function startPlaylist(mk, setQueue, options, generation) {
+    const { playlists, startWith, ...rest } = options;
+    const songId = startWith && startWith.type === "songs" ? startWith.id : undefined;
+    const shuffled = () => mk.shuffleMode === 1;
+    // MusicKit ignores startWith while shuffle is on, and only Apple's request can honour it.
+    if (songId && shuffled()) return setQueue(options);
+    let items;
+    try {
+      items = await currentList(mk, playlists[0]);
+    } catch (_) {
+      console.warn("[Sidra] could not prepare playlist tracks, using the standard queue");
     }
-  }
-
-  async function startWithoutSavedList(mk, setQueue, options, id, songId, generation, attempt) {
-    const shuffled = mk.shuffleMode === SHUFFLE_SONGS;
-    let candidates;
-    if (songId) {
-      const song = await mk.api.music(`/v1/me/library/songs/${songId}`);
-      candidates = song.data.data;
-    } else {
-      const page = await mk.api.music(`/v1/me/library/playlists/${id}/tracks`, {
-        limit: PAGE_SIZE,
-        offset: 0,
-      });
-      candidates = page.data.data;
-    }
-    const playable = candidates.filter(isPlayable);
-    if (playable.length === 0) throw new Error("no playable track");
     if (generation !== queueGeneration) return mk.queue;
-    const first = shuffled
-      ? playable[Math.floor(Math.random() * playable.length)]
-      : playable[0];
-    const queue = await startQueue(
-      mk,
-      setQueue,
-      options,
-      [first],
-      shuffled ? undefined : first.id,
-      attempt,
-    );
-    queueRemainder(mk, id, first, shuffled, generation).catch(() => {
-      console.warn("[Sidra] failed to queue remaining playlist tracks");
-    });
-    return queue;
-  }
-
-  async function startPlaylist(mk, setQueue, options, generation, attempt) {
-    const id = options.playlists[0];
-    const songId =
-      options.startWith && options.startWith.type === "songs"
-        ? options.startWith.id
-        : undefined;
-    const shuffled = mk.shuffleMode === SHUFFLE_SONGS;
-    // MusicKit ignores startWith while shuffle is on. Apple's page turns shuffle off before a
-    // song click, so this is rare, and Apple's path is the one that can honour it.
-    if (songId && shuffled) {
-      void refreshQuietly(mk, id);
-      return standardQueue(setQueue, options, attempt);
-    }
-    await loadSaved();
-    if (generation !== queueGeneration) return mk.queue;
-    const cached = lists.get(id);
-    if (!cached || cached.order.length === 0) {
-      return startWithoutSavedList(mk, setQueue, options, id, songId, generation, attempt);
-    }
-
+    // Shuffle may have been switched on while the list was fetched.
+    if (songId && shuffled()) return setQueue(options);
     // MusicKit keeps one copy of an item ID it is given, but Apple's own queue keeps repeats.
-    if (new Set(cached.order).size !== cached.order.length) {
-      void refreshQuietly(mk, id);
-      return standardQueue(setQueue, options, attempt);
+    const exact =
+      items &&
+      items.length > 0 &&
+      new Set(items.map((item) => item.id)).size === items.length &&
+      (!songId || items.some((item) => item.id === songId));
+    if (!exact) return setQueue(options);
+
+    const startId = songId || (shuffled() ? undefined : items[0].id);
+    try {
+      const queue = await setQueue({
+        ...rest,
+        items: structuredClone(items),
+        ...(startId ? { startWith: startId } : {}),
+      });
+      if (!(mk.queue && mk.queue.length === 0)) return queue;
+    } catch (_) {
+      // Fall through to Apple's request.
     }
-    // A list that has changed since it was saved could queue a removed song or miss a new
-    // one, so that play uses Apple's path and the list is refreshed for the next one.
-    const upToDate = await isUpToDate(mk, id, cached.version);
-    if (generation !== queueGeneration) return mk.queue;
-    if (!upToDate) {
-      cached.checkedAt = 0;
-      void refreshQuietly(mk, id);
-      return standardQueue(setQueue, options, attempt);
-    }
-    cached.checkedAt = Date.now();
-    markUsed(id);
-    // A song added since the list was saved is not in it, so Apple's path has to play it.
-    if (songId && !cached.order.includes(songId)) {
-      return standardQueue(setQueue, options, attempt);
-    }
-    const startId = songId || (shuffled ? undefined : cached.order[0]);
-    return startQueue(mk, setQueue, options, savedItems(cached), startId, attempt);
+    console.warn("[Sidra] fast playlist start failed, using the standard queue");
+    return generation === queueGeneration ? setQueue(options) : mk.queue;
   }
 
   function install(mk) {
@@ -545,43 +260,34 @@
     installed.add(mk);
     const setQueue = mk.setQueue.bind(mk);
     mk.setQueue = function (options) {
-      queueGeneration += 1;
-      if (!isLibraryPlaylistRequest(options)) return setQueue(options);
-      const generation = queueGeneration;
-      const attempt = { queued: false, standard: false };
-      return startPlaylist(mk, setQueue, options, generation, attempt).catch((error) => {
-        // Once a queue exists, or the original path has failed, a second request would
-        // replace a working queue or repeat a failure.
-        if (attempt.queued || attempt.standard) {
-          if (attempt.standard) throw error;
-          return mk.queue;
-        }
-        console.warn("[Sidra] fast playlist start failed, using the standard queue");
-        return generation === queueGeneration ? setQueue(options) : mk.queue;
-      });
+      const generation = ++queueGeneration;
+      return isLibraryPlaylistRequest(options) ? startPlaylist(mk, setQueue, options, generation) : setQueue(options);
     };
-    if (typeof mk.setStationQueue === "function") {
-      const setStationQueue = mk.setStationQueue.bind(mk);
-      mk.setStationQueue = function (options) {
+    // Starting a station, or signing out, ends a playlist start that is still waiting.
+    const before = {
+      setStationQueue: () => {},
+      unauthorize: () => {
+        accountGeneration += 1;
+        tooLarge.clear();
+        void clearSaved();
+      },
+    };
+    for (const [name, run] of Object.entries(before)) {
+      if (typeof mk[name] !== "function") continue;
+      const original = mk[name].bind(mk);
+      mk[name] = (...args) => {
         queueGeneration += 1;
-        return setStationQueue(options);
-      };
-    }
-    if (typeof mk.unauthorize === "function") {
-      const unauthorize = mk.unauthorize.bind(mk);
-      mk.unauthorize = function (...args) {
-        void forgetSavedLists();
-        return unauthorize(...args);
+        run();
+        return original(...args);
       };
     }
   }
 
   // MusicKit can replace its instance without a new document, so keep checking for it.
   setInterval(() => {
-    if (!window.MusicKit) return;
     let mk;
     try {
-      mk = window.MusicKit.getInstance();
+      mk = window.MusicKit && window.MusicKit.getInstance();
     } catch (_) {
       return;
     }
@@ -591,6 +297,8 @@
     if (path === prewarmedPath) return;
     prewarmedPath = path;
     const match = PLAYLIST_PATH.exec(path);
-    if (match) void refreshQuietly(mk, match[1]);
-  }, INSTALL_POLL_MS);
+    if (match && !tooLarge.has(match[1])) {
+      currentList(mk, match[1]).catch(() => console.warn("[Sidra] failed to prepare playlist tracks"));
+    }
+  }, 1000);
 })();
