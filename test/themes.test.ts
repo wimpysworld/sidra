@@ -207,6 +207,7 @@ describe('buildThemeCss', () => {
       it('resolves the accent variables from the * block', () => {
         for (const { block, colours } of schemeBlocks) {
           expect(cssVar(block, 'keyColor')).toBe(colours.accent);
+          expect(cssVar(block, 'keyAccentColor')).toBe(colours.accent);
           expect(cssVar(block, 'keyColor-rollover')).toBe(colours.accentHover);
           expect(cssVar(block, 'musicKeyColor')).toBe(colours.accent);
           expect(cssVar(block, 'selectionColor')).toBe(colours.accent);

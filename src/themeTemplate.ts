@@ -64,6 +64,8 @@ function rgbaSpaced(hex: string, alpha: number): string {
 // of amp-* elements does not inherit from :root, and Apple declares those
 // variables without !important, so * wins at the root element too. It also
 // carries the variables Apple re-declares on the element itself.
+// The sidebar inherits --navigation-item-icon-color from --keyAccentColor,
+// not --keyColor, so both accent tokens must follow the palette.
 //
 // .chrome-player::before paints the player bar, which is itself transparent.
 // Classical declares the gradient on that pseudo and music re-declares its fill
@@ -133,6 +135,7 @@ function schemeBlock(c: SchemeColours): string {
   /* Accent variables, and variables Apple re-declares on the element */
   * {
     --keyColor: ${c.accent} !important;
+    --keyAccentColor: ${c.accent} !important;
     --keyColor-rgb: ${rgbTriplet(c.accent)} !important;
     --keyColor-rollover: ${c.accentHover} !important;
     --keyColor-pressed: ${c.accentHover} !important;
