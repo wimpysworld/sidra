@@ -33,6 +33,8 @@ interface StoreSchema {
   'discord.enabled': boolean;
   'closeToTray.enabled': boolean;
   'lastfm.enabled': boolean;
+  'lastfm.apiUrl': string | null;
+  'lastfm.pendingDestination': string;
   'lastfm.sessionKey': string | null;
   'lastfm.username': string | null;
   'lastfm.pendingScrobbles': PendingScrobble[];
@@ -139,6 +141,24 @@ export function getLastfmEnabled(): boolean {
 /** Persist `lastfm.enabled` without applying the setting to running components. */
 export function setLastfmEnabled(enabled: boolean): void {
   setConfigValue('lastfm.enabled', enabled);
+}
+
+export function getLastfmApiUrl(): string | null | undefined {
+  return getConfigValueOptional('lastfm.apiUrl');
+}
+
+export function setLastfmApiUrl(url: string | null): void {
+  store.set('lastfm.apiUrl', url);
+  configLog.info('lastfm.apiUrl set');
+}
+
+export function getPendingScrobbleDestination(): string {
+  return getConfigValue('lastfm.pendingDestination', 'lastfm');
+}
+
+export function setPendingScrobbleDestination(destination: string): void {
+  store.set('lastfm.pendingDestination', destination);
+  configLog.info('lastfm.pendingDestination set');
 }
 
 /** Read `lastfm.sessionKey`, returning undefined when the key is absent. */

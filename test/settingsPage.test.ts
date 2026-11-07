@@ -30,7 +30,7 @@ function fixture(): SettingsState {
   return {
     musicService: 'music', startPage: 'new', theme: 'apple-music', zoomFactor: 1,
     closeToTray: false, notifications: true, discord: false,
-    lastfm: { available: true, connected: false, enabled: false, username: '' },
+    lastfm: { available: true, customEndpoint: false, connected: false, enabled: false, username: '' },
     options: {
       musicService: [{ value: 'music', label: 'Apple Music' }, { value: 'classical', label: 'Apple Music Classical' }],
       startPage: [{ value: 'new', label: 'New' }],
@@ -85,6 +85,18 @@ async function settle(): Promise<void> {
 }
 
 describe('settings page', () => {
+  it('shows the custom toggle without account or browser authentication controls', async () => {
+    const state = fixture();
+    state.lastfm.customEndpoint = true;
+    const h = harness(state);
+    await settle();
+    expect(h.labels.find(element => element.dataset.label === 'lastfm')?.textContent).toBe(state.labels.customScrobbler);
+    expect(h.element('lastfmEnabled').disabled).toBe(false);
+    expect(h.element('lastfmConnect').hidden).toBe(true);
+    expect(h.element('lastfmDisconnect').hidden).toBe(true);
+    expect(h.element('lastfm-status').textContent).toBe('');
+  });
+
   it('resolves every HTML data-label from a non-English state', async () => {
     const state = fixture();
     const englishSettings = state.labels.settings;
@@ -211,7 +223,7 @@ describe('settings page', () => {
 
   it('renders Last.fm account text literally and hides unavailable controls', async () => {
     const state = fixture();
-    state.lastfm = { available: true, connected: true, enabled: true, username: '<img src=x>' };
+    state.lastfm = { available: true, customEndpoint: false, connected: true, enabled: true, username: '<img src=x>' };
     const h = harness(state);
     await settle();
     expect(h.element('lastfm-status').textContent).toContain('<img src=x>');

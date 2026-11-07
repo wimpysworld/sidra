@@ -33,7 +33,7 @@ import {
 import { showAboutWindow } from "./aboutWindow";
 import { getUpdateInfo } from "./update";
 import { quitAndInstall } from "./autoUpdate";
-import { isConfigured as isLastfmConfigured } from "./integrations/lastfm";
+import { isConfigured as isLastfmConfigured, isCustomEndpoint } from "./integrations/lastfm";
 import { applySettingsAction, getSettingsState } from "./settings";
 import { downloadArtwork } from "./artwork";
 import { sendCommand } from "./commandBridge";
@@ -401,6 +401,11 @@ function buildDiscordSubmenu(
 function buildLastfmSubmenu(
   ctx: SubmenuContext,
 ): Electron.MenuItemConstructorOptions {
+  if (isCustomEndpoint()) {
+    return buildToggleSubmenu(
+      ctx.strings.customScrobbler, "lastfm", getLastfmEnabled(), "lastfmEnabled", ctx,
+    );
+  }
   if (!getLastfmSessionKey()) {
     const icon = getMenuIcon("lastfm");
     return {

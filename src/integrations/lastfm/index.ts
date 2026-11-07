@@ -13,6 +13,9 @@ import {
 } from "../../player";
 import {
   getLastfmEnabled,
+  getLastfmApiUrl,
+  getPendingScrobbleDestination,
+  setPendingScrobbleDestination,
   getLastfmSessionKey,
   setLastfmSession,
   clearLastfmSession,
@@ -35,14 +38,39 @@ export function setStateChangedCallback(callback: (() => void) | null): void {
   stateChangedCallback = callback;
 }
 
-const API_ROOT = "https://ws.audioscrobbler.com/2.0/";
+const configuredUrl = getLastfmApiUrl();
+const customEndpoint = configuredUrl !== undefined && configuredUrl !== null;
+const API_ROOT = resolveApiUrl();
 const AUTH_URL = "https://www.last.fm/api/auth/";
+
+function resolveApiUrl(): string | null {
+  if (!customEndpoint) return "https://ws.audioscrobbler.com/2.0/";
+  try {
+    if (typeof configuredUrl !== "string") return null;
+    const url = new URL(configuredUrl);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username || url.password || url.hash || url.search
+    ) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+export function isCustomEndpoint(): boolean {
+  return customEndpoint;
+}
+
+function requestSessionKey(): string | null | undefined {
+  return customEndpoint ? "sidra" : getLastfmSessionKey();
+}
 
 /**
  * Reads application credentials from SIDRA_LASTFM_API_KEY/SIDRA_LASTFM_API_SECRET,
  * then assets/lastfm-credentials.json, which scripts/inject-lastfm-credentials.cjs generates at build time.
  * These identify Sidra, not the user, and stay outside the public source tree.
- * Missing credentials disable the integration and hide its menu through isConfigured().
+ * Missing credentials disable official Last.fm through isConfigured().
  */
 function loadCredentials(): { apiKey: string; apiSecret: string } {
   const envKey = process.env.SIDRA_LASTFM_API_KEY;
@@ -61,7 +89,9 @@ function loadCredentials(): { apiKey: string; apiSecret: string } {
   }
 }
 
-const { apiKey: API_KEY, apiSecret: API_SECRET } = loadCredentials();
+const { apiKey: API_KEY, apiSecret: API_SECRET } = customEndpoint
+  ? { apiKey: "sidra", apiSecret: "sidra" }
+  : loadCredentials();
 
 // Last.fm scrobbling rules: a track must be longer than 30 seconds and must have
 // played for at least half its duration, or 4 minutes, whichever comes first.
@@ -144,7 +174,7 @@ function readScrobbleOutcome(res: LastfmResponse): ScrobbleOutcome | null {
   for (const entry of entries) {
     const code = entry.ignoredMessage?.code;
     // Code "0" means that Last.fm accepted the play, so exclude it from refusal reasons.
-    if (code && code !== "0") codes.add(code);
+    if (code && code !== "0" && (!customEndpoint || /^[1-5]$/.test(code))) codes.add(code);
   }
   return {
     accepted: toCount(scrobbles["@attr"]?.accepted),
@@ -186,11 +216,10 @@ function isFinalRefusal(err: unknown): boolean {
 }
 
 /**
- * True when the app ships with Last.fm API credentials. The tray hides the
- * Last.fm menu entirely when this is false, so users never see a dead feature.
+ * True for a valid custom endpoint or configured official Last.fm credentials.
  */
 export function isConfigured(): boolean {
-  return API_KEY !== "" && API_SECRET !== "";
+  return API_ROOT !== null && API_KEY !== "" && API_SECRET !== "";
 }
 
 function nowUnix(): number {
@@ -228,6 +257,7 @@ async function apiCall(
   post: boolean,
   timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<LastfmResponse> {
+  if (!API_ROOT) throw new Error("invalid custom scrobble endpoint");
   const signed = { ...params, api_sig: signParams(params, API_SECRET) };
   const query = new URLSearchParams({ ...signed, format: "json" });
   const controller = new AbortController();
@@ -237,9 +267,13 @@ async function apiCall(
     const response = post
       ? await net.fetch(API_ROOT, {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
           body: query.toString(),
           signal: controller.signal,
+          ...(customEndpoint ? { redirect: "error" as const } : {}),
         })
       : await net.fetch(`${API_ROOT}?${query.toString()}`, {
           signal: controller.signal,
@@ -257,7 +291,7 @@ async function apiCall(
     } catch {
       throw new Error(`Last.fm HTTP ${response.status}: response was not JSON`);
     }
-    if (json.error) {
+    if (typeof json.error === "number" && Number.isFinite(json.error) && json.error) {
       throw new LastfmApiError(
         json.error,
         `Last.fm error ${json.error}: ${json.message ?? "unknown"}`,
@@ -265,6 +299,14 @@ async function apiCall(
     }
     if (!response.ok) throw new Error(`Last.fm HTTP ${response.status}`);
     return json;
+  } catch (err: unknown) {
+    // Fetch errors and server messages can contain a private endpoint URL.
+    if (customEndpoint) {
+      if (err instanceof LastfmApiError)
+        throw new LastfmApiError(err.code, "custom scrobble endpoint refused the request");
+      throw new Error("custom scrobble endpoint request failed");
+    }
+    throw err;
   } finally {
     clearTimeout(abortTimer);
   }
@@ -399,7 +441,7 @@ interface ActiveTrack {
  */
 function active(): ActiveTrack | null {
   if (!isConfigured() || !getLastfmEnabled()) return null;
-  const sessionKey = getLastfmSessionKey();
+  const sessionKey = requestSessionKey();
   if (!sessionKey || !artist || !track) return null;
   return { sessionKey, artist, track, album, durationMs };
 }
@@ -410,6 +452,7 @@ function active(): ActiveTrack | null {
  * Compares generations because Last.fm can return the same key when an account reconnects.
  */
 function handleInvalidSession(err: unknown, generation: number): boolean {
+  if (customEndpoint) return false;
   if (!(err instanceof LastfmApiError) || err.code !== INVALID_SESSION_ERROR)
     return false;
   if (generation !== sessionGeneration) return true;
@@ -457,7 +500,7 @@ function drainGuard(sessionKey: string): PendingScrobble[] | null {
   if (drainGeneration === sessionGeneration) return null;
   const batch = getPendingScrobbles().slice(0, MAX_PENDING_SCROBBLES);
   if (batch.length === 0) return null;
-  if (getLastfmSessionKey() !== sessionKey) return null;
+  if (requestSessionKey() !== sessionKey) return null;
   return batch;
 }
 
@@ -613,6 +656,7 @@ function sendNowPlaying(): void {
   const generation = sessionGeneration;
   apiCall(params, true)
     .then(() => {
+      if (generation !== sessionGeneration) return;
       lastfmLog.debug("event=now-playing status=submitted");
       flushPendingScrobbles(sessionKey);
     })
@@ -659,6 +703,7 @@ function submitScrobble(
 
   apiCall(params, true)
     .then(() => {
+      if (generation !== sessionGeneration) return;
       lastfmLog.info("event=scrobble status=submitted");
       flushPendingScrobbles(sessionKey);
     })
@@ -814,7 +859,7 @@ function confirmRadioBoundary(): void {
     outgoing &&
     getLastfmEnabled() &&
     outgoing.generation === sessionGeneration &&
-    getLastfmSessionKey() === outgoing.sessionKey
+    requestSessionKey() === outgoing.sessionKey
   ) {
     const entry: PendingScrobble = {
       artist: outgoing.artist,
@@ -931,6 +976,7 @@ function failAuth(reason: string, onComplete?: () => void): void {
  * `onComplete` is called once the flow settles so the caller can refresh UI.
  */
 export function startAuth(onComplete?: () => void): void {
+  if (customEndpoint) return;
   if (authInProgress) return;
   if (!isConfigured()) {
     failAuth("cannot authenticate: no API credentials configured", onComplete);
@@ -1020,14 +1066,12 @@ function pollForSession(
 }
 
 /**
- * Forgets the account: the stored session, the queued plays and the enabled
- * flag all go. Called from the tray, and from `handleInvalidSession()` when
- * Last.fm rejects the key the user revoked at their end.
+ * Clears queued plays and disables scrobbling. Official mode also forgets the account.
  */
 export function disconnect(): void {
   cancelAuth();
   disable();
-  clearLastfmSession();
+  if (!customEndpoint) clearLastfmSession();
   // Every request already out was signed for the account that has gone, so its
   // response must not touch the queue the next account fills.
   sessionGeneration += 1;
@@ -1043,15 +1087,25 @@ export function disconnect(): void {
 
 /**
  * Subscribes to track, radio metadata, playback state and position events on every platform.
- * Releases listeners on will-quit and makes no requests without application credentials.
+ * Releases listeners on will-quit and gates requests on the selected destination.
  */
 export function init(ctx: IntegrationContext): void {
+  const destination = customEndpoint
+    ? API_ROOT ? createHash("sha256").update(API_ROOT).digest("hex") : "invalid"
+    : "lastfm";
+  if (getPendingScrobbleDestination() !== destination) {
+    setPendingScrobbles([]);
+    setPendingScrobbleDestination(destination);
+    lastfmLog.info("scrobble destination changed; pending plays cleared");
+  }
   playerRef = ctx.player;
   getWindow = ctx.getMainWindow;
   lastfmLog.info("Last.fm module initialised");
   if (!isConfigured()) {
     lastfmLog.info(
-      "no API credentials configured; scrobbling is inert until set",
+      customEndpoint
+        ? "invalid lastfm.apiUrl; scrobbling disabled until configuration is fixed and Sidra restarts"
+        : "no API credentials configured; scrobbling is inert until set",
     );
   }
 

@@ -327,6 +327,31 @@ Connecting stores a Last.fm session key and your username in Sidra's configurati
 
 What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md).
 
+### Custom scrobble endpoint
+
+Sidra can send to [multi-scrobbler's Last.fm Endpoint](https://docs.multi-scrobbler.app/configuration/sources/lastfm-endpoint/) instead of Last.fm. Multi-scrobbler then forwards plays to its configured clients.
+
+Quit Sidra before you edit `config.json` at the path above. Add `apiUrl` inside the existing `lastfm` object and set `enabled` to `true`:
+
+```json
+{
+  "lastfm": {
+    "apiUrl": "http://localhost:9078/2.0/",
+    "enabled": true
+  }
+}
+```
+
+Keep your other configuration fields. Restart Sidra to select the endpoint. Settings and the tray show **Custom scrobbler**, with an on/off control and no browser authentication.
+
+Use the complete endpoint URL. Sidra appends no path. For a multi-scrobbler source with `slug: "sidra"`, use `http://localhost:9078/api/lastfm/sidra` instead. Configure one default Last.fm Endpoint source without credentials, or use a slug to select a source. Sidra sends the dummy values `sidra` for `api_key` and `sk`, and signs with the dummy secret `sidra`. It never sends your saved Last.fm account or Sidra's real application credentials to this endpoint.
+
+HTTP and HTTPS are supported. HTTP sends listening data without encryption. URLs with embedded credentials, query parameters or fragments are rejected. Redirects are not followed. An invalid URL disables scrobbling and never falls back to Last.fm.
+
+The usual playback thresholds, radio handling and queue limit still apply. A destination change discards held plays on the next launch, so they cannot reach another destination. **Off** keeps held plays and any saved Last.fm account. Remove `apiUrl` or set it to `null`, then restart, to return to Last.fm. The shared `enabled` setting still applies.
+
+Only one destination is active per launch. This option does not add native ListenBrainz support or configure multi-scrobbler's downstream clients. A successful request confirms endpoint receipt, not downstream delivery.
+
 ---
 
 ## Why Sidra?
@@ -413,7 +438,7 @@ Credentials are stored at `~/.config/evs/config.json`. The account is portable -
 
 ### Last.fm API credentials
 
-Official releases ship Last.fm API credentials. A build from this repository does not. Without credentials, Settings and the tray hide the Last.fm controls.
+Official releases ship Last.fm API credentials. A build from this repository does not. Without credentials, Settings and the tray hide the Last.fm controls unless a valid custom endpoint is configured.
 
 Register an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create), then export the key and secret before building:
 
