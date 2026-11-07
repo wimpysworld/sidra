@@ -42,6 +42,7 @@ const mockTrayStrings: TrayStrings = {
   integrations: "Integrations",
   settingsError: "Could not apply this setting.",
   lastfm: "Last.fm",
+  customScrobbler: "Custom scrobbler",
   lastfmConnected: "Connected",
   about: "About Sidra",
   quit: "Quit",
@@ -113,6 +114,7 @@ vi.mock("../src/i18n", () => ({
 }));
 
 vi.mock("../src/integrations/lastfm", () => ({
+  isCustomEndpoint: vi.fn(() => false),
   enable: vi.fn(),
   disable: vi.fn(),
   startAuth: vi.fn(),
@@ -181,6 +183,7 @@ import {
   startAuth as startLastfmAuth,
   disconnect as disconnectLastfm,
   isConfigured as isLastfmConfigured,
+  isCustomEndpoint,
 } from "../src/integrations/lastfm";
 import { FakePlayer } from "./mocks/player";
 import { setPlatform, restorePlatform } from "./mocks/platform";
@@ -224,6 +227,7 @@ function resetTrayMocks(): void {
   vi.mocked(getClassicalStartPage).mockReturnValue("home");
   vi.mocked(getCloseToTrayEnabled).mockReturnValue(false);
   vi.mocked(getLastfmEnabled).mockReturnValue(false);
+  vi.mocked(isCustomEndpoint).mockReturnValue(false);
   vi.mocked(getLastfmSessionKey).mockReturnValue(null);
   vi.mocked(getLastfmUsername).mockReturnValue(null);
   vi.mocked(isLastfmConfigured).mockReturnValue(false);
@@ -1137,6 +1141,17 @@ describe("createTray - menu template inspection", () => {
   });
 
   describe("Last.fm submenu", () => {
+    it("shows a custom on/off submenu without the saved Last.fm account", () => {
+      vi.mocked(isCustomEndpoint).mockReturnValue(true);
+      linkAccount();
+      createTray();
+      const custom = findItem(getLastTemplate(), "Custom scrobbler");
+      expect(custom?.label).toBe("Custom scrobbler: On");
+      const submenu = custom?.submenu as Electron.MenuItemConstructorOptions[];
+      expect(submenu.map(item => item.label)).toEqual(["On", "Off"]);
+      expect(findItem(getLastTemplate(), "Last.fm")).toBeUndefined();
+    });
+
     beforeEach(() => {
       setPlatform("linux");
       vi.mocked(isLastfmConfigured).mockReturnValue(true);

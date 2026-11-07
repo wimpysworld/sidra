@@ -53,11 +53,13 @@
       byId(key).checked = key === 'lastfmEnabled' ? state.lastfm.enabled : state[key];
     }
     byId('lastfm').hidden = !state.lastfm.available;
-    byId('lastfmEnabled').disabled = !state.lastfm.connected;
+    document.querySelector('[data-label="lastfm"]').textContent = state.lastfm.customEndpoint
+      ? state.labels.customScrobbler : state.labels.lastfm;
+    byId('lastfmEnabled').disabled = !state.lastfm.connected && !state.lastfm.customEndpoint;
     byId('lastfm-status').textContent = state.lastfm.connected
       ? state.labels.lastfmConnected.replace('{name}', state.lastfm.username) : '';
-    byId('lastfmConnect').hidden = state.lastfm.connected;
-    byId('lastfmDisconnect').hidden = !state.lastfm.connected;
+    byId('lastfmConnect').hidden = state.lastfm.customEndpoint || state.lastfm.connected;
+    byId('lastfmDisconnect').hidden = state.lastfm.customEndpoint || !state.lastfm.connected;
     if (state.lastfm.available && focusedId === 'lastfmConnect' && state.lastfm.connected) byId('lastfmDisconnect').focus();
     if (state.lastfm.available && focusedId === 'lastfmDisconnect' && !state.lastfm.connected) byId('lastfmConnect').focus();
     byId('preferences').hidden = false;

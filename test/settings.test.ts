@@ -13,6 +13,7 @@ vi.mock('../src/theme', () => ({
 }));
 vi.mock('../src/integrations/discord-presence', () => ({ enable: vi.fn(), disable: vi.fn() }));
 vi.mock('../src/integrations/lastfm', () => ({
+  isCustomEndpoint: vi.fn(() => false),
   isConfigured: vi.fn(() => true), enable: vi.fn(), disable: vi.fn(), startAuth: vi.fn(), disconnect: vi.fn(),
   setStateChangedCallback: vi.fn(),
 }));
@@ -28,16 +29,30 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(hasCustomTheme).mockReturnValue(false);
   vi.mocked(lastfm.isConfigured).mockReturnValue(true);
+  vi.mocked(lastfm.isCustomEndpoint).mockReturnValue(false);
   dispose = initSettingsActions({ getMainWindow: () => window as unknown as BrowserWindow, applyZoom, switchService, refreshTray });
 });
 afterEach(() => dispose());
 
 describe('settings actions', () => {
+  it('exposes custom mode without the official identity or authentication actions', () => {
+    config.setLastfmSession('private-session', 'listener');
+    vi.mocked(lastfm.isCustomEndpoint).mockReturnValue(true);
+    expect(getSettingsState().lastfm).toEqual({ available: true, customEndpoint: true, connected: false, enabled: false, username: '' });
+    expect(() => applySettingsAction({ type: 'lastfmConnect' })).toThrow();
+    expect(() => applySettingsAction({ type: 'lastfmDisconnect' })).toThrow();
+    applySettingsAction({ type: 'lastfmEnabled', value: true });
+    expect(lastfm.enable).toHaveBeenCalledOnce();
+    applySettingsAction({ type: 'lastfmEnabled', value: false });
+    expect(lastfm.disable).toHaveBeenCalledOnce();
+    expect(config.getLastfmSessionKey()).toBe('private-session');
+  });
+
   it('reads defaults and excludes account credentials from state', () => {
     config.setLastfmSession('private-session', 'listener');
     const state = getSettingsState();
     expect(state).toMatchObject({ musicService: 'music', startPage: 'new', theme: 'apple-music', zoomFactor: 1 });
-    expect(state.lastfm).toEqual({ available: true, connected: true, enabled: false, username: 'listener' });
+    expect(state.lastfm).toEqual({ available: true, customEndpoint: false, connected: true, enabled: false, username: 'listener' });
     expect(JSON.stringify(state)).not.toContain('private-session');
   });
 

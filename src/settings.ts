@@ -54,6 +54,7 @@ export interface SettingsState {
   discord: boolean;
   lastfm: {
     available: boolean;
+    customEndpoint: boolean;
     connected: boolean;
     enabled: boolean;
     username: string;
@@ -154,9 +155,10 @@ export function getSettingsState(): SettingsState {
     discord: config.getDiscordEnabled(),
     lastfm: {
       available: lastfm.isConfigured(),
-      connected: !!config.getLastfmSessionKey(),
+      customEndpoint: lastfm.isCustomEndpoint(),
+      connected: !lastfm.isCustomEndpoint() && !!config.getLastfmSessionKey(),
       enabled: config.getLastfmEnabled(),
-      username: config.getLastfmUsername() ?? "",
+      username: lastfm.isCustomEndpoint() ? "" : config.getLastfmUsername() ?? "",
     },
     options: {
       musicService: allServices().map((service) => ({
@@ -236,13 +238,13 @@ function isSettingsAction(
     case "lastfmEnabled":
       return (
         state.lastfm.available &&
-        state.lastfm.connected &&
+        (state.lastfm.connected || state.lastfm.customEndpoint) &&
         typeof data.value === "boolean"
       );
     case "lastfmConnect":
-      return state.lastfm.available && !state.lastfm.connected;
+      return state.lastfm.available && !state.lastfm.customEndpoint && !state.lastfm.connected;
     case "lastfmDisconnect":
-      return state.lastfm.available && state.lastfm.connected;
+      return state.lastfm.available && !state.lastfm.customEndpoint && state.lastfm.connected;
     default:
       return false;
   }

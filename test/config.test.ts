@@ -19,6 +19,10 @@ import {
   getCloseToTrayEnabled,
   setCloseToTrayEnabled,
   getLastfmEnabled,
+  getLastfmApiUrl,
+  setLastfmApiUrl,
+  getPendingScrobbleDestination,
+  setPendingScrobbleDestination,
   getLastfmSessionKey,
   getLastfmUsername,
   setLastfmSession,
@@ -47,12 +51,33 @@ import {
 } from "../src/config";
 import type { PendingScrobble } from "../src/config";
 import { Conf } from "electron-conf/main";
+import log from "electron-log/main";
 import { DEFAULT_SERVICE_ID } from "../src/musicService";
 import type {
   AnyStartPageId,
   ClassicalStartPageId,
   MusicServiceId,
 } from "../src/musicService";
+
+describe("custom scrobble configuration", () => {
+  beforeEach(() => {
+    (Conf as unknown as { _data: Map<string, unknown> })._data.clear();
+    vi.clearAllMocks();
+  });
+
+  it("keeps the official default and reads the full custom URL without logging it", () => {
+    expect(getLastfmApiUrl()).toBeUndefined();
+    expect(getPendingScrobbleDestination()).toBe("lastfm");
+    const url = "https://scrobbler.example/api/lastfm/private-slug";
+    setLastfmApiUrl(url);
+    expect(getLastfmApiUrl()).toBe(url);
+    setPendingScrobbleDestination("destination-hash");
+    expect(getPendingScrobbleDestination()).toBe("destination-hash");
+    expect(JSON.stringify(vi.mocked(log.scope("config").info).mock.calls)).not.toContain(url);
+    setLastfmApiUrl(null);
+    expect(getLastfmApiUrl()).toBeNull();
+  });
+});
 
 describe("service language migration", () => {
   const store = (Conf as unknown as { _data: Map<string, unknown> })._data;

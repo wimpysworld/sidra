@@ -79,6 +79,7 @@ export const OFF_TEXT: Record<string, string> = trayData.OFF_TEXT;
 export const STYLE_TEXT: Record<string, string> = trayData.STYLE_TEXT;
 /** Translations for style custom, keyed by BCP 47 language tag. */
 export const STYLE_CUSTOM_TEXT: Record<string, string> = trayData.STYLE_CUSTOM_TEXT;
+export const CUSTOM_SCROBBLER_TEXT: Record<string, string> = trayData.CUSTOM_SCROBBLER_TEXT;
 /** Translations for zoom, keyed by BCP 47 language tag. */
 export const ZOOM_TEXT: Record<string, string> = trayData.ZOOM_TEXT;
 /** Translations for previous, keyed by BCP 47 language tag. */
@@ -232,6 +233,7 @@ export interface TrayStrings {
   integrations: string;
   settingsError: string;
   lastfm: string;
+  customScrobbler: string;
   lastfmConnected: string;
   about: string;
   quit: string;
@@ -282,6 +284,7 @@ const TRAY_TEXT: Record<keyof TrayStrings, Record<string, string>> = {
   integrations: INTEGRATIONS_TEXT,
   settingsError: SETTINGS_ERROR_TEXT,
   lastfm: { en: 'Last.fm' },
+  customScrobbler: CUSTOM_SCROBBLER_TEXT,
   lastfmConnected: LASTFM_CONNECTED_TEXT,
   about: ABOUT_TEXT,
   quit: QUIT_TEXT,

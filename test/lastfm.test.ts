@@ -4,6 +4,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetNotifyFake, notifyFake } from "./mocks/notify";
 
 import { createHash } from "crypto";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { net, shell, Notification } from "electron";
 import log from "electron-log/main";
 import { signParams, scrobbleThresholdMs } from "../src/integrations/lastfm";
@@ -19,6 +21,8 @@ import { quit } from "./mocks/appLifecycle";
 const session = vi.hoisted(() => ({
   key: "session-key" as string | null,
   enabled: true,
+  apiUrl: undefined as unknown,
+  destination: "lastfm",
 }));
 
 // The pending queue is persisted config, so the mock keeps seedable state across module loads.
@@ -26,6 +30,9 @@ const session = vi.hoisted(() => ({
 const queue = vi.hoisted(() => ({ pending: [] as PendingScrobble[] }));
 
 vi.mock("../src/config", () => ({
+  getLastfmApiUrl: vi.fn(() => session.apiUrl),
+  getPendingScrobbleDestination: vi.fn(() => session.destination),
+  setPendingScrobbleDestination: vi.fn((value: string) => { session.destination = value; }),
   getLastfmEnabled: vi.fn(() => session.enabled),
   getLastfmSessionKey: vi.fn(() => session.key),
   setLastfmSession: vi.fn((key: string) => {
@@ -200,6 +207,8 @@ function startFromConnected(): void {
   resetNotifyFake("construct");
   session.key = "session-key";
   session.enabled = true;
+  session.apiUrl = undefined;
+  session.destination = "lastfm";
   queue.pending = [];
   vi.mocked(net.fetch).mockImplementation(() =>
     Promise.resolve(new Response("{}")),
@@ -215,6 +224,248 @@ function restoreRealTime(): void {
   vi.useRealTimers();
   vi.unstubAllEnvs();
 }
+
+describe("custom scrobble endpoint", () => {
+  const endpoint = "http://127.0.0.1:9078/api/lastfm/sidra";
+  const pending: PendingScrobble = { artist: "Queued artist", track: "Queued track", timestamp: 1 };
+  const identity = (url: string): string => createHash("sha256").update(url).digest("hex");
+
+  beforeEach(() => {
+    startFromConnected();
+    session.apiUrl = endpoint;
+  });
+  afterEach(() => { quit(); restoreRealTime(); });
+
+  it.each([endpoint, "https://scrobbler.example/2.0/"])("sends fake-only credentials to the exact URL %s", async (url) => {
+    session.apiUrl = url;
+    const { lastfm, player } = await startIntegration();
+    lastfm.startAuth();
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(scrobbles()).toHaveLength(1);
+    expect(shell.openExternal).not.toHaveBeenCalled();
+    for (const [target, init] of vi.mocked(net.fetch).mock.calls) {
+      expect(target).toBe(url);
+      expect(init?.redirect).toBe("error");
+      expect(init?.headers).toMatchObject({ Accept: "application/json" });
+      const params = new URLSearchParams(String(init?.body));
+      expect(params.get("api_key")).toBe("sidra");
+      expect(params.get("sk")).toBe("sidra");
+      const signature = params.get("api_sig");
+      params.delete("api_sig");
+      params.delete("format");
+      expect(signature).toBe(signParams(Object.fromEntries(params), "sidra"));
+      expect(String(init?.body)).not.toMatch(/test-key|test-secret|session-key|username|token/);
+    }
+    expect(session.key).toBe("session-key");
+  });
+
+  it("works without application credentials or a Last.fm session", async () => {
+    vi.resetModules();
+    vi.stubEnv("SIDRA_LASTFM_API_KEY", "");
+    vi.stubEnv("SIDRA_LASTFM_API_SECRET", "");
+    session.key = null;
+    const lastfm = await import("../src/integrations/lastfm");
+    const player = new FakePlayer();
+    lastfm.init({ player, getMainWindow: () => null });
+    expect(lastfm.isConfigured()).toBe(true);
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(scrobbles()).toHaveLength(1);
+  });
+
+  it.each(["", "not a URL", "file:///tmp/scrobbles", "ftp://example.com/2.0/",
+    "https://user:password@example.com/2.0/", "https://example.com/2.0/#secret",
+    "https://example.com/2.0/?token=private", 42, {}])("fails closed for invalid configuration %j", async (url) => {
+    session.apiUrl = url;
+    const { lastfm, player } = await startIntegration();
+    expect(lastfm.isConfigured()).toBe(false);
+    lastfm.startAuth();
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    expect(net.fetch).not.toHaveBeenCalled();
+    expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+
+  it("requires opt-in and preserves the official account when disabled or disconnected", async () => {
+    session.enabled = false;
+    const { lastfm, player } = await startIntegration();
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    expect(net.fetch).not.toHaveBeenCalled();
+    session.enabled = true;
+    lastfm.enable();
+    expect(net.fetch).toHaveBeenCalled();
+    session.enabled = false;
+    lastfm.disable();
+    const calls = vi.mocked(net.fetch).mock.calls.length;
+    player.emitNowPlaying(TRACK);
+    play(player, 240_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.fetch).toHaveBeenCalledTimes(calls);
+    lastfm.disconnect();
+    expect(session.key).toBe("session-key");
+    expect(queue.pending).toEqual([]);
+  });
+
+  it("keeps the startup destination until a restart and discards foreign queues", async () => {
+    queue.pending = [pending];
+    const { player } = await startIntegration();
+    expect(queue.pending).toEqual([]);
+    expect(session.destination).toBe(identity(endpoint));
+    session.apiUrl = "http://127.0.0.1:9078/2.0/";
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.mocked(net.fetch).mock.calls[0][0]).toBe(endpoint);
+    for (const url of ["http://127.0.0.1:9078/2.0/", undefined, endpoint]) {
+      quit();
+      queue.pending = [pending];
+      session.apiUrl = url;
+      await startIntegration();
+      expect(queue.pending).toEqual([]);
+      expect(session.destination).toBe(url ? identity(url) : "lastfm");
+    }
+  });
+
+  it("keeps a queue for the same destination and never drains it after Off", async () => {
+    session.destination = identity(endpoint);
+    queue.pending = [pending];
+    const { lastfm, player } = await startIntegration();
+    let resolve!: (response: Response) => void;
+    vi.mocked(net.fetch).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    session.enabled = false;
+    lastfm.disable();
+    resolve(new Response("{}"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.fetch).toHaveBeenCalledTimes(1);
+    expect(queue.pending).toEqual([pending]);
+  });
+
+  it("ignores a stale custom success after disconnect and re-enable", async () => {
+    const { lastfm, player } = await startIntegration();
+    let resolve!: (response: Response) => void;
+    vi.mocked(net.fetch).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    lastfm.disconnect();
+    session.enabled = true;
+    queue.pending = [pending];
+    resolve(new Response("{}"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(net.fetch).toHaveBeenCalledTimes(1);
+    expect(queue.pending).toEqual([pending]);
+  });
+
+  it("preserves radio boundary verification and its chosenByUser flag", async () => {
+    const { player } = await startIntegration();
+    player.emitNowPlaying(RADIO_STATION);
+    player.emitPlaybackState(PlaybackState.Playing);
+    player.emitTimedMetadata(RADIO_A);
+    play(player, 10_000);
+    player.emitTimedMetadata(RADIO_B);
+    play(player, 32_000);
+    player.emitTimedMetadata(RADIO_C);
+    expect(scrobbles()).toHaveLength(0);
+    play(player, 1_000);
+    expect(scrobbles()).toHaveLength(1);
+    expect(scrobbles()[0].get("track")).toBe("Radio Song B");
+    expect(scrobbles()[0].get("chosenByUser")).toBe("0");
+    expect(scrobbles()[0].get("sk")).toBe("sidra");
+  });
+
+  it.each([404, 409, 503])("retains a failed play after HTTP %s without a retry timer", async (status) => {
+    vi.mocked(net.fetch).mockImplementation(async () => new Response("not JSON", { status }));
+    const { player } = await startIntegration();
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queue.pending).toHaveLength(1);
+    const calls = vi.mocked(net.fetch).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(net.fetch).toHaveBeenCalledTimes(calls);
+  });
+
+  it("redacts endpoint failures and never clears the official account on custom error 9", async () => {
+    vi.mocked(net.fetch).mockImplementation(async () => new Response(JSON.stringify({ error: 9, message: endpoint })));
+    const { player } = await startIntegration();
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.key).toBe("session-key");
+    expect(session.enabled).toBe(true);
+    expect(JSON.stringify(vi.mocked(log.scope("lastfm").warn).mock.calls)).not.toContain(endpoint);
+    expect(queue.pending).toEqual([]);
+  });
+
+  it("queues transport failures without logging the private URL", async () => {
+    vi.mocked(net.fetch).mockRejectedValue(new Error(endpoint));
+    const { player } = await startIntegration();
+    player.emitNowPlaying(SHORT_TRACK);
+    player.emitPlaybackState(PlaybackState.Playing);
+    play(player, 30_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queue.pending).toHaveLength(1);
+    expect(JSON.stringify(vi.mocked(log.scope("lastfm").warn).mock.calls)).not.toContain(endpoint);
+  });
+
+  it("ingests now-playing and a queued batch through a local HTTP endpoint", async () => {
+    vi.useRealTimers();
+    const received: { path: string | undefined; params: URLSearchParams; accept: string | undefined }[] = [];
+    const server = createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += String(chunk);
+      received.push({ path: req.url, params: new URLSearchParams(body), accept: req.headers.accept });
+      res.setHeader("Content-Type", "application/json");
+      res.end(req.headers.accept === "application/json" ? JSON.stringify({
+        scrobbles: { "@attr": { accepted: 1, ignored: 0 }, scrobble: { ignoredMessage: { code: 0 } } },
+      }) : "<response/>");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing local port");
+      session.apiUrl = `http://127.0.0.1:${address.port}/api/lastfm/sidra`;
+      session.destination = identity(session.apiUrl as string);
+      queue.pending = [pending, { ...pending, track: "Second queued track" }];
+      const requests: Promise<Response>[] = [];
+      vi.mocked(net.fetch).mockImplementation((url, init) => {
+        const request = fetch(url, init);
+        requests.push(request);
+        return request;
+      });
+      const { player } = await startIntegration();
+      player.emitNowPlaying(TRACK);
+      player.emitPlaybackState(PlaybackState.Playing);
+      await vi.waitFor(() => expect(queue.pending).toEqual([]));
+      await Promise.all(requests);
+      expect(received.map((request) => request.params.get("method"))).toEqual(["track.updateNowPlaying", "track.scrobble"]);
+      expect(received[1].params.get("track[1]")).toBe("Second queued track");
+      for (const request of received) {
+        expect(request.path).toBe("/api/lastfm/sidra");
+        expect(request.accept).toBe("application/json");
+        expect(request.params.get("sk")).toBe("sidra");
+        expect(request.params.get("api_key")).toBe("sidra");
+      }
+    } finally {
+      quit();
+      server.close();
+      server.closeAllConnections();
+      await once(server, "close");
+    }
+  });
+});
 
 describe("scrobble submission", () => {
   beforeEach(startFromConnected);

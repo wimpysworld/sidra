@@ -936,7 +936,17 @@ Two levels, and they are easy to confuse:
 | API key + shared secret | The Sidra application, shared by every user | `SIDRA_LASTFM_API_KEY` / `SIDRA_LASTFM_API_SECRET` env vars, else `assets/lastfm-credentials.json` (gitignored, written at build time, `asarUnpack`ed) |
 | Session key | One Last.fm account | `lastfm.sessionKey` in `electron-conf` |
 
-`isConfigured()` is false when the app-level pair is missing, and the tray then omits the Last.fm submenu entirely rather than showing a dead toggle.
+For official Last.fm, `isConfigured()` is false when the app-level pair is missing. A valid custom endpoint needs no application credentials.
+
+### Custom endpoint
+
+`lastfm.apiUrl` selects one full Last.fm-compatible endpoint URL at module load. An absent or `null` value selects official Last.fm. Other values must parse as HTTP or HTTPS URLs without credentials, query parameters or fragments. Invalid values disable requests without fallback. Changes need a restart.
+
+Custom mode supports multi-scrobbler's direct `track.updateNowPlaying` and `track.scrobble` ingestion. It bypasses desktop authentication, which multi-scrobbler does not support. The API key, session key and signing secret are all the dummy value `sidra`. Real Last.fm credentials are not loaded in this mode. Requests ask for `application/json` through the `Accept` header because multi-scrobbler does not read `format` from the form body. Custom requests reject redirects. Custom errors retain the API error class for queue decisions but exclude server text and transport details from logs.
+
+The existing `lastfm.enabled` preference gates playback requests in both modes. Settings and the tray label custom mode separately and omit the account and authentication controls. A saved official session remains intact. Custom error 9 does not revoke that session. The endpoint URL is not exposed to the Settings renderer.
+
+`lastfm.pendingDestination` identifies the queue destination: `lastfm` for official service, or the SHA-256 digest of the resolved custom URL. An absent marker means that the queue came from official Last.fm. Initialisation clears pending plays when the marker differs, including an invalid destination, before any playback request. The immutable target and session-generation guards prevent late requests from moving plays between destinations. Playback verification, radio boundaries, queue limits and playback-triggered drains remain shared.
 
 ### Authentication
 
