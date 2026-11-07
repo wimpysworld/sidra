@@ -14,6 +14,7 @@ The codebase is tightly focused and as lean as possible. Five runtime dependenci
 - [Dependencies](#dependencies)
 - [IPC Event Flow](#ipc-event-flow)
 - [Controller Navigation](#controller-navigation)
+- [Fast Playlist Start](#fast-playlist-start)
 - [MusicKit Hook Script](#musickit-hook-script)
 - [Platform Media Controls](#platform-media-controls)
 - [MPRIS Specification](#mpris-specification)
@@ -154,6 +155,8 @@ sidra/
 │   │                                 electron-builder's `asarUnpack`: it is read with
 │   │                                 readFileSync at runtime and will crash AppImage
 │   │                                 builds if packed inside the asar archive
+│   ├── fastPlaylistQueue.js       - Injected post-load; starts library playlists from a saved track list
+│   │                                 (see Fast Playlist Start). Must be listed in `asarUnpack`
 │   ├── navigationBar.js           - Injected post-load; adds back/forward/reload buttons to sidebar.
 │   │                                 Its `__SIDRA_NAV_LABELS__` placeholder is replaced with the
 │   │                                 localised aria-labels when src/main.ts reads the file
@@ -367,6 +370,32 @@ The sandboxed preload must compile as one runtime file. Its only runtime `requir
 ### Tests
 
 `test/controller.test.ts` checks the action union and channel guards. `test/controllerIPC.test.ts` checks sender and payload validation, focus gating, ordered key pairs, and guarded Back navigation. `test/preload.test.ts` checks the single-file preload, demand-driven polling, mappings, repeat timing, lifecycle resets, held-input suppression, controller isolation, and the private IPC boundary. `test/main.test.ts` checks IPC initialisation, shared guarded Back navigation, and main-frame navigation resets. These tests are automated. No physical controller validation is recorded.
+
+---
+
+## Fast Playlist Start
+
+`assets/fastPlaylistQueue.js` is injected after the MusicKit hook. Starting a song, Play or Shuffle in a large library playlist makes Apple's page call `setQueue({ playlists: [id] })`, and MusicKit then fetches the tracks one page at a time before playback, which took 17 to 22 seconds on a 1,787-track playlist. The script wraps `setQueue` for requests that play one library playlist (`p.` IDs), fetches the complete track list eight pages at a time or reads it from storage, and passes it as `items`. MusicKit builds the same queue in under 100 ms. The script never reads or changes the DOM, never starts playback and never writes `shuffleMode`.
+
+### Saved data
+
+The playlist's tracks are saved in IndexedDB (`sidra-fast-queue`) on the user's machine, because MusicKit needs each track's title and artwork. That takes about 0.65 KB a track, and sign-out deletes it. Every play first asks the API for the playlist's modified date and track total. If they match the saved copy, the copy is used. If they differ, the playlist is fetched again, played from the fresh list and saved for the next play. A reorder changes the modified date, and an added or removed song changes the total. Opening a playlist page prepares it in the background.
+
+The saved data is limited to 20 playlists, 5 MB in total and 30 days since a playlist was saved, and the oldest go first. A playlist over 5 MB is not saved and is fetched on each play. `mk.unauthorize()` deletes everything and tries again, up to three times, when the delete does not commit.
+
+A page request or change check that fails is tried once more. MusicKit returns an HTTP error such as a 429 or 500 as a body instead of throwing, and that counts as a failure too. A storage call that does not answer within three seconds counts as failed, so a broken or cleared database never holds up playback, and the database is opened again on the next use.
+
+### When Apple's request runs instead
+
+The script sends Apple's own `setQueue` request, unchanged, for anything it cannot queue exactly as Apple would:
+
+- requests that are not a single library playlist, and `startPlaying: false`
+- a chosen song while shuffle is on, because MusicKit ignores `startWith` then
+- a song that is not in the list, an empty list, or a list that could not be fetched completely
+- a playlist that repeats a song, because MusicKit keeps one copy of an item ID passed in `items` while Apple's queue keeps repeats
+- a fast request that throws or builds an empty queue, in which case Apple's request is sent once
+
+MusicKit drops tracks without play parameters, so the script leaves them out. The first play of a playlist that has not been prepared waits for the whole list. That is faster than Apple's page-by-page fetch and slower than a play from saved data.
 
 ---
 
