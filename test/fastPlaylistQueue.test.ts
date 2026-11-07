@@ -60,30 +60,21 @@ function fakeIndexedDB(existingStores: string[] = []) {
   const puts = { meta: 0, lists: 0 };
   const created: string[] = [];
   const deleted: string[] = [];
+  let transactions = Promise.resolve();
 
-  function transaction() {
-    let pending = 0;
-    let done = false;
-    const aborted = control.abortNext > 0;
-    if (aborted) control.abortNext -= 1;
+  function transaction(_names: string[], mode: string) {
+    const requests: Array<() => void> = [];
+    const localMeta = new Map<string, MetaRecord>();
+    const localLists = new Map<string, ListRecord>();
+    let aborted = false;
+    const abortAfterRequests = control.abortNext > 0;
+    if (abortAfterRequests) control.abortNext -= 1;
     const tx: { oncomplete?: () => void; onabort?: () => void; onerror?: () => void } = {};
-    const finish = () =>
-      queueMicrotask(() => {
-        if (pending > 0 || done) return;
-        done = true;
-        if (aborted) tx.onabort?.();
-        else tx.oncomplete?.();
-      });
     const request = <T>(run: () => T) => {
       const req: { result?: T; onsuccess?: () => void } = {};
-      pending += 1;
-      queueMicrotask(() => {
-        if (!aborted) {
-          req.result = run();
-          req.onsuccess?.();
-        }
-        pending -= 1;
-        finish();
+      requests.push(() => {
+        req.result = run();
+        req.onsuccess?.();
       });
       return req;
     };
@@ -104,12 +95,30 @@ function fakeIndexedDB(existingStores: string[] = []) {
       delete: (id: string) => request(() => void map.delete(id)),
       clear: () => request(() => map.clear()),
     });
-    const stores = { meta: store(meta, 'meta'), lists: store(lists, 'lists') };
+    const stores = { meta: store(localMeta, 'meta'), lists: store(localLists, 'lists') };
     Object.assign(tx, {
       objectStore: (name: 'meta' | 'lists') => stores[name],
-      abort: () => void (control.abortCalls += 1),
+      abort: () => {
+        control.abortCalls += 1;
+        aborted = true;
+      },
     });
-    finish();
+    transactions = transactions.then(() => {
+      for (const [id, value] of meta) localMeta.set(id, structuredClone(value));
+      for (const [id, value] of lists) localLists.set(id, structuredClone(value));
+      for (const run of requests) {
+        if (aborted) break;
+        run();
+      }
+      if (aborted || abortAfterRequests) return tx.onabort?.();
+      if (mode === 'readwrite') {
+        meta.clear();
+        lists.clear();
+        for (const [id, value] of localMeta) meta.set(id, value);
+        for (const [id, value] of localLists) lists.set(id, value);
+      }
+      tx.oncomplete?.();
+    });
     return tx;
   }
 
@@ -1152,23 +1161,111 @@ describe('fastPlaylistQueue', () => {
       expect(pageCalls(fake.music)).toHaveLength(0);
     });
 
-    it('tries a failed prune again on the next read, so an expired record cannot stay for the whole page', async () => {
+    it('reuses fresh data after a failed prune and retries cleanup on the next read', async () => {
       const db = fakeIndexedDB();
-      seed(db, PLAYLIST, '2026-11-01:5', tracks.filter((t) => t.attributes.playParams), Date.now() - 40 * DAY_MS);
+      seed(db, 'p.expired', 'v', [track('i.x')], Date.now() - 40 * DAY_MS);
+      seed(db, PLAYLIST, '2026-11-01:5', tracks.filter((t) => t.attributes.playParams));
       const fake = fakeMusicKit(tracks);
       runScript(fake.mk, '/eg/home', { indexedDB: db.api });
       await settle();
       db.control.abortNext = 1;
       await fake.mk.setQueue(song('i.1'));
       expect(pageCalls(fake.music)).toHaveLength(0);
-      expect(db.meta.get(PLAYLIST)?.saved).toBeLessThan(Date.now() - 39 * DAY_MS);
+      expect(sentIds(fake.original)).toEqual(['i.0', 'i.1', 'i.3', 'i.4']);
+      expect(db.meta.has('p.expired')).toBe(true);
+      expect(db.lists.has('p.expired')).toBe(true);
       await fake.mk.setQueue(song('i.1'));
+      expect(db.meta.has('p.expired')).toBe(false);
+      expect(db.lists.has('p.expired')).toBe(false);
+      expect(pageCalls(fake.music)).toHaveLength(0);
+    });
+
+    it.each([-40, 40])('rejects data dated %i days from now when cleanup aborts after successful requests', async (days) => {
+      const db = fakeIndexedDB();
+      const live = [track('i.0', true, 'Current title')];
+      const stale = [track('i.0', true, 'Expired title')];
+      seed(db, PLAYLIST, '2026-11-01:1', stale, Date.now() + days * DAY_MS);
+      const fake = fakeMusicKit(live);
+      const gate = deferred();
+      const answer = fake.music.getMockImplementation()!;
+      fake.music.mockImplementation(async (url, params) => {
+        if (params?.limit === 100) await gate.promise;
+        return answer(url, params);
+      });
+      runScript(fake.mk, '/eg/home', { indexedDB: db.api });
+      await settle();
+      db.control.abortNext = 1;
+      const started = fake.mk.setQueue(playButton());
       await settle(10);
-      expect(db.meta.has(PLAYLIST)).toBe(false);
-      await fake.mk.setQueue(song('i.1'));
-      await settle(10);
+      expect(db.lists.get(PLAYLIST)?.items).toEqual(stale);
+      expect(fake.original).not.toHaveBeenCalled();
       expect(pageCalls(fake.music)).toHaveLength(1);
-      expect(db.meta.get(PLAYLIST)?.saved).toBeGreaterThan(Date.now() - DAY_MS);
+      gate.resolve();
+      await started;
+      expect((fake.original.mock.calls[0]?.[0] as QueueRequest).items).toEqual(live);
+    });
+
+    it('uses the original request when expired data cannot be refreshed after a failed cleanup', async () => {
+      const db = fakeIndexedDB();
+      seed(db, PLAYLIST, '2026-11-01:5', [track('i.old', true, 'Expired title')], Date.now() - 40 * DAY_MS);
+      const fake = fakeMusicKit(tracks);
+      const answer = fake.music.getMockImplementation()!;
+      fake.music.mockImplementation(async (url, params) => {
+        if (params?.limit === 100) throw new Error('unavailable');
+        return answer(url, params);
+      });
+      runScript(fake.mk, '/eg/home', { indexedDB: db.api });
+      await settle();
+      db.control.abortNext = 1;
+      const request = playButton();
+      await fake.mk.setQueue(request);
+      expect(fake.original).toHaveBeenCalledExactlyOnceWith(request);
+      expect(pageCalls(fake.music)).toHaveLength(2);
+    });
+
+    it('checks retention on later reads without renewing the saved date on reuse', async () => {
+      const db = fakeIndexedDB();
+      const live = [track('i.0', true, 'Current title')];
+      const saved = [track('i.0', true, 'Saved title')];
+      const fake = fakeMusicKit(live);
+      runScript(fake.mk, '/eg/home', { indexedDB: db.api });
+      await settle();
+      const savedAt = Date.now() - 29 * DAY_MS;
+      seed(db, PLAYLIST, '2026-11-01:1', saved, savedAt);
+      for (const age of [29 * DAY_MS, 30 * DAY_MS - 1, 30 * DAY_MS]) {
+        vi.setSystemTime(savedAt + age);
+        await fake.mk.setQueue(playButton());
+        expect((fake.original.mock.lastCall?.[0] as QueueRequest).items).toEqual(saved);
+        expect(pageCalls(fake.music)).toHaveLength(0);
+        expect(db.meta.get(PLAYLIST)?.saved).toBe(savedAt);
+      }
+      vi.setSystemTime(savedAt + 30 * DAY_MS + 1);
+      await fake.mk.setQueue(playButton());
+      expect(pageCalls(fake.music)).toHaveLength(1);
+      expect((fake.original.mock.lastCall?.[0] as QueueRequest).items).toEqual(live);
+      await settle(10);
+      expect(db.meta.get(PLAYLIST)?.saved).toBeGreaterThan(savedAt);
+    });
+
+    it('rejects data that expires while the version check is pending', async () => {
+      const db = fakeIndexedDB();
+      const live = [track('i.0', true, 'Current title')];
+      const fake = fakeMusicKit(live);
+      const gate = deferred();
+      const answer = fake.music.getMockImplementation()!;
+      fake.music.mockImplementation(async (url, params) => {
+        if (!url.endsWith('/tracks')) await gate.promise;
+        return answer(url, params);
+      });
+      runScript(fake.mk, '/eg/home', { indexedDB: db.api });
+      await settle();
+      seed(db, PLAYLIST, '2026-11-01:1', [track('i.0', true, 'Expired title')], Date.now() - 30 * DAY_MS + 1);
+      const started = fake.mk.setQueue(playButton());
+      await settle(10);
+      gate.resolve();
+      await started;
+      expect(pageCalls(fake.music)).toHaveLength(1);
+      expect((fake.original.mock.lastCall?.[0] as QueueRequest).items).toEqual(live);
     });
 
     it('drops a playlist whose use was never recorded', async () => {

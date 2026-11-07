@@ -90,6 +90,9 @@
     return Promise.race([run, wait(STORAGE_TIMEOUT_MS)]);
   }
 
+  // The age is absolute, so a clock that moved backwards cannot make a record immortal.
+  const isExpired = (saved = 0) => Math.abs(Date.now() - saved) > MAX_AGE_MS;
+
   // Keeps the newest playlists within the limits. `keep` is never removed.
   function prune(meta, lists, keep) {
     const request = meta.getAll();
@@ -100,9 +103,7 @@
         (a, b) => (b.id === keep) - (a.id === keep) || (b.saved || 0) - (a.saved || 0),
       );
       for (const { id, saved = 0, size = 0 } of newest) {
-        // The age is absolute, so a clock that moved backwards cannot make a record immortal.
-        const stale = Math.abs(Date.now() - saved) > MAX_AGE_MS;
-        if (id !== keep && (stale || count >= MAX_LISTS || bytes + size > MAX_BYTES)) {
+        if (id !== keep && (isExpired(saved) || count >= MAX_LISTS || bytes + size > MAX_BYTES)) {
           meta.delete(id);
           lists.delete(id);
         } else {
@@ -121,7 +122,9 @@
     });
     const read = await withStore("readonly", (meta, lists) => [meta.get(id), lists.get(id)]);
     const [meta, list] = read ? read.value.map((request) => request.result) : [];
-    return meta && list && Array.isArray(list.items) ? { version: meta.version, items: list.items } : undefined;
+    return meta && !isExpired(meta.saved) && list && Array.isArray(list.items)
+      ? { version: meta.version, saved: meta.saved, items: list.items }
+      : undefined;
   }
 
   function saveList(id, version, items) {
@@ -198,7 +201,7 @@
     if (!inflight.has(key)) {
       const run = (async () => {
         const [saved, version] = await Promise.all([readSaved(id), fetchVersion(mk, id)]);
-        if (saved && saved.version === version) return saved.items;
+        if (saved && !isExpired(saved.saved) && saved.version === version) return saved.items;
         const items = await fetchTracks(mk, id);
         if (account === accountGeneration) saveList(id, version, items);
         return items;
