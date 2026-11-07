@@ -712,12 +712,16 @@ Both services share the `storefront` key, for example `gb`. Each service keeps i
 
 | Key | Service | Value |
 |---|---|---|
-| `language` | Apple Music | BCP 47 tag from `?l=`, or `null` for no override |
-| `classical.language` | Apple Music Classical | BCP 47 tag from `?l=`, or `null` for no override |
+| `language` | Apple Music | BCP 47 tag from `?l=` or the document language, or `null` for no override |
+| `classical.language` | Apple Music Classical | BCP 47 tag from `?l=` or the document language, or `null` for no override |
 
 On first launch after upgrade, `config.ts` copies the legacy `language` into an absent `classical.language` before any preference reads or writes. An absent legacy value becomes explicit `null`. An existing Classical value, including `null`, stays unchanged. Later Music changes never seed Classical again.
 
-The `did-navigate` and `did-navigate-in-page` listeners capture explicit `l` parameters against the service identified by the URL host. A missing `l` preserves that service's preference. Unchanged values cause no write. Sidra adds no separate language control in Settings.
+The `did-navigate` and `did-navigate-in-page` listeners capture explicit `l` parameters against the service identified by the URL host. A missing `l` leaves the preference unchanged in this URL-only handler.
+
+`initPageLanguageTracking()` reads `document.documentElement.lang` after full loads and main-frame in-page navigation when `l` is absent. Apple omits default languages from chooser URLs, so `/jp/new` with document language `ja` records Japanese without a query parameter. Sidra validates and normalises the tag with `Intl.Locale`. An unavailable or invalid document language preserves the preference. Explicit `l` queries take priority.
+
+The asynchronous read must still match the navigation generation, live window, exact service origin, current URL and active service before it updates the preference. Unchanged values cause no write. Sidra adds no separate language control in Settings and does not infer language from the storefront.
 
 ### Storefront codes
 

@@ -31,6 +31,7 @@ import {
   buildItmsRouteURL,
   handleStorefrontNavigation,
   handleLastPageNavigation,
+  initPageLanguageTracking,
 } from "./storefront";
 import { extractItmsUrlFromArgv, type ItmsTarget } from "./itms";
 import {
@@ -916,6 +917,7 @@ if (gotLock) {
       setupContentHandlers(win, player, markCssReady, assets);
       setupWindowEvents(win, markCssReady);
       setupNavigationHandlers(win, player);
+      initPageLanguageTracking(win);
       setupAuthFrameInjection(win, assets.authFrameScript);
       appTray = createTray();
       if (process.env.SIDRA_DEVTOOLS === "1") {

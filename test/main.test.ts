@@ -187,6 +187,7 @@ vi.mock("../src/storefront", () => ({
   buildItmsRouteURL: vi.fn(),
   handleStorefrontNavigation: vi.fn(),
   handleLastPageNavigation: vi.fn(),
+  initPageLanguageTracking: vi.fn(),
 }));
 
 vi.mock("../src/itms", () => ({ extractItmsUrlFromArgv: vi.fn(() => null) }));

@@ -6,6 +6,8 @@ import { getStorefront, setStorefront, getLanguageFor, setLanguageFor, getMusicS
 import { getStorefront as getLocaleStorefront } from './i18n';
 import { getService, getServiceByHost, type MusicServiceId } from './musicService';
 import type { ItmsRouteToken } from './itms';
+import type { BrowserWindow } from 'electron';
+import { liveWebContents } from './utils';
 
 export type { ItmsRouteToken } from './itms';
 
@@ -139,6 +141,56 @@ export function handleStorefrontNavigation(url: string): void {
   if (storefrontChanged || languageChanged) {
     storefrontLog.info(`storefront changed: ${result.storefront} (language: ${result.language ?? currentLanguage})`);
   }
+}
+
+export function initPageLanguageTracking(win: BrowserWindow): void {
+  const contents = liveWebContents(win);
+  if (!contents) return;
+  let navigationGeneration = 0;
+
+  async function captureLanguage(): Promise<void> {
+    const generation = ++navigationGeneration;
+    try {
+      const current = liveWebContents(win);
+      if (!current) return;
+      const url = current.getURL();
+      const result = extractStorefrontFromURL(url);
+      if (!result || result.language !== null || result.serviceId !== getMusicService()
+        || new URL(url).origin !== getService(result.serviceId).origin) return;
+
+      // Apple omits the default language from its URLs, including chooser links.
+      const page: unknown = await current.executeJavaScript(
+        '({ url: window.location.href, language: document.documentElement.lang })',
+      );
+      if (generation !== navigationGeneration || liveWebContents(win) !== current
+        || current.getURL() !== url || getMusicService() !== result.serviceId
+        || typeof page !== 'object' || page === null
+        || !('url' in page) || page.url !== url
+        || !('language' in page) || typeof page.language !== 'string' || !page.language) return;
+
+      let language: string;
+      try {
+        const locale = new Intl.Locale(page.language);
+        if (!locale.language || locale.language === 'und') return;
+        language = locale.toString();
+      } catch {
+        return;
+      }
+      if (language !== getLanguageFor(result.serviceId)) {
+        setLanguageFor(result.serviceId, language);
+      }
+    } catch {
+      storefrontLog.warn('failed to read page language');
+    }
+  }
+
+  contents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame) navigationGeneration += 1;
+  });
+  contents.on('did-finish-load', captureLanguage);
+  contents.on('did-navigate-in-page', (_event, _url, isMainFrame) => {
+    if (isMainFrame) return captureLanguage();
+  });
 }
 
 /**
