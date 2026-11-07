@@ -379,7 +379,7 @@ The sandboxed preload must compile as one runtime file. Its only runtime `requir
 
 ### Saved data
 
-The playlist's tracks are saved in IndexedDB (`sidra-fast-queue`) on the user's machine, because MusicKit needs each track's title and artwork. That takes about 0.65 KB a track, and sign-out deletes it. Every play first asks the API for the playlist's modified date and track total. If they match the saved copy, the copy is used. If they differ, the playlist is fetched again, played from the fresh list and saved for the next play. A reorder changes the modified date, and an added or removed song changes the total. Opening a playlist page prepares it in the background.
+The playlist's tracks are saved in IndexedDB (`sidra-fast-queue`) on the user's machine, because MusicKit needs each track's title and artwork. That takes about 0.65 KB a track, and sign-out deletes it. Every play that takes the fast path first asks the API for the playlist's modified date and track total. If they match the saved copy, the copy is used. If they differ, the playlist is fetched again, played from the fresh list and saved for the next play. A reorder changes the modified date, and an added or removed song changes the total. Opening a playlist page prepares it in the background.
 
 The saved data is limited to 20 playlists, 5 MB in total and 30 days since a playlist was saved, and the oldest go first. A playlist over 5 MB is not saved and is fetched on each play. `mk.unauthorize()` deletes everything and tries again, up to three times, when the delete does not commit.
 

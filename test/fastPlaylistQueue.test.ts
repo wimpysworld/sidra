@@ -168,7 +168,7 @@ function fakeMusicKit(initial: Track[]) {
       const body: { data: Track[]; meta?: { total: number }; next?: string } = {
         data: state.tracks.slice(offset, offset + limit),
       };
-      if (!state.omitTotal) body.meta = { total: state.tracks.length };
+      if (!state.omitTotal || limit === 1) body.meta = { total: state.tracks.length };
       if (state.next && offset + limit < state.tracks.length) body.next = 'more';
       return { data: body };
     }
@@ -603,6 +603,21 @@ describe('fastPlaylistQueue', () => {
       expect(fake.db.lists.size).toBe(0);
     });
 
+    it('does not trust a version check that has no total, since a same-second change would be missed', async () => {
+      const fake = await cold(tracks);
+      const answer = fake.music.getMockImplementation();
+      fake.music.mockImplementation(async (url, params) => {
+        const result = (await answer?.(url, params)) as { data: { meta?: unknown } };
+        if (url.endsWith('/tracks') && params?.limit === 1) return { data: { data: [] } } as never;
+        return result as never;
+      });
+      const request = song('i.1');
+      await fake.mk.setQueue(request);
+      expect(fake.original).toHaveBeenCalledOnce();
+      expect(fake.original).toHaveBeenCalledWith(request);
+      expect(fake.db.lists.size).toBe(0);
+    });
+
     it('does not trust a playlist that has no modified date', async () => {
       const fake = await cold(tracks);
       const answer = fake.music.getMockImplementation();
@@ -785,15 +800,17 @@ describe('fastPlaylistQueue', () => {
     });
 
     it("sends the standard request once for an empty playlist, as Apple's API answers it", async () => {
-      const { mk, original, music } = await cold();
+      const { mk, original, music, db } = await cold();
       music.mockImplementation(async (url: string) =>
         url.endsWith('/tracks')
-          ? ({ data: { errors: [{ title: 'No related resources' }] } } as never)
+          ? ({ data: { errors: [{ status: '404', title: 'No related resources' }] } } as never)
           : ({ data: { data: [{ attributes: { lastModifiedDate: 'x' } }] } } as never),
       );
       await mk.setQueue(playButton());
       expect(original).toHaveBeenCalledOnce();
       expect(original).toHaveBeenCalledWith(playButton());
+      await settle(10);
+      expect(db.lists.get(PLAYLIST)?.items).toEqual([]);
     });
 
     it('sends the standard request once for an empty playlist', async () => {
@@ -1133,6 +1150,25 @@ describe('fastPlaylistQueue', () => {
       expect(db.meta.has(PLAYLIST)).toBe(true);
       expect(fake.original).toHaveBeenCalledOnce();
       expect(pageCalls(fake.music)).toHaveLength(0);
+    });
+
+    it('tries a failed prune again on the next read, so an expired record cannot stay for the whole page', async () => {
+      const db = fakeIndexedDB();
+      seed(db, PLAYLIST, '2026-11-01:5', tracks.filter((t) => t.attributes.playParams), Date.now() - 40 * DAY_MS);
+      const fake = fakeMusicKit(tracks);
+      runScript(fake.mk, '/eg/home', { indexedDB: db.api });
+      await settle();
+      db.control.abortNext = 1;
+      await fake.mk.setQueue(song('i.1'));
+      expect(pageCalls(fake.music)).toHaveLength(0);
+      expect(db.meta.get(PLAYLIST)?.saved).toBeLessThan(Date.now() - 39 * DAY_MS);
+      await fake.mk.setQueue(song('i.1'));
+      await settle(10);
+      expect(db.meta.has(PLAYLIST)).toBe(false);
+      await fake.mk.setQueue(song('i.1'));
+      await settle(10);
+      expect(pageCalls(fake.music)).toHaveLength(1);
+      expect(db.meta.get(PLAYLIST)?.saved).toBeGreaterThan(Date.now() - DAY_MS);
     });
 
     it('drops a playlist whose use was never recorded', async () => {

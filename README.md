@@ -27,7 +27,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
 - 🎮 **Controller navigation** - use a standard controller to move through and select items in both services
-- ⚡ **Fast playlist start** - large library playlists start in one to two seconds instead of 17 or more; the track list is saved on your machine and deleted when you sign out
+- ⚡ **Fast playlist start** - large library playlists start in one to three seconds once a playlist has been opened, and in four to five seconds the first time, instead of 17 or more; the track list is saved on your machine and deleted when you sign out
 - 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
 - 🎼 **Apple Music Classical** - switch at runtime through **Player** in Settings or the tray:
   - Start pages are Home, Browse, Playlists, Search, or your last page; Apple Music's are Home, New, Radio, All Playlists, or your last page

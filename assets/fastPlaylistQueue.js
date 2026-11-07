@@ -115,7 +115,10 @@
   }
 
   async function readSaved(id) {
-    pruned ||= withStore("readwrite", (meta, lists) => prune(meta, lists));
+    pruned ||= withStore("readwrite", (meta, lists) => prune(meta, lists)).then((done) => {
+      if (!done) pruned = undefined; // a prune that failed is tried again on the next read
+      return done;
+    });
     const read = await withStore("readonly", (meta, lists) => [meta.get(id), lists.get(id)]);
     const [meta, list] = read ? read.value.map((request) => request.result) : [];
     return meta && list && Array.isArray(list.items) ? { version: meta.version, items: list.items } : undefined;
@@ -179,9 +182,11 @@
         await Promise.all([mk.api.music(path), mk.api.music(`${path}/tracks`, { limit: 1 })])
       ).map(ok);
       const { lastModifiedDate } = playlist.data[0].attributes;
-      // Without a modified date a change could never be seen.
-      if (!lastModifiedDate) throw new Error("playlist has no modified date");
-      return `${lastModifiedDate}:${(tracks.meta && tracks.meta.total) || 0}`;
+      // The 404 Apple gives for a playlist with no tracks has no total, which counts as 0.
+      const total = tracks.errors ? 0 : tracks.meta && tracks.meta.total;
+      // Without a modified date or a total a change could not be seen reliably.
+      if (!lastModifiedDate || !Number.isInteger(total)) throw new Error("playlist version unknown");
+      return `${lastModifiedDate}:${total}`;
     });
   }
 
