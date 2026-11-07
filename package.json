@@ -54,6 +54,7 @@
       "assets/locales/loading.json",
       "assets/locales/tray.json",
       "assets/locales/update.json",
+      "assets/fastPlaylistQueue.js",
       "assets/musicKitHook.js",
       "assets/navigationBar.js",
       "assets/settings.html",

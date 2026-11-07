@@ -516,7 +516,7 @@ describe("main bootstrap", () => {
     expect(bootstrap.webContents.executeJavaScript).not.toHaveBeenCalled();
 
     await finish?.();
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
     for (const initialise of Object.values(bootstrap.integrations)) {
       expect(initialise.mock.invocationCallOrder[0]).toBeLessThan(
         bootstrap.webContents.executeJavaScript.mock.invocationCallOrder[0],
@@ -524,9 +524,42 @@ describe("main bootstrap", () => {
     }
 
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(6);
     for (const initialise of Object.values(bootstrap.integrations))
       expect(initialise).toHaveBeenCalledOnce();
+  });
+
+  it("does not load the fast playlist queue into a page outside Apple Music", async () => {
+    const { isAllowedNavigationUrl } = await import("../src/musicService");
+    await startMain();
+    const finish = bootstrap.mainWebListeners.get("did-finish-load");
+    vi.mocked(isAllowedNavigationUrl).mockReturnValue(false);
+    try {
+      await finish?.();
+    } finally {
+      vi.mocked(isAllowedNavigationUrl).mockReturnValue(true);
+    }
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      "skipped hookScript injection on disallowed host:",
+      expect.any(String),
+    );
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps injecting when the fast playlist queue fails", async () => {
+    await startMain();
+    const finish = bootstrap.mainWebListeners.get("did-finish-load");
+    bootstrap.webContents.executeJavaScript
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("queue script failed"));
+
+    await finish?.();
+
+    expect(bootstrap.log.warn).toHaveBeenCalledWith(
+      "failed to inject fastQueueScript on load:",
+      expect.any(Error),
+    );
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(3);
   });
 
   it("permits later SPA injection after initial integration and hook failures", async () => {
@@ -554,7 +587,7 @@ describe("main bootstrap", () => {
     expect(bootstrap.integrations.trayState).toHaveBeenCalledOnce();
     expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(2);
     await navigate?.({}, "https://music.apple.com/gb/new");
-    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(4);
+    expect(bootstrap.webContents.executeJavaScript).toHaveBeenCalledTimes(5);
     expect(bootstrap.integrations.notifications).toHaveBeenCalledOnce();
   });
 
