@@ -134,7 +134,7 @@ When adding a language, add an entry to every record in every JSON file:
 | Key | Type | Purpose |
 |-----|------|---------|
 | `storefront` | `string` | Apple Music storefront code (e.g. `gb`, `us`) |
-| `language` | `string \| null` | BCP 47 language override for the storefront `?l=` parameter |
+| `language` | `string \| null` | Apple Music language override for the storefront `?l=` parameter, as a BCP 47 tag |
 | `theme` | `ThemeName` (`'apple-music' \| BundledThemeName \| 'custom'`) | Active theme (default: `'apple-music'`, meaning no override CSS) |
 | `zoomFactor` | `number` | Renderer zoom factor (default: `1.0`) |
 | `closeToTray.enabled` | `boolean` | Keep Sidra running in the tray when the window closes (default: false); gates the Hide/Show Window tray items and the tray left-click handler, so with it off, clicking the tray icon does nothing |
@@ -148,12 +148,14 @@ When adding a language, add an entry to every record in every JSON file:
 | `startPage` | `'home' \| 'new' \| 'radio' \| 'all-playlists' \| 'last'` | Page to load on launch (default: `'new'`) |
 | `lastPageUrl` | `string` | Last visited page path, query string included, storefront segment stripped; used when `startPage` is `'last'` |
 | `musicService` | `MusicServiceId` (`'music' \| 'classical'`) | Active music service (default: `'music'`) |
+| `classical.language` | `string \| null` | Apple Music Classical language override for the storefront `?l=` parameter, as a BCP 47 tag |
 | `classical.startPage` | `string` | Start page for Apple Music Classical (default: `'home'`); valid values: `'home'`, `'browse'`, `'playlists'`, `'search'`, `'last'`. Classical has no library route on the web, so none is offered; an unknown stored id falls back to `'home'` |
 | `classical.lastPageUrl` | `string` | Last visited Classical page path, query string included; used when `classical.startPage` is `'last'` |
 
 - Getters return `undefined` when no value has been persisted - absence of a key is intentional and drives the storefront fallback chain in `main.ts`; do not add default values to the store schema
 - When adding new persistent settings, add typed getter/setter pairs to `config.ts` following the existing pattern; do not use `electron-conf` directly elsewhere. A mechanical setter goes through the private `setConfigValue()`, which writes the key and logs it; the message is derived from the typed key, so a rename cannot leave a stale key name in the log
-- `getStartPageFor(id)`, `getLastPageUrlFor(id)` and `setLastPageUrlFor(id, url)` are service-keyed views of the per-service pairs, for a caller holding a `MusicServiceId` as a variable. `SERVICE_PAGE_ACCESSORS` is the only place a service id maps to its stored keys, and its `Record<MusicServiceId, ...>` annotation makes a new service a compile error there rather than a missed branch at a call site. The stored keys are unchanged
+- Use `getStartPageFor(id)`, `getLastPageUrlFor(id)` and `setLastPageUrlFor(id, url)` for service-specific pages. Use `getLanguageFor(id)` and `setLanguageFor(id, lang)` for service-specific languages. `SERVICE_ACCESSORS` maps each `MusicServiceId` to its accessors. Its `Record<MusicServiceId, ...>` annotation requires an entry for every service. The `language` key stores Music's preference. At module load, an absent `classical.language` receives the legacy `language` value or `null`, once. Later language changes affect only the selected service. The storefront stays shared
+- Keep explicit `l` queries ahead of document language. `handleStorefrontNavigation()` preserves the preference when the URL omits `l`. `initPageLanguageTracking()` then captures a valid `document.documentElement.lang` after full loads and main-frame in-page navigation. Apple omits default languages from chooser URLs, so Japan's `/jp/new` must still persist `ja`. Preserve the preference when the document language is unavailable or invalid. Retain the navigation generation, live-window, exact service origin, URL and active-service checks before accepting an asynchronous result. Do not infer language from the storefront.
 
 ### Service switching
 

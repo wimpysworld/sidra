@@ -585,7 +585,7 @@ describe("Config store runtime behaviour", () => {
     expect(getStartPage()).toBe("new");
   });
 
-  // SERVICE_PAGE_ACCESSORS is the only map from a service id to stored keys.
+  // SERVICE_ACCESSORS is the only map from a service id to stored keys.
   // Each getStartPageFor assertion covers both ids, so swapped rows cannot pass.
 
   it("getStartPageFor returns each service default when nothing is persisted", () => {
