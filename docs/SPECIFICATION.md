@@ -708,11 +708,20 @@ Fallback chain at startup:
 
 ### Persistence
 
-`electron-conf` holds two keys: `storefront` (e.g. `gb`) and `language` (BCP 47 tag from the `?l=` parameter, e.g. `fr`, or `null`). A `did-navigate` and `did-navigate-in-page` listener on `win.webContents` parses the URL after each navigation. When the storefront or language changes, the new values are written to the store. Same-storefront navigation does not trigger a write.
+Both services share the `storefront` key, for example `gb`. Each service keeps its own language preference, selected through Apple's language chooser:
+
+| Key | Service | Value |
+|---|---|---|
+| `language` | Apple Music | BCP 47 tag from `?l=`, or `null` for no override |
+| `classical.language` | Apple Music Classical | BCP 47 tag from `?l=`, or `null` for no override |
+
+On first launch after upgrade, `config.ts` copies the legacy `language` into an absent `classical.language` before any preference reads or writes. An absent legacy value becomes explicit `null`. An existing Classical value, including `null`, stays unchanged. Later Music changes never seed Classical again.
+
+The `did-navigate` and `did-navigate-in-page` listeners capture explicit `l` parameters against the service identified by the URL host. A missing `l` preserves that service's preference. Unchanged values cause no write. Sidra adds no separate language control in Settings.
 
 ### Storefront codes
 
-Apple Music storefront codes are ISO 3166-1 alpha-2 codes lowercased (e.g. `gb`, `us`, `ch`). Apple supports 167+ storefronts. The `?l=` parameter accepts BCP 47 language tags from each storefront's `supportedLanguageTags` list and controls UI localisation only - the storefront determines catalogue availability.
+Apple Music storefront codes are ISO 3166-1 alpha-2 codes lowercased (e.g. `gb`, `us`, `ch`). Apple supports 167+ storefronts. The `?l=` parameter selects a supported UI language. The storefront determines catalogue availability. Apple controls the available translations and catalogue metadata. Sidra does not translate titles, composer names or other metadata.
 
 ---
 
@@ -760,15 +769,15 @@ The main-frame `did-start-navigation` handler also sends `controller:reset` to t
 
 ### Persistence and URL building
 
-Each service keeps its own start page and last page. `classical.startPage` and `classical.lastPageUrl` sit alongside `startPage` and `lastPageUrl` in `electron-conf`.
+Each service keeps its own start page, last page and language. `SERVICE_ACCESSORS` in `src/config.ts` maps each service to its typed accessors.
 
-`buildAppleMusicURL()` in `src/storefront.ts` branches on `getMusicService() === 'classical'` to pick the pair to read. The stored path is read only in the `'last'` branch. The Classical home entry has an empty path and must not gain a trailing slash, so the path segment is built as `pageEntry.path === '' ? '' : '/' + pageEntry.path`.
+`buildAppleMusicURL()` in `src/storefront.ts` reads the active service's preferences through those accessors. It reads the stored path only when the start page is `'last'`. The Classical home entry has an empty path and keeps its bare `/gb` form without a trailing slash.
 
 `handleLastPageNavigation()` resolves the host of each navigation through `getServiceByHost()` and writes to `setClassicalLastPageUrl()` or `setLastPageUrl()` accordingly. It stores the path with its query string, so `/gb/search?term=jazz` resumes as the search it was, and drops the fragment, which is renderer state rather than a page address.
 
-`appendLanguage()` adds the `?l=` parameter through `URL` and `searchParams.set()`, so a stored path that already carries a query gets `&l=` rather than a second `?`, and a stored `l=` is replaced rather than duplicated. It returns the string untouched when no language is set, because a `URL` round trip would normalise it and the Classical home URL must keep its bare `/gb` form.
+`applyLanguage()` applies the service's stored preference to launch URLs through `URL.searchParams`. A string replaces any stale `l` parameters in a saved last-page URL. A null or unset preference removes them. Other query parameters stay intact.
 
-`buildItmsRouteURL()` is pinned to `getService('music').origin`. `itms://` links always target Apple Music, and `transformItmsUrl()` in `src/itms.ts` pins the host on the parsing side.
+`buildItmsRouteURL()` always uses Apple Music's origin and language, even when Classical is active. Incoming catalogue links keep their explicit query parameters. `transformItmsUrl()` in `src/itms.ts` validates the host and removes the `app` parameter.
 
 ### Themes across services
 

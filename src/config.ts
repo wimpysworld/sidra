@@ -42,11 +42,19 @@ interface StoreSchema {
   lastPageUrl: string;
   'classical.startPage': ClassicalStartPageId | 'last';
   'classical.lastPageUrl': string;
+  'classical.language': string | null;
   zoomFactor: number;
   musicService: MusicServiceId;
 }
 
 const store = new Conf<StoreSchema>();
+
+// Seed once before any caller can change Music's legacy preference. Persist null
+// for an absent legacy key so a later launch cannot seed from a new Music choice.
+if (!store.has('classical.language')) {
+  store.set('classical.language', store.has('language') ? store.get('language') ?? null : null);
+  configLog.info('classical.language initialised');
+}
 
 /** Reads a key, or the caller's default when the user has never set it. */
 function getConfigValue<K extends keyof StoreSchema>(key: K, defaultValue: StoreSchema[K]): StoreSchema[K] {
@@ -284,24 +292,38 @@ export function setClassicalLastPageUrl(url: string): void {
   setConfigValue('classical.lastPageUrl', url);
 }
 
+export function getClassicalLanguage(): string | null | undefined {
+  return getConfigValueOptional('classical.language');
+}
+
+export function setClassicalLanguage(lang: string | null): void {
+  setConfigValue('classical.language', lang);
+}
+
 /**
- * Map each service to its stored page accessors without branching at call sites.
+ * Map each service to its stored preferences without branching at call sites.
  * The total Record requires an entry for every registered service.
  */
-const SERVICE_PAGE_ACCESSORS: Record<MusicServiceId, {
+const SERVICE_ACCESSORS: Record<MusicServiceId, {
   getStartPage: () => AnyStartPageId | 'last';
   getLastPageUrl: () => string | undefined;
   setLastPageUrl: (url: string) => void;
+  getLanguage: () => string | null | undefined;
+  setLanguage: (lang: string | null) => void;
 }> = {
   music: {
     getStartPage,
     getLastPageUrl,
     setLastPageUrl,
+    getLanguage,
+    setLanguage,
   },
   classical: {
     getStartPage: getClassicalStartPage,
     getLastPageUrl: getClassicalLastPageUrl,
     setLastPageUrl: setClassicalLastPageUrl,
+    getLanguage: getClassicalLanguage,
+    setLanguage: setClassicalLanguage,
   },
 };
 
@@ -310,15 +332,23 @@ const SERVICE_PAGE_ACCESSORS: Record<MusicServiceId, {
  * Resolve the result against that service's startPages and default.
  */
 export function getStartPageFor(id: MusicServiceId): AnyStartPageId | 'last' {
-  return SERVICE_PAGE_ACCESSORS[id].getStartPage();
+  return SERVICE_ACCESSORS[id].getStartPage();
 }
 
 /** Read the last page stored for the requested service. */
 export function getLastPageUrlFor(id: MusicServiceId): string | undefined {
-  return SERVICE_PAGE_ACCESSORS[id].getLastPageUrl();
+  return SERVICE_ACCESSORS[id].getLastPageUrl();
 }
 
 /** Persist the last page under the requested service. */
 export function setLastPageUrlFor(id: MusicServiceId, url: string): void {
-  SERVICE_PAGE_ACCESSORS[id].setLastPageUrl(url);
+  SERVICE_ACCESSORS[id].setLastPageUrl(url);
+}
+
+export function getLanguageFor(id: MusicServiceId): string | null | undefined {
+  return SERVICE_ACCESSORS[id].getLanguage();
+}
+
+export function setLanguageFor(id: MusicServiceId, lang: string | null): void {
+  SERVICE_ACCESSORS[id].setLanguage(lang);
 }

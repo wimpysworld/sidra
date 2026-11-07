@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, beforeEach } from "vitest";
+import { describe, it, expect, expectTypeOf, beforeEach, vi } from "vitest";
 import type { ThemeName } from "../src/theme";
 
 // Import the real config module. A hand-written stand-in can reproduce its own defaults and hide production defects.
@@ -8,6 +8,10 @@ import {
   setStorefront,
   getLanguage,
   setLanguage,
+  getClassicalLanguage,
+  setClassicalLanguage,
+  getLanguageFor,
+  setLanguageFor,
   getNotificationsEnabled,
   setNotificationsEnabled,
   getDiscordEnabled,
@@ -50,6 +54,35 @@ import type {
   MusicServiceId,
 } from "../src/musicService";
 
+describe("service language migration", () => {
+  const store = (Conf as unknown as { _data: Map<string, unknown> })._data;
+
+  beforeEach(() => {
+    store.clear();
+    vi.resetModules();
+  });
+
+  it.each(["fr", null, undefined])("initialises Classical once from legacy %s", async (legacy) => {
+    if (legacy !== undefined) store.set("language", legacy);
+    const config = await import("../src/config");
+    expect(store.has("classical.language")).toBe(true);
+    config.setLanguage("de");
+    expect(config.getClassicalLanguage()).toBe(legacy ?? null);
+    vi.resetModules();
+    const restarted = await import("../src/config");
+    expect(restarted.getLanguageFor("classical")).toBe(legacy ?? null);
+    expect(restarted.getLanguageFor("music")).toBe("de");
+  });
+
+  it.each(["ja", null])("preserves an existing Classical preference of %s", async (language) => {
+    store.set("language", "fr");
+    store.set("classical.language", language);
+    const config = await import("../src/config");
+    expect(config.getLanguageFor("classical")).toBe(language);
+    expect(config.getLanguageFor("music")).toBe("fr");
+  });
+});
+
 // Compare accessors with StoreSchema so type drift fails at the config boundary.
 // Vitest does not type-check. `npx tsc -p tsconfig.test.json --noEmit`, run by `just lint`, enforces expectTypeOf assertions.
 
@@ -70,6 +103,15 @@ describe("Config store type assertions", () => {
 
   it("setLanguage accepts string | null", () => {
     expectTypeOf(setLanguage).parameter(0).toEqualTypeOf<string | null>();
+  });
+
+  it("service language accessors preserve the nullable preference contract", () => {
+    expectTypeOf(getClassicalLanguage).returns.toEqualTypeOf<string | null | undefined>();
+    expectTypeOf(setClassicalLanguage).parameter(0).toEqualTypeOf<string | null>();
+    expectTypeOf(getLanguageFor).parameter(0).toEqualTypeOf<MusicServiceId>();
+    expectTypeOf(getLanguageFor).returns.toEqualTypeOf<string | null | undefined>();
+    expectTypeOf(setLanguageFor).parameter(0).toEqualTypeOf<MusicServiceId>();
+    expectTypeOf(setLanguageFor).parameter(1).toEqualTypeOf<string | null>();
   });
 
   it("getNotificationsEnabled returns boolean", () => {
@@ -211,6 +253,22 @@ describe("Config store runtime behaviour", () => {
   it("setStorefront persists value", () => {
     setStorefront("gb");
     expect(getStorefront()).toBe("gb");
+  });
+
+  it("stores independent language preferences through the service accessors", () => {
+    expect(getLanguageFor("music")).toBeUndefined();
+    expect(getLanguageFor("classical")).toBeUndefined();
+    setLanguageFor("music", "en-GB");
+    setLanguageFor("classical", "de");
+    expect(getLanguage()).toBe("en-GB");
+    expect(getClassicalLanguage()).toBe("de");
+    expect(store.get("language")).toBe("en-GB");
+    expect(store.get("classical.language")).toBe("de");
+    setLanguageFor("classical", null);
+    expect(getLanguageFor("classical")).toBeNull();
+    expect(getLanguageFor("music")).toBe("en-GB");
+    setLanguageFor("music", null);
+    expect(getLanguageFor("music")).toBeNull();
   });
 
   it("getNotificationsEnabled defaults to true", () => {
