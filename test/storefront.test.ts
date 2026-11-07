@@ -14,6 +14,7 @@ import {
   setStorefront,
   getLanguage,
   setLanguage,
+  getClassicalLanguage,
   getMusicService,
   getStartPage,
   getLastPageUrl,
@@ -29,6 +30,7 @@ const mockedGetStorefront = vi.mocked(getStorefront);
 const mockedSetStorefront = vi.mocked(setStorefront);
 const mockedGetLanguage = vi.mocked(getLanguage);
 const mockedSetLanguage = vi.mocked(setLanguage);
+const mockedGetClassicalLanguage = vi.mocked(getClassicalLanguage);
 const mockedGetMusicService = vi.mocked(getMusicService);
 const mockedGetStartPage = vi.mocked(getStartPage);
 const mockedGetLastPageUrl = vi.mocked(getLastPageUrl);
@@ -227,7 +229,7 @@ describe("buildAppleMusicURL - classical service", () => {
     vi.clearAllMocks();
     mockedGetMusicService.mockReturnValue("classical");
     mockedGetStorefront.mockReturnValue("gb");
-    mockedGetLanguage.mockReturnValue(null);
+    mockedGetClassicalLanguage.mockReturnValue(null);
   });
 
   it("falls back to home when a removed library start page is still persisted", () => {
@@ -290,7 +292,7 @@ describe("buildAppleMusicURL - classical service", () => {
     expect(buildAppleMusicURL()).toBe("https://classical.music.apple.com/gb");
   });
 
-  it("resolves Home with its query after a Home visit carrying one", () => {
+  it("removes a stale language from Home when the preference is null", () => {
     mockedGetClassicalStartPage.mockReturnValue("last");
     handleLastPageNavigation(
       "https://classical.music.apple.com/gb/browse/catalog",
@@ -298,7 +300,7 @@ describe("buildAppleMusicURL - classical service", () => {
     handleLastPageNavigation("https://classical.music.apple.com/gb?l=en-GB");
     mockedGetClassicalLastPageUrl.mockReturnValue(lastStoredClassicalPath());
     expect(buildAppleMusicURL()).toBe(
-      "https://classical.music.apple.com/gb?l=en-GB",
+      "https://classical.music.apple.com/gb",
     );
   });
 });

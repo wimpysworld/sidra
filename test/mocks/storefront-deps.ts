@@ -19,11 +19,25 @@ vi.mock('../../src/config', () => {
   const getClassicalStartPage = vi.fn(() => 'home');
   const getClassicalLastPageUrl = vi.fn();
   const setClassicalLastPageUrl = vi.fn();
+  const getLanguage = vi.fn();
+  const setLanguage = vi.fn();
+  const getClassicalLanguage = vi.fn();
+  const setClassicalLanguage = vi.fn();
   return {
     getStorefront: vi.fn(),
     setStorefront: vi.fn(),
-    getLanguage: vi.fn(),
-    setLanguage: vi.fn(),
+    getLanguage,
+    setLanguage,
+    getClassicalLanguage,
+    setClassicalLanguage,
+    getLanguageFor: vi.fn((id: string) => (id === 'classical' ? getClassicalLanguage() : getLanguage())),
+    setLanguageFor: vi.fn((id: string, lang: string | null) => {
+      if (id === 'classical') {
+        setClassicalLanguage(lang);
+      } else {
+        setLanguage(lang);
+      }
+    }),
     getStartPage,
     getLastPageUrl,
     getZoomFactor: vi.fn(() => 1.0),
