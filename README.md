@@ -20,13 +20,13 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
 ## Features
 
 - 🎧 **Untouched audio** - Sidra adds no `AudioContext`, DSP, or resampling of its own (Chromium and the OS can still resample); lossless on macOS and Windows via [CastLabs EVS production VMP signing](https://castlabs.com/security/widevine-certification/)
-- 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus a live-reloading custom colour theme
-- 📊 **Last.fm scrobbling** - opt-in, with browser approval
+- 🎨 **Eight bundled themes** - Catppuccin, Dracula, Everforest, Gruvbox, Nord, Rosé Pine, Solarized, and Tokyo Night - plus a live-reloading [custom colour theme](https://github.com/wimpysworld/sidra/wiki/Custom-Themes)
+- 📊 **[Last.fm scrobbling](https://github.com/wimpysworld/sidra/wiki/Scrobbling)** - opt-in, with browser approval or a custom scrobble endpoint
 - 🎮 **Discord Rich Presence** - show what you are listening to, including Vesktop Flatpak on Linux
 - 🔔 **Desktop notifications** - tracks and radio songs with Play/Pause, Previous and Next controls where the platform supports notification actions
 - 🌍 **32 languages** - localised storefront and interface
 - 🧭 **Back, Forward, and Reload** - injected into both Apple Music and Apple Music Classical
-- 🎮 **Controller navigation** - use a standard controller to move through and select items in both services
+- 🎮 **[Controller navigation](https://github.com/wimpysworld/sidra/wiki/Home#controller-navigation)** - use a standard controller to move through and select items in both services
 - ⚡ **Fast playlist start** - large library playlists start in one to three seconds once a playlist has been opened, and in four to five seconds the first time, instead of 17 or more; the track list is saved on your machine and deleted when you sign out
 - 🖱️ **Scroll to change volume** - point at the player bar volume control and scroll; 5% a notch
 - 🎼 **Apple Music Classical** - switch at runtime through **Player** in Settings or the tray:
@@ -235,123 +235,13 @@ Your chosen theme applies to Apple Music, Apple Music Classical and Settings.
 
 ### Custom theme
 
-Copy [custom-theme.json](docs/custom-theme.json) to Sidra's user data directory, then edit its colours:
-
-| Platform | File |
-|---|---|
-| Linux | `~/.config/Sidra/custom-theme.json` |
-| macOS | `~/Library/Application Support/Sidra/custom-theme.json` |
-| Windows | `%APPDATA%\Sidra\custom-theme.json` |
-
-On Linux, a set `XDG_CONFIG_HOME` replaces `~/.config`.
-
-A valid file adds one **Custom Theme** choice under **Style** in Settings.
-Select it once. Saved edits apply without a restart, including in an open Settings window.
-
-Enable Noctalia's [Sidra community template](https://github.com/noctalia-dev/community-templates/tree/main/sidra) and select **Settings → Style → Custom Theme** once.
-Sidra then follows Noctalia's active colour palette automatically.
-
-The example contains all 12 required colours in `dark`:
-
-```json
-{
-  "dark": {
-    "base": "#1e1e2e",
-    "mantle": "#181825",
-    "crust": "#11111b",
-    "surface0": "#313244",
-    "surface1": "#45475a",
-    "surface2": "#585b70",
-    "overlay": "#6c7086",
-    "text": "#cdd6f4",
-    "subtext1": "#bac2de",
-    "subtext0": "#a6adc8",
-    "accent": "#f38ba8",
-    "accentHover": "#eba0ac"
-  }
-}
-```
-
-Use six-digit hex colours, such as `#1e1e2e`. JSON requires double quotes and accepts no comments or trailing commas.
-For a separate light scheme, add a `light` object with the same 12 keys. Without it, Sidra uses `dark` in both modes.
-
-| Keys | Colour role |
-|---|---|
-| `base`, `mantle`, `crust` | Page, player and footer backgrounds |
-| `surface0`, `surface1`, `surface2` | Controls, scrollbars and borders |
-| `text`, `subtext1`, `subtext0`, `overlay` | Primary, secondary, emphasised secondary and tertiary text |
-| `accent`, `accentHover` | Highlight colour and its hover or pressed state |
-
-Sidra accepts low-contrast palettes without adjustment. Choose colours that you can read comfortably.
-Custom themes change colours only, not fonts or layout.
-
-If the file is missing, unreadable or invalid, **Custom Theme** disappears and an active custom theme falls back to **Apple Music**.
-Fix or restore the file to recover the theme automatically, unless you selected another style.
-
-**Migrating from custom CSS:** Sidra ignores existing `custom.css` files but leaves them untouched.
-Copy your colours into the JSON example. Sidra cannot automatically convert arbitrary CSS, and CSS rules no longer apply.
+Place a [`custom-theme.json`](docs/custom-theme.json) file in Sidra's user data directory or enable Noctalia's [Sidra community template](https://github.com/noctalia-dev/community-templates/tree/main/sidra) to add a live-reloading **Custom Theme** choice under **Style** in Settings. See [Custom Themes in the wiki](https://github.com/wimpysworld/sidra/wiki/Custom-Themes) for file paths, colour keys, and setup instructions.
 
 ## Mini Player
 
 Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLauinger77](https://github.com/ChrisLauinger77)) asked for one in [#125](https://github.com/wimpysworld/sidra/issues/125), then built [**MPRIS MiniPlayer**](https://github.com/ChrisLauinger77/mpris-miniplayer): a small GTK4/libadwaita window that controls any MPRIS player on Linux.
 
 It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
-
-## Controller navigation
-
-Sidra supports controllers that expose the browser's standard Gamepad mapping. The controls work in Apple Music and Apple Music Classical:
-
-| Controller input | Action |
-|---|---|
-| D-pad | Move up, down, left, or right |
-| A button | Select the focused item |
-| B button | Go back when navigation history permits |
-
-Hold a D-pad direction to repeat it. The A and B buttons act once per press. Controller input does not control media playback or settings.
-
-## Last.fm scrobbling
-
-Nothing is sent to Last.fm until you connect an account. In Settings, choose **Connect to Last.fm…**, then approve Sidra in your browser. Settings and the tray show your username after approval. Sidra also sends a notification if notifications are on.
-
-Use Settings or the tray **Last.fm** submenu to turn scrobbling on or off, or disconnect. You can also connect through that submenu. Sidra sends the now-playing track when playback starts or resumes, and scrobbles it once it has played for half its length or four minutes, whichever comes first. Tracks of 30 seconds or less never scrobble - that is Last.fm's rule, not Sidra's. When a scrobble cannot reach Last.fm, Sidra holds the play and sends it with the next one that gets through, so a dropped connection does not cost you it.
-
-Sidra also scrobbles individual songs from live radio and archived shows. Radio songs have no reported duration, so they scrobble after four minutes of active playback. A song can scrobble at the next confirmed song change if Sidra observed its start and more than 30 seconds of playback. The first song joined part-way through uses the four-minute fallback.
-
-Connecting stores a Last.fm session key and your username in Sidra's configuration file, in plain text:
-
-- Linux: `~/.config/Sidra/config.json`
-- macOS: `~/Library/Application Support/Sidra/config.json`
-- Windows: `%APPDATA%\Sidra\config.json`
-
-> [!IMPORTANT]
-> Last.fm session keys never expire, and the Last.fm API has no call to revoke one. **Disconnect** deletes Sidra's copy of the key, which stops this installation scrobbling, but only Last.fm can invalidate the key itself. Remove Sidra under [Applications in your Last.fm settings](https://www.last.fm/settings/applications) to do that. Sidra notices the revoked session on its next request, disconnects, and tells you.
-
-What Sidra sends is listed in [`docs/LASTFM-PRIVACY.md`](docs/LASTFM-PRIVACY.md).
-
-### Custom scrobble endpoint
-
-Sidra can send to [multi-scrobbler's Last.fm Endpoint](https://docs.multi-scrobbler.app/configuration/sources/lastfm-endpoint/) instead of Last.fm. Multi-scrobbler then forwards plays to its configured clients.
-
-Quit Sidra before you edit `config.json` at the path above. Add `apiUrl` inside the existing `lastfm` object and set `enabled` to `true`:
-
-```json
-{
-  "lastfm": {
-    "apiUrl": "http://localhost:9078/2.0/",
-    "enabled": true
-  }
-}
-```
-
-Keep your other configuration fields. Restart Sidra to select the endpoint. Settings and the tray show **Custom scrobbler**, with an on/off control and no browser authentication.
-
-Use the complete endpoint URL. Sidra appends no path. For a multi-scrobbler source with `slug: "sidra"`, use `http://localhost:9078/api/lastfm/sidra` instead. Configure one default Last.fm Endpoint source without credentials, or use a slug to select a source. Sidra sends the dummy values `sidra` for `api_key` and `sk`, and signs with the dummy secret `sidra`. It never sends your saved Last.fm account or Sidra's real application credentials to this endpoint.
-
-HTTP and HTTPS are supported. HTTP sends listening data without encryption. URLs with embedded credentials, query parameters or fragments are rejected. Redirects are not followed. An invalid URL disables scrobbling and never falls back to Last.fm.
-
-The usual playback thresholds, radio handling and queue limit still apply. A destination change discards held plays on the next launch, so they cannot reach another destination. **Off** keeps held plays and any saved Last.fm account. Remove `apiUrl` or set it to `null`, then restart, to return to Last.fm. The shared `enabled` setting still applies.
-
-Only one destination is active per launch. This option does not add native ListenBrainz support or configure multi-scrobbler's downstream clients. A successful request confirms endpoint receipt, not downstream delivery.
 
 ---
 
@@ -375,87 +265,16 @@ The bonus became clear once everything was working. Wrapping `music.apple.com` d
 
 _Sidra_ is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
 
-### How It Works
-
-Sidra loads `music.apple.com` directly inside CastLabs Electron (required for Widevine DRM on Linux - no other shell supports this).
-A lightweight hook script is injected after page load that taps `MusicKit.getInstance()` events and forwards them over Electron IPC to the main process, which distributes them to platform integrations.
-
-```
-music.apple.com
-  └── MusicKit.js events
-        └── musicKitHook.js (injected)
-              └── IPC → player.ts (EventEmitter)
-                    ├── MPRIS (Linux, dbus-next, D-Bus session bus)
-                    ├── Discord Rich Presence
-                    ├── Last.fm scrobbling
-                    ├── Desktop notifications
-                    ├── navigator.mediaSession (macOS/Windows)
-                    ├── Dock menu + progress bar (macOS)
-                    └── Taskbar toolbar + overlay + progress bar (Windows)
-```
-
-Controls flow in reverse: MPRIS sends typed IPC commands through the isolated preload to `window.__sidra`, which calls MusicKit.
-
-The codebase is tightly focused and as lean as possible.
-
 ---
 
-## Development
+## Documentation
 
-Requires [Nix](https://nixos.org/) with flakes enabled. [direnv](https://direnv.net/) is recommended. The project uses npm and TypeScript with [CastLabs Electron](https://github.com/castlabs/electron-releases) (`wvcus` variant) - standard Electron cannot be substituted as it lacks Widevine DRM support on Linux.
+Full guides and developer documentation live in the [Sidra wiki](https://github.com/wimpysworld/sidra/wiki):
 
-```bash
-direnv allow          # or: nix develop
-just install          # install npm dependencies
-just run              # build and launch
-```
-
-Sign in on first launch; your session persists across relaunches. Run `just` with no arguments to list all available recipes for building, testing, debugging, and diagnostics.
-
-Run `just generate-assets` to regenerate application icons, the logo, DMG backgrounds, tray icons and menu icons from SVG sources.
-The command also composes the README image from screenshots.
-
-### NixOS
-
-The dev shell puts the libraries CastLabs Electron needs on `LD_LIBRARY_PATH`, but the host must supply the ELF interpreter. The npm-installed Electron is a prebuilt binary that requests `/lib64/ld-linux-x86-64.so.2`, a path plain NixOS does not provide. Enable [nix-ld](https://github.com/nix-community/nix-ld) (`programs.nix-ld.enable = true;`) or an equivalent compatibility loader before running `just run`. Do not patch the Electron binary with `patchelf`: it is EVS-signed, and patching invalidates the signature.
-
-### Widevine VMP signing
-
-Widevine enforces VMP (Verified Media Path) production signing on macOS and Windows - without it, Apple Music returns "Something went wrong" after login. CastLabs ECS ships with development keys; production signing requires a free [CastLabs EVS](https://github.com/castlabs/electron-releases/wiki/EVS) account.
-
-**One-time setup:**
-
-```bash
-uvx --from castlabs-evs evs-account signup
-```
-
-Credentials are stored at `~/.config/evs/config.json`. The account is portable - use `evs-account reauth` on any new machine.
-
-| Context | Credentials |
-|---------|-------------|
-| Local machine | `~/.config/evs/config.json`; or set `EVS_ACCOUNT_NAME` + `EVS_PASSWD` env vars (e.g. via sops-nix) |
-
-`just install` and `just build` sign the local Electron binary automatically once credentials are in place. Release builds are signed via the `afterPack` hook in `build/afterPack.cjs`.
-
-### Last.fm API credentials
-
-Official releases ship Last.fm API credentials. A build from this repository does not. Without credentials, Settings and the tray hide the Last.fm controls unless a valid custom endpoint is configured.
-
-Register an API account at [last.fm/api/account/create](https://www.last.fm/api/account/create), then export the key and secret before building:
-
-```bash
-export SIDRA_LASTFM_API_KEY=your-api-key
-export SIDRA_LASTFM_API_SECRET=your-shared-secret
-just run
-```
-
-| Context | Credentials |
-|---------|-------------|
-| Local machine | `SIDRA_LASTFM_API_KEY` + `SIDRA_LASTFM_API_SECRET` env vars (e.g. via direnv or sops-nix) |
-| Packaged build | `assets/lastfm-credentials.json`, written from those env vars by `just build` and `npm run build` |
-| CI | The same two names as repository secrets |
-
-Environment variables win at runtime; the JSON file is the fallback that packaged builds use. That file is gitignored - the shared secret must never be committed. With neither variable set the build writes it empty, unless it already holds credentials, in which case it is left alone.
+- [Home and Controls](https://github.com/wimpysworld/sidra/wiki/Home) - configuration directory paths, keyboard shortcuts, and controller navigation
+- [Custom Themes](https://github.com/wimpysworld/sidra/wiki/Custom-Themes) - `custom-theme.json` setup, colour roles, and Noctalia integration
+- [Scrobbling](https://github.com/wimpysworld/sidra/wiki/Scrobbling) - Last.fm authentication, playback thresholds, radio scrobbling, and custom `multi-scrobbler` endpoints
+- [Development](https://github.com/wimpysworld/sidra/wiki/Development) - architecture overview, Nix development environment, Widevine VMP signing, and Last.fm API credentials
 
 See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: architecture, IPC event flow, MPRIS property checklist, platform media control implementation, and the complete feature inventory.
 
