@@ -688,7 +688,7 @@ A 2000ms safety timeout (`_volumeSafetyMs`) drops the whole queue when no echo a
 
 `assets/musicKitHook.js` binds `playbackVolumeDidChange`. A CDP session against a running Sidra confirmed that a `mk.volume` write fires that event once and never fires `volumeDidChange`. The hook was bound to `volumeDidChange` until then, so the listener never fired and the 250ms poll was the only reporting path.
 
-The 250ms poll stays as a fallback: nothing has confirmed what the player bar volume control writes. That control is Svelte light DOM with no range input, and `mk._targetElement` is not exposed on the public instance, so its write path could not be observed. The poll sends IPC only when the value differs from the last one sent.
+The 250ms poll stays as a fallback. On the tested Music page, focus or hover over the volume button exposed `input[type=range][data-testid=volume-control-range]`. Its `input` events changed MusicKit volume and `HTMLMediaElement.volume`, then MPRIS volume. This check did not cover Classical. The poll sends IPC only when the value differs from the last one sent.
 
 The IPC channel is still named `volumeDidChange`. That is Sidra's own channel name, not the MusicKit event name, and the two differ on purpose.
 
@@ -703,7 +703,7 @@ The selector matches the `chrome-volume` class token. The two services differ in
 | `music.apple.com` | `div.chrome-volume` wrapping `div.chrome-volume__slider` and `button.chrome-volume__button` | A `div` |
 | `classical.music.apple.com` | `div.chrome-player__volume` wrapping `amp-chrome-volume.chrome-volume`, which contains `button.chrome-volume__indicator` and `amp-volume-control` | An `amp-chrome-volume` element |
 
-Matching the element name alone would work on Classical and do nothing on Apple Music. There is no `input[type=range]` on either page: a CDP walk of all 13 shadow roots on `music.apple.com` found none. Svelte scope hashes are deliberately absent from the selector; they change on any Apple rebuild.
+Matching the element name alone works on Classical and does nothing on Apple Music. A missing range input before focus or hover does not establish that the page has none. Svelte scope hashes are deliberately absent from the selector because they change on any Apple rebuild.
 
 Handler behaviour:
 
