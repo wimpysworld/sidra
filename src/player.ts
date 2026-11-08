@@ -791,11 +791,11 @@ export class Player extends TypedEmitter<PlayerEvents> {
     this.handleModeChange("shuffleModeDidChange", payload, SHUFFLE_MODES);
   }
 
-  /** Forward numeric volume reports or null without changing their scale. */
+  /** Forward finite volume reports or null without changing their scale. */
   handleVolumeDidChange(payload: number | null): void {
-    if (payload != null && typeof payload !== "number") {
+    if (payload != null && !Number.isFinite(payload)) {
       playerLog.warn(
-        "volumeDidChange: invalid payload, expected number or null",
+        "volumeDidChange: invalid payload, expected finite number or null",
       );
       return;
     }

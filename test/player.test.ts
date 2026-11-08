@@ -319,14 +319,14 @@ describe('Player event forwarding', () => {
     expect(listener).toHaveBeenCalledWith(1);
   });
 
-  it('emits volumeDidChange with volume', () => {
+  it.each([0, 0.75, 1, null])('emits volumeDidChange with %s', (volume) => {
     const player = new Player();
     const listener = vi.fn();
     player.on('volumeDidChange', listener);
 
-    player.handleVolumeDidChange(0.75);
+    player.handleVolumeDidChange(volume);
 
-    expect(listener).toHaveBeenCalledWith(0.75);
+    expect(listener).toHaveBeenCalledWith(volume);
   });
 });
 
@@ -432,6 +432,9 @@ describe('Player handle* payload validation', () => {
     ['handleShuffleModeDidChange', 'string payload', 'shuffle'],
     ['handleVolumeDidChange', 'string payload', 'loud'],
     ['handleVolumeDidChange', 'object payload', { volume: 0.5 }],
+    ['handleVolumeDidChange', 'NaN payload', NaN],
+    ['handleVolumeDidChange', 'positive infinity payload', Infinity],
+    ['handleVolumeDidChange', 'negative infinity payload', -Infinity],
   ];
 
   it.each(BAD_PAYLOADS)('%s ignores %s', (method, _description, payload) => {
