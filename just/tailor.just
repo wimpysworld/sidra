@@ -1,28 +1,83 @@
 # Managed by Tailor: just/tailor.just
 
-# Alter Tailor swatches
-alter:
-    @tailor alter
+# Run explicitly requested setup for enabled components
+setup:
+    @echo "No setup recipes are enabled."
 
-# Run all enabled builders
+# Build all enabled ecosystems
 build:
-    @echo "No build recipes are enabled."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "No build recipes are enabled."
+    project_script='just/project/build.sh'
+    for parent in just just/project; do
+        if [[ -L "${parent}" || ( -e "${parent}" && ! -d "${parent}" ) ]]; then
+            echo "Error: project script parent ${parent} must be a directory, not a symlink" >&2
+            exit 1
+        fi
+    done
+    if [[ -L "${project_script}" || ( -e "${project_script}" && ! -f "${project_script}" ) ]]; then
+        echo "Error: project script ${project_script} must be a regular file, not a symlink" >&2
+        exit 1
+    fi
+    if [[ -f "${project_script}" ]]; then
+        bash "${project_script}"
+    fi
 
-# Run all enabled tests
+# Run full vet and tests with console coverage
 test:
-    @echo "No test recipes are enabled."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "No test recipes are enabled."
+    project_script='just/project/test.sh'
+    for parent in just just/project; do
+        if [[ -L "${parent}" || ( -e "${parent}" && ! -d "${parent}" ) ]]; then
+            echo "Error: project script parent ${parent} must be a directory, not a symlink" >&2
+            exit 1
+        fi
+    done
+    if [[ -L "${project_script}" || ( -e "${project_script}" && ! -f "${project_script}" ) ]]; then
+        echo "Error: project script ${project_script} must be a regular file, not a symlink" >&2
+        exit 1
+    fi
+    if [[ -f "${project_script}" ]]; then
+        bash "${project_script}"
+    fi
 
-# Run workflow linters
-lint-actions:
-    @actionlint
-
-# Run all enabled linters
-lint: lint-actions
-
-# Preview remote and local changes, then inspect local project health
-measure:
-    @tailor baste
-    @tailor measure
+# Check source without changes, or tidy and format with correct
+lint $mode="check":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "${mode}" in
+        check|correct) ;;
+        *) echo "Error: lint mode must be check or correct" >&2; exit 1 ;;
+    esac
+    check_workflows() {
+        for workflow in .github/workflows/* .github/workflows/.*; do
+            case "${workflow}" in *.yml|*.yaml)
+                if [[ -f "${workflow}" ]]; then
+                    actionlint
+                    return
+                fi ;;
+            esac
+        done
+        echo "No GitHub Actions workflows found. Skipping actionlint."
+    }
+    check_workflows
+    project_script='just/project/lint.sh'
+    for parent in just just/project; do
+        if [[ -L "${parent}" || ( -e "${parent}" && ! -d "${parent}" ) ]]; then
+            echo "Error: project script parent ${parent} must be a directory, not a symlink" >&2
+            exit 1
+        fi
+    done
+    if [[ -L "${project_script}" || ( -e "${project_script}" && ! -f "${project_script}" ) ]]; then
+        echo "Error: project script ${project_script} must be a regular file, not a symlink" >&2
+        exit 1
+    fi
+    if [[ -f "${project_script}" ]]; then
+        bash "${project_script}" "${mode}"
+    fi
 
 # Create a local release tag with just release x.y.z
 release $VERSION:

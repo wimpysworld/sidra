@@ -1,11 +1,11 @@
-# Refitted by tailor on 2026-09-05
+# Refitted by tailor on 2026-11-08
 license: BlueOak-1.0.0
 
 languages:
   go: false
 
 repository:
-  description: An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎
+  description: "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎"
   homepage: https://github.com/wimpysworld/sidra
   has_wiki: false
   has_discussions: false
@@ -46,6 +46,8 @@ repository:
     - discord-richpresence
 
 actions:
+  # Options: all, local_only, selected. SHA pinning applies separately.
+  # selected requires github_owned_allowed, verified_allowed, and patterns_allowed.
   enabled: true
   allowed_actions: selected
   sha_pinning_required: false
@@ -58,6 +60,8 @@ actions:
     - "nick-fields/retry@*"
     - "robherley/go-test-action@*"
     - "softprops/action-gh-release@*"
+  fork_pr_contributor_approval:
+    approval_policy: first_time_contributors
 
 code_scanning:
   state: configured
@@ -183,6 +187,14 @@ labels:
     color: df8e1d
     description: Hacktoberfest contribution
 
+# Repository Actions variables are non-secret values.
+# Tailor creates or updates only declared variables and leaves others unchanged.
+# variables:
+#   - name: DEPLOY_REGION
+#     value: "eu-west-2"
+#   - name: RELEASE_SUFFIX
+#     value: ""
+
 swatches:
   - path: .github/dependabot.yml
     alteration: first-fit
@@ -230,4 +242,31 @@ swatches:
     alteration: first-fit
 
   - path: .tailor.yml
+    alteration: always
+
+  - path: .github/workflows/tailor-pages.yml
+    alteration: always
+
+  - path: pages/index.html
+    alteration: first-fit
+
+  - path: pages/style.css
+    alteration: first-fit
+
+  - path: pages/theme.js
+    alteration: first-fit
+
+  - path: pages/icon.svg
+    alteration: first-fit
+
+  - path: wiki/Home.md
+    alteration: first-fit
+
+  - path: wiki/_Sidebar.md
+    alteration: first-fit
+
+  - path: wiki/_Footer.md
+    alteration: first-fit
+
+  - path: .github/workflows/tailor-wiki.yml
     alteration: always
