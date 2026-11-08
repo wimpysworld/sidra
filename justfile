@@ -1,3 +1,5 @@
+import 'just/pages.just'
+
 # List available recipes
 default:
     @just --list

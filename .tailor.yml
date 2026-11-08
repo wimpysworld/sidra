@@ -6,7 +6,7 @@ languages:
 
 repository:
   description: "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎"
-  homepage: https://github.com/wimpysworld/sidra
+  homepage: https://sidra.wimpys.world
   has_wiki: true
   has_discussions: false
   has_projects: false
@@ -137,6 +137,20 @@ ruleset:
           - tool: CodeQL
             alerts_threshold: errors
             security_alerts_threshold: high_or_higher
+
+pages:
+  enabled: true
+  generator: static
+  path: pages
+  cname: sidra.wimpys.world
+  links:
+    website: https://wimpys.world/
+    bluesky: https://bsky.app/profile/wimpys.world
+    mastodon: "https://wimpysworld.social/@martin"
+    linkedin: https://linkedin.com/in/martinwimpress
+    discord: https://discord.com/invite/vUsydfP
+    podcast: https://linuxmatters.sh
+    github_sponsors: https://github.com/sponsors/flexiondotorg
 
 labels:
   - name: bug
