@@ -2020,6 +2020,299 @@ describe("MPRIS volume", () => {
     vi.useFakeTimers();
   });
 
+  it.each([NaN, Infinity, -Infinity])(
+    "ignores a non-finite Volume write of %s without side effects",
+    (value) => {
+      const iface = initPlayerInterface();
+      player.emit("volumeDidChange", 0.4);
+      vi.advanceTimersByTime(250);
+      emissions = [];
+      const timerCount = vi.getTimerCount();
+
+      iface.Volume = value;
+
+      expect(iface.Volume).toBe(0.4);
+      expect(winContents.send).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(timerCount);
+      vi.advanceTimersByTime(2500);
+      expect(emissions).toEqual([]);
+    },
+  );
+
+  it.each([NaN, Infinity, -Infinity])(
+    "ignores a non-finite volume report of %s without changing pending echoes",
+    (value) => {
+      const iface = initPlayerInterface();
+      iface.Volume = 0.5;
+      iface.Volume = 0.7;
+      vi.advanceTimersByTime(250);
+      emissions = [];
+      vi.mocked(winContents.send).mockClear();
+      const timerCount = vi.getTimerCount();
+
+      player.emit("volumeDidChange", value);
+
+      expect(iface.Volume).toBe(0.7);
+      expect(winContents.send).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(timerCount);
+      player.emit("volumeDidChange", 0.5);
+      player.emit("volumeDidChange", 0.7);
+      vi.advanceTimersByTime(2500);
+      expect(iface.Volume).toBe(0.7);
+      expect(emissions).toEqual([]);
+    },
+  );
+
+  it.each([
+    [-1, 0],
+    [2, 1],
+    [0.426, 0.43],
+  ])("clamps and rounds finite Volume %s to %s", (value, expected) => {
+    const iface = initPlayerInterface();
+    player.emit("volumeDidChange", 0.5);
+    vi.advanceTimersByTime(250);
+    emissions = [];
+
+    iface.Volume = value;
+
+    expect(iface.Volume).toBe(expected);
+    expect(winContents.send).toHaveBeenCalledWith("player:setVolume", expected);
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([{ Volume: expected }]);
+  });
+
+  it("preserves in-app changes back to a value written as a no-op", () => {
+    const iface = initPlayerInterface();
+    player.emit("volumeDidChange", 0.5);
+    vi.advanceTimersByTime(250);
+    emissions = [];
+
+    iface.Volume = 0.5;
+    vi.advanceTimersByTime(372);
+    player.emit("volumeDidChange", 0.2);
+    vi.advanceTimersByTime(369);
+    expect(iface.Volume).toBe(0.2);
+    player.emit("volumeDidChange", 0.5);
+    vi.advanceTimersByTime(13000);
+
+    expect(iface.Volume).toBe(0.5);
+    expect(emissions).toEqual([{ Volume: 0.2 }, { Volume: 0.5 }]);
+    expect(winContents.send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [0.5, 0.504],
+    [0, -1],
+    [1, 2],
+  ])("ignores Volume %s normalised from %s without side effects", (current, value) => {
+    const iface = initPlayerInterface();
+    player.emit("volumeDidChange", current);
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    const timerCount = vi.getTimerCount();
+
+    iface.Volume = value;
+
+    expect(iface.Volume).toBe(current);
+    expect(winContents.send).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(timerCount);
+    vi.advanceTimersByTime(2500);
+    expect(emissions).toEqual([]);
+  });
+
+  it("preserves pending echoes when the latest optimistic value is written again", () => {
+    const iface = initPlayerInterface();
+    iface.Volume = 0.5;
+    iface.Volume = 0.7;
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    vi.mocked(winContents.send).mockClear();
+    const timerCount = vi.getTimerCount();
+
+    iface.Volume = 0.7;
+
+    expect(winContents.send).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(timerCount);
+    player.emit("volumeDidChange", 0.5);
+    expect(iface.Volume).toBe(0.7);
+    player.emit("volumeDidChange", 0.7);
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([]);
+
+    player.emit("volumeDidChange", 0.2);
+    vi.advanceTimersByTime(250);
+    player.emit("volumeDidChange", 0.7);
+    vi.advanceTimersByTime(250);
+    expect(iface.Volume).toBe(0.7);
+    expect(emissions).toEqual([{ Volume: 0.2 }, { Volume: 0.7 }]);
+  });
+
+  it("sends an equal cached value when a different volume command is pending", () => {
+    const iface = initPlayerInterface();
+    player.emit("volumeDidChange", 0.5);
+    iface.Volume = 0.7;
+    player.emit("volumeDidChange", 0.2);
+
+    iface.Volume = 0.2;
+
+    expect(winContents.send.mock.calls).toEqual([
+      ["player:setVolume", 0.7],
+      ["player:setVolume", 0.2],
+    ]);
+    player.emit("volumeDidChange", 0.7);
+    expect(iface.Volume).toBe(0.2);
+    player.emit("volumeDidChange", 0.2);
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([{ Volume: 0.2 }]);
+  });
+
+  it.each([false, true])(
+    "corrects an overflowed command when tracked echoes drained: %s",
+    (drainTracked) => {
+      const iface = initPlayerInterface();
+      for (const value of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
+        iface.Volume = value;
+      }
+      if (drainTracked) player.emit("volumeDidChange", 0.8);
+      player.emit("volumeDidChange", 0.05);
+      vi.mocked(winContents.send).mockClear();
+
+      iface.Volume = 0.05;
+
+      expect(winContents.send).toHaveBeenCalledExactlyOnceWith(
+        "player:setVolume", 0.05,
+      );
+      expect(iface.Volume).toBe(0.05);
+    },
+  );
+
+  it("does not extend the safety timeout for a repeated optimistic value", () => {
+    const iface = initPlayerInterface();
+    iface.Volume = 0.5;
+    iface.Volume = 0.7;
+    vi.advanceTimersByTime(1000);
+    iface.Volume = 0.7;
+    vi.advanceTimersByTime(1000);
+
+    player.emit("volumeDidChange", 0.5);
+    expect(iface.Volume).toBe(0.5);
+    vi.mocked(winContents.send).mockClear();
+    iface.Volume = 0.5;
+    expect(winContents.send).not.toHaveBeenCalled();
+  });
+
+  it("accepts in-app changes after the final overflowed command is acknowledged", () => {
+    const iface = initPlayerInterface();
+    const values = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    for (const value of values) iface.Volume = value;
+    for (const value of values) player.emit("volumeDidChange", value);
+    vi.advanceTimersByTime(250);
+    emissions = [];
+    vi.mocked(winContents.send).mockClear();
+
+    iface.Volume = 0.9;
+
+    expect(winContents.send).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    player.emit("volumeDidChange", 0.2);
+    vi.advanceTimersByTime(250);
+    player.emit("volumeDidChange", 0.9);
+    vi.advanceTimersByTime(250);
+    expect(iface.Volume).toBe(0.9);
+    expect(emissions).toEqual([{ Volume: 0.2 }, { Volume: 0.9 }]);
+  });
+
+  it.each([
+    [[0.5, 0.7, 0.5]],
+    [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.1]],
+    [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.8]],
+  ])("waits for the final occurrence in a repeated-target burst %j", (values) => {
+    const iface = initPlayerInterface();
+    const final = values[values.length - 1];
+    for (const value of values) iface.Volume = value;
+    vi.advanceTimersByTime(250);
+
+    for (const value of values.slice(0, -1)) {
+      player.emit("volumeDidChange", value);
+    }
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    player.emit("volumeDidChange", final);
+    vi.advanceTimersByTime(250);
+    expect(iface.Volume).toBe(final);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.mocked(winContents.send).mockClear();
+    iface.Volume = final;
+    expect(winContents.send).not.toHaveBeenCalled();
+
+    player.emit("volumeDidChange", 0.05);
+    player.emit("volumeDidChange", final);
+    expect(iface.Volume).toBe(final);
+  });
+
+  it("keeps a repeated overflow target pending after its earlier tracked echo", () => {
+    const iface = initPlayerInterface();
+    for (const value of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.8]) {
+      iface.Volume = value;
+    }
+    player.emit("volumeDidChange", 0.8);
+    player.emit("volumeDidChange", 0.05);
+    vi.mocked(winContents.send).mockClear();
+
+    iface.Volume = 0.05;
+
+    expect(winContents.send).toHaveBeenCalledExactlyOnceWith(
+      "player:setVolume", 0.05,
+    );
+    player.emit("volumeDidChange", 0.9);
+    player.emit("volumeDidChange", 0.8);
+    player.emit("volumeDidChange", 0.05);
+    expect(iface.Volume).toBe(0.05);
+  });
+
+  it("does not send or extend the timeout for a repeated overflowed target", () => {
+    const iface = initPlayerInterface();
+    for (const value of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
+      iface.Volume = value;
+    }
+    vi.advanceTimersByTime(1000);
+    vi.mocked(winContents.send).mockClear();
+
+    iface.Volume = 0.9;
+
+    expect(winContents.send).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(vi.getTimerCount()).toBe(0);
+    player.emit("volumeDidChange", 0.1);
+    expect(iface.Volume).toBe(0.1);
+  });
+
+  it("accepts a coalesced final overflow echo without retaining earlier values", () => {
+    const iface = initPlayerInterface();
+    for (const value of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
+      iface.Volume = value;
+    }
+    player.emit("volumeDidChange", 0.9);
+    vi.advanceTimersByTime(250);
+    expect(vi.getTimerCount()).toBe(0);
+
+    player.emit("volumeDidChange", 0.1);
+    expect(iface.Volume).toBe(0.1);
+  });
+
+  it("restores the acknowledged final target after an unmatched report", () => {
+    const iface = initPlayerInterface();
+    iface.Volume = 0.7;
+    player.emit("volumeDidChange", 0.2);
+    expect(iface.Volume).toBe(0.2);
+
+    player.emit("volumeDidChange", 0.7);
+
+    expect(iface.Volume).toBe(0.7);
+    vi.advanceTimersByTime(250);
+    expect(emissions).toEqual([{ Volume: 0.7 }]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   // A setter that caches the new value and tells the renderer without emitting
   // leaves only the client that made the change knowing about it, so a second
   // MPRIS client shows the old level until something else moves the volume.

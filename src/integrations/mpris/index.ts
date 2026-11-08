@@ -349,6 +349,7 @@ class MediaPlayer2Player extends Interface {
   // session.
   private readonly _volumeSafetyMs = 2000;
   private _pendingVolumes: number[] = [];
+  private _latestPendingVolume: { value: number; tracked: boolean } | null = null;
   private _volumeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly _debounceMs = 250;
@@ -593,7 +594,7 @@ class MediaPlayer2Player extends Interface {
 
   /** Publishes in-app volume changes while suppressing pending control echoes. */
   updateVolume(payload: number | null): void {
-    if (payload == null) return;
+    if (payload == null || !Number.isFinite(payload)) return;
 
     // A drag sets several values inside one echo round trip, so the echo is
     // matched against every value still pending, not only the newest. Echoes
@@ -602,16 +603,26 @@ class MediaPlayer2Player extends Interface {
     const matched = this._pendingVolumes.findIndex(
       (pending) => Math.abs(payload - pending) < VOLUME_ECHO_TOLERANCE,
     );
-    if (matched !== -1) {
-      this._pendingVolumes.splice(0, matched + 1);
-      if (this._pendingVolumes.length === 0 && this._volumeSafetyTimer) {
+    if (matched !== -1) this._pendingVolumes.splice(0, matched + 1);
+    const latest = this._latestPendingVolume;
+    // A matching prefix entry can precede an identical overflowed target.
+    const acknowledgedLatest =
+      latest !== null &&
+      Math.abs(payload - latest.value) < VOLUME_ECHO_TOLERANCE &&
+      (matched === -1 || (latest.tracked && this._pendingVolumes.length === 0));
+    if (acknowledgedLatest) {
+      this._latestPendingVolume = null;
+      this._pendingVolumes = [];
+      if (this._volumeSafetyTimer) {
         clearTimeout(this._volumeSafetyTimer);
         this._volumeSafetyTimer = null;
       }
-      return;
     }
 
     const rounded = Math.round(payload * 100) / 100;
+    if (matched !== -1 && (!acknowledgedLatest || rounded === this._volume)) {
+      return;
+    }
     this._volume = rounded;
     this._schedulePropertyEmission({ Volume: rounded });
   }
@@ -651,6 +662,7 @@ class MediaPlayer2Player extends Interface {
       this._volumeSafetyTimer = null;
     }
     this._pendingVolumes = [];
+    this._latestPendingVolume = null;
     this._lastPositionUs = 0;
     this._lastPositionTimestamp = Date.now();
     if (this._debounceTimer) {
@@ -769,13 +781,25 @@ class MediaPlayer2Player extends Interface {
 
   /** Clamps software volume and records pending echoes before sending it. */
   set Volume(value: number) {
+    if (!Number.isFinite(value)) return;
+
     const clamped = Math.round(Math.max(0.0, Math.min(1.0, value)) * 100) / 100;
+    if (
+      clamped === this._volume &&
+      (this._latestPendingVolume === null ||
+        this._latestPendingVolume.value === clamped)
+    ) {
+      return;
+    }
+
     this._volume = clamped;
     this._schedulePropertyEmission({ Volume: clamped });
     // Preserve old entries when full because echoes arrive in order. Dropping
     // the oldest makes its echo look like an in-app change and restores stale volume.
     // An untracked newest echo instead reports the level that the player reached.
-    if (this._pendingVolumes.length < MAX_PENDING_VOLUMES) {
+    const tracked = this._pendingVolumes.length < MAX_PENDING_VOLUMES;
+    this._latestPendingVolume = { value: clamped, tracked };
+    if (tracked) {
       this._pendingVolumes.push(clamped);
     }
     if (this._volumeSafetyTimer) {
@@ -783,6 +807,7 @@ class MediaPlayer2Player extends Interface {
     }
     this._volumeSafetyTimer = setTimeout(() => {
       this._pendingVolumes = [];
+      this._latestPendingVolume = null;
       this._volumeSafetyTimer = null;
     }, this._volumeSafetyMs);
     this._send("Volume", "player:setVolume", clamped);
