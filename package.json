@@ -2,7 +2,7 @@
   "name": "sidra",
   "productName": "Sidra",
   "version": "1.2.1",
-  "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎",
+  "description": "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality 🍎",
   "main": "dist/main.js",
   "scripts": {
     "prebuild": "node scripts/inject-lastfm-credentials.cjs",

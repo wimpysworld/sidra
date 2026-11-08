@@ -5,7 +5,7 @@ languages:
   javascript: true
 
 repository:
-  description: "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎"
+  description: "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality 🍎"
   homepage: https://sidra.wimpys.world
   has_wiki: true
   has_discussions: false
