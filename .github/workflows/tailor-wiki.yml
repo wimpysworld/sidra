@@ -1,0 +1,220 @@
+# Managed by Tailor: wiki
+name: Publish wiki
+
+on:
+  push:
+    paths:
+      - 'wiki/**'
+      - '.github/workflows/tailor-wiki.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: wiki-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event.repository.has_wiki && github.event.repository.visibility == 'public' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Verify adoption and current repository state before publication.
+      # A normal push rejects concurrent wiki edits without replacing remote history.
+      - name: Publish wiki
+        env:
+          WIKI_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import stat
+          import subprocess
+          import tempfile
+          import urllib.request
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, response, code, message, headers, url):
+                  return None
+
+          def stop(message):
+              raise SystemExit(message)
+
+          def git(directory, *args, env=None):
+              result = subprocess.run(
+                  ["git", "-c", "credential.helper=", "-C", str(directory), *args],
+                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+              )
+              if result.returncode:
+                  stop("wiki publication stopped: Git operation failed (" + args[0] + ")")
+              return result.stdout
+
+          def check_repository(environment):
+              try:
+                  request = urllib.request.Request(
+                      os.environ["GITHUB_API_URL"].rstrip("/") + "/repos/" + os.environ["GITHUB_REPOSITORY"],
+                      headers={"Authorization": "Bearer " + os.environ["WIKI_TOKEN"], "Accept": "application/vnd.github+json"},
+                  )
+                  with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
+                      metadata = json.load(response)
+              except (OSError, ValueError, KeyError):
+                  stop("wiki publication stopped: current repository metadata is unavailable")
+              if not isinstance(metadata, dict):
+                  stop("wiki publication stopped: current repository metadata is incomplete")
+              if metadata.get("has_wiki") is not True or metadata.get("private") is not False or metadata.get("visibility") != "public":
+                  stop("wiki publication stopped: repository must currently be public with its wiki enabled")
+              branch = metadata.get("default_branch")
+              if not isinstance(branch, str) or not branch:
+                  stop("wiki publication stopped: current default branch is unavailable")
+              git(source, "check-ref-format", "refs/heads/" + branch)
+              if os.environ.get("GITHUB_REF") != "refs/heads/" + branch:
+                  stop("wiki publication stopped: source ref is not the current default branch")
+              git(source, "fetch", "--no-tags", "origin", "refs/heads/" + branch, env=environment)
+              if git(source, "rev-parse", "FETCH_HEAD").decode().strip() != source_sha:
+                  stop("wiki publication stopped: source commit is no longer the default branch tip")
+
+          source = Path.cwd()
+          wiki = source / "wiki"
+          baseline_name = ".tailor-wiki-base"
+          instructions = (
+              "wiki publication stopped: import the wiki before publication. "
+              "Run tailor alter to import the wiki, then commit and push the imported files."
+          )
+          empty = (
+              "wiki has no pages; skipping publication. Create and save the first page "
+              "in GitHub, then run tailor alter to import the wiki."
+          )
+          if wiki.is_symlink() or not wiki.is_dir():
+              stop("wiki publication stopped: wiki/ must be a regular directory")
+          for directory, directories, files in os.walk(wiki, followlinks=False):
+              for name in directories + files:
+                  path = Path(directory) / name
+                  mode = path.lstat().st_mode
+                  if (
+                      name.lower().startswith(".tailor-wiki-")
+                      and path != wiki / baseline_name
+                  ):
+                      stop("wiki publication stopped: "
+                           "retain reserved wiki recovery data for review")
+                  if name.lower() == ".git" or not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+                      stop("wiki publication stopped: wiki/ contains an unsafe file")
+
+          source_sha = os.environ["GITHUB_SHA"]
+          if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+              stop("wiki publication stopped: invalid source commit")
+          if git(source, "rev-parse", "HEAD").decode().strip() != source_sha:
+              stop("wiki publication stopped: checkout does not match the source commit")
+          baseline_path = wiki / baseline_name
+          baseline = None
+          if baseline_path.is_file():
+              baseline = git(source, "show", source_sha + ":wiki/" + baseline_name).decode().strip()
+              if not re.fullmatch(r"[0-9a-f]{40}", baseline):
+                  stop("wiki publication stopped: wiki/.tailor-wiki-base must contain a full commit ID")
+
+          with tempfile.TemporaryDirectory(prefix="tailor-wiki-") as temporary:
+              temporary = Path(temporary)
+              askpass = temporary / "askpass"
+              askpass.write_text(
+                  '#!/bin/sh\ncase "$1" in\n'
+                  '  *Username*) printf "%s\\n" x-access-token ;;\n'
+                  '  *Password*) printf "%s\\n" "$WIKI_TOKEN" ;;\n'
+                  '  *) exit 1 ;;\nesac\n'
+              )
+              askpass.chmod(0o700)
+              environment = dict(os.environ, GIT_ASKPASS=str(askpass), GIT_TERMINAL_PROMPT="0")
+              check_repository(environment)
+
+              remote_url = os.environ["GITHUB_SERVER_URL"].rstrip("/") + "/" + os.environ["GITHUB_REPOSITORY"] + ".wiki.git"
+              remote = temporary / "wiki.git"
+              result = subprocess.run(
+                  ["git", "-c", "credential.helper=", "clone", "--bare", "--", remote_url, str(remote)],
+                  env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+              )
+              # GitHub answers "not found" for a public, enabled wiki until its first page exists.
+              if result.returncode:
+                  if b"not found" in result.stderr.lower():
+                      print(empty)
+                      raise SystemExit(0)
+                  stop(instructions + " The wiki remote is unavailable.")
+              remote_ref = git(remote, "symbolic-ref", "HEAD").decode().strip()
+              if not remote_ref.startswith("refs/heads/"):
+                  stop("wiki publication stopped: wiki default branch is unavailable")
+              result = subprocess.run(
+                  ["git", "-C", str(remote), "rev-parse", "--verify", "HEAD"],
+                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+              )
+              if result.returncode:
+                  if not git(remote, "for-each-ref", "--format=%(refname)").strip():
+                      print(empty)
+                      raise SystemExit(0)
+                  stop(instructions)
+              remote_sha = result.stdout.decode().strip()
+              if baseline is None:
+                  stop(instructions)
+
+              # Transfer source objects without changing the wiki branch or its history.
+              git(remote, "fetch", "--no-tags", str(source), source_sha)
+
+              def content_tree(commit):
+                  entries = git(source, "ls-tree", "-r", "-z", commit + ":wiki")
+                  for entry in entries.split(b"\0"):
+                      if not entry:
+                          continue
+                      metadata, name = entry.split(b"\t", 1)
+                      if name != baseline_name.encode() and any(
+                          part.startswith(b".tailor-wiki-")
+                          for part in name.lower().split(b"/")
+                      ):
+                          stop("wiki publication stopped: source commit "
+                               "contains reserved wiki recovery data")
+                      if metadata.split()[0] not in (b"100644", b"100755") or b".git" in name.lower().split(b"/"):
+                          stop("wiki publication stopped: source commit contains an unsafe wiki file")
+                  index_env = dict(environment, GIT_INDEX_FILE=str(temporary / "index"), GIT_WORK_TREE=str(remote))
+                  git(remote, "read-tree", commit + ":wiki", env=index_env)
+                  git(remote, "update-index", "--force-remove", "--", baseline_name, env=index_env)
+                  return git(remote, "write-tree", env=index_env).decode().strip()
+
+              desired_tree = content_tree(source_sha)
+              remote_tree = git(remote, "rev-parse", "HEAD^{tree}").decode().strip()
+              adopted = remote_sha == baseline
+              if adopted:
+                  remote_paths = set(git(remote, "ls-tree", "-r", "-z", "--name-only", remote_tree).split(b"\0"))
+                  source_paths = set(git(remote, "ls-tree", "-r", "-z", "--name-only", desired_tree).split(b"\0"))
+                  if not remote_paths.issubset(source_paths):
+                      stop("wiki publication stopped: source commit omits remote wiki files; import and commit every file before publication")
+              else:
+                  message = git(remote, "log", "-1", "--format=%B").decode()
+                  previous = re.findall(r"^Tailor-Wiki-Source: ([0-9a-f]{40})$", message, re.MULTILINE)
+                  if len(previous) != 1:
+                      stop("wiki publication stopped: remote wiki changed outside the publisher; import it again")
+                  git(source, "merge-base", "--is-ancestor", previous[0], source_sha)
+                  if remote_tree != content_tree(previous[0]):
+                      stop("wiki publication stopped: remote wiki differs from its published source; import it again")
+                  if remote_tree == desired_tree:
+                      print("wiki is unchanged")
+                      raise SystemExit(0)
+
+              commit_env = dict(
+                  environment,
+                  GIT_AUTHOR_NAME="github-actions[bot]",
+                  GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com",
+                  GIT_COMMITTER_NAME="github-actions[bot]",
+                  GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com",
+              )
+              message = "Update wiki\n\nTailor-Wiki-Source: " + source_sha
+              published = git(remote, "commit-tree", desired_tree, "-p", remote_sha, "-m", message, env=commit_env).decode().strip()
+              check_repository(environment)
+              git(remote, "push", "origin", published + ":" + remote_ref, env=environment)
+              print("wiki published")
+          PY
