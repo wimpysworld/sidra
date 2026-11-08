@@ -29,8 +29,14 @@
     else if (/win/i.test(platform) || /Windows/i.test(ua)) os = "windows";
 
     const icon = button.querySelector(".octicon");
-    const setLabel = (text, detail) => {
+    const logo = button.querySelector(".download-platform");
+    const setLabel = (text, detail, logoClass) => {
       button.textContent = "";
+      if (logo && logoClass) {
+        logo.classList.add(logoClass);
+        logo.hidden = false;
+        button.append(logo);
+      }
       button.append(text + " ");
       if (detail) {
         const small = document.createElement("small");
@@ -40,17 +46,19 @@
       if (icon) button.append(icon);
     };
 
+    // macOS and Windows filenames carry the version, so those visitors land
+    // on the release page rather than on a file, and the detail says so.
     if (os === "linux") {
       const arm = /aarch64|arm64|armv8/i.test(ua);
       const arch = arm ? "arm64" : "x86_64";
       button.href = appImage(arch);
-      setLabel("Download for Linux", `AppImage, ${arch}`);
+      setLabel("Download for Linux", `AppImage, ${arch}`, "linux-icon");
     } else if (os === "macos") {
       button.href = latest;
-      setLabel("Download for macOS", "DMG");
+      setLabel("Download for macOS", "from GitHub Releases", "apple-icon");
     } else if (os === "windows") {
       button.href = latest;
-      setLabel("Download for Windows", "Installer");
+      setLabel("Download for Windows", "from GitHub Releases", "windows-icon");
     } else {
       button.href = latest;
       setLabel("Download the latest release");
@@ -97,10 +105,30 @@
     const arrows = Array.from(section.querySelectorAll("[data-carousel-step]"));
     let current = 0;
     let paletteOn = true;
+    let sectionInView = false;
+
+    /* The browser chrome follows the demo while the section is on screen.
+       The page backgrounds mirror theme.js, which owns the meta otherwise. */
+    const themeMetas = Array.from(document.querySelectorAll('meta[name="theme-color"]'));
+    const pageBackgrounds = { light: "#fff", dark: "rgb(19, 22.5, 30.5)" };
+    function syncThemeColour() {
+      const palette = PALETTES[slides[current].dataset.themeName];
+      const demo = sectionInView && paletteOn && palette ? palette[pageScheme()].base : null;
+      const forced = root.getAttribute("data-theme");
+      themeMetas.forEach((meta) => {
+        if (demo) {
+          meta.content = demo;
+          return;
+        }
+        const mediaTheme = meta.media.includes("dark") ? "dark" : "light";
+        meta.content = pageBackgrounds[forced === "dark" || forced === "light" ? forced : mediaTheme];
+      });
+    }
 
     function applyPalette() {
       const name = slides[current].dataset.themeName;
       const palette = PALETTES[name];
+      syncThemeColour();
       if (!paletteOn || !palette) {
         Object.values(THEME_VARS).forEach((v) => section.style.removeProperty(v));
         section.style.removeProperty("--theme-heading");
@@ -121,11 +149,26 @@
       applyPalette();
     }
 
+    /* A programmatic scroll that crosses a slide must not let the observer
+       mark the passing slide active, or the palette flashes through it. The
+       lock lifts on scrollend, or after 700ms where scrollend is missing. */
+    let scrolling = false;
+    let scrollTimer = 0;
+    function endScroll() {
+      scrolling = false;
+      window.clearTimeout(scrollTimer);
+    }
+    carousel.addEventListener("scrollend", endScroll);
+
     function scrollTo(index, focusSlide) {
       const next = Math.max(0, Math.min(slides.length - 1, index));
+      const animated = !reduceMotion.matches;
+      scrolling = animated;
+      window.clearTimeout(scrollTimer);
+      if (animated) scrollTimer = window.setTimeout(endScroll, 700);
       carousel.scrollTo({
         left: next * carousel.clientWidth,
-        behavior: reduceMotion.matches ? "auto" : "smooth",
+        behavior: animated ? "smooth" : "auto",
       });
       markActive(next);
       if (focusSlide) carousel.focus({ preventScroll: true });
@@ -174,6 +217,7 @@
     if ("IntersectionObserver" in window) {
       const observer = new IntersectionObserver(
         (entries) => {
+          if (scrolling) return;
           entries.forEach((entry) => {
             if (!entry.isIntersecting) return;
             const index = slides.indexOf(entry.target);
@@ -183,7 +227,28 @@
         { root: carousel, threshold: 0.6 },
       );
       slides.forEach((slide) => observer.observe(slide));
+
+      // Track whether the section is on screen for the theme-color meta.
+      new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            sectionInView = entry.isIntersecting;
+          });
+          syncThemeColour();
+        },
+        { threshold: 0.3 },
+      ).observe(section);
     }
+
+    // The snap container keeps its pixel offset while the slide width
+    // changes, so a resize re-aligns it to the active slide.
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        carousel.scrollTo({ left: current * carousel.clientWidth, behavior: "auto" });
+      }, 150);
+    });
 
     // Follow the page theme picker and the system scheme.
     systemDark.addEventListener("change", applyPalette);
@@ -241,7 +306,17 @@
     });
   }
 
+  /* FAQ pointers link to accordion items. Open the one the hash names, so a
+     visitor lands on the steps rather than on a closed row. */
+  function openHashedDetails() {
+    if (!location.hash) return;
+    const target = document.getElementById(location.hash.slice(1));
+    if (target instanceof HTMLDetailsElement) target.open = true;
+  }
+  window.addEventListener("hashchange", openHashedDetails);
+
   setupDownload();
   setupThemes();
   setupCopyButtons();
+  openHashedDetails();
 })();

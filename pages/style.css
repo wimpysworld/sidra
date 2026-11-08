@@ -318,6 +318,17 @@ body > main {
   margin: 0 auto 1.5rem;
   border-radius: 20px;
   box-shadow: 0 10px 24px -10px rgba(56, 6, 25, 0.6);
+  transform-origin: 50% 80%;
+}
+/* The glass tilts as if to pour. One rule, motion only where it is wanted. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-icon {
+    transition: transform 0.2s ease;
+  }
+  .hero-icon:hover,
+  .hero-copy:focus-within .hero-icon {
+    transform: rotate(-4deg);
+  }
 }
 .eyebrow {
   color: var(--mu-primary);
@@ -331,11 +342,12 @@ body > main {
   margin-top: 0.25rem;
 }
 h1 {
-  font-size: clamp(2.75rem, 5vw, 4.25rem);
-  line-height: 1.02;
+  font-size: clamp(2.4rem, 4.5vw, 3.5rem);
+  line-height: 1.05;
   letter-spacing: -0.03em;
   margin-bottom: 1.15rem;
   overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 h2 {
   font-size: clamp(1.65rem, 2.5vw, 2.25rem);
@@ -395,6 +407,15 @@ h3 {
   font-weight: 500;
   font-size: 0.82em;
   opacity: 0.85;
+}
+/* The detected platform's logo, so the button answers "did it detect my
+   system?" at a glance. site.js unhides it and picks the mask. */
+.primary-action .download-platform {
+  width: 1.1em;
+  height: 1.1em;
+}
+.linux-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/linux.svg");
 }
 .text-link {
   display: inline-flex;
@@ -470,6 +491,7 @@ h3 {
   background: var(--mu-card-background-color);
   list-style: none;
   min-width: 0;
+  transition: none;
 }
 .feature-grid h3 {
   font-size: 1.05rem;
@@ -506,7 +528,7 @@ h3 {
   line-height: 1.5;
 }
 .settings-note {
-  max-width: 50rem;
+  max-width: 62ch;
   margin: 0;
   color: var(--mu-muted-color);
   font-size: 0.95rem;
@@ -529,9 +551,9 @@ h3 {
   color: var(--theme-text);
   border-color: var(--theme-border);
   transition:
-    background-color 0.45s ease,
-    color 0.45s ease,
-    border-color 0.45s ease;
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
 }
 .themes h2 {
   color: var(--theme-heading);
@@ -557,24 +579,21 @@ h3 {
 .themes button:focus-visible {
   outline-color: var(--theme-accent);
 }
-.theme-picker-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
+/* Theme pills. The reset is a fifth pill in the same row, so the row reads
+   as one set of choices. Each pill carries its two swatch colours, which the
+   swatch paints and the hover state shows as a ring, previewing the palette
+   before the click. */
 .theme-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0;
+  margin: 0 0 1.25rem;
 }
-.theme-tabs a {
+.theme-tabs :is(a, button) {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  width: auto;
   min-height: 44px;
   padding: 0.4rem 0.9rem 0.4rem 0.6rem;
   margin: 0;
@@ -584,16 +603,27 @@ h3 {
   color: var(--theme-text);
   font-size: 0.92rem;
   font-weight: 600;
+  line-height: 1.4;
   text-decoration: none;
+  box-shadow: none;
   transition:
-    background-color 0.45s ease,
-    color 0.45s ease,
-    border-color 0.45s ease;
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.2s ease;
 }
-.theme-tabs a:hover {
-  border-color: var(--theme-accent);
+.theme-tabs :is(a, button):hover {
+  border-color: var(--swatch-b);
+  color: var(--theme-text);
+  box-shadow:
+    inset 0 0 0 1px var(--swatch-b),
+    0 0 0 3px var(--swatch-a);
 }
-.theme-tabs a[aria-current="true"] {
+.theme-tabs :is(a, button):focus {
+  color: var(--theme-text);
+}
+.theme-tabs a[aria-current="true"],
+.theme-tabs button[aria-pressed="true"] {
   border-color: var(--theme-accent);
   box-shadow: inset 0 0 0 1px var(--theme-accent);
 }
@@ -605,44 +635,25 @@ h3 {
   background: linear-gradient(135deg, var(--swatch-a) 50%, var(--swatch-b) 50%);
   flex: 0 0 auto;
 }
-[data-theme-name="everforest"] .swatch {
+[data-theme-name="everforest"] {
   --swatch-a: #2d353b;
   --swatch-b: #a7c080;
 }
-[data-theme-name="catppuccin"] .swatch {
+[data-theme-name="catppuccin"] {
   --swatch-a: #1e1e2e;
   --swatch-b: #f38ba8;
 }
-[data-theme-name="gruvbox"] .swatch {
+[data-theme-name="gruvbox"] {
   --swatch-a: #282828;
   --swatch-b: #fe8019;
 }
-[data-theme-name="dracula"] .swatch {
+[data-theme-name="dracula"] {
   --swatch-a: #282a36;
   --swatch-b: #bd93f9;
 }
-.theme-reset {
-  width: auto;
-  min-height: 44px;
-  margin: 0;
-  padding: 0.4rem 1rem;
-  border: 1px solid var(--theme-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--theme-text);
-  font-size: 0.92rem;
-  font-weight: 600;
-  box-shadow: none;
-}
-.theme-reset:hover,
-.theme-reset:focus {
-  border-color: var(--theme-accent);
-  background: var(--theme-mantle);
-  color: var(--theme-text);
-}
-.theme-reset[aria-pressed="true"] {
-  border-color: var(--theme-accent);
-  box-shadow: inset 0 0 0 1px var(--theme-accent);
+[data-theme-name="apple-music"] {
+  --swatch-a: #fa2d48;
+  --swatch-b: #fff;
 }
 .carousel-shell {
   position: relative;
@@ -680,13 +691,6 @@ h3 {
   border-radius: 0.9rem;
   border: 1px solid var(--theme-border);
 }
-.carousel-slide figcaption {
-  margin-top: 0.75rem;
-  text-align: center;
-  color: var(--theme-subtext);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
 .carousel-arrow {
   position: absolute;
   top: calc(50% - 1.5rem);
@@ -721,7 +725,7 @@ h3 {
   height: 22px;
 }
 .theme-footnote {
-  max-width: 50rem;
+  max-width: 62ch;
   margin: 2rem 0 0;
   color: var(--theme-subtext);
   font-size: 0.95rem;
@@ -788,23 +792,51 @@ h3 {
   font-weight: 600;
   font-size: 0.95rem;
 }
-.why-grid {
+/* The three platform stories in the order they happened, numbered because the
+   order is the point. Stacked, so a one-sentence story leaves no empty column. */
+.why-stories {
+  counter-reset: story;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 1.5rem 2.5rem;
-  margin-bottom: 2rem;
+  gap: 1.25rem;
+  max-width: 62ch;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
 }
-.why-grid h3 {
+.why-stories li {
+  counter-increment: story;
+  position: relative;
+  margin: 0;
+  padding-left: 3rem;
+  list-style: none;
+}
+.why-stories li::before {
+  content: counter(story);
+  position: absolute;
+  top: 0.05rem;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--mu-muted-border-color);
+  border-radius: 50%;
+  color: var(--mu-primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.why-stories h3 {
   font-size: 1.05rem;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.3rem;
 }
-.why-grid p {
+.why-stories p {
   margin: 0;
   color: var(--mu-muted-color);
   font-size: 0.95rem;
 }
 .name-note {
-  max-width: 46rem;
+  max-width: 62ch;
   margin: 0;
   padding-left: 1rem;
   border-left: 3px solid var(--mu-primary);
@@ -818,6 +850,14 @@ h3 {
   grid-template-columns: 1fr 1.25fr;
   gap: clamp(2rem, 4vw, 4rem);
   align-items: start;
+}
+/* The intro travels with the accordion on wide screens, so the column never
+   sits empty under it. */
+@media (min-width: 901px) {
+  .install-intro {
+    position: sticky;
+    top: 2rem;
+  }
 }
 .install-intro p {
   max-width: 32rem;
@@ -834,9 +874,9 @@ h3 {
 .install-intro .install-warning {
   color: var(--mu-color);
 }
-.snap-badge {
+.accordion > details > .snap-badge {
   display: inline-block;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
 }
 .snap-badge img {
   display: block;
@@ -993,7 +1033,12 @@ h3 {
   min-width: 0;
 }
 
-/* Press */
+/* Press. The cards are centred, so the heading shares their axis, and both
+   logo boxes take one height so the links beneath them align. */
+.press .section-heading {
+  margin-inline: auto;
+  text-align: center;
+}
 .press-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 20rem));
@@ -1013,7 +1058,9 @@ h3 {
   font-size: 0.95rem;
 }
 .press-logo {
-  display: block;
+  display: grid;
+  place-items: center;
+  height: 6rem;
   margin-bottom: 0.85rem;
   border-radius: 0.5rem;
   overflow: hidden;
@@ -1022,16 +1069,16 @@ h3 {
   display: block;
   width: 100%;
   max-width: 18rem;
+  max-height: 100%;
   height: auto;
+  object-fit: contain;
 }
 .press-logo-light {
   background: #fff;
   padding: 0.5rem 0.75rem;
-  max-width: 18rem;
 }
 .press-logo-light img {
   max-width: 12rem;
-  margin: 0 auto;
 }
 
 /* Community */
@@ -1039,11 +1086,15 @@ h3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
   gap: 1.5rem;
+  align-items: start;
 }
 .community-grid article {
   margin: 0;
   padding: 1.5rem;
+  border: 1px solid var(--mu-muted-border-color);
   border-radius: 0.75rem;
+  background: var(--mu-card-background-color);
+  box-shadow: none;
 }
 .community-grid h3 {
   margin-top: 0;
@@ -1056,7 +1107,12 @@ h3 {
   margin-bottom: 0;
 }
 
-/* Sponsor */
+/* Sponsor. The panel closes the Install block, so it drops the rule and the
+   top padding that every other section carries. */
+.sponsor.section-rule {
+  border-top: 0;
+  padding-top: 0;
+}
 .sponsor-panel {
   display: flex;
   flex-wrap: wrap;
@@ -1078,7 +1134,7 @@ h3 {
   color: #fff;
 }
 .sponsor-panel p {
-  max-width: 40rem;
+  max-width: 62ch;
   margin: 0;
   color: #f5e9ec;
 }
@@ -1095,7 +1151,7 @@ h3 {
 
 /* FAQ */
 .faq-list {
-  max-width: 50rem;
+  max-width: 62ch;
   border-radius: 0.75rem;
   border-color: var(--mu-muted-border-color);
   background: var(--mu-card-background-color);
@@ -1178,8 +1234,15 @@ h3 {
     scroll-behavior: auto;
   }
   .themes,
-  .theme-tabs a {
+  .theme-tabs :is(a, button) {
     transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .install {
+    grid-template-columns: 1fr;
+    gap: 2.25rem;
   }
 }
 
@@ -1209,10 +1272,6 @@ h3 {
     width: 100%;
     justify-content: flex-start;
     row-gap: 0.25rem;
-  }
-  .install {
-    grid-template-columns: 1fr;
-    gap: 2.25rem;
   }
   .site-hero {
     padding-block: 2.75rem;
@@ -1269,7 +1328,17 @@ h3 {
     justify-content: center;
     row-gap: 0.1rem;
   }
+  /* The detail takes its own line and the arrow stays with the label. */
   .site-hero .primary-action small {
     flex-basis: 100%;
+    order: 1;
+  }
+  /* A one-line command no longer wraps around the Copy button. */
+  .install-options pre code {
+    padding-right: 0;
+  }
+  .copy-button {
+    position: static;
+    margin-top: 0.6rem;
   }
 }
