@@ -870,6 +870,50 @@ h3 {
 .accordion > details > summary::after {
   margin-left: auto;
 }
+/* Platform logos: Simple Icons 16.30.0 from the CDN, plus a local Windows
+   glyph, as colourable masks in the current text colour. */
+.distro-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+.appimage-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/appimage.svg");
+}
+.debian-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/debian.svg");
+}
+.ubuntu-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/ubuntu.svg");
+}
+.fedora-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/fedora.svg");
+}
+.opensuse-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/opensuse.svg");
+}
+.snap-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/snapcraft.svg");
+}
+.arch-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/archlinux.svg");
+}
+.nix-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/nixos.svg");
+}
+.flatpak-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/flatpak.svg");
+}
+.apple-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/simple-icons@16.30.0/icons/apple.svg");
+}
+.windows-icon {
+  --icon: url("images/windows.svg");
+}
 .accordion > details[open] > summary {
   border-bottom-color: var(--mu-muted-border-color);
 }
@@ -953,6 +997,7 @@ h3 {
 .press-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 20rem));
+  justify-content: center;
   gap: 1.5rem;
   margin: 0;
   padding: 0;
