@@ -2,7 +2,7 @@
 license: BlueOak-1.0.0
 
 languages:
-  go: false
+  javascript: true
 
 repository:
   description: "An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality. A better class of Cider 🍎"
@@ -270,3 +270,12 @@ swatches:
 
   - path: .github/workflows/tailor-wiki.yml
     alteration: always
+
+  - path: .oxlintrc.json
+    alteration: first-fit
+
+  - path: .prettierrc.json
+    alteration: first-fit
+
+  - path: .prettierignore
+    alteration: first-fit

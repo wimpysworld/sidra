@@ -1,0 +1,10 @@
+node_modules/
+vendor/
+third_party/
+third-party/
+generated/
+dist/
+build/
+coverage/
+*.min.*
+*.map
