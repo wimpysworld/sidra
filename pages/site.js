@@ -11,6 +11,20 @@
     return systemDark.matches ? "dark" : "light";
   }
 
+  /* The visitor's OS, shared by the download button and the install tiles. */
+  const ua = navigator.userAgent || "";
+  function detectOS() {
+    const data = navigator.userAgentData;
+    const platform = (data && data.platform) || "";
+    if (/Android/i.test(platform) || /Android/i.test(ua)) return "android";
+    if (/iPhone|iPad|iPod/i.test(platform + ua)) return "ios";
+    if (/Linux/i.test(platform) || (/Linux|X11/i.test(ua) && !/Android/i.test(ua))) return "linux";
+    if (/mac/i.test(platform) || /Macintosh|Mac OS X/i.test(ua)) return "macos";
+    if (/win/i.test(platform) || /Windows/i.test(ua)) return "windows";
+    return "";
+  }
+  const os = detectOS();
+
   /* Download button: point Linux visitors at the versionless AppImage for
      their CPU and everyone else at the latest release. */
   function setupDownload() {
@@ -18,15 +32,6 @@
     if (!button) return;
     const latest = "https://github.com/wimpysworld/sidra/releases/latest";
     const appImage = (arch) => `${latest}/download/Sidra-linux-${arch}.AppImage`;
-    const ua = navigator.userAgent || "";
-    const data = navigator.userAgentData;
-    const platform = (data && data.platform) || "";
-    let os = "";
-    if (/Android/i.test(platform) || /Android/i.test(ua)) os = "android";
-    else if (/iPhone|iPad|iPod/i.test(platform + ua)) os = "ios";
-    else if (/Linux/i.test(platform) || (/Linux|X11/i.test(ua) && !/Android/i.test(ua))) os = "linux";
-    else if (/mac/i.test(platform) || /Macintosh|Mac OS X/i.test(ua)) os = "macos";
-    else if (/win/i.test(platform) || /Windows/i.test(ua)) os = "windows";
 
     const icon = button.querySelector(".octicon");
     const logo = button.querySelector(".download-platform");
@@ -306,17 +311,74 @@
     });
   }
 
-  /* FAQ pointers link to accordion items. Open the one the hash names, so a
-     visitor lands on the steps rather than on a closed row. */
-  function openHashedDetails() {
-    if (!location.hash) return;
-    const target = document.getElementById(location.hash.slice(1));
-    if (target instanceof HTMLDetailsElement) target.open = true;
+  /* Install tiles become a tab list over the platform panels. Without this
+     the tiles are anchors and every panel is visible, so nothing is lost. The
+     tile for the detected OS is selected on load, and a hash such as
+     #install-macos selects and shows that panel. */
+  function setupInstallTabs() {
+    const list = document.getElementById("platform-tiles");
+    if (!list) return;
+    const tabs = Array.from(list.querySelectorAll(".platform-tile"));
+    const panels = tabs.map((tab) => document.getElementById(tab.getAttribute("href").slice(1)));
+    if (panels.some((panel) => !panel)) return;
+
+    list.setAttribute("role", "tablist");
+    tabs.forEach((tab, i) => {
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-controls", panels[i].id);
+      panels[i].setAttribute("role", "tabpanel");
+      panels[i].setAttribute("aria-labelledby", tab.id);
+      panels[i].tabIndex = 0;
+    });
+
+    function select(index, focusTab) {
+      tabs.forEach((tab, i) => {
+        const on = i === index;
+        tab.setAttribute("aria-selected", String(on));
+        tab.tabIndex = on ? 0 : -1;
+        panels[i].hidden = !on;
+      });
+      if (focusTab) tabs[index].focus();
+    }
+
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", (event) => {
+        event.preventDefault();
+        select(i, false);
+        history.replaceState(null, "", `#${panels[i].id}`);
+      });
+    });
+    list.addEventListener("keydown", (event) => {
+      const current = tabs.indexOf(document.activeElement);
+      if (current === -1) return;
+      let next = -1;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (current + 1) % tabs.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (current - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      if (next === -1) return;
+      event.preventDefault();
+      select(next, true);
+    });
+
+    function fromHash() {
+      return panels.findIndex((panel) => `#${panel.id}` === location.hash);
+    }
+    const byOS = tabs.findIndex((tab) => tab.dataset.os === os);
+    const hashed = fromHash();
+    select(hashed !== -1 ? hashed : byOS !== -1 ? byOS : 0, false);
+
+    // A hidden panel cannot be the browser's scroll target, so show it first.
+    window.addEventListener("hashchange", () => {
+      const index = fromHash();
+      if (index === -1) return;
+      select(index, false);
+      panels[index].scrollIntoView({ block: "start" });
+    });
   }
-  window.addEventListener("hashchange", openHashedDetails);
 
   setupDownload();
   setupThemes();
   setupCopyButtons();
-  openHashedDetails();
+  setupInstallTabs();
 })();

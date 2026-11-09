@@ -734,9 +734,35 @@ h3 {
   color: var(--theme-accent);
 }
 
-/* Why Sidra: audio flow */
+/* Why Sidra. Two columns at wide widths: the heading and the three stories on
+   the left, the vertical audio-flow diagram on the right, balanced against the
+   column beside it. The name note closes the section across both columns. */
+.why-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  grid-template-areas:
+    "heading flow"
+    "stories flow";
+  gap: 1rem clamp(2.5rem, 5vw, 5rem);
+  align-items: center;
+  margin-bottom: 3rem;
+}
+.why-heading {
+  grid-area: heading;
+  margin-bottom: 0.5rem;
+}
+.why-grid .audio-flow {
+  grid-area: flow;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.why-grid .why-stories {
+  grid-area: stories;
+}
 .audio-flow {
-  margin: 0 0 2.5rem;
+  margin: 0;
   padding: 1.5rem;
   border: 1px solid var(--mu-muted-border-color);
   border-radius: 0.9rem;
@@ -744,10 +770,9 @@ h3 {
 }
 .flow {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -760,7 +785,6 @@ h3 {
   padding: 0;
 }
 .flow-node {
-  flex: 1 1 14rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -784,22 +808,26 @@ h3 {
   display: grid;
   place-items: center;
   color: var(--mu-primary);
-  flex: 0 0 auto;
+}
+.flow-arrow svg {
+  display: block;
+  height: 36px;
+  width: auto;
 }
 .audio-flow figcaption {
-  margin-top: 1rem;
+  margin-top: 1.25rem;
   text-align: center;
   font-weight: 600;
   font-size: 0.95rem;
+  text-wrap: pretty;
 }
 /* The three platform stories in the order they happened, numbered because the
-   order is the point. Stacked, so a one-sentence story leaves no empty column. */
+   order is the point. */
 .why-stories {
   counter-reset: story;
   display: grid;
   gap: 1.25rem;
-  max-width: 62ch;
-  margin: 0 0 2rem;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -837,78 +865,160 @@ h3 {
 }
 .name-note {
   max-width: 62ch;
-  margin: 0;
-  padding-left: 1rem;
-  border-left: 3px solid var(--mu-primary);
+  margin: 0 auto;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--mu-muted-border-color);
   color: var(--mu-muted-color);
   font-size: 0.95rem;
+  text-align: center;
+  text-wrap: pretty;
 }
 
-/* Install */
-.install {
+/* Centred section headings share one rule, used by Install and Around. */
+.section-heading-centred {
+  margin-inline: auto;
+  text-align: center;
+}
+
+/* Install. A row of platform tiles, then one centred panel. With site.js the
+   tiles are a tab list and one panel shows. Without it the tiles are anchor
+   links and every panel is visible, stacked under the row. */
+.platform-tiles {
   display: grid;
-  grid-template-columns: 1fr 1.25fr;
-  gap: clamp(2rem, 4vw, 4rem);
-  align-items: start;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 2rem;
 }
-/* The intro travels with the accordion on wide screens, so the column never
-   sits empty under it. */
-@media (min-width: 901px) {
-  .install-intro {
-    position: sticky;
-    top: 2rem;
-  }
-}
-.install-intro p {
-  max-width: 32rem;
-  color: var(--mu-muted-color);
-  font-size: 0.98rem;
-}
-.install-warning {
-  padding: 0.9rem 1rem;
-  border-radius: 0.6rem;
+.platform-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 6.5rem;
+  padding: 1rem 0.75rem;
   border: 1px solid var(--mu-muted-border-color);
+  border-radius: 0.75rem;
   background: var(--mu-card-background-color);
+  color: var(--mu-h3-color);
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+  text-wrap: balance;
+}
+.platform-tile:hover {
+  border-color: var(--mu-primary);
+  color: var(--mu-primary);
+}
+.platform-tile:focus-visible {
+  outline-offset: 3px;
+}
+.platform-tile[aria-selected="true"] {
+  border-color: var(--mu-primary);
+  box-shadow: inset 0 0 0 1px var(--mu-primary);
+  color: var(--mu-primary);
+}
+.platform-tile .distro-icon {
+  width: 28px;
+  height: 28px;
+}
+.platform-icons {
+  display: inline-flex;
+  gap: 0.4rem;
+}
+.platform-name small {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--mu-muted-color);
+}
+.install-panels {
+  display: grid;
+  gap: 1.5rem;
+  width: min(100%, 760px);
+  margin-inline: auto;
+}
+.install-panel {
+  margin: 0;
+  padding: 1.5rem 1.75rem 1.75rem;
+  border: 1px solid var(--mu-muted-border-color);
+  border-radius: 0.75rem;
+  background: var(--mu-card-background-color);
+  box-shadow: var(--mu-card-box-shadow);
+  scroll-margin-top: 1.5rem;
+}
+.install-panel:focus-visible {
+  outline: 3px solid var(--mu-primary);
+  outline-offset: 3px;
+}
+.install-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+.install-panel h3 small {
+  margin-left: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--mu-muted-color);
+}
+.install-panel p {
+  margin: 0 0 0.75rem;
+  color: var(--mu-color);
+  font-size: 0.95rem;
+}
+.install-panel > :last-child,
+.install-more > :last-child {
+  margin-bottom: 0;
+}
+.install-panel .install-note {
+  color: var(--mu-muted-color);
+  font-size: 0.9rem;
+}
+.install-panel pre {
+  position: relative;
+  border: 1px solid var(--mu-muted-border-color);
+  padding: 0.85rem 1rem;
+  min-height: 3.4rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.84rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.install-panel pre code {
+  display: block;
+  padding: 0 5.5rem 0 0;
+}
+.install-more {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--mu-muted-border-color);
+}
+.install-more > summary {
+  padding: 0.85rem 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--mu-h3-color);
+}
+.install-more > summary:focus-visible {
+  outline: 3px solid var(--mu-primary);
+  outline-offset: -3px;
+}
+.install-more > p {
   font-size: 0.92rem;
 }
-.install-intro .install-warning {
-  color: var(--mu-color);
-}
-.accordion > details > .snap-badge {
+.snap-badge {
   display: inline-block;
-  margin-top: 0.25rem;
 }
 .snap-badge img {
   display: block;
   width: auto;
   height: 56px;
-}
-.install-options {
-  align-self: start;
-  margin: 0;
-  border-radius: 0.75rem;
-  border-color: var(--mu-muted-border-color);
-  background: var(--mu-card-background-color);
-  box-shadow: var(--mu-card-box-shadow);
-  overflow: visible;
-}
-.accordion > details {
-  margin-block: 0;
-  border-bottom-color: var(--mu-muted-border-color);
-}
-.accordion > details[open] {
-  padding-bottom: 1.1rem;
-}
-.accordion > details > summary {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.9rem 1.15rem;
-  font-weight: 650;
-  color: var(--mu-h3-color);
-}
-.accordion > details > summary::after {
-  margin-left: auto;
 }
 /* Platform logos: Simple Icons 16.30.0 from the CDN, plus a local Windows
    glyph, as colourable masks in the current text colour. */
@@ -954,45 +1064,6 @@ h3 {
 .windows-icon {
   --icon: url("images/windows.svg");
 }
-.accordion > details[open] > summary {
-  border-bottom-color: var(--mu-muted-border-color);
-}
-.accordion > details > :not(summary) {
-  padding: 0;
-  margin-inline: 1.15rem;
-}
-.accordion > details > p {
-  color: var(--mu-muted-color);
-  font-size: 0.92rem;
-  margin-bottom: 0.55rem;
-}
-.accordion > details > p:first-of-type {
-  margin-top: 0.85rem;
-}
-.accordion > details > :last-child {
-  margin-bottom: 0;
-}
-.accordion > details > summary:focus-visible {
-  outline: 3px solid var(--mu-primary);
-  outline-offset: -3px;
-}
-.install-options pre {
-  position: relative;
-  border: 1px solid var(--mu-muted-border-color);
-  padding: 0.85rem 1rem;
-  min-height: 3.4rem;
-  margin: 0.85rem 0 0.75rem;
-  font-size: 0.84rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.install-options pre:first-child {
-  margin-top: 0.85rem;
-}
-.install-options pre code {
-  display: block;
-  padding: 0 5.5rem 0 0;
-}
 .copy-button {
   position: absolute;
   top: 0.45rem;
@@ -1029,82 +1100,8 @@ h3 {
   height: 16px;
 }
 .site-hero > *,
-.install > * {
+.why-grid > * {
   min-width: 0;
-}
-
-/* Press. The cards are centred, so the heading shares their axis, and both
-   logo boxes take one height so the links beneath them align. */
-.press .section-heading {
-  margin-inline: auto;
-  text-align: center;
-}
-.press-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 20rem));
-  justify-content: center;
-  gap: 1.5rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.press-list li {
-  list-style: none;
-  margin: 0;
-  padding: 1.25rem;
-  border: 1px solid var(--mu-muted-border-color);
-  border-radius: 0.75rem;
-  background: var(--mu-card-background-color);
-  font-size: 0.95rem;
-}
-.press-logo {
-  display: grid;
-  place-items: center;
-  height: 6rem;
-  margin-bottom: 0.85rem;
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
-.press-logo img {
-  display: block;
-  width: 100%;
-  max-width: 18rem;
-  max-height: 100%;
-  height: auto;
-  object-fit: contain;
-}
-.press-logo-light {
-  background: #fff;
-  padding: 0.5rem 0.75rem;
-}
-.press-logo-light img {
-  max-width: 12rem;
-}
-
-/* Community */
-.community-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: 1.5rem;
-  align-items: start;
-}
-.community-grid article {
-  margin: 0;
-  padding: 1.5rem;
-  border: 1px solid var(--mu-muted-border-color);
-  border-radius: 0.75rem;
-  background: var(--mu-card-background-color);
-  box-shadow: none;
-}
-.community-grid h3 {
-  margin-top: 0;
-  font-size: 1.1rem;
-}
-.community-grid p {
-  font-size: 0.95rem;
-}
-.community-grid p:last-child {
-  margin-bottom: 0;
 }
 
 /* Sponsor. The panel closes the Install block, so it drops the rule and the
@@ -1149,19 +1146,83 @@ h3 {
   outline-color: #fff;
 }
 
-/* FAQ */
-.faq-list {
-  max-width: 62ch;
+/* Around Sidra: press and community as four equal cards. Every media box
+   takes one height so the titles beneath them align. */
+.around-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.around-grid li {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--mu-muted-border-color);
   border-radius: 0.75rem;
-  border-color: var(--mu-muted-border-color);
   background: var(--mu-card-background-color);
-  overflow: visible;
+  list-style: none;
+  min-width: 0;
+}
+.card-media {
+  display: grid;
+  place-items: center;
+  height: 6rem;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+  background: var(--mu-background-color);
+  border: 1px solid var(--mu-muted-border-color);
+  overflow: hidden;
+}
+.card-media img {
+  display: block;
+  width: 100%;
+  max-width: 14rem;
+  max-height: 100%;
+  height: auto;
+  object-fit: contain;
+  padding: 0.5rem 0.75rem;
+}
+.card-media-light {
+  background: #fff;
+}
+.card-media-light img {
+  max-width: 11rem;
+}
+.card-icon {
+  width: 40px;
+  height: 40px;
+  color: var(--mu-primary);
+}
+.play-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/@primer/octicons@19.36.0/build/svg/play-24.svg");
+}
+.paintbrush-icon {
+  --icon: url("https://cdn.jsdelivr.net/npm/@primer/octicons@19.36.0/build/svg/paintbrush-24.svg");
+}
+.around-grid h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1.05rem;
+}
+.around-grid p {
+  flex: 1 0 auto;
+  margin: 0 0 0.85rem;
+  color: var(--mu-muted-color);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+.around-grid li > a:last-child {
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 /* Footer */
 .site-footer {
   border-top: 1px solid var(--mu-muted-border-color);
-  padding-block: 3.5rem 2rem;
+  padding-block: 4rem 2rem;
 }
 .footer-main {
   display: grid;
@@ -1169,7 +1230,7 @@ h3 {
   gap: 4rem;
 }
 .site-footer .footer-brand > p {
-  max-width: 17rem;
+  max-width: 24rem;
   color: var(--mu-muted-color);
   font-size: 0.9rem;
   margin-top: 0.8rem;
@@ -1239,10 +1300,26 @@ h3 {
   }
 }
 
-@media (max-width: 900px) {
-  .install {
-    grid-template-columns: 1fr;
-    gap: 2.25rem;
+/* Why stacks to one column with the diagram after the intro. The around
+   cards go to two columns. */
+@media (max-width: 1000px) {
+  .why-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heading"
+      "flow"
+      "stories";
+    gap: 2rem;
+  }
+  .why-heading {
+    margin-bottom: 0;
+  }
+  .why-grid .audio-flow {
+    width: min(100%, 34rem);
+    margin-inline: auto;
+  }
+  .around-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1252,9 +1329,6 @@ h3 {
   }
   .site-hero {
     padding-block: 3.5rem;
-  }
-  .install {
-    gap: 2.5rem;
   }
 }
 
@@ -1290,12 +1364,18 @@ h3 {
   .carousel-next {
     right: 0.5rem;
   }
-  .flow-arrow svg {
-    transform: rotate(90deg);
+  .platform-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .footer-main {
     grid-template-columns: 1fr;
     gap: 2rem;
+  }
+}
+
+@media (max-width: 620px) {
+  .around-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1311,7 +1391,10 @@ h3 {
     align-items: flex-start;
     gap: 1rem;
   }
-  .install-options pre {
+  .install-panel {
+    padding: 1.25rem 1rem 1.25rem;
+  }
+  .install-panel pre {
     padding: 0.8rem;
     font-size: 0.75rem;
   }
@@ -1334,7 +1417,7 @@ h3 {
     order: 1;
   }
   /* A one-line command no longer wraps around the Copy button. */
-  .install-options pre code {
+  .install-panel pre code {
     padding-right: 0;
   }
   .copy-button {

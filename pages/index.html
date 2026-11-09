@@ -195,107 +195,122 @@
       </section>
 
       <section id="why" class="why section-rule" aria-labelledby="why-title">
-        <div class="section-heading">
-          <p class="eyebrow">Why Sidra?</p>
-          <h2 id="why-title">Nothing between the apple and the glass</h2>
-          <p>I wanted an Apple Music client that just worked, so I made Sidra. It wraps <code>music.apple.com</code> directly: Apple's audio pipeline, Apple's auth, Apple's UI. Audio flows untouched through Chromium's media stack to the OS.</p>
-        </div>
-        <figure class="audio-flow" aria-labelledby="audio-flow-caption">
-          <ol class="flow">
-            <li class="flow-node"><span class="flow-label">Apple Music</span><span class="flow-detail">music.apple.com, Widevine DRM</span></li>
-            <li class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 48 24" width="48" height="24" focusable="false"><path d="M2 12h40M32 4l10 8-10 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
-            <li class="flow-node"><span class="flow-label">Chromium media stack</span><span class="flow-detail">Decode and output, nothing added</span></li>
-            <li class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 48 24" width="48" height="24" focusable="false"><path d="M2 12h40M32 4l10 8-10 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
-            <li class="flow-node"><span class="flow-label">Your OS audio</span><span class="flow-detail">PipeWire, PulseAudio, CoreAudio, WASAPI</span></li>
+        <div class="why-grid">
+          <div class="section-heading why-heading">
+            <p class="eyebrow">Why Sidra?</p>
+            <h2 id="why-title">Nothing between the apple and the glass</h2>
+            <p>I wanted an Apple Music client that just worked, so I made Sidra. It wraps <code>music.apple.com</code> directly: Apple's audio pipeline, Apple's auth, Apple's UI. Audio flows untouched through Chromium's media stack to the OS.</p>
+          </div>
+          <figure class="audio-flow" aria-labelledby="audio-flow-caption">
+            <ol class="flow">
+              <li class="flow-node"><span class="flow-label">Apple Music</span><span class="flow-detail">music.apple.com, Widevine DRM</span></li>
+              <li class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 48" width="24" height="48" focusable="false"><path d="M12 2v40M4 32l8 10 8-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+              <li class="flow-node"><span class="flow-label">Chromium media stack</span><span class="flow-detail">Decode and output, nothing added</span></li>
+              <li class="flow-arrow" aria-hidden="true"><svg viewBox="0 0 24 48" width="24" height="48" focusable="false"><path d="M12 2v40M4 32l8 10 8-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+              <li class="flow-node"><span class="flow-label">Your OS audio</span><span class="flow-detail">PipeWire, PulseAudio, CoreAudio, WASAPI</span></li>
+            </ol>
+            <figcaption id="audio-flow-caption">No <code>AudioContext</code>, no DSP, no resampling of its own. Chromium and the OS can still resample.</figcaption>
+          </figure>
+          <ol class="why-stories">
+            <li><h3>Linux came first</h3><p>Full MPRIS support and untouched audio. Media keys should work, notifications should fire and volume should track. None of that needs a custom audio engine.</p></li>
+            <li><h3>macOS followed</h3><p>Devices enrolled in MDM can block personal Apple ID sign-in in the native app, and Sidra authenticates at the application layer, so MDM policy never sees it. Beside the native app, it also gives a second person an isolated session with their own history and recommendations.</p></li>
+            <li><h3>Windows followed</h3><p>At the request of a friend who wanted a decent Apple Music client on Windows.</p></li>
           </ol>
-          <figcaption id="audio-flow-caption">No <code>AudioContext</code>, no DSP, no resampling of its own. Chromium and the OS can still resample.</figcaption>
-        </figure>
-        <ol class="why-stories">
-          <li><h3>Linux came first</h3><p>Full MPRIS support and untouched audio. Media keys should work, notifications should fire and volume should track. None of that needs a custom audio engine.</p></li>
-          <li><h3>macOS followed</h3><p>Devices enrolled in MDM can block personal Apple ID sign-in in the native app. Sidra authenticates at the application layer, so MDM policy never sees it. Beside the native app, it also gives a second person an isolated session with their own history and recommendations.</p></li>
-          <li><h3>Windows followed</h3><p>At the request of a friend who wanted a decent Apple Music client on Windows.</p></li>
-        </ol>
+        </div>
         <p class="name-note"><em>Sidra</em> is the Spanish word for the traditional dry cider of Asturias in northern Spain: poured from height, unfiltered, drunk before it goes flat. No additives, no artifice, nothing between the apple and the glass.</p>
       </section>
 
       <section id="install" class="install section-rule" aria-labelledby="install-title">
-        <div class="install-intro">
+        <div class="section-heading section-heading-centred">
           <p class="eyebrow">Install</p>
           <h2 id="install-title">Pick your platform</h2>
-          <p>Grab the latest release from <a href="https://github.com/wimpysworld/sidra/releases">GitHub Releases</a>. Linux builds ship for x86_64 and arm64 in every format below. The arm64 builds are made natively and update from the release like the x86_64 ones.</p>
-          <p class="install-warning"><strong>Unsigned on macOS and Windows.</strong> See the notes in each platform's section.</p>
+          <p>Grab the latest release from <a href="https://github.com/wimpysworld/sidra/releases">GitHub Releases</a>. Linux builds ship for x86_64 and arm64.</p>
         </div>
-        <div class="accordion install-options" id="install-options">
-          <details open>
-            <summary><span class="distro-icon appimage-icon" aria-hidden="true"></span> AppImage</summary>
-            <p>The AppImage runtime bundles its FUSE library. It does not need the host's <code>libfuse2</code> or <code>libfuse2t64</code> package. Normal launch still needs access to <code>/dev/fuse</code> and a working <code>fusermount</code> (FUSE 2) or <code>fusermount3</code> (FUSE 3) helper from your distribution.</p>
-            <p>Make the downloaded image executable, then launch it. Replace <code>x86_64</code> with <code>arm64</code> for an ARM64 build:</p>
+        <div class="platform-tiles" id="platform-tiles" aria-label="Platforms">
+          <a class="platform-tile" id="tab-appimage" href="#install-appimage" data-os="linux"><span class="distro-icon appimage-icon" aria-hidden="true"></span><span class="platform-name">AppImage</span></a>
+          <a class="platform-tile" id="tab-debian" href="#install-debian"><span class="platform-icons"><span class="distro-icon debian-icon" aria-hidden="true"></span><span class="distro-icon ubuntu-icon" aria-hidden="true"></span></span><span class="platform-name">Debian and Ubuntu</span></a>
+          <a class="platform-tile" id="tab-fedora" href="#install-fedora"><span class="distro-icon fedora-icon" aria-hidden="true"></span><span class="platform-name">Fedora</span></a>
+          <a class="platform-tile" id="tab-opensuse" href="#install-opensuse"><span class="distro-icon opensuse-icon" aria-hidden="true"></span><span class="platform-name">openSUSE</span></a>
+          <a class="platform-tile" id="tab-snap" href="#install-snap"><span class="distro-icon snap-icon" aria-hidden="true"></span><span class="platform-name">Snap</span></a>
+          <a class="platform-tile" id="tab-aur" href="#install-aur"><span class="distro-icon arch-icon" aria-hidden="true"></span><span class="platform-name">AUR</span></a>
+          <a class="platform-tile" id="tab-nix" href="#install-nix"><span class="distro-icon nix-icon" aria-hidden="true"></span><span class="platform-name">Nix</span></a>
+          <a class="platform-tile" id="tab-flatpak" href="#install-flatpak"><span class="distro-icon flatpak-icon" aria-hidden="true"></span><span class="platform-name">Flatpak <small>experimental</small></span></a>
+          <a class="platform-tile" id="tab-macos" href="#install-macos" data-os="macos"><span class="distro-icon apple-icon" aria-hidden="true"></span><span class="platform-name">macOS</span></a>
+          <a class="platform-tile" id="tab-windows" href="#install-windows" data-os="windows"><span class="distro-icon windows-icon" aria-hidden="true"></span><span class="platform-name">Windows</span></a>
+        </div>
+        <div class="install-panels">
+          <section class="install-panel" id="install-appimage" aria-labelledby="install-appimage-title">
+            <h3 id="install-appimage-title"><span class="distro-icon appimage-icon" aria-hidden="true"></span>AppImage</h3>
+            <p>Make it executable and run it. Use the arm64 file on ARM.</p>
             <pre data-copy><code>chmod +x Sidra-linux-x86_64.AppImage
 ./Sidra-linux-x86_64.AppImage</code></pre>
-            <p>If FUSE mounting is unavailable, extract and run the image without mounting:</p>
-            <pre data-copy><code>./Sidra-linux-x86_64.AppImage --appimage-extract-and-run</code></pre>
-            <p>Extraction does not remove Electron's system requirements. Older AppImageLauncher releases can reject this runtime. If that happens, update AppImageLauncher or use the <code>.deb</code> or <code>.rpm</code> package.</p>
-          </details>
-          <details>
-            <summary><span class="distro-icon debian-icon" aria-hidden="true"></span><span class="distro-icon ubuntu-icon" aria-hidden="true"></span> Debian and Ubuntu</summary>
-            <p>Use the <code>.deb</code> package unless you need AppImage:</p>
+            <p class="install-note">No FUSE? Run it with <code>--appimage-extract-and-run</code>. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
+          </section>
+          <section class="install-panel" id="install-debian" aria-labelledby="install-debian-title">
+            <h3 id="install-debian-title"><span class="distro-icon debian-icon" aria-hidden="true"></span><span class="distro-icon ubuntu-icon" aria-hidden="true"></span>Debian and Ubuntu</h3>
+            <p>Install the <code>.deb</code> package.</p>
             <pre data-copy><code>sudo apt install ./Sidra-*.deb</code></pre>
-          </details>
-          <details>
-            <summary><span class="distro-icon fedora-icon" aria-hidden="true"></span><span class="distro-icon opensuse-icon" aria-hidden="true"></span> Fedora and openSUSE</summary>
-            <pre data-copy><code>sudo dnf install ./Sidra-*.rpm      # Fedora
-sudo zypper install ./Sidra-*.rpm   # openSUSE</code></pre>
-          </details>
-          <details>
-            <summary><span class="distro-icon snap-icon" aria-hidden="true"></span> Snap</summary>
-            <p>Ubuntu and other snapd-enabled distributions. The snap is published for both x86_64 and arm64, so this picks the right one:</p>
+          </section>
+          <section class="install-panel" id="install-fedora" aria-labelledby="install-fedora-title">
+            <h3 id="install-fedora-title"><span class="distro-icon fedora-icon" aria-hidden="true"></span>Fedora</h3>
+            <p>Install the <code>.rpm</code> package.</p>
+            <pre data-copy><code>sudo dnf install ./Sidra-*.rpm</code></pre>
+          </section>
+          <section class="install-panel" id="install-opensuse" aria-labelledby="install-opensuse-title">
+            <h3 id="install-opensuse-title"><span class="distro-icon opensuse-icon" aria-hidden="true"></span>openSUSE</h3>
+            <p>Install the <code>.rpm</code> package.</p>
+            <pre data-copy><code>sudo zypper install ./Sidra-*.rpm</code></pre>
+          </section>
+          <section class="install-panel" id="install-snap" aria-labelledby="install-snap-title">
+            <h3 id="install-snap-title"><span class="distro-icon snap-icon" aria-hidden="true"></span>Snap</h3>
+            <p>For Ubuntu and other snapd-enabled distributions. The snap picks the right build for your CPU.</p>
             <pre data-copy><code>sudo snap install sidra</code></pre>
             <a class="snap-badge" href="https://snapcraft.io/sidra"><img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="Get it from the Snap Store" width="182" height="56" loading="lazy"></a>
-          </details>
-          <details>
-            <summary><span class="distro-icon arch-icon" aria-hidden="true"></span> AUR</summary>
-            <p>Arch Linux and derivatives:</p>
+          </section>
+          <section class="install-panel" id="install-aur" aria-labelledby="install-aur-title">
+            <h3 id="install-aur-title"><span class="distro-icon arch-icon" aria-hidden="true"></span>AUR</h3>
+            <p>For Arch Linux and derivatives.</p>
             <pre data-copy><code>yay -S sidra-bin</code></pre>
-          </details>
-          <details>
-            <summary><span class="distro-icon nix-icon" aria-hidden="true"></span> Nix</summary>
-            <p>With flakes enabled, install Sidra for your user:</p>
+          </section>
+          <section class="install-panel" id="install-nix" aria-labelledby="install-nix-title">
+            <h3 id="install-nix-title"><span class="distro-icon nix-icon" aria-hidden="true"></span>Nix</h3>
+            <p>With flakes enabled, install Sidra for your user.</p>
             <pre data-copy><code>nix profile add github:wimpysworld/sidra</code></pre>
-            <p>For NixOS or Home Manager, add Sidra to your <code>flake.nix</code> inputs:</p>
-            <pre data-copy><code>inputs.sidra.url = "github:wimpysworld/sidra";</code></pre>
-            <p>NixOS:</p>
-            <pre data-copy><code>environment.systemPackages = [
+            <details class="install-more">
+              <summary>Using flakes in your config</summary>
+              <p>Add Sidra to your <code>flake.nix</code> inputs:</p>
+              <pre data-copy><code>inputs.sidra.url = "github:wimpysworld/sidra";</code></pre>
+              <p>NixOS:</p>
+              <pre data-copy><code>environment.systemPackages = [
   inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
 ];</code></pre>
-            <p>Home Manager:</p>
-            <pre data-copy><code>home.packages = [
+              <p>Home Manager:</p>
+              <pre data-copy><code>home.packages = [
   inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
 ];</code></pre>
-            <p>These module snippets need <code>inputs</code> in their function arguments, passed through NixOS <code>specialArgs</code> or Home Manager <code>extraSpecialArgs</code>. For Home Manager inside NixOS, use <code>home-manager.extraSpecialArgs</code>.</p>
-          </details>
-          <details id="install-flatpak">
-            <summary><span class="distro-icon flatpak-icon" aria-hidden="true"></span> Flatpak (experimental)</summary>
-            <p>Download the <code>.flatpak</code> bundle for your CPU from GitHub Releases: <code>-linux-x86_64.flatpak</code> or <code>-linux-aarch64.flatpak</code>. Install Flatpak through your distribution first. The bundle needs the Freedesktop 26.08 runtime, which comes from Flathub. Sidra itself is not published on Flathub.</p>
+              <p class="install-note">These snippets need <code>inputs</code> in their function arguments, passed through NixOS <code>specialArgs</code> or Home Manager <code>extraSpecialArgs</code>.</p>
+            </details>
+          </section>
+          <section class="install-panel" id="install-flatpak" aria-labelledby="install-flatpak-title">
+            <h3 id="install-flatpak-title"><span class="distro-icon flatpak-icon" aria-hidden="true"></span>Flatpak <small>experimental</small></h3>
+            <p>Download the <code>.flatpak</code> bundle for your CPU from GitHub Releases, then add the Freedesktop runtime from Flathub and install the bundle.</p>
             <pre data-copy><code>flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install --user flathub org.freedesktop.Platform//26.08
 flatpak install --user --or-update ./Sidra-VERSION-linux-x86_64.flatpak
 flatpak run world.wimpys.sidra</code></pre>
-            <p>Replace <code>VERSION</code> with the downloaded version and <code>x86_64</code> with <code>aarch64</code> for ARM64. For each Sidra update, download the newer bundle and repeat <code>flatpak install --user --or-update</code> with that file. <code>flatpak update</code> updates the runtime, but it does not find new Sidra bundles on GitHub.</p>
-            <p>Flatpak keeps settings, authentication and downloaded Widevine components in app-private storage under <code>~/.var/app/world.wimpys.sidra/</code>. This storage is separate from native packages and persists across bundle updates. Protected playback and desktop integration still need validation on both architectures. Discord Rich Presence and controller access are not configured in this initial package.</p>
-          </details>
-          <details id="install-macos">
-            <summary><span class="distro-icon apple-icon" aria-hidden="true"></span> macOS</summary>
-            <p><strong>DMG</strong>: open and drag Sidra to Applications.</p>
-            <p>On first launch macOS may report: <em>"Sidra.app" is damaged and can't be opened. You should move it to the Bin.</em> The app is unsigned, not corrupt. macOS shows this because the download is quarantined.</p>
-            <p>Strip the quarantine attribute in Terminal, then open Sidra normally:</p>
+            <p class="install-note">Replace <code>VERSION</code> with the downloaded version and <code>x86_64</code> with <code>aarch64</code> on ARM. For each update, repeat the install with the newer bundle. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
+          </section>
+          <section class="install-panel" id="install-macos" aria-labelledby="install-macos-title">
+            <h3 id="install-macos-title"><span class="distro-icon apple-icon" aria-hidden="true"></span>macOS</h3>
+            <p>Open the DMG and drag Sidra to Applications. If macOS says the app is damaged, run:</p>
             <pre data-copy><code>xattr -dr com.apple.quarantine /Applications/Sidra.app</code></pre>
-            <p>System Settings, Privacy &amp; Security only offers <strong>Open Anyway</strong> for the milder "unidentified developer" prompt, never for "damaged", so Terminal is the dependable path.</p>
-          </details>
-          <details>
-            <summary><span class="distro-icon windows-icon" aria-hidden="true"></span> Windows</summary>
-            <p><strong>Installer</strong> (<code>.exe</code>): run the setup wizard. It defaults to an installation for your user, lets you choose an installation for all users, and lets you select the installation directory.</p>
-            <p>SmartScreen will warn the installer is unsigned. Click <strong>More info</strong> then <strong>Run anyway</strong>.</p>
-          </details>
+            <p class="install-note">The app is unsigned, not corrupt. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
+          </section>
+          <section class="install-panel" id="install-windows" aria-labelledby="install-windows-title">
+            <h3 id="install-windows-title"><span class="distro-icon windows-icon" aria-hidden="true"></span>Windows</h3>
+            <p>Run the installer. When SmartScreen warns you, click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+            <p class="install-note">The installer is unsigned. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
+          </section>
         </div>
         <p id="copy-status" class="visually-hidden" aria-live="polite"></p>
       </section>
@@ -311,65 +326,37 @@ flatpak run world.wimpys.sidra</code></pre>
         </div>
       </section>
 
-      <section id="press" class="press section-rule" aria-labelledby="press-title">
-        <div class="section-heading">
-          <p class="eyebrow">As seen in</p>
-          <h2 id="press-title">In the press</h2>
-          <p>I am a presenter on Linux Matters and discussed Sidra's origins in Episode 79. Linux Magazin Online covers Sidra 1.0 and includes an interview with me.</p>
+      <section id="around" class="around section-rule" aria-labelledby="around-title">
+        <div class="section-heading section-heading-centred">
+          <p class="eyebrow">Press and community</p>
+          <h2 id="around-title">Around Sidra</h2>
         </div>
-        <ul class="press-list">
+        <ul class="around-grid">
           <li>
-            <a class="press-logo" href="https://linuxmatters.sh/79/"><img src="images/linuxmatters.webp" alt="Linux Matters" width="600" height="150" loading="lazy"></a>
-            <a href="https://linuxmatters.sh/79/">Episode 79: Pouring out the Sidra</a>
+            <a class="card-media" href="https://linuxmatters.sh/79/" tabindex="-1" aria-hidden="true"><img src="images/linuxmatters.webp" alt="" width="600" height="150" loading="lazy"></a>
+            <h3>Linux Matters, Episode 79</h3>
+            <p>I am a presenter on Linux Matters and discussed Sidra's origins in this episode.</p>
+            <a href="https://linuxmatters.sh/79/">Pouring out the Sidra</a>
           </li>
           <li>
-            <a class="press-logo press-logo-light" href="https://www.linux-magazin.de/news/sidra-1-0-bringt-apple-music-auf-den-linux-desktop/"><img src="images/linux-magazin-online.webp" alt="Linux Magazin Online" width="300" height="122" loading="lazy"></a>
-            <a href="https://www.linux-magazin.de/news/sidra-1-0-bringt-apple-music-auf-den-linux-desktop/">Sidra 1.0 on the Linux desktop</a> <span class="muted">(German)</span>
+            <a class="card-media card-media-light" href="https://www.linux-magazin.de/news/sidra-1-0-bringt-apple-music-auf-den-linux-desktop/" tabindex="-1" aria-hidden="true"><img src="images/linux-magazin-online.webp" alt="" width="300" height="122" loading="lazy"></a>
+            <h3>Linux Magazin Online</h3>
+            <p>Covers Sidra 1.0 and includes an interview with me, in German.</p>
+            <a href="https://www.linux-magazin.de/news/sidra-1-0-bringt-apple-music-auf-den-linux-desktop/">Sidra 1.0 on the Linux desktop</a>
+          </li>
+          <li>
+            <div class="card-media"><span class="octicon card-icon play-icon" aria-hidden="true"></span></div>
+            <h3>MPRIS MiniPlayer</h3>
+            <p>Christian Lauinger asked for a mini player in <a href="https://github.com/wimpysworld/sidra/issues/125">#125</a>, then built one: a small GTK4 and libadwaita window that controls any MPRIS player on Linux. Thank you, Christian.</p>
+            <a href="https://github.com/ChrisLauinger77/mpris-miniplayer">MPRIS MiniPlayer on GitHub</a>
+          </li>
+          <li>
+            <div class="card-media"><span class="octicon card-icon paintbrush-icon" aria-hidden="true"></span></div>
+            <h3>Noctalia Sidra template</h3>
+            <p>Noctalia's community template adds a live-reloading <strong>Custom Theme</strong> choice under <strong>Style</strong> in Settings, so Sidra follows your desktop colours.</p>
+            <a href="https://github.com/noctalia-dev/community-templates/tree/main/sidra">Sidra community template</a>
           </li>
         </ul>
-      </section>
-
-      <section id="community" class="community section-rule" aria-labelledby="community-title">
-        <div class="section-heading">
-          <p class="eyebrow">Community</p>
-          <h2 id="community-title">Built around, not into</h2>
-        </div>
-        <div class="community-grid">
-          <article>
-            <h3>MPRIS MiniPlayer</h3>
-            <p>Sidra ships no mini player and does not need one. Christian Lauinger (<a href="https://github.com/ChrisLauinger77">ChrisLauinger77</a>) asked for one in <a href="https://github.com/wimpysworld/sidra/issues/125">#125</a>, then built <a href="https://github.com/ChrisLauinger77/mpris-miniplayer">MPRIS MiniPlayer</a>: a small GTK4/libadwaita window that controls any MPRIS player on Linux.</p>
-            <p>It pairs beautifully with <strong>Close to tray</strong>. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian.</p>
-          </article>
-          <article>
-            <h3>Noctalia Sidra template</h3>
-            <p>Enable Noctalia's <a href="https://github.com/noctalia-dev/community-templates/tree/main/sidra">Sidra community template</a> to add a live-reloading <strong>Custom Theme</strong> choice under <strong>Style</strong> in Settings, so Sidra follows your desktop colours.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="faq" class="faq section-rule" aria-labelledby="faq-title">
-        <div class="section-heading">
-          <p class="eyebrow">FAQ</p>
-          <h2 id="faq-title">Frequently asked questions</h2>
-        </div>
-        <div class="accordion faq-list">
-          <details>
-            <summary>Is playback lossless?</summary>
-            <p>On macOS and Windows, yes. The <a href="#features">Untouched audio</a> feature and <a href="#why">Why Sidra</a> explain how.</p>
-          </details>
-          <details>
-            <summary>Why does macOS say Sidra is damaged?</summary>
-            <p>The app is unsigned, not corrupt. macOS shows this because the download is quarantined. Strip the quarantine attribute in Terminal with <code>xattr -dr com.apple.quarantine /Applications/Sidra.app</code>, then open Sidra normally. See the <a href="#install-macos">macOS install steps</a>.</p>
-          </details>
-          <details>
-            <summary>Is Sidra on Flathub?</summary>
-            <p>No. An experimental bundle is attached to each release. See the <a href="#install-flatpak">Flatpak install steps</a>.</p>
-          </details>
-          <details>
-            <summary>Is there a mini player?</summary>
-            <p>Not in Sidra. See <a href="#community">MPRIS MiniPlayer</a> under Community.</p>
-          </details>
-        </div>
       </section>
     </main>
 
