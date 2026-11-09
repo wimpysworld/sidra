@@ -327,7 +327,7 @@ body > main {
   }
   .hero-icon:hover,
   .hero-copy:focus-within .hero-icon {
-    transform: rotate(-4deg);
+    transform: rotate(4deg);
   }
 }
 .eyebrow {
@@ -663,7 +663,6 @@ h3 {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
-  border-radius: 0.9rem;
   scrollbar-width: none;
 }
 .carousel::-webkit-scrollbar {
@@ -688,7 +687,6 @@ h3 {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 0.9rem;
   border: 1px solid var(--theme-border);
 }
 .carousel-arrow {
