@@ -100,6 +100,7 @@
               ]
               ++ lib.optionals stdenv.hostPlatform.isLinux [
                 gsettings-desktop-schemas
+                libarchive
               ]
               ++ import ./nix/loader.nix { inherit pkgs; };
 

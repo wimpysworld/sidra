@@ -128,6 +128,18 @@ sudo dnf install ./Sidra-*.rpm      # Fedora
 sudo zypper install ./Sidra-*.rpm   # openSUSE
 ```
 
+**Arch Linux / Arch Linux ARM**
+
+Download the `.pkg.tar.xz` package for your CPU from GitHub Releases: `-linux-x64.pkg.tar.xz` or `-linux-aarch64.pkg.tar.xz`.
+
+```bash
+sudo pacman -U ./Sidra-VERSION-linux-x64.pkg.tar.xz
+```
+
+Replace `VERSION` with the downloaded version and `x64` with `aarch64` for Arch Linux ARM.
+For each Sidra update, download the newer package and repeat `pacman -U` with that file.
+These downloads do not add a pacman repository or replace the bundled CastLabs Electron runtime.
+
 **Flatpak (experimental)**
 
 Download the `.flatpak` bundle for your CPU from GitHub Releases: `-linux-x86_64.flatpak` or `-linux-aarch64.flatpak`.
