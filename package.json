@@ -248,7 +248,7 @@
       "extendInfo": {
         "NSUserNotificationAlertStyle": "alert"
       },
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "identity": "-",
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
