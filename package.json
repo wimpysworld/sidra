@@ -239,7 +239,8 @@
     "afterSign": "build/afterSign.cjs",
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.music",
@@ -247,7 +248,8 @@
       "extendInfo": {
         "NSUserNotificationAlertStyle": "alert"
       },
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
+      "identity": "-",
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
