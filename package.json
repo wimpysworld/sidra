@@ -89,6 +89,7 @@
         "AppImage",
         "deb",
         "rpm",
+        "pacman",
         "flatpak",
         "snap"
       ],
@@ -143,6 +144,45 @@
       "fpm": [
         "--rpm-rpmbuild-define",
         "_build_id_links none"
+      ]
+    },
+    "pacman": {
+      "artifactName": "${productName}-${version}-${os}-${arch}.pkg.tar.xz",
+      "compression": "xz",
+      "fpm": [
+        "--description",
+        "Apple Music desktop client"
+      ],
+      "depends": [
+        "alsa-lib",
+        "at-spi2-core",
+        "cairo",
+        "dbus",
+        "expat",
+        "glib2",
+        "glibc",
+        "gtk3",
+        "hicolor-icon-theme",
+        "libcups",
+        "libgcc",
+        "libnotify",
+        "libpulse",
+        "libsecret",
+        "libx11",
+        "libxcb",
+        "libxcomposite",
+        "libxdamage",
+        "libxext",
+        "libxfixes",
+        "libxkbcommon",
+        "libxrandr",
+        "mesa",
+        "nspr",
+        "nss",
+        "pango",
+        "systemd-libs",
+        "util-linux",
+        "xdg-utils"
       ]
     },
     "flatpak": {

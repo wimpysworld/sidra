@@ -19,6 +19,7 @@ env:
     release/*.AppImage
     release/*.deb
     release/*.rpm
+    release/*.pkg.tar.xz
     release/*.flatpak
     release/*.snap
     release/*.dmg
@@ -177,11 +178,11 @@ jobs:
           - os: linux
             arch: amd64
             runner: ubuntu-24.04
-            targets: "--linux AppImage deb rpm flatpak"
+            targets: "--linux AppImage deb rpm pacman flatpak"
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-            targets: "--linux AppImage deb rpm flatpak --arm64"
+            targets: "--linux AppImage deb rpm pacman flatpak --arm64"
           - os: macos
             arch: universal
             runner: macos-latest
@@ -221,7 +222,7 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y librsvg2-bin rpm flatpak flatpak-builder appstream
+          sudo apt-get install -y librsvg2-bin rpm libarchive-tools flatpak flatpak-builder appstream
       - name: Install Flatpak build runtimes
         if: matrix.os == 'linux'
         run: |
