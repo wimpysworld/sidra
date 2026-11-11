@@ -23,6 +23,7 @@ env:
     release/*.flatpak
     release/*.snap
     release/*.dmg
+    release/*.zip
     release/*.exe
     release/*.blockmap
     release/latest*.yml
@@ -186,7 +187,7 @@ jobs:
           - os: macos
             arch: universal
             runner: macos-latest
-            targets: "--mac dmg --x64 --arm64"
+            targets: "--mac dmg zip --x64 --arm64"
           - os: windows
             arch: amd64
             runner: windows-latest
