@@ -191,7 +191,7 @@ jobs:
           - os: windows
             arch: amd64
             runner: windows-latest
-            targets: "--win nsis"
+            targets: "--win nsis zip"
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
