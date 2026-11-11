@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
 import Module from 'node:module';
+import path from 'path';
 import { restorePlatform, setPlatform } from './mocks/platform';
 
 const updater = vi.hoisted(() => {
@@ -95,9 +97,20 @@ describe('auto-update', () => {
     vi.stubEnv('SNAP', '');
     setPlatform('win32');
     Object.defineProperty(app, 'isPackaged', { value: true, configurable: true, writable: true });
+    const existsSync = vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     expect(isAutoUpdateSupported()).toBe(true);
+    expect(existsSync).toHaveBeenCalledWith(
+      path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`),
+    );
 
     setPlatform('darwin');
+    expect(isAutoUpdateSupported()).toBe(false);
+  });
+
+  it('refuses the portable Windows zip, which has no NSIS uninstaller', () => {
+    setPlatform('win32');
+    Object.defineProperty(app, 'isPackaged', { value: true, configurable: true, writable: true });
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
     expect(isAutoUpdateSupported()).toBe(false);
   });
 

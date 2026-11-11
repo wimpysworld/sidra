@@ -1,5 +1,7 @@
 import { app, dialog, Tray } from "electron";
 import log from "electron-log/main";
+import fs from "fs";
+import path from "path";
 import { getAutoUpdateEnabled } from "./config";
 import { getAutoUpdateStrings } from "./i18n";
 import { setUpdateReady, showUpdateNotification } from "./update";
@@ -16,9 +18,11 @@ function loadAutoUpdater(): typeof import("electron-updater") {
 }
 
 /**
- * Check the update preference and AppImage or packaged Windows support, excluding Snap.
+ * Check the update preference and AppImage or NSIS-installed Windows support, excluding Snap.
  * Other targets use notifications from src/update.ts instead.
- * app-update.yml ships in all packaged builds, so its presence cannot determine support.
+ * app-update.yml ships in all packaged builds, the portable Windows zip included,
+ * so its presence cannot determine support. Only the NSIS installer writes
+ * "Uninstall <productName>.exe" beside the executable, so that file marks an NSIS install.
  */
 export function isAutoUpdateSupported(): boolean {
   if (process.env.SIDRA_DISABLE_AUTO_UPDATE === "1") {
@@ -46,6 +50,16 @@ export function isAutoUpdateSupported(): boolean {
   }
 
   if (process.platform === "win32" && app.isPackaged) {
+    const uninstaller = path.join(
+      path.dirname(process.execPath),
+      `Uninstall ${app.getName()}.exe`,
+    );
+    if (!fs.existsSync(uninstaller)) {
+      autoUpdateLog.info(
+        "auto-update not supported: portable Windows build (no NSIS uninstaller)",
+      );
+      return false;
+    }
     autoUpdateLog.info("auto-update supported: Windows NSIS detected");
     return true;
   }
