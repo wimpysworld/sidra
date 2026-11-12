@@ -115,9 +115,19 @@ describe('updatePageUrl', () => {
     expect(updatePageUrl(RELEASE_URL)).toBe('https://brew.wimpys.world/#sidra');
   });
 
-  it('links Windows to the Scoop bucket', () => {
+  it('links the portable Windows build to the Scoop bucket', () => {
     setPlatform('win32');
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
     expect(updatePageUrl(RELEASE_URL)).toBe('https://scoop.wimpys.world/#sidra');
+  });
+
+  it('links an NSIS install with auto-update off to the release page', () => {
+    setPlatform('win32');
+    const existsSync = vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+    expect(existsSync).toHaveBeenCalledWith(
+      path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`),
+    );
   });
 
   it('falls back to the release page on other platforms', () => {

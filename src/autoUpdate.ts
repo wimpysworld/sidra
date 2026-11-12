@@ -1,10 +1,12 @@
 import { app, dialog, Tray } from "electron";
 import log from "electron-log/main";
-import fs from "fs";
-import path from "path";
 import { getAutoUpdateEnabled } from "./config";
 import { getAutoUpdateStrings } from "./i18n";
-import { setUpdateReady, showUpdateNotification } from "./update";
+import {
+  isNsisInstall,
+  setUpdateReady,
+  showUpdateNotification,
+} from "./update";
 import { errorMessage } from "./utils";
 
 const autoUpdateLog = log.scope("autoUpdate");
@@ -50,11 +52,7 @@ export function isAutoUpdateSupported(): boolean {
   }
 
   if (process.platform === "win32" && app.isPackaged) {
-    const uninstaller = path.join(
-      path.dirname(process.execPath),
-      `Uninstall ${app.getName()}.exe`,
-    );
-    if (!fs.existsSync(uninstaller)) {
+    if (!isNsisInstall()) {
       autoUpdateLog.info(
         "auto-update not supported: portable Windows build (no NSIS uninstaller)",
       );

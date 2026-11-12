@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import fs from 'fs';
 import Module from 'node:module';
-import path from 'path';
 import { restorePlatform, setPlatform } from './mocks/platform';
 
 const updater = vi.hoisted(() => {
@@ -38,6 +36,7 @@ vi.mock('../src/i18n', () => ({
 }));
 
 vi.mock('../src/update', () => ({
+  isNsisInstall: vi.fn(() => false),
   setUpdateReady: vi.fn(),
   showUpdateNotification: vi.fn(),
 }));
@@ -45,7 +44,7 @@ vi.mock('../src/update', () => ({
 import { app, dialog, Tray } from 'electron';
 import { getAutoUpdateEnabled } from '../src/config';
 import { configureAutoUpdate, initAutoUpdate, isAutoUpdateSupported } from '../src/autoUpdate';
-import { setUpdateReady, showUpdateNotification } from '../src/update';
+import { isNsisInstall, setUpdateReady, showUpdateNotification } from '../src/update';
 
 const moduleApi = Module as unknown as {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
@@ -97,11 +96,8 @@ describe('auto-update', () => {
     vi.stubEnv('SNAP', '');
     setPlatform('win32');
     Object.defineProperty(app, 'isPackaged', { value: true, configurable: true, writable: true });
-    const existsSync = vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    vi.mocked(isNsisInstall).mockReturnValueOnce(true);
     expect(isAutoUpdateSupported()).toBe(true);
-    expect(existsSync).toHaveBeenCalledWith(
-      path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`),
-    );
 
     setPlatform('darwin');
     expect(isAutoUpdateSupported()).toBe(false);
@@ -110,7 +106,7 @@ describe('auto-update', () => {
   it('refuses the portable Windows zip, which has no NSIS uninstaller', () => {
     setPlatform('win32');
     Object.defineProperty(app, 'isPackaged', { value: true, configurable: true, writable: true });
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    vi.mocked(isNsisInstall).mockReturnValueOnce(false);
     expect(isAutoUpdateSupported()).toBe(false);
   });
 

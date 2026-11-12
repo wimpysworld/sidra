@@ -31,6 +31,16 @@ const PACKAGE_TYPE_URLS = new Map([
 ]);
 
 /**
+ * True when the NSIS installer's "Uninstall <productName>.exe" sits beside the executable.
+ * The portable Windows zip has no uninstaller, so this marks an NSIS install.
+ */
+export function isNsisInstall(): boolean {
+  return fs.existsSync(
+    path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`),
+  );
+}
+
+/**
  * Choose the page that tells this install how to update, falling back to the release page.
  * electron-builder writes resources/package-type for its deb, rpm, and pacman targets.
  */
@@ -48,7 +58,10 @@ export function updatePageUrl(releaseUrl: string): string {
     }
   }
   if (process.platform === "darwin") return "https://brew.wimpys.world/#sidra";
-  if (process.platform === "win32") return "https://scoop.wimpys.world/#sidra";
+  // An NSIS install reaches this check only when auto-update is turned off.
+  if (process.platform === "win32") {
+    return isNsisInstall() ? releaseUrl : "https://scoop.wimpys.world/#sidra";
+  }
   return releaseUrl;
 }
 
