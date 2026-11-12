@@ -52,11 +52,13 @@ const RELEASE_URL = 'https://github.com/wimpysworld/sidra/releases/tag/1.2.3';
 
 describe('updatePageUrl', () => {
   const resourcesPath = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
+  const isPackaged = Object.getOwnPropertyDescriptor(app, 'isPackaged');
 
   beforeEach(() => {
     vi.stubEnv('SNAP', '');
     vi.stubEnv('FLATPAK_ID', '');
     Object.defineProperty(process, 'resourcesPath', { value: '/opt/Sidra/resources', configurable: true });
+    Object.defineProperty(app, 'isPackaged', { value: true, configurable: true, writable: true });
   });
 
   afterEach(() => {
@@ -65,6 +67,8 @@ describe('updatePageUrl', () => {
     restorePlatform();
     if (resourcesPath) Object.defineProperty(process, 'resourcesPath', resourcesPath);
     else delete (process as { resourcesPath?: string }).resourcesPath;
+    if (isPackaged) Object.defineProperty(app, 'isPackaged', isPackaged);
+    else delete (app as { isPackaged?: boolean }).isPackaged;
   });
 
   function packageType(contents: string | Error) {
@@ -111,6 +115,22 @@ describe('updatePageUrl', () => {
   it('falls back to the release page when package-type is absent or unreadable', () => {
     setPlatform('linux');
     packageType(Object.assign(new Error('missing'), { code: 'ENOENT' }));
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+  });
+
+  it('links a Nix install to the release page despite its deb package-type', () => {
+    setPlatform('linux');
+    Object.defineProperty(process, 'resourcesPath', {
+      value: '/nix/store/abc123-sidra-1.2.3/opt/Sidra/resources', configurable: true,
+    });
+    const read = packageType('deb');
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('links an unpackaged run to the release page', () => {
+    setPlatform('darwin');
+    Object.defineProperty(app, 'isPackaged', { value: false, configurable: true, writable: true });
     expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
   });
 
