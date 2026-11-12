@@ -1,6 +1,9 @@
-import { afterEach, describe, it, expect, vi } from 'vitest';
-import { app, net, Tray } from 'electron';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { app, net, shell, Tray } from 'electron';
+import fs from 'fs';
+import path from 'path';
 import { notifyFake, resetNotifyFake } from './mocks/notify';
+import { restorePlatform, setPlatform } from './mocks/platform';
 
 vi.mock('../src/config', () => ({
   getNotificationsEnabled: vi.fn(() => false),
@@ -10,7 +13,7 @@ vi.mock('../src/i18n', () => ({
   getUpdateStrings: vi.fn(() => ({ updateAvailable: 'Update available: {version}' })),
 }));
 
-import { checkForUpdates, isNewer } from '../src/update';
+import { checkForUpdates, getUpdateInfo, isNewer, updatePageUrl } from '../src/update';
 import { getNotificationsEnabled } from '../src/config';
 
 describe('update display name', () => {
@@ -42,6 +45,135 @@ describe('update display name', () => {
       title: 'Update available: 1.2.3', body: 'Test Player 1.2.3', silent: true,
     });
     expect(notifyFake.built[0].show).toHaveBeenCalledOnce();
+  });
+});
+
+const RELEASE_URL = 'https://github.com/wimpysworld/sidra/releases/tag/1.2.3';
+
+describe('updatePageUrl', () => {
+  const resourcesPath = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
+  const isPackaged = Object.getOwnPropertyDescriptor(app, 'isPackaged');
+
+  beforeEach(() => {
+    vi.stubEnv('SNAP', '');
+    vi.stubEnv('FLATPAK_ID', '');
+    Object.defineProperty(process, 'resourcesPath', { value: '/opt/Sidra/resources', configurable: true });
+    Object.defineProperty(app, 'isPackaged', { value: true, configurable: true, writable: true });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    restorePlatform();
+    if (resourcesPath) Object.defineProperty(process, 'resourcesPath', resourcesPath);
+    else delete (process as { resourcesPath?: string }).resourcesPath;
+    if (isPackaged) Object.defineProperty(app, 'isPackaged', isPackaged);
+    else delete (app as { isPackaged?: boolean }).isPackaged;
+  });
+
+  function packageType(contents: string | Error) {
+    return vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+      if (contents instanceof Error) throw contents;
+      return contents;
+    });
+  }
+
+  it('links a Snap install to the Snap Store', () => {
+    setPlatform('linux');
+    vi.stubEnv('SNAP', '/snap/sidra/current');
+    vi.stubEnv('FLATPAK_ID', 'com.wimpysworld.Sidra');
+    expect(updatePageUrl(RELEASE_URL)).toBe('https://snapcraft.io/sidra');
+  });
+
+  it('links a Flatpak install to the Flatpak repository', () => {
+    setPlatform('linux');
+    vi.stubEnv('FLATPAK_ID', 'com.wimpysworld.Sidra');
+    const read = packageType('deb');
+    expect(updatePageUrl(RELEASE_URL)).toBe('https://flatpak.wimpys.world/#sidra');
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['deb\n', 'https://apt.wimpys.world/#sidra'],
+    ['rpm', 'https://rpm.wimpys.world/#sidra'],
+    ['pacman\n', 'https://pkg.wimpys.world/#sidra'],
+  ])('links package-type %j to its repository', (contents, expected) => {
+    setPlatform('linux');
+    const read = packageType(contents);
+    expect(updatePageUrl(RELEASE_URL)).toBe(expected);
+    expect(read).toHaveBeenCalledWith(path.join('/opt/Sidra/resources', 'package-type'), 'utf8');
+  });
+
+  it('falls back to the release page for an unknown package-type', () => {
+    setPlatform('linux');
+    packageType('freebsd');
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+    packageType('constructor');
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+  });
+
+  it('falls back to the release page when package-type is absent or unreadable', () => {
+    setPlatform('linux');
+    packageType(Object.assign(new Error('missing'), { code: 'ENOENT' }));
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+  });
+
+  it('links a Nix install to the release page despite its deb package-type', () => {
+    setPlatform('linux');
+    Object.defineProperty(process, 'resourcesPath', {
+      value: '/nix/store/abc123-sidra-1.2.3/opt/Sidra/resources', configurable: true,
+    });
+    const read = packageType('deb');
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('links an unpackaged run to the release page', () => {
+    setPlatform('darwin');
+    Object.defineProperty(app, 'isPackaged', { value: false, configurable: true, writable: true });
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+  });
+
+  it('links macOS to the Homebrew tap', () => {
+    setPlatform('darwin');
+    expect(updatePageUrl(RELEASE_URL)).toBe('https://brew.wimpys.world/#sidra');
+  });
+
+  it('links the portable Windows build to the Scoop bucket', () => {
+    setPlatform('win32');
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
+    expect(updatePageUrl(RELEASE_URL)).toBe('https://scoop.wimpys.world/#sidra');
+  });
+
+  it('links an NSIS install with auto-update off to the release page', () => {
+    setPlatform('win32');
+    const existsSync = vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+    expect(existsSync).toHaveBeenCalledWith(
+      path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`),
+    );
+  });
+
+  it('falls back to the release page on other platforms', () => {
+    setPlatform('freebsd');
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+  });
+
+  it('opens the chosen page from the notification and records it for the tray', async () => {
+    setPlatform('darwin');
+    vi.mocked(getNotificationsEnabled).mockReturnValue(true);
+    resetNotifyFake('record');
+    vi.mocked(net.fetch).mockResolvedValue(new Response(JSON.stringify({
+      tag_name: 'v99.0.0',
+      html_url: RELEASE_URL,
+    })));
+
+    await checkForUpdates(new Tray('icon'), vi.fn());
+
+    expect(getUpdateInfo()?.url).toBe('https://brew.wimpys.world/#sidra');
+    notifyFake.built[0].handlers.click();
+    expect(shell.openExternal).toHaveBeenCalledWith('https://brew.wimpys.world/#sidra');
+    vi.mocked(getNotificationsEnabled).mockReturnValue(false);
   });
 });
 

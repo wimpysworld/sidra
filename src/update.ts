@@ -1,5 +1,7 @@
 import { app, net, Tray } from "electron";
 import log from "electron-log/main";
+import fs from "fs";
+import path from "path";
 import { getNotificationsEnabled } from "./config";
 import { getUpdateStrings } from "./i18n";
 import { createNotification } from "./notify";
@@ -8,9 +10,10 @@ import { openExternalUrl } from "./utils/openExternal";
 
 // Update state shared with the tray, plus the notify-only check used where
 // isAutoUpdateSupported() is false. Those builds are updated by a package
-// manager, so the check reports a new release and links to it rather than
-// downloading anything. src/autoUpdate.ts owns the AppImage and NSIS path and
-// updates the shared state through setUpdateReady().
+// manager, so the check reports a new release and links to the package
+// repository page for the install type rather than downloading anything.
+// src/autoUpdate.ts owns the AppImage and NSIS path and updates the shared
+// state through setUpdateReady().
 
 const SEMVER_PARTS = 3;
 const UPDATE_CHECK_TIMEOUT_MS = 10000;
@@ -20,10 +23,56 @@ const updateLog = log.scope("update");
 const GITHUB_API_URL =
   "https://api.github.com/repos/wimpysworld/sidra/releases/latest";
 
+/** Haberdasher repository pages, keyed by electron-builder's package-type value. */
+const PACKAGE_TYPE_URLS = new Map([
+  ["deb", "https://apt.wimpys.world/#sidra"],
+  ["rpm", "https://rpm.wimpys.world/#sidra"],
+  ["pacman", "https://pkg.wimpys.world/#sidra"],
+]);
+
+/**
+ * True when the NSIS installer's "Uninstall <productName>.exe" sits beside the executable.
+ * The portable Windows zip has no uninstaller, so this marks an NSIS install.
+ */
+export function isNsisInstall(): boolean {
+  return fs.existsSync(
+    path.join(path.dirname(process.execPath), `Uninstall ${app.getName()}.exe`),
+  );
+}
+
+/**
+ * Choose the page that tells this install how to update, falling back to the release page.
+ * electron-builder writes resources/package-type for its deb, rpm, and pacman targets.
+ */
+export function updatePageUrl(releaseUrl: string): string {
+  if (process.env.SNAP) return "https://snapcraft.io/sidra";
+  if (process.env.FLATPAK_ID) return "https://flatpak.wimpys.world/#sidra";
+  // The Nix package unpacks the release .deb or .dmg, so its package type names the wrong repository.
+  if (!app.isPackaged || process.resourcesPath.startsWith("/nix/store/")) {
+    return releaseUrl;
+  }
+  if (process.platform === "linux") {
+    try {
+      const packageType = fs
+        .readFileSync(path.join(process.resourcesPath, "package-type"), "utf8")
+        .trim();
+      return PACKAGE_TYPE_URLS.get(packageType) ?? releaseUrl;
+    } catch {
+      return releaseUrl;
+    }
+  }
+  if (process.platform === "darwin") return "https://brew.wimpys.world/#sidra";
+  // An NSIS install reaches this check only when auto-update is turned off.
+  if (process.platform === "win32") {
+    return isNsisInstall() ? releaseUrl : "https://scoop.wimpys.world/#sidra";
+  }
+  return releaseUrl;
+}
+
 /** Latest release details shared by both update paths and the tray. */
 export interface UpdateInfo {
   version: string;
-  /** Release page to open. Empty when the update is already downloaded. */
+  /** Update page to open. Empty when the update is already downloaded. */
   url: string;
   /** True once the update is downloaded and a restart would install it. */
   ready: boolean;
@@ -44,7 +93,7 @@ export function setUpdateReady(version: string): void {
 
 /**
  * Notify only when the preference and notification availability allow it.
- * The caller supplies a release-page or install action and a label that identifies the update path in logs.
+ * The caller supplies an update-page or install action and a label that identifies the update path in logs.
  */
 export function showUpdateNotification(
   version: string,
@@ -152,11 +201,12 @@ export async function checkForUpdates(
       updateLog.info(
         `update available: ${cleanVersion} (current: ${localVersion})`,
       );
-      updateInfo = { version: cleanVersion, url: releaseUrl, ready: false };
+      const url = updatePageUrl(releaseUrl);
+      updateInfo = { version: cleanVersion, url, ready: false };
       rebuildMenu(tray);
 
       showUpdateNotification(cleanVersion, "update", () => {
-        openExternalUrl(releaseUrl, updateLog);
+        openExternalUrl(url, updateLog);
       });
     } else {
       updateLog.debug("up to date:", localVersion);
