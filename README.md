@@ -51,7 +51,7 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
   - Share current track (macOS), auto-update status
 - 🔄 **Auto-update** via GitHub Releases:
   - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
-  - deb, rpm, Flatpak, Nix, macOS DMG: update notification linking to the release page
+  - deb, rpm, Flatpak, Nix, macOS DMG: update notification linking to the matching repository page, or the release page
 
 Open **Settings** with the gear button beside Back, Forward and Reload.
 With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.

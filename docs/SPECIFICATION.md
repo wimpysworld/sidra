@@ -1277,7 +1277,7 @@ The top-level `productName: "Sidra"` in `package.json` is the single source for 
 
 ## Auto-update
 
-`src/autoUpdate.ts` provides automatic update delivery for AppImage (Linux) and NSIS (Windows) builds via `electron-updater`. All other packaging formats (deb, rpm, Nix, DMG) receive a tray notification pointing to the GitHub releases page instead.
+`src/autoUpdate.ts` provides automatic update delivery for AppImage (Linux) and NSIS (Windows) builds via `electron-updater`. All other packaging formats (deb, rpm, Nix, DMG) receive a tray notification instead. `updatePageUrl()` in `src/update.ts` picks its link from the install type: Snap Store, the `wimpys.world` Flatpak, APT, RPM, Arch, Homebrew, or Scoop repository page, or the GitHub release page when none matches.
 
 ### Platform detection
 
