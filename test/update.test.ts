@@ -51,6 +51,8 @@ describe('update display name', () => {
 const RELEASE_URL = 'https://github.com/wimpysworld/sidra/releases/tag/1.2.3';
 
 describe('updatePageUrl', () => {
+  const resourcesPath = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
+
   beforeEach(() => {
     vi.stubEnv('SNAP', '');
     vi.stubEnv('FLATPAK_ID', '');
@@ -61,6 +63,8 @@ describe('updatePageUrl', () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     restorePlatform();
+    if (resourcesPath) Object.defineProperty(process, 'resourcesPath', resourcesPath);
+    else delete (process as { resourcesPath?: string }).resourcesPath;
   });
 
   function packageType(contents: string | Error) {
