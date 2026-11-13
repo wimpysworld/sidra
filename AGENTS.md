@@ -129,7 +129,9 @@ When adding a language, add an entry to every record in every JSON file:
 
 ## Configuration
 
-`src/config.ts` is a typed wrapper around `electron-conf` and the single location for all persistent application state.
+`src/config.ts` is a typed wrapper around `electron-conf` and the single location for persistent application state, except Electron-owned main-window geometry.
+
+Keep the main `BrowserWindow` name stable and unique, with `windowStatePersistence: { bounds: true, displayMode: false }`. Electron stores its bounds without a duplicate `config.ts` entry. Retain the 1280x800 defaults and do not restore maximised or fullscreen state. On Wayland, the compositor controls window position.
 
 | Key | Type | Purpose |
 |-----|------|---------|

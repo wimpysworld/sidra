@@ -481,9 +481,11 @@ function createMainWindow(ses: Electron.Session): {
   winReady: Promise<void>;
 } {
   const win = new BrowserWindow({
+    name: "sidra-main",
     title: app.getName(),
     width: MAIN_WINDOW_WIDTH_PX,
     height: MAIN_WINDOW_HEIGHT_PX,
+    windowStatePersistence: { bounds: true, displayMode: false },
     show: false,
     autoHideMenuBar: true,
     backgroundColor: "#000000",
