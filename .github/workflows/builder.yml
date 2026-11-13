@@ -383,6 +383,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
+          # The release tag commit is needed for the latest tag worktree.
+          fetch-depth: 0
       - uses: DeterminateSystems/determinate-nix-action@v3.24.1
         with:
           extra-conf: |
@@ -456,14 +458,39 @@ jobs:
           darwin_hash=$(nix store prefetch-file --json --hash-type sha256 "${darwin_url}" | jq -r '.hash')
           echo "🔑 Darwin hash: ${darwin_hash}"
 
-          update_nix nix/linux.nix "${linux_amd64_url}" "${linux_amd64_hash}" x86_64-linux || exit 1
-          update_nix nix/linux.nix "${linux_arm64_url}" "${linux_arm64_hash}" aarch64-linux || exit 1
-          update_nix nix/darwin.nix "${darwin_url}" "${darwin_hash}" || exit 1
+          # Rewrite the Nix files of one checkout.
+          rewrite() {
+            local dir="$1"
+            update_nix "${dir}/nix/linux.nix" "${linux_amd64_url}" "${linux_amd64_hash}" x86_64-linux || return 1
+            update_nix "${dir}/nix/linux.nix" "${linux_arm64_url}" "${linux_arm64_hash}" aarch64-linux || return 1
+            update_nix "${dir}/nix/darwin.nix" "${darwin_url}" "${darwin_hash}" || return 1
+            echo "✅ Updated nix/linux.nix and nix/darwin.nix in ${dir}"
+            git -C "${dir}" diff nix/linux.nix nix/darwin.nix
+          }
 
-          echo "✅ Updated nix/linux.nix and nix/darwin.nix"
-          git diff nix/linux.nix nix/darwin.nix
+          rewrite . || exit 1
+
+          # A stable release also gets the hashes on top of its tag commit,
+          # which the next step publishes as the latest tag.
+          if [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            git worktree add --detach "${LATEST_DIR}" "refs/tags/${GITHUB_REF_NAME}"
+            rewrite "${LATEST_DIR}" || exit 1
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_DIR: ${{ runner.temp }}/latest
+
+      - name: Move latest tag 🏷️
+        if: ${{ !contains(github.ref_name, '-') }}
+        working-directory: ${{ runner.temp }}/latest
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nix/linux.nix nix/darwin.nix
+          git commit -m "chore(nix): update hashes for v${GITHUB_REF_NAME}"
+          git tag --force latest HEAD
+          git push --force origin refs/tags/latest
 
       - name: Create PR with hash updates 🚀
         run: |
