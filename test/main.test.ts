@@ -350,6 +350,24 @@ describe("main bootstrap", () => {
     ]);
   });
 
+  it("persists only the main window bounds and keeps first-launch defaults", async () => {
+    await startMain();
+
+    expect(bootstrap.browserWindow).toHaveBeenCalledTimes(2);
+    expect(bootstrap.browserWindow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        name: "sidra-main",
+        width: 1280,
+        height: 800,
+        windowStatePersistence: { bounds: true, displayMode: false },
+      }),
+    );
+    const splashOptions = bootstrap.browserWindow.mock.calls[0][0];
+    expect(splashOptions).not.toHaveProperty("name");
+    expect(splashOptions).not.toHaveProperty("windowStatePersistence");
+  });
+
   it("creates a locked-down window, wires integrations, and contains first navigation failure", async () => {
     await startMain();
 
