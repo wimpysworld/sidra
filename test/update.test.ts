@@ -118,19 +118,28 @@ describe('updatePageUrl', () => {
     expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
   });
 
-  it('links a Nix install to the release page despite its deb package-type', () => {
+  it('links a Nix install to the Nix cache page despite its deb package-type', () => {
     setPlatform('linux');
     Object.defineProperty(process, 'resourcesPath', {
       value: '/nix/store/abc123-sidra-1.2.3/opt/Sidra/resources', configurable: true,
     });
     const read = packageType('deb');
-    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+    expect(updatePageUrl(RELEASE_URL)).toBe('https://nix.wimpys.world/#sidra');
     expect(read).not.toHaveBeenCalled();
   });
 
   it('links an unpackaged run to the release page', () => {
     setPlatform('darwin');
     Object.defineProperty(app, 'isPackaged', { value: false, configurable: true, writable: true });
+    expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
+  });
+
+  it('links an unpackaged run from the Nix store to the release page', () => {
+    setPlatform('linux');
+    Object.defineProperty(app, 'isPackaged', { value: false, configurable: true, writable: true });
+    Object.defineProperty(process, 'resourcesPath', {
+      value: '/nix/store/abc123-electron-1.2.3/resources', configurable: true,
+    });
     expect(updatePageUrl(RELEASE_URL)).toBe(RELEASE_URL);
   });
 

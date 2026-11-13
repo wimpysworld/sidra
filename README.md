@@ -51,8 +51,8 @@ Sidra takes the opposite approach: wrap `music.apple.com` directly, stay out of 
   - Share current track (macOS), auto-update status
 - 🔄 **Auto-update** via GitHub Releases:
   - AppImage and NSIS: silent OTA download with restart prompt; disable with `SIDRA_DISABLE_AUTO_UPDATE=1`
-  - deb, rpm, Arch, Flatpak, Snap, macOS, Windows portable zip: update notification linking to the APT, RPM, Arch, Flatpak, Snap Store, Homebrew or Scoop page
-  - Nix, unpackaged runs, and AppImage or NSIS with auto-update turned off: update notification linking to the GitHub release page
+  - deb, rpm, Arch, Flatpak, Snap, Nix, macOS, Windows portable zip: update notification linking to the APT, RPM, Arch, Flatpak, Snap Store, Nix, Homebrew or Scoop page
+  - Unpackaged runs, and AppImage or NSIS with auto-update turned off: update notification linking to the GitHub release page
 
 Open **Settings** with the gear button beside Back, Forward and Reload.
 With the player focused, press <kbd>Ctrl</kbd>+<kbd>,</kbd> on Linux or Windows, or <kbd>Cmd</kbd>+<kbd>,</kbd> on macOS.
@@ -89,146 +89,25 @@ I am a presenter on Linux Matters and discussed Sidra's origins in Episode 79. L
 
 ## Install
 
-Grab the latest release from [GitHub Releases](https://github.com/wimpysworld/sidra/releases).
+| | Platform | Repository |
+| :-: | --- | --- |
+| <img src="https://apt.wimpys.world/logo.svg" width="32" height="32" alt=""> | Debian and Ubuntu | [apt.wimpys.world](https://apt.wimpys.world/#sidra) |
+| <img src="https://rpm.wimpys.world/logo.svg" width="32" height="32" alt=""> | Fedora and openSUSE | [rpm.wimpys.world](https://rpm.wimpys.world/#sidra) |
+| <img src="https://pkg.wimpys.world/logo.svg" width="32" height="32" alt=""> | Arch Linux | [pkg.wimpys.world](https://pkg.wimpys.world/#sidra) |
+| <img src="https://flatpak.wimpys.world/logo.svg" width="32" height="32" alt=""> | Flatpak | [flatpak.wimpys.world](https://flatpak.wimpys.world/#sidra) |
+| <img src="https://brew.wimpys.world/logo.svg" width="32" height="32" alt=""> | macOS (Homebrew) | [brew.wimpys.world](https://brew.wimpys.world/#sidra) |
+| <img src="https://scoop.wimpys.world/logo.svg" width="32" height="32" alt=""> | Windows (Scoop) | [scoop.wimpys.world](https://scoop.wimpys.world/#sidra) |
+| <img src="https://nix.wimpys.world/logo.svg" width="32" height="32" alt=""> | Nix and NixOS | [nix.wimpys.world](https://nix.wimpys.world/#sidra) |
 
-### Linux
+Each repository is signed, and its page gives the setup steps and keeps Sidra up to date.
 
-Linux builds ship for x86_64 and arm64. Pick the file that matches your CPU: `Sidra-linux-x86_64.AppImage` or `Sidra-linux-arm64.AppImage`, `-linux-amd64.deb` or `-linux-arm64.deb`, `.x86_64.rpm` or `.aarch64.rpm`. The arm64 builds are made natively on `ubuntu-24.04-arm` runners and update from the release like the x86_64 ones. The snap is published for both, so `snap install sidra` picks the right one.
+### Updates itself
 
-**AppImage**
-
-The AppImage runtime bundles its FUSE library. It does not need the host's `libfuse2` or `libfuse2t64` package. Normal launch still needs access to `/dev/fuse` and a working `fusermount` (FUSE 2) or `fusermount3` (FUSE 3) helper from your distribution.
-
-Make the downloaded image executable, then launch it. Replace `x86_64` with `arm64` for an ARM64 build:
-
-```bash
-chmod +x Sidra-linux-x86_64.AppImage
-./Sidra-linux-x86_64.AppImage
-```
-
-If FUSE mounting is unavailable, extract and run the image without mounting:
-
-```bash
-./Sidra-linux-x86_64.AppImage --appimage-extract-and-run
-```
-
-Extraction does not remove Electron's system requirements. Older AppImageLauncher releases can reject this runtime. If that happens, update AppImageLauncher or use the `.deb` or `.rpm` package.
-
-**Debian/Ubuntu**
-
-Use the `.deb` package unless you need AppImage:
-
-```bash
-sudo apt install ./Sidra-*.deb
-```
-
-**Fedora/openSUSE**
-
-```bash
-sudo dnf install ./Sidra-*.rpm      # Fedora
-sudo zypper install ./Sidra-*.rpm   # openSUSE
-```
-
-**Arch Linux / Arch Linux ARM**
-
-Download the `.pkg.tar.xz` package for your CPU from GitHub Releases: `-linux-x64.pkg.tar.xz` or `-linux-aarch64.pkg.tar.xz`.
-
-```bash
-sudo pacman -U ./Sidra-VERSION-linux-x64.pkg.tar.xz
-```
-
-Replace `VERSION` with the downloaded version and `x64` with `aarch64` for Arch Linux ARM.
-For each Sidra update, download the newer package and repeat `pacman -U` with that file.
-These downloads do not add a pacman repository or replace the bundled CastLabs Electron runtime.
-
-**Flatpak (experimental)**
-
-Download the `.flatpak` bundle for your CPU from GitHub Releases: `-linux-x86_64.flatpak` or `-linux-aarch64.flatpak`.
-Install Flatpak through your distribution first. The bundle needs the Freedesktop 26.08 runtime, which comes from Flathub.
-Sidra itself is not published on Flathub.
-
-```bash
-flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.freedesktop.Platform//26.08
-flatpak install --user --or-update ./Sidra-VERSION-linux-x86_64.flatpak
-flatpak run world.wimpys.sidra
-```
-
-Replace `VERSION` with the downloaded version and `x86_64` with `aarch64` for ARM64.
-For each Sidra update, download the newer bundle and repeat `flatpak install --user --or-update` with that file.
-`flatpak update` updates the runtime, but it does not find new Sidra bundles on GitHub.
-
-Flatpak keeps settings, authentication and downloaded Widevine components in app-private storage under `~/.var/app/world.wimpys.sidra/`.
-This storage is separate from native packages and persists across bundle updates.
-Protected playback and desktop integration still need validation on both architectures. Discord Rich Presence and controller access are not configured in this initial package.
-
-**Snap** - Ubuntu and other snapd-enabled distributions:
-
-```bash
-sudo snap install sidra
-```
-
-**AUR** - Arch Linux and derivatives:
-
-```bash
-yay -S sidra-bin
-```
-
-**Nix**:
-
-With flakes enabled, install Sidra for your user:
-
-```bash
-nix profile add github:wimpysworld/sidra
-```
-
-For NixOS or Home Manager, add Sidra to your `flake.nix` inputs:
-
-```nix
-inputs.sidra.url = "github:wimpysworld/sidra";
-```
-
-**NixOS**:
-
-```nix
-environment.systemPackages = [
-  inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
-];
-```
-
-**Home Manager**:
-
-```nix
-home.packages = [
-  inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
-];
-```
-
-These module snippets need `inputs` in their function arguments, passed through NixOS `specialArgs` or Home Manager `extraSpecialArgs`.
-For Home Manager inside NixOS, use `home-manager.extraSpecialArgs`.
-
-### macOS
-
-**DMG** - open and drag Sidra to Applications.
-
-> [!WARNING]
-> On first launch macOS may report:
-> _"Sidra.app" is damaged and can't be opened. You should move it to the Bin._
-> The app is unsigned, not corrupt. macOS shows this because the download is quarantined.
-
-Strip the quarantine attribute in Terminal, then open Sidra normally:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Sidra.app
-```
-
-System Settings → Privacy & Security only offers **Open Anyway** for the milder "unidentified developer" prompt, never for "damaged" - so Terminal is the dependable path.
-
-### Windows
-
-**Installer** (`.exe`) - run the setup wizard. It defaults to an installation for your user, lets you choose an installation for all users, and lets you select the installation directory.
-
-SmartScreen will warn the installer is unsigned. Click **More info** then **Run anyway**.
+| Format | Get it | How it updates |
+| --- | --- | --- |
+| Snap | [Snap Store](https://snapcraft.io/sidra) | snapd refreshes it in the background |
+| AppImage | [x86_64](https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-x86_64.AppImage) or [arm64](https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-arm64.AppImage) | Sidra downloads each release and prompts for a restart |
+| Windows installer | [Latest release](https://github.com/wimpysworld/sidra/releases/latest) | Sidra downloads each release and prompts for a restart |
 
 ---
 

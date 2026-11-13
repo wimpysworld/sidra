@@ -47,9 +47,10 @@ export function isNsisInstall(): boolean {
 export function updatePageUrl(releaseUrl: string): string {
   if (process.env.SNAP) return "https://snapcraft.io/sidra";
   if (process.env.FLATPAK_ID) return "https://flatpak.wimpys.world/#sidra";
+  if (!app.isPackaged) return releaseUrl;
   // The Nix package unpacks the release .deb or .dmg, so its package type names the wrong repository.
-  if (!app.isPackaged || process.resourcesPath.startsWith("/nix/store/")) {
-    return releaseUrl;
+  if (process.resourcesPath.startsWith("/nix/store/")) {
+    return "https://nix.wimpys.world/#sidra";
   }
   if (process.platform === "linux") {
     try {

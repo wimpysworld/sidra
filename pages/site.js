@@ -11,7 +11,7 @@
     return systemDark.matches ? "dark" : "light";
   }
 
-  /* The visitor's OS, shared by the download button and the install tiles. */
+  /* The visitor's OS, for the hero actions. */
   const ua = navigator.userAgent || "";
   function detectOS() {
     const data = navigator.userAgentData;
@@ -25,48 +25,49 @@
   }
   const os = detectOS();
 
-  /* Download button: point Linux visitors at the versionless AppImage for
-     their CPU and everyone else at the latest release. */
+  /* Hero actions: the button leads to the visitor's package repository, or to
+     the install section, which lists them all. Linux visitors also get a
+     direct AppImage download for their CPU as the second action. */
   function setupDownload() {
     const button = document.getElementById("download-button");
+    const alternative = document.getElementById("download-alternative");
     if (!button) return;
-    const latest = "https://github.com/wimpysworld/sidra/releases/latest";
-    const appImage = (arch) => `${latest}/download/Sidra-linux-${arch}.AppImage`;
 
     const icon = button.querySelector(".octicon");
     const logo = button.querySelector(".download-platform");
-    const setLabel = (text, detail, logoClass) => {
+    const setButton = (text, logoClass, href) => {
       button.textContent = "";
-      if (logo && logoClass) {
+      if (logo) {
         logo.classList.add(logoClass);
         logo.hidden = false;
         button.append(logo);
       }
       button.append(text + " ");
-      if (detail) {
-        const small = document.createElement("small");
-        small.textContent = detail;
-        button.append(small, " ");
+      if (href) {
+        button.href = href;
+        if (icon) icon.classList.replace("arrow-down", "arrow-up-right");
       }
       if (icon) button.append(icon);
     };
+    const setAlternative = (text, href) => {
+      if (!alternative) return;
+      alternative.textContent = text;
+      alternative.href = href;
+    };
 
-    // macOS and Windows filenames carry the version, so those visitors land
-    // on the release page rather than on a file, and the detail says so.
     if (os === "linux") {
-      const arm = /aarch64|arm64|armv8/i.test(ua);
-      const arch = arm ? "arm64" : "x86_64";
-      button.href = appImage(arch);
-      setLabel("Download for Linux", `AppImage, ${arch}`, "linux-icon");
+      const arch = /aarch64|arm64|armv8/i.test(ua) ? "arm64" : "x86_64";
+      setButton("Install on Linux", "linux-icon");
+      setAlternative(
+        `Download the AppImage (${arch})`,
+        `https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-${arch}.AppImage`,
+      );
     } else if (os === "macos") {
-      button.href = latest;
-      setLabel("Download for macOS", "from GitHub Releases", "apple-icon");
+      setButton("Install with Homebrew", "apple-icon", "https://brew.wimpys.world/#sidra");
+      setAlternative("Other platforms and formats", "#install");
     } else if (os === "windows") {
-      button.href = latest;
-      setLabel("Download for Windows", "from GitHub Releases", "windows-icon");
-    } else {
-      button.href = latest;
-      setLabel("Download the latest release");
+      setButton("Install with Scoop", "windows-icon", "https://scoop.wimpys.world/#sidra");
+      setAlternative("Other platforms and formats", "#install");
     }
   }
 
@@ -269,116 +270,6 @@
     }
   }
 
-  /* Copy buttons on install commands. */
-  function setupCopyButtons() {
-    if (!navigator.clipboard || !window.isSecureContext) return;
-    const status = document.getElementById("copy-status");
-    document.querySelectorAll("pre[data-copy]").forEach((pre) => {
-      const code = pre.querySelector("code");
-      if (!code) return;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "copy-button";
-      button.setAttribute("aria-label", "Copy command");
-      const icon = document.createElement("span");
-      icon.className = "octicon copy-icon";
-      icon.setAttribute("aria-hidden", "true");
-      const label = document.createElement("span");
-      label.textContent = "Copy";
-      button.append(icon, label);
-      let timer = 0;
-      button.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(code.textContent.replace(/\n$/, ""));
-        } catch {
-          label.textContent = "Press Ctrl+C";
-          if (status) status.textContent = "Copy failed. Select the command and copy it yourself.";
-          return;
-        }
-        button.dataset.copied = "true";
-        icon.className = "octicon check-icon";
-        label.textContent = "Copied";
-        if (status) status.textContent = "Command copied to the clipboard.";
-        window.clearTimeout(timer);
-        timer = window.setTimeout(() => {
-          delete button.dataset.copied;
-          icon.className = "octicon copy-icon";
-          label.textContent = "Copy";
-          if (status) status.textContent = "";
-        }, 2000);
-      });
-      pre.append(button);
-    });
-  }
-
-  /* Install tiles become a tab list over the platform panels. Without this
-     the tiles are anchors and every panel is visible, so nothing is lost. The
-     tile for the detected OS is selected on load, and a hash such as
-     #install-macos selects and shows that panel. */
-  function setupInstallTabs() {
-    const list = document.getElementById("platform-tiles");
-    if (!list) return;
-    const tabs = Array.from(list.querySelectorAll(".platform-tile"));
-    const panels = tabs.map((tab) => document.getElementById(tab.getAttribute("href").slice(1)));
-    if (panels.some((panel) => !panel)) return;
-
-    list.setAttribute("role", "tablist");
-    tabs.forEach((tab, i) => {
-      tab.setAttribute("role", "tab");
-      tab.setAttribute("aria-controls", panels[i].id);
-      panels[i].setAttribute("role", "tabpanel");
-      panels[i].setAttribute("aria-labelledby", tab.id);
-      panels[i].tabIndex = 0;
-    });
-
-    function select(index, focusTab) {
-      tabs.forEach((tab, i) => {
-        const on = i === index;
-        tab.setAttribute("aria-selected", String(on));
-        tab.tabIndex = on ? 0 : -1;
-        panels[i].hidden = !on;
-      });
-      if (focusTab) tabs[index].focus();
-    }
-
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", (event) => {
-        event.preventDefault();
-        select(i, false);
-        history.replaceState(null, "", `#${panels[i].id}`);
-      });
-    });
-    list.addEventListener("keydown", (event) => {
-      const current = tabs.indexOf(document.activeElement);
-      if (current === -1) return;
-      let next = -1;
-      if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (current + 1) % tabs.length;
-      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (current - 1 + tabs.length) % tabs.length;
-      else if (event.key === "Home") next = 0;
-      else if (event.key === "End") next = tabs.length - 1;
-      if (next === -1) return;
-      event.preventDefault();
-      select(next, true);
-    });
-
-    function fromHash() {
-      return panels.findIndex((panel) => `#${panel.id}` === location.hash);
-    }
-    const byOS = tabs.findIndex((tab) => tab.dataset.os === os);
-    const hashed = fromHash();
-    select(hashed !== -1 ? hashed : byOS !== -1 ? byOS : 0, false);
-
-    // A hidden panel cannot be the browser's scroll target, so show it first.
-    window.addEventListener("hashchange", () => {
-      const index = fromHash();
-      if (index === -1) return;
-      select(index, false);
-      panels[index].scrollIntoView({ block: "start" });
-    });
-  }
-
   setupDownload();
   setupThemes();
-  setupCopyButtons();
-  setupInstallTabs();
 })();

@@ -69,8 +69,8 @@
           <h1 id="hero-title">Apple Music, as a proper desktop citizen</h1>
           <p class="lead">Untouched audio, native media controls and eight themes on Linux, macOS and Windows. No frippery, just quality.</p>
           <div class="site-hero-actions">
-            <a id="download-button" class="primary-action" href="https://github.com/wimpysworld/sidra/releases/latest"><span class="distro-icon download-platform" aria-hidden="true" hidden></span>Download <span class="octicon inline-icon arrow-down" aria-hidden="true"></span></a>
-            <a class="text-link" href="#install">Other platforms and formats</a>
+            <a id="download-button" class="primary-action" href="#install"><span class="distro-icon download-platform" aria-hidden="true" hidden></span>Install Sidra <span class="octicon inline-icon arrow-down" aria-hidden="true"></span></a>
+            <a id="download-alternative" class="text-link" href="https://github.com/wimpysworld/sidra/releases/latest">Latest release on GitHub</a>
           </div>
         </div>
         <figure class="hero-shot">
@@ -103,7 +103,7 @@
           <li><h3>Fast playlist start</h3><p>Large library playlists start in one to three seconds once opened before, instead of 17 or more.</p></li>
           <li><h3>Scroll to change volume</h3><p>Point at the player bar volume control and scroll. 5% a notch.</p></li>
           <li><h3>Apple Music Classical</h3><p>Switch at runtime through Player in Settings or the tray, with its own choice of start page.</p></li>
-          <li><h3>Auto-update</h3><p>AppImage and NSIS update silently and prompt to restart. Other formats show a notification linking to the release.</p></li>
+          <li><h3>Auto-update</h3><p>AppImage and the Windows installer update silently and prompt to restart. Other formats show a notification linking to their repository.</p></li>
         </ul>
         <div class="platform-grid">
           <div class="platform">
@@ -224,95 +224,129 @@
         <div class="section-heading section-heading-centred">
           <p class="eyebrow">Install</p>
           <h2 id="install-title">Pick your platform</h2>
-          <p>Grab the latest release from <a href="https://github.com/wimpysworld/sidra/releases">GitHub Releases</a>. Linux builds ship for x86_64 and arm64.</p>
+          <p>Each repository is signed and keeps Sidra up to date.</p>
         </div>
-        <div class="platform-tiles" id="platform-tiles" aria-label="Platforms">
-          <a class="platform-tile" id="tab-appimage" href="#install-appimage" data-os="linux"><span class="distro-icon appimage-icon" aria-hidden="true"></span><span class="platform-name">AppImage</span></a>
-          <a class="platform-tile" id="tab-debian" href="#install-debian"><span class="platform-icons"><span class="distro-icon debian-icon" aria-hidden="true"></span><span class="distro-icon ubuntu-icon" aria-hidden="true"></span></span><span class="platform-name">Debian and Ubuntu</span></a>
-          <a class="platform-tile" id="tab-fedora" href="#install-fedora"><span class="distro-icon fedora-icon" aria-hidden="true"></span><span class="platform-name">Fedora</span></a>
-          <a class="platform-tile" id="tab-opensuse" href="#install-opensuse"><span class="distro-icon opensuse-icon" aria-hidden="true"></span><span class="platform-name">openSUSE</span></a>
-          <a class="platform-tile" id="tab-snap" href="#install-snap"><span class="distro-icon snap-icon" aria-hidden="true"></span><span class="platform-name">Snap</span></a>
-          <a class="platform-tile" id="tab-aur" href="#install-aur"><span class="distro-icon arch-icon" aria-hidden="true"></span><span class="platform-name">AUR</span></a>
-          <a class="platform-tile" id="tab-nix" href="#install-nix"><span class="distro-icon nix-icon" aria-hidden="true"></span><span class="platform-name">Nix</span></a>
-          <a class="platform-tile" id="tab-flatpak" href="#install-flatpak"><span class="distro-icon flatpak-icon" aria-hidden="true"></span><span class="platform-name">Flatpak <small>experimental</small></span></a>
-          <a class="platform-tile" id="tab-macos" href="#install-macos" data-os="macos"><span class="distro-icon apple-icon" aria-hidden="true"></span><span class="platform-name">macOS</span></a>
-          <a class="platform-tile" id="tab-windows" href="#install-windows" data-os="windows"><span class="distro-icon windows-icon" aria-hidden="true"></span><span class="platform-name">Windows</span></a>
+        <!-- Install tiles: one per package repository. Each page gives the setup steps. -->
+        <ul class="install-grid">
+          <li class="install-linux">
+            <a class="install-tile" data-repo="apt" href="https://apt.wimpys.world/#sidra">
+              <img class="install-logo" src="https://apt.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">Linux</span>
+                <span class="install-name">Debian and Ubuntu</span>
+                <span class="install-host" translate="no">apt.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-linux">
+            <a class="install-tile" data-repo="rpm" href="https://rpm.wimpys.world/#sidra">
+              <img class="install-logo" src="https://rpm.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">Linux</span>
+                <span class="install-name">Fedora and openSUSE</span>
+                <span class="install-host" translate="no">rpm.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-linux">
+            <a class="install-tile" data-repo="pkg" href="https://pkg.wimpys.world/#sidra">
+              <img class="install-logo" src="https://pkg.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">Linux</span>
+                <span class="install-name">Arch Linux</span>
+                <span class="install-host" translate="no">pkg.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-linux">
+            <a class="install-tile" data-repo="flatpak" href="https://flatpak.wimpys.world/#sidra">
+              <img class="install-logo" src="https://flatpak.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">Linux</span>
+                <span class="install-name">Flatpak</span>
+                <span class="install-host" translate="no">flatpak.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-other">
+            <a class="install-tile" data-repo="brew" href="https://brew.wimpys.world/#sidra">
+              <img class="install-logo" src="https://brew.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">macOS</span>
+                <span class="install-name">Homebrew</span>
+                <span class="install-host" translate="no">brew.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-other">
+            <a class="install-tile" data-repo="scoop" href="https://scoop.wimpys.world/#sidra">
+              <img class="install-logo" src="https://scoop.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">Windows</span>
+                <span class="install-name">Scoop</span>
+                <span class="install-host" translate="no">scoop.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-other">
+            <a class="install-tile" data-repo="nix" href="https://nix.wimpys.world/#sidra">
+              <img class="install-logo" src="https://nix.wimpys.world/logo.svg" alt="" width="36" height="36" decoding="async">
+              <span class="install-text">
+                <span class="install-platform">Nix</span>
+                <span class="install-name">Nix and NixOS</span>
+                <span class="install-host" translate="no">nix.wimpys.world</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+        </ul>
+        <div class="install-subheading">
+          <h3 id="install-self-title">Updates itself</h3>
+          <p>These builds update themselves.</p>
         </div>
-        <div class="install-panels">
-          <section class="install-panel" id="install-appimage" aria-labelledby="install-appimage-title">
-            <h3 id="install-appimage-title"><span class="distro-icon appimage-icon" aria-hidden="true"></span>AppImage</h3>
-            <p>Make it executable and run it. Use the arm64 file on ARM.</p>
-            <pre data-copy><code>chmod +x Sidra-linux-x86_64.AppImage
-./Sidra-linux-x86_64.AppImage</code></pre>
-            <p class="install-note">No FUSE? Run it with <code>--appimage-extract-and-run</code>. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
-          </section>
-          <section class="install-panel" id="install-debian" aria-labelledby="install-debian-title">
-            <h3 id="install-debian-title"><span class="distro-icon debian-icon" aria-hidden="true"></span><span class="distro-icon ubuntu-icon" aria-hidden="true"></span>Debian and Ubuntu</h3>
-            <p>Install the <code>.deb</code> package.</p>
-            <pre data-copy><code>sudo apt install ./Sidra-*.deb</code></pre>
-          </section>
-          <section class="install-panel" id="install-fedora" aria-labelledby="install-fedora-title">
-            <h3 id="install-fedora-title"><span class="distro-icon fedora-icon" aria-hidden="true"></span>Fedora</h3>
-            <p>Install the <code>.rpm</code> package.</p>
-            <pre data-copy><code>sudo dnf install ./Sidra-*.rpm</code></pre>
-          </section>
-          <section class="install-panel" id="install-opensuse" aria-labelledby="install-opensuse-title">
-            <h3 id="install-opensuse-title"><span class="distro-icon opensuse-icon" aria-hidden="true"></span>openSUSE</h3>
-            <p>Install the <code>.rpm</code> package.</p>
-            <pre data-copy><code>sudo zypper install ./Sidra-*.rpm</code></pre>
-          </section>
-          <section class="install-panel" id="install-snap" aria-labelledby="install-snap-title">
-            <h3 id="install-snap-title"><span class="distro-icon snap-icon" aria-hidden="true"></span>Snap</h3>
-            <p>For Ubuntu and other snapd-enabled distributions. The snap picks the right build for your CPU.</p>
-            <pre data-copy><code>sudo snap install sidra</code></pre>
-            <a class="snap-badge" href="https://snapcraft.io/sidra"><img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="Get it from the Snap Store" width="182" height="56" loading="lazy"></a>
-          </section>
-          <section class="install-panel" id="install-aur" aria-labelledby="install-aur-title">
-            <h3 id="install-aur-title"><span class="distro-icon arch-icon" aria-hidden="true"></span>AUR</h3>
-            <p>For Arch Linux and derivatives.</p>
-            <pre data-copy><code>yay -S sidra-bin</code></pre>
-          </section>
-          <section class="install-panel" id="install-nix" aria-labelledby="install-nix-title">
-            <h3 id="install-nix-title"><span class="distro-icon nix-icon" aria-hidden="true"></span>Nix</h3>
-            <p>With flakes enabled, install Sidra for your user.</p>
-            <pre data-copy><code>nix profile add github:wimpysworld/sidra</code></pre>
-            <details class="install-more">
-              <summary>Using flakes in your config</summary>
-              <p>Add Sidra to your <code>flake.nix</code> inputs:</p>
-              <pre data-copy><code>inputs.sidra.url = "github:wimpysworld/sidra";</code></pre>
-              <p>NixOS:</p>
-              <pre data-copy><code>environment.systemPackages = [
-  inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
-];</code></pre>
-              <p>Home Manager:</p>
-              <pre data-copy><code>home.packages = [
-  inputs.sidra.packages.${pkgs.stdenv.hostPlatform.system}.default
-];</code></pre>
-              <p class="install-note">These snippets need <code>inputs</code> in their function arguments, passed through NixOS <code>specialArgs</code> or Home Manager <code>extraSpecialArgs</code>.</p>
-            </details>
-          </section>
-          <section class="install-panel" id="install-flatpak" aria-labelledby="install-flatpak-title">
-            <h3 id="install-flatpak-title"><span class="distro-icon flatpak-icon" aria-hidden="true"></span>Flatpak <small>experimental</small></h3>
-            <p>Download the <code>.flatpak</code> bundle for your CPU from GitHub Releases, then add the Freedesktop runtime from Flathub and install the bundle.</p>
-            <pre data-copy><code>flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.freedesktop.Platform//26.08
-flatpak install --user --or-update ./Sidra-VERSION-linux-x86_64.flatpak
-flatpak run world.wimpys.sidra</code></pre>
-            <p class="install-note">Replace <code>VERSION</code> with the downloaded version and <code>x86_64</code> with <code>aarch64</code> on ARM. For each update, repeat the install with the newer bundle. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
-          </section>
-          <section class="install-panel" id="install-macos" aria-labelledby="install-macos-title">
-            <h3 id="install-macos-title"><span class="distro-icon apple-icon" aria-hidden="true"></span>macOS</h3>
-            <p>Open the DMG and drag Sidra to Applications. If macOS says the app is damaged, run:</p>
-            <pre data-copy><code>xattr -dr com.apple.quarantine /Applications/Sidra.app</code></pre>
-            <p class="install-note">The app is unsigned, not corrupt. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
-          </section>
-          <section class="install-panel" id="install-windows" aria-labelledby="install-windows-title">
-            <h3 id="install-windows-title"><span class="distro-icon windows-icon" aria-hidden="true"></span>Windows</h3>
-            <p>Run the installer. When SmartScreen warns you, click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
-            <p class="install-note">The installer is unsigned. <a href="https://github.com/wimpysworld/sidra#install">Full notes in the README</a>.</p>
-          </section>
-        </div>
-        <p id="copy-status" class="visually-hidden" aria-live="polite"></p>
+        <ul class="install-grid install-grid-self" aria-labelledby="install-self-title">
+          <li class="install-other">
+            <a class="install-tile" data-repo="snap" href="https://snapcraft.io/sidra">
+              <span class="distro-icon install-glyph snap-icon" aria-hidden="true"></span>
+              <span class="install-text">
+                <span class="install-platform">Linux</span>
+                <span class="install-name">Snap Store</span>
+                <span class="install-host" translate="no">snapcraft.io</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+          <li class="install-other">
+            <!-- Two downloads in one tile: the name link covers the tile, the arm64 link sits above it. -->
+            <div class="install-tile install-tile-split" data-repo="appimage">
+              <span class="distro-icon install-glyph appimage-icon" aria-hidden="true"></span>
+              <span class="install-text">
+                <span class="install-platform">Linux</span>
+                <a class="install-name install-stretch" href="https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-x86_64.AppImage" aria-label="AppImage for x86_64">AppImage</a>
+                <span class="install-host">x86_64, or <a class="install-alt" href="https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-arm64.AppImage" aria-label="arm64 AppImage">arm64</a></span>
+              </span>
+              <span class="octicon inline-icon download-icon" aria-hidden="true"></span>
+            </div>
+          </li>
+          <li class="install-other">
+            <a class="install-tile" data-repo="windows" href="https://github.com/wimpysworld/sidra/releases/latest">
+              <span class="distro-icon install-glyph windows-icon" aria-hidden="true"></span>
+              <span class="install-text">
+                <span class="install-platform">Windows</span>
+                <span class="install-name">Installer</span>
+                <span class="install-host" translate="no">github.com</span>
+              </span>
+              <span class="octicon inline-icon arrow-up-right" aria-hidden="true"></span>
+            </a>
+          </li>
+        </ul>
+        <p class="install-note">The Windows installer is unsigned. When SmartScreen warns you, select <strong>More info</strong>, then <strong>Run anyway</strong>. Without FUSE, run the AppImage with <code>--appimage-extract-and-run</code>.</p>
       </section>
 
       <section id="sponsor" class="sponsor section-rule" aria-labelledby="sponsor-title">
