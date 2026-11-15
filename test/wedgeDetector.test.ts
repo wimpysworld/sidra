@@ -290,13 +290,53 @@ describe("wedgeDetector", () => {
       expect(mockWin.webContents.send).toHaveBeenCalledWith("player:next");
     });
 
-    it("skips when the page gives no usable position", async () => {
-      mockWin.webContents.executeJavaScript.mockResolvedValue(null);
+    it.each([
+      ["null", null],
+      ["undefined", undefined],
+      ["a string", "12"],
+      ["NaN", Number.NaN],
+      ["infinity", Number.POSITIVE_INFINITY],
+    ])("does not skip when the page answers %s", async (_name, value) => {
+      mockWin.webContents.executeJavaScript.mockResolvedValue(value);
       startPlaying();
 
       await vi.advanceTimersByTimeAsync(6000);
 
-      expect(mockWin.webContents.send).toHaveBeenCalledWith("player:next");
+      expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+      expect(wedgeLog.warn).toHaveBeenCalledWith(
+        "source=wedge probe=invalid result=no-skip",
+      );
+    });
+
+    it("waits a full stall interval before asking again after an answer that is no position", async () => {
+      mockWin.webContents.executeJavaScript.mockResolvedValue(null);
+      startPlaying();
+      await vi.advanceTimersByTimeAsync(6000);
+      mockWin.webContents.executeJavaScript.mockClear();
+
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+    });
+
+    // A position report can reach the main process while the probe is out. The answer then
+    // describes a playhead that has since moved, so it is no reason to skip.
+    it("does not skip on an answer that matches the old position when a position report came in meanwhile", async () => {
+      let answer: (value: number) => void = () => {};
+      mockWin.webContents.executeJavaScript.mockReturnValue(
+        new Promise<number>((resolve) => (answer = resolve)),
+      );
+      startPlaying();
+      await vi.advanceTimersByTimeAsync(6000);
+
+      player.handlePlaybackTimeDidChange(100000);
+      answer(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
     });
 
     it("sends one probe while the page has not answered", async () => {

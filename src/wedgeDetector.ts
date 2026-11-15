@@ -68,6 +68,23 @@ function sendSkip(getWin: () => BrowserWindow | null): void {
 }
 
 /**
+ * Whether the track has stopped: playing, no position report for the stall
+ * threshold, not near its end, and skips left. It is asked again when a probe
+ * answers, because a position report can arrive while the question is out.
+ */
+function isStalled(): boolean {
+  const snapshot = playerRef?.playbackSnapshot();
+  if (!snapshot?.isPlaying) return false;
+  if (Date.now() - lastAdvanceTime < STALL_THRESHOLD_MS) return false;
+  if (
+    durationMs > 0 &&
+    durationMs - snapshot.positionUs / 1000 < END_SAFETY_MARGIN_MS
+  )
+    return false;
+  return skipAttempts < MAX_SKIP_ATTEMPTS;
+}
+
+/**
  * The main process only knows that no position report arrived. A renderer that
  * is busy, such as Apple's Up next panel redrawing a long queue after a shuffle
  * or repeat click, reports nothing for seconds and looks the same. The probe
@@ -77,13 +94,8 @@ function sendSkip(getWin: () => BrowserWindow | null): void {
  * wedge.
  */
 function checkForWedge(getWin: () => BrowserWindow | null): void {
-  if (!playerRef?.playbackSnapshot().isPlaying) return;
-  if (probePending) return;
-  if (Date.now() - lastAdvanceTime < STALL_THRESHOLD_MS) return;
-  const positionUs = playerRef.playbackSnapshot().positionUs;
-  if (durationMs > 0 && durationMs - positionUs / 1000 < END_SAFETY_MARGIN_MS)
-    return;
-  if (skipAttempts >= MAX_SKIP_ATTEMPTS) return;
+  if (probePending || !isStalled()) return;
+  const positionUs = playerRef?.playbackSnapshot().positionUs ?? 0;
 
   const contents = liveWebContents(getWin());
   if (!contents) {
@@ -107,17 +119,19 @@ function checkForWedge(getWin: () => BrowserWindow | null): void {
         wedgeLog.warn("source=wedge probe=timeout result=no-skip");
         return;
       }
-      const seconds = typeof value === "number" ? value : NaN;
-      const moved =
-        Number.isFinite(seconds) &&
-        Math.abs(seconds - positionUs / 1_000_000) > PROBE_MOVED_SECONDS;
-      if (moved) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        // Not an answer. Nothing says the player is wedged, so no skip, and the
+        // stall clock starts over so the page is not asked again every second.
+        lastAdvanceTime = Date.now();
+        wedgeLog.warn("source=wedge probe=invalid result=no-skip");
+        return;
+      }
+      if (Math.abs(value - positionUs / 1_000_000) > PROBE_MOVED_SECONDS) {
         lastAdvanceTime = Date.now();
         wedgeLog.info("source=wedge probe=moved result=no-skip");
         return;
       }
-      if (!playerRef?.playbackSnapshot().isPlaying) return;
-      if (skipAttempts >= MAX_SKIP_ATTEMPTS) return;
+      if (!isStalled()) return;
       sendSkip(getWin);
     })
     .catch(() => {

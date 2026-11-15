@@ -2035,6 +2035,39 @@ describe("musicKitHook", () => {
       expect(panel.click).toHaveBeenCalledTimes(1);
     });
 
+    // The held clicks must be made while the list is off the page. After the person's own click the
+    // panel is open again, and a shuffle click then is the redraw this guard avoids.
+    it("makes the held shuffle clicks before the person's own Up next click goes through", () => {
+      const { dispatchClick, button, panel, pendingTimeoutCount } = setup();
+      dispatchClick({ target: button, ...AREA });
+      const clicksWhenPanelOpens: number[] = [];
+
+      const own = dispatchClick({ target: panel });
+      clicksWhenPanelOpens.push(button.click.mock.calls.length);
+
+      expect(clicksWhenPanelOpens).toEqual([1]);
+      expect(own.stopImmediatePropagation).not.toHaveBeenCalled();
+      expect(pendingTimeoutCount()).toBe(0);
+    });
+
+    it("makes no shuffle click for an even held count when the person clicks Up next", () => {
+      const { dispatchClick, button, panel } = setup();
+      dispatchClick({ target: button, ...AREA });
+      dispatchClick({ target: button, ...AREA });
+
+      dispatchClick({ target: panel });
+
+      expect(button.click).not.toHaveBeenCalled();
+    });
+
+    it("makes nothing for a click on Up next when no shuffle click is held", () => {
+      const { dispatchClick, panel, pendingTimeoutCount } = setup();
+
+      dispatchClick({ target: panel });
+
+      expect(pendingTimeoutCount()).toBe(0);
+    });
+
     it("does not click the panel open when it is already open at the end", () => {
       const { dispatchClick, button, panel, runTimeouts } = setup();
       dispatchClick({ target: button, ...AREA });

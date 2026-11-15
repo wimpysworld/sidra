@@ -1047,8 +1047,13 @@
       if (event.isTrusted === false) return;
       const path = typeof event.composedPath === "function" ? event.composedPath() : [];
       const has = (name) => path.find((node) => node?.classList?.contains?.(name));
-      // The person opening or closing the panel themselves ends any reopen still waiting.
+      // The person opening or closing the panel themselves ends any reopen still waiting. Shuffle
+      // clicks still held are made now, while the list is off the page, and not after it is back.
       if (has(UP_NEXT_BUTTON_CLASS)) {
+        if (shuffleSettleTimer !== undefined) {
+          clearTimeout(shuffleSettleTimer);
+          settleShuffleClicks(heldShuffleButton);
+        }
         upNextHidden = false;
         shuffleArea = null;
         clearTimeout(upNextReopenTimer);
