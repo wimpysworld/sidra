@@ -28,6 +28,7 @@ describe("wedgeDetector", () => {
     isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
     webContents: {
       send: ReturnType<typeof vi.fn>;
+      executeJavaScript: ReturnType<typeof vi.fn>;
       isDestroyed: ReturnType<typeof vi.fn<() => boolean>>;
     };
   };
@@ -43,6 +44,8 @@ describe("wedgeDetector", () => {
       isDestroyed: vi.fn(() => false),
       webContents: {
         send: vi.fn(),
+        // The page reports the playhead where the main process last saw it, so a stall is a real one.
+        executeJavaScript: vi.fn(() => Promise.resolve(0)),
         isDestroyed: vi.fn(() => false),
       },
     };
@@ -61,7 +64,7 @@ describe("wedgeDetector", () => {
     vi.useRealTimers();
   });
 
-  it("fires skip after STALL_THRESHOLD_MS of stalled playback", () => {
+  it("fires skip after STALL_THRESHOLD_MS of stalled playback", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
@@ -70,43 +73,43 @@ describe("wedgeDetector", () => {
     // The check runs on a 1000ms interval and proceeds once the elapsed time is
     // no longer below the 5000ms threshold, so the 5000ms tick fires the skip.
     // Advance past it to keep the test off the boundary.
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
 
     expect(mockWin.webContents.send).toHaveBeenCalledWith("player:next");
   });
 
-  it("does not fire skip before stall threshold", () => {
+  it("does not fire skip before stall threshold", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
-    vi.advanceTimersByTime(4000);
+    await vi.advanceTimersByTimeAsync(4000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it("logs sent command provenance when stalled playback is skipped", () => {
+  it("logs sent command provenance when stalled playback is skipped", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
 
     expect(wedgeLog.warn).toHaveBeenCalledWith(
       "source=wedge channel=player:next reason=playback-stalled attempt=1/3 result=sent",
     );
   });
 
-  it("logs dropped command provenance when the main window is missing", () => {
+  it("logs dropped command provenance when the main window is missing", async () => {
     mainWindow = null;
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
     expect(wedgeLog.warn).toHaveBeenCalledWith(
@@ -114,66 +117,66 @@ describe("wedgeDetector", () => {
     );
   });
 
-  it("does not fire skip when position advances", () => {
+  it("does not fire skip when position advances", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
     for (let i = 1; i <= 8; i++) {
-      vi.advanceTimersByTime(1000);
+      await vi.advanceTimersByTimeAsync(1000);
       player.handlePlaybackTimeDidChange(i * 1000);
     }
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it("respects MAX_SKIP_ATTEMPTS (3)", () => {
+  it("respects MAX_SKIP_ATTEMPTS (3)", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
     // Each skip resets lastAdvanceTime, so the next attempt needs another full stall interval.
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(2);
 
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
 
     // The cap is what stops a queue that will not play being skipped end to end.
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
   });
 
-  it("reset() clears state and stops timer", () => {
+  it("reset() clears state and stops timer", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
     // Keep the timer active without reaching the stall threshold.
-    vi.advanceTimersByTime(3000);
+    await vi.advanceTimersByTimeAsync(3000);
 
     wedgeDetector.reset();
 
     // reset() stops the timer, so elapsed time alone cannot trigger another skip.
-    vi.advanceTimersByTime(10000);
+    await vi.advanceTimersByTimeAsync(10000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it("track change resets skip counter", () => {
+  it("track change resets skip counter", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
 
-    vi.advanceTimersByTime(6000);
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(2);
 
     // A new track is a fresh recovery budget: the cap bounds the attempts spent
@@ -183,31 +186,31 @@ describe("wedgeDetector", () => {
       durationInMillis: 180000,
     });
 
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(3);
 
-    vi.advanceTimersByTime(6000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(mockWin.webContents.send).toHaveBeenCalledTimes(4);
   });
 
-  it("does not fire skip when playback is paused", () => {
+  it("does not fire skip when playback is paused", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
-    vi.advanceTimersByTime(2000);
+    await vi.advanceTimersByTimeAsync(2000);
 
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Paused,
     });
 
-    vi.advanceTimersByTime(10000);
+    await vi.advanceTimersByTimeAsync(10000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
-  it("does not fire skip near end of track (within END_SAFETY_MARGIN_MS)", () => {
+  it("does not fire skip near end of track (within END_SAFETY_MARGIN_MS)", async () => {
     player.handleNowPlayingItemDidChange({
       name: "Track",
       durationInMillis: 200000,
@@ -223,26 +226,171 @@ describe("wedgeDetector", () => {
     // 10s margin, anything past 190,000,000 is inside it.
     player.handlePlaybackTimeDidChange(191000000);
 
-    vi.advanceTimersByTime(10000);
+    await vi.advanceTimersByTimeAsync(10000);
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
   });
 
   // A stall callback can run after quit destroys the window. liveWebContents()
   // must reject the destroyed window before its native webContents getter throws.
-  it("drops the skip without throwing once the window is destroyed", () => {
+  it("drops the skip without throwing once the window is destroyed", async () => {
     player.handlePlaybackStateDidChange({
       status: true,
       state: PlaybackState.Playing,
     });
     mockWin.isDestroyed.mockReturnValue(true);
 
-    expect(() => vi.advanceTimersByTime(6000)).not.toThrow();
+    await expect(vi.advanceTimersByTimeAsync(6000)).resolves.not.toThrow();
 
     expect(mockWin.webContents.send).not.toHaveBeenCalled();
     expect(wedgeLog.warn).toHaveBeenCalledWith(
       expect.stringContaining("result=dropped"),
     );
+  });
+
+  describe("a busy page", () => {
+    const startPlaying = () =>
+      player.handlePlaybackStateDidChange({
+        status: true,
+        state: PlaybackState.Playing,
+      });
+
+    // Apple's Up next panel redraws a long queue after a shuffle or repeat click and the page
+    // reports nothing for seconds. It answers the probe when it is free, with the playhead moved on.
+    it("does not skip when the page answers with a playhead that moved", async () => {
+      mockWin.webContents.executeJavaScript.mockResolvedValue(12);
+      startPlaying();
+
+      await vi.advanceTimersByTimeAsync(6000);
+
+      expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+      expect(wedgeLog.info).toHaveBeenCalledWith(
+        "source=wedge probe=moved result=no-skip",
+      );
+    });
+
+    it("waits a full stall interval again after a moved playhead", async () => {
+      mockWin.webContents.executeJavaScript.mockResolvedValue(12);
+      startPlaying();
+      await vi.advanceTimersByTimeAsync(6000);
+      mockWin.webContents.executeJavaScript.mockClear();
+
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(mockWin.webContents.executeJavaScript).not.toHaveBeenCalled();
+    });
+
+    it("still skips a real wedge, where the page reports the same playhead", async () => {
+      mockWin.webContents.executeJavaScript.mockResolvedValue(0.2);
+      startPlaying();
+
+      await vi.advanceTimersByTimeAsync(6000);
+
+      expect(mockWin.webContents.send).toHaveBeenCalledWith("player:next");
+    });
+
+    it("skips when the page gives no usable position", async () => {
+      mockWin.webContents.executeJavaScript.mockResolvedValue(null);
+      startPlaying();
+
+      await vi.advanceTimersByTimeAsync(6000);
+
+      expect(mockWin.webContents.send).toHaveBeenCalledWith("player:next");
+    });
+
+    it("sends one probe while the page has not answered", async () => {
+      mockWin.webContents.executeJavaScript.mockReturnValue(
+        new Promise(() => {}),
+      );
+      startPlaying();
+
+      await vi.advanceTimersByTimeAsync(12000);
+
+      expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    });
+
+    it("gives up on a probe that never answers, without a skip, and asks again", async () => {
+      mockWin.webContents.executeJavaScript.mockReturnValue(
+        new Promise(() => {}),
+      );
+      startPlaying();
+
+      await vi.advanceTimersByTimeAsync(5000 + 15000 + 2000);
+
+      expect(mockWin.webContents.executeJavaScript.mock.calls.length).toBe(2);
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+      expect(wedgeLog.warn).toHaveBeenCalledWith(
+        "source=wedge probe=timeout result=no-skip",
+      );
+    });
+
+    it("does not skip when the probe fails", async () => {
+      mockWin.webContents.executeJavaScript.mockRejectedValue(
+        new Error("Object has been destroyed"),
+      );
+      startPlaying();
+
+      await vi.advanceTimersByTimeAsync(6000);
+
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+      expect(wedgeLog.warn).toHaveBeenCalledWith(
+        "source=wedge probe=failed result=no-skip",
+      );
+    });
+
+    it("ignores an answer that arrives after the track changed", async () => {
+      let answer: (value: number) => void = () => {};
+      mockWin.webContents.executeJavaScript.mockReturnValue(
+        new Promise<number>((resolve) => (answer = resolve)),
+      );
+      startPlaying();
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(mockWin.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+
+      player.handleNowPlayingItemDidChange({
+        name: "Next Track",
+        durationInMillis: 180000,
+      });
+      answer(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    });
+
+    it("ignores an answer that arrives after reset()", async () => {
+      let answer: (value: number) => void = () => {};
+      mockWin.webContents.executeJavaScript.mockReturnValue(
+        new Promise<number>((resolve) => (answer = resolve)),
+      );
+      startPlaying();
+      await vi.advanceTimersByTimeAsync(6000);
+
+      wedgeDetector.reset();
+      answer(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    });
+
+    it("does not skip when playback paused while the probe was out", async () => {
+      let answer: (value: number) => void = () => {};
+      mockWin.webContents.executeJavaScript.mockReturnValue(
+        new Promise<number>((resolve) => (answer = resolve)),
+      );
+      startPlaying();
+      await vi.advanceTimersByTimeAsync(6000);
+
+      player.handlePlaybackStateDidChange({
+        status: true,
+        state: PlaybackState.Paused,
+      });
+      answer(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockWin.webContents.send).not.toHaveBeenCalled();
+    });
   });
 
   it("requires getMainWindow in context", () => {

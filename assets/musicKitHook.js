@@ -980,6 +980,113 @@
 
     window.addEventListener("pointerover", onPointerOver, { passive: true });
 
+    // A shuffle click makes Apple's page redraw the whole Up next list, about 3 seconds for a
+    // 1,800 song queue, and clicks made meanwhile each cost another redraw. With the panel closed the
+    // same click takes well under 100 ms, because the list is not on the page. So the first shuffle
+    // click made while Up next is open closes the panel and is held. Closing it moves the player bar,
+    // so the pointer is no longer over the button; a click inside the area the button had still counts
+    // as a shuffle click and never reaches the page under it. A moment after the last click the
+    // odd ones are applied as one real click, and a moment after that the panel opens again.
+    const SHUFFLE_BUTTON_CLASS = "button--shuffle";
+    const UP_NEXT_BUTTON_CLASS = "up-next-queue__button";
+    const SHUFFLE_SETTLE_MS = 100;
+    const UP_NEXT_REOPEN_MS = 1000;
+    let upNextHidden = false;
+    let heldShuffleButton = null;
+    let heldShuffleClicks = 0;
+    let shuffleArea = null;
+    let shuffleSettleTimer;
+    let upNextReopenTimer;
+
+    const findUpNextButton = () => document.querySelector(`.${UP_NEXT_BUTTON_CLASS}`);
+    const isUpNextOpen = (button) => Boolean(button?.classList?.contains("active"));
+    const inside = (rect, x, y) => Boolean(rect) && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+
+    function reopenUpNext() {
+      upNextReopenTimer = undefined;
+      if (!upNextHidden) return;
+      upNextHidden = false;
+      shuffleArea = null;
+      heldShuffleButton = null;
+      const button = findUpNextButton();
+      if (button && !isUpNextOpen(button)) button.click();
+    }
+
+    // Applies the held clicks: an even count cancels out, an odd one is one real shuffle change.
+    function settleShuffleClicks(button) {
+      shuffleSettleTimer = undefined;
+      const odd = heldShuffleClicks % 2 === 1;
+      heldShuffleClicks = 0;
+      if (odd) {
+        if (button && button.isConnected !== false) {
+          button.click();
+        } else {
+          const mk = window.__sidraHookedMk;
+          if (mk) mk.shuffleMode = mk.shuffleMode === 1 ? 0 : 1;
+        }
+      }
+      clearTimeout(upNextReopenTimer);
+      upNextReopenTimer = setTimeout(reopenUpNext, UP_NEXT_REOPEN_MS);
+    }
+
+    function holdShuffleClick(button) {
+      heldShuffleClicks += 1;
+      clearTimeout(shuffleSettleTimer);
+      clearTimeout(upNextReopenTimer);
+      shuffleSettleTimer = setTimeout(() => settleShuffleClicks(button), SHUFFLE_SETTLE_MS);
+    }
+
+    /**
+     * Keep a shuffle click from redrawing Apple's Up next list: close the list first, then apply
+     * the click.
+     *
+     * @param {MouseEvent} event - The click event, seen in the capture phase
+     * @returns {void}
+     */
+    function onShuffleClick(event) {
+      if (event.isTrusted === false) return;
+      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      const has = (name) => path.find((node) => node?.classList?.contains?.(name));
+      // The person opening or closing the panel themselves ends any reopen still waiting.
+      if (has(UP_NEXT_BUTTON_CLASS)) {
+        upNextHidden = false;
+        shuffleArea = null;
+        clearTimeout(upNextReopenTimer);
+        return;
+      }
+      const shuffle = has(SHUFFLE_BUTTON_CLASS);
+      if (upNextHidden) {
+        if (!shuffle && !inside(shuffleArea, event.clientX, event.clientY)) return;
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        holdShuffleClick(shuffle || heldShuffleButton);
+        return;
+      }
+      if (!shuffle) return;
+      const panelButton = findUpNextButton();
+      if (!isUpNextOpen(panelButton)) return;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      shuffleArea = shuffle.getBoundingClientRect();
+      heldShuffleButton = shuffle;
+      upNextHidden = true;
+      panelButton.click();
+      holdShuffleClick(shuffle);
+    }
+
+    window.addEventListener("click", onShuffleClick, true);
+    // A double click made by mashing over the area the button left would play the song under it.
+    window.addEventListener(
+      "dblclick",
+      (event) => {
+        if (upNextHidden && event.isTrusted !== false && inside(shuffleArea, event.clientX, event.clientY)) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      },
+      true,
+    );
+
     console.log("[Sidra] MusicKit hooked successfully");
 
     // MusicKit instance replacement raises no event, so compare the live instance with the marker.

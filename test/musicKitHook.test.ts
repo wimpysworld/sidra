@@ -4,7 +4,7 @@ import { allServices } from "../src/musicService";
 import type { QueueSnapshot } from "../src/queue";
 import {
   createHarness, volumeControl, wheelRegistrations,
-  musicVolumeTarget, classicalVolumeTarget, nonVolumeTarget,
+  musicVolumeTarget, classicalVolumeTarget, nonVolumeTarget, shuffleButtonTarget, upNextButtonTarget,
 } from "./mocks/musicKit";
 
 describe("MusicKit queue context", () => {
@@ -1868,5 +1868,225 @@ describe("musicKitHook", () => {
     ).not.toThrow();
 
     expect(mediaSession.setPositionState).toHaveBeenCalledWith();
+  });
+  // A shuffle click makes Apple redraw the whole Up next list for seconds. With the panel closed
+  // the click is cheap, so the first click closes the panel, the clicks are counted, one real click
+  // is made for an odd count, and the panel opens again.
+  describe("shuffle clicks with Up next open", () => {
+    const AREA = { x: 315, y: 715 };
+    const elsewhere = () => nonVolumeTarget();
+    const setup = (open = true) => {
+      const harness = createHarness();
+      const panel = upNextButtonTarget(open);
+      harness.setUpNextButton(panel);
+      return { ...harness, panel, button: shuffleButtonTarget() };
+    };
+
+    it("registers one capture-phase click and one dblclick listener, also after a second injection", () => {
+      const { globalRegistrations, reinject } = createHarness();
+      reinject();
+
+      for (const type of ["click", "dblclick"]) {
+        const found = globalRegistrations.filter((entry) => entry.type === type);
+        expect(found).toHaveLength(1);
+        expect(found[0].options).toBe(true);
+      }
+    });
+
+    it("leaves a shuffle click alone while the panel is closed", () => {
+      const { dispatchClick, button, panel, pendingTimeoutCount } = setup(false);
+
+      const event = dispatchClick({ target: button });
+
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(panel.click).not.toHaveBeenCalled();
+      expect(pendingTimeoutCount()).toBe(0);
+    });
+
+    it("leaves a shuffle click alone when there is no Up next button on the page", () => {
+      const { dispatchClick, button, setUpNextButton } = setup();
+      setUpNextButton(null);
+
+      const event = dispatchClick({ target: button });
+
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    });
+
+    it("closes the panel on the first click and holds the click back", () => {
+      const { dispatchClick, button, panel } = setup();
+
+      const event = dispatchClick({ target: button, ...AREA });
+
+      expect(event.stopImmediatePropagation).toHaveBeenCalledTimes(1);
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+      expect(panel.click).toHaveBeenCalledTimes(1);
+      expect(button.click).not.toHaveBeenCalled();
+    });
+
+    it("makes one click for one held click, then opens the panel again", () => {
+      const { dispatchClick, button, panel, runNextTimeout } = setup();
+
+      dispatchClick({ target: button, ...AREA });
+      runNextTimeout();
+      expect(button.click).toHaveBeenCalledTimes(1);
+      expect(panel.click).toHaveBeenCalledTimes(1);
+
+      runNextTimeout();
+      expect(panel.click).toHaveBeenCalledTimes(2);
+      expect(panel.tokens).toContain("active");
+    });
+
+    it("makes no click for an even count, which cancels out, and still opens the panel", () => {
+      const { dispatchClick, button, panel, runTimeouts } = setup();
+
+      for (let i = 0; i < 6; i++) dispatchClick({ target: button, ...AREA });
+      runTimeouts();
+
+      expect(button.click).not.toHaveBeenCalled();
+      expect(panel.click).toHaveBeenCalledTimes(2);
+    });
+
+    it("makes exactly one click for an odd count", () => {
+      const { dispatchClick, button, runTimeouts } = setup();
+
+      for (let i = 0; i < 9; i++) dispatchClick({ target: button, ...AREA });
+      runTimeouts();
+
+      expect(button.click).toHaveBeenCalledTimes(1);
+    });
+
+    it("closes the panel once however many clicks arrive", () => {
+      const { dispatchClick, button, panel } = setup();
+
+      for (let i = 0; i < 9; i++) dispatchClick({ target: button, ...AREA });
+
+      expect(panel.click).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for the clicks to stop: each click restarts the settle timer, with one timer pending", () => {
+      const { dispatchClick, button, pendingTimeoutCount } = setup();
+
+      for (let i = 0; i < 5; i++) dispatchClick({ target: button, ...AREA });
+
+      expect(pendingTimeoutCount()).toBe(1);
+    });
+
+    it("counts a click inside the area the button left as a shuffle click, and keeps it from the page under it", () => {
+      const { dispatchClick, button, runNextTimeout } = setup();
+      dispatchClick({ target: button, ...AREA });
+
+      const under = dispatchClick({ target: elsewhere(), ...AREA });
+      runNextTimeout();
+
+      expect(under.stopImmediatePropagation).toHaveBeenCalledTimes(1);
+      expect(under.preventDefault).toHaveBeenCalledTimes(1);
+      // Two clicks cancel out.
+      expect(button.click).not.toHaveBeenCalled();
+    });
+
+    it("leaves a click outside that area alone while the panel is closed", () => {
+      const { dispatchClick, button } = setup();
+      dispatchClick({ target: button, ...AREA });
+
+      const event = dispatchClick({ target: elsewhere(), x: 900, y: 100 });
+
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    });
+
+    it("counts the shuffle button itself wherever it moved to", () => {
+      const { dispatchClick, button, runNextTimeout } = setup();
+      dispatchClick({ target: button, ...AREA });
+
+      const moved = dispatchClick({ target: shuffleButtonTarget(), x: 600, y: 715 });
+      runNextTimeout();
+
+      expect(moved.stopImmediatePropagation).toHaveBeenCalledTimes(1);
+      expect(button.click).not.toHaveBeenCalled();
+    });
+
+    it("keeps a double click inside the area from reaching the page", () => {
+      const { dispatchClick, button } = setup();
+      dispatchClick({ target: button, ...AREA });
+
+      const inside = dispatchClick({ target: elsewhere(), type: "dblclick", ...AREA });
+      const outside = dispatchClick({ target: elsewhere(), type: "dblclick", x: 900, y: 100 });
+
+      expect(inside.stopImmediatePropagation).toHaveBeenCalledTimes(1);
+      expect(outside.stopImmediatePropagation).not.toHaveBeenCalled();
+    });
+
+    it("leaves a double click alone when no shuffle click closed the panel", () => {
+      const { dispatchClick } = setup();
+
+      const event = dispatchClick({ target: elsewhere(), type: "dblclick", ...AREA });
+
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    });
+
+    it("does not open the panel again when the person opened or closed it themselves", () => {
+      const { dispatchClick, button, panel, runTimeouts } = setup();
+      dispatchClick({ target: button, ...AREA });
+
+      dispatchClick({ target: panel });
+      runTimeouts();
+
+      // One close by the guard, and the person's own click is not one of the mock's calls.
+      expect(panel.click).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not click the panel open when it is already open at the end", () => {
+      const { dispatchClick, button, panel, runTimeouts } = setup();
+      dispatchClick({ target: button, ...AREA });
+      panel.tokens.push("active");
+
+      runTimeouts();
+
+      expect(panel.click).toHaveBeenCalledTimes(1);
+    });
+
+    it("never touches a click made by script", () => {
+      const { dispatchClick, button, panel, pendingTimeoutCount } = setup();
+
+      const event = dispatchClick({ target: button, trusted: false });
+
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+      expect(panel.click).not.toHaveBeenCalled();
+      expect(pendingTimeoutCount()).toBe(0);
+    });
+
+    it("leaves a click on any other control alone", () => {
+      const { dispatchClick, panel, pendingTimeoutCount } = setup();
+
+      const event = dispatchClick({ target: elsewhere(), ...AREA });
+
+      expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+      expect(panel.click).not.toHaveBeenCalled();
+      expect(pendingTimeoutCount()).toBe(0);
+    });
+
+    it("falls back to MusicKit when the button has left the page", () => {
+      const { dispatchClick, button, musicKit, runNextTimeout } = setup();
+      Object.assign(musicKit, { shuffleMode: 0 });
+      Object.assign(button, { isConnected: false });
+      dispatchClick({ target: button, ...AREA });
+
+      runNextTimeout();
+
+      expect(button.click).not.toHaveBeenCalled();
+      expect(musicKit.shuffleMode).toBe(1);
+    });
+
+    it("counts from zero for the next burst", () => {
+      const { dispatchClick, button, runTimeouts } = setup();
+
+      dispatchClick({ target: button, ...AREA });
+      runTimeouts();
+      dispatchClick({ target: button, ...AREA });
+      dispatchClick({ target: button, ...AREA });
+      runTimeouts();
+
+      expect(button.click).toHaveBeenCalledTimes(1);
+    });
   });
 });
