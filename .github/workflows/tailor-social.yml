@@ -5,6 +5,13 @@ on:
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
+  push:
+    paths:
+      - '.tailor.yml'
+      - 'pages/style.css'
+      - 'pages/icon.*'
+      - 'pages/demo.*'
+      - '.github/workflows/tailor-social.yml'
 
 permissions: {}
 
@@ -70,7 +77,7 @@ jobs:
           install -Dm755 "${tmp_dir}/tailor" "${RUNNER_TEMP}/bin/tailor"
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
 
-      - name: Generate and publish live social assets
+      - name: Generate and publish social assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -80,17 +87,17 @@ jobs:
           output_dir='/tmp/social-assets'
           rm -rf "${output_dir}"
 
-          tailor social --live --output-dir "${output_dir}"
+          tailor social --static --live --output-dir "${output_dir}"
 
           if [[ ! -d "${output_dir}" ]]; then
-            echo "No live social assets generated."
+            echo "No social assets generated."
             exit 0
           fi
           first_file="$(
             find "${output_dir}" -maxdepth 1 -type f -print -quit
           )"
           if [[ -z "${first_file}" ]]; then
-            echo "No live social assets generated."
+            echo "No social assets generated."
             exit 0
           fi
 
@@ -120,7 +127,7 @@ jobs:
           fi
 
           if [[ "${changed}" != 'true' ]]; then
-            echo "Live social assets are unchanged."
+            echo "Social assets are unchanged."
             exit 0
           fi
 
@@ -133,7 +140,7 @@ jobs:
           git -C "${stage_dir}" \
             -c user.name="${bot_name}" \
             -c user.email="${bot_email}" \
-            commit --quiet --message 'chore(social): update live social assets'
+            commit --quiet --message 'chore(social): update social assets'
 
           git fetch --quiet "${stage_dir}" "${branch_ref}:${branch_ref}"
           git -c "http.https://github.com/.extraheader=${auth_header}" \
