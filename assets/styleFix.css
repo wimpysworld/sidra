@@ -20,3 +20,9 @@
 [class*="upsell-banner"] {
   display: none !important;
 }
+
+/* Skip style, layout and paint for home and browse shelves that are off screen. */
+main .shelf {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 330px;
+}
