@@ -152,6 +152,40 @@ pages:
     podcast: https://linuxmatters.sh
     github_sponsors: https://github.com/sponsors/flexiondotorg
 
+social:
+  enabled: true
+  theme: dark
+  og:
+    output: pages/images/og.png
+    include_preview: false
+  readme:
+    header: true
+    preferred_links:
+      - bluesky
+      - mastodon
+      - linkedin
+    community: auto
+    packages:
+      - apt
+      - rpm
+      - pkg
+      - flatpak
+      - brew
+      - scoop
+      - nix
+    stats: true
+    star_history:
+      enabled: true
+      min_stars: 25
+      min_days: 30
+    sponsors: auto
+    contributors: true
+    demo: false
+    footer: true
+  live:
+    branch: social-assets
+    schedule: "0 4 * * *"
+
 labels:
   - name: bug
     color: d20f39

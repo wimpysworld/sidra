@@ -1,12 +1,22 @@
-<h1 align="center">
-  <img src="build/icon.png" width="256" height="256" alt="Sidra">
-  <br />
-  Sidra
-</h1>
+<!-- tailor:social-header:start -->
+<p align="center">
+  <a href="https://sidra.wimpys.world"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/hero-dark.svg"><img src="pages/social/hero-light.svg" alt="Sidra"></picture></a>
+</p>
+<!-- tailor:social-header:end -->
 
-<p align="center"><b>An elegant Apple Music desktop client for Linux, macOS and Windows. No frippery, just quality 🍎</b></p>
+<!-- tailor:social-links:start -->
+<p align="center">
+  <a href="https://bsky.app/profile/wimpys.world"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/link-bluesky-dark.svg"><img src="pages/social/link-bluesky-light.svg" alt="Bluesky"></picture></a>
+  <a href="https://wimpysworld.social/@martin"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/link-mastodon-dark.svg"><img src="pages/social/link-mastodon-light.svg" alt="Mastodon"></picture></a>
+  <a href="https://linkedin.com/in/martinwimpress"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/link-linkedin-dark.svg"><img src="pages/social/link-linkedin-light.svg" alt="LinkedIn"></picture></a>
+</p>
+<!-- tailor:social-links:end -->
 
-<p align="center">Made with 💝 for 🐧🍏🪟</p>
+<!-- tailor:social-community:start -->
+<p align="center">
+  <a href="https://discord.com/invite/vUsydfP"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/community-dark.svg"><img src="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/community-light.svg" alt="Discord community"></picture></a>
+</p>
+<!-- tailor:social-community:end -->
 
 Sidra is Apple Music as a proper desktop citizen on Linux, macOS, and Windows - wired into each platform's native media subsystem, not bolted on top.
 
@@ -82,34 +92,58 @@ The current unsigned macOS releases do not meet that requirement.
 
 I am a presenter on Linux Matters and discussed Sidra's origins in Episode 79. Linux Magazin Online covers Sidra 1.0 and includes an interview with me.
 
----
-
-> [!IMPORTANT]
-> Sidra's macOS and Windows releases are currently unsigned, requiring Gatekeeper and SmartScreen workarounds at install time. [Sponsoring the project](https://github.com/sponsors/flexiondotorg) 🩷 goes directly towards code-signing certificates to remove that friction for every user.
+<!-- tailor:social-stats:start -->
+<p align="center">
+  <a href="https://github.com/wimpysworld/sidra/pulse"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/stats-dark.svg"><img src="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/stats-light.svg" alt="Sidra statistics"></picture></a>
+</p>
+<!-- tailor:social-stats:end -->
 
 ## Install
 
-| | Platform | Repository |
-| :-: | --- | --- |
-| <img src="https://apt.wimpys.world/logo.svg" width="32" height="32" alt=""> | Debian and Ubuntu | [apt.wimpys.world](https://apt.wimpys.world/#sidra) |
-| <img src="https://rpm.wimpys.world/logo.svg" width="32" height="32" alt=""> | Fedora and openSUSE | [rpm.wimpys.world](https://rpm.wimpys.world/#sidra) |
-| <img src="https://pkg.wimpys.world/logo.svg" width="32" height="32" alt=""> | Arch Linux | [pkg.wimpys.world](https://pkg.wimpys.world/#sidra) |
-| <img src="https://flatpak.wimpys.world/logo.svg" width="32" height="32" alt=""> | Flatpak | [flatpak.wimpys.world](https://flatpak.wimpys.world/#sidra) |
-| <img src="https://brew.wimpys.world/logo.svg" width="32" height="32" alt=""> | macOS (Homebrew) | [brew.wimpys.world](https://brew.wimpys.world/#sidra) |
-| <img src="https://scoop.wimpys.world/logo.svg" width="32" height="32" alt=""> | Windows (Scoop) | [scoop.wimpys.world](https://scoop.wimpys.world/#sidra) |
-| <img src="https://nix.wimpys.world/logo.svg" width="32" height="32" alt=""> | Nix and NixOS | [nix.wimpys.world](https://nix.wimpys.world/#sidra) |
+First-party signed package repositories are published for Linux, macOS, and Windows through [wimpys.world](https://wimpys.world/). Choose your platform below for setup instructions and automatic updates.
 
-Each repository is signed, and its page gives the setup steps and keeps Sidra up to date.
+<!-- tailor:social-packages:start -->
+<p align="center">
+  <a href="https://apt.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-apt-dark.svg"><img src="pages/social/pkg-apt-light.svg" alt="Debian and Ubuntu"></picture></a>
+  <a href="https://rpm.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-rpm-dark.svg"><img src="pages/social/pkg-rpm-light.svg" alt="Fedora and openSUSE"></picture></a>
+  <a href="https://pkg.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-pkg-dark.svg"><img src="pages/social/pkg-pkg-light.svg" alt="Arch Linux"></picture></a>
+  <a href="https://flatpak.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-flatpak-dark.svg"><img src="pages/social/pkg-flatpak-light.svg" alt="Flatpak"></picture></a>
+  <br>
+  <a href="https://brew.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-brew-dark.svg"><img src="pages/social/pkg-brew-light.svg" alt="macOS (Homebrew)"></picture></a>
+  <a href="https://scoop.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-scoop-dark.svg"><img src="pages/social/pkg-scoop-light.svg" alt="Windows (Scoop)"></picture></a>
+  <a href="https://nix.wimpys.world/#sidra"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/pkg-nix-dark.svg"><img src="pages/social/pkg-nix-light.svg" alt="Nix and NixOS"></picture></a>
+</p>
+<!-- tailor:social-packages:end -->
 
-### Updates itself
+<details>
+<summary><strong>Snap</strong> - install from the Snap Store with background refreshes</summary>
 
-| Format | Get it | How it updates |
-| --- | --- | --- |
-| Snap | [Snap Store](https://snapcraft.io/sidra) | snapd refreshes it in the background |
-| AppImage | [x86_64](https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-x86_64.AppImage) or [arm64](https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-arm64.AppImage) | Sidra downloads each release and prompts for a restart |
-| Windows installer | [Latest release](https://github.com/wimpysworld/sidra/releases/latest) | Sidra downloads each release and prompts for a restart |
+Install Sidra from the [Snap Store](https://snapcraft.io/sidra). `snapd` refreshes it in the background.
 
----
+</details>
+
+<details>
+<summary><strong>AppImage</strong> - self-updating Linux binary for <code>x86_64</code> and <code>arm64</code></summary>
+
+Download the latest AppImage for [x86_64](https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-x86_64.AppImage) or [arm64](https://github.com/wimpysworld/sidra/releases/latest/download/Sidra-linux-arm64.AppImage). Sidra downloads each release and prompts for a restart.
+
+</details>
+
+<details>
+<summary><strong>Windows installer</strong> - self-updating NSIS installer</summary>
+
+Download the Windows installer from the [latest release](https://github.com/wimpysworld/sidra/releases/latest). Sidra downloads each release and prompts for a restart.
+
+</details>
+
+<!-- tailor:social-sponsors:start -->
+<p align="center">
+  <a href="https://github.com/sponsors/flexiondotorg"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/sponsors-dark.svg"><img src="pages/social/sponsors-light.svg" alt="Sidra sponsors"></picture></a>
+</p>
+<!-- tailor:social-sponsors:end -->
+
+> [!IMPORTANT]
+> Sidra's macOS and Windows releases are currently unsigned, requiring Gatekeeper and SmartScreen workarounds at install time. [Sponsoring the project](https://github.com/sponsors/flexiondotorg) 🩷 goes directly towards code-signing certificates to remove that friction for every user.
 
 ## Theming
 
@@ -135,8 +169,6 @@ Sidra ships no mini player and does not need one. Christian Lauinger ([@ChrisLau
 
 It pairs beautifully with **Close to tray**. Hide the Sidra window, keep the mini player on top, and place it anywhere on your desktop. Thank you, Christian 🙏
 
----
-
 ## Why Sidra?
 
 I used [Cider](https://cider.sh/) for years, but as time passed and the weight of new features grew the core experience degraded.
@@ -157,8 +189,6 @@ The bonus became clear once everything was working. Wrapping `music.apple.com` d
 
 _Sidra_ is the Spanish word for the traditional dry cider of Asturias in northern Spain - poured from height, unfiltered, drunk before it goes flat. The name came from a trip to the region for UbuCon Europe 2018. No additives, no artifice, nothing between the apple and the glass.
 
----
-
 ## Documentation
 
 Full guides and developer documentation live in the [Sidra wiki](https://github.com/wimpysworld/sidra/wiki):
@@ -173,3 +203,21 @@ See [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) for full technical detail: 
 Dependency security is tracked in the open. [Dependabot alerts](https://github.com/wimpysworld/sidra/security/dependabot) carries the live state of every advisory affecting Sidra, and fixes are merged as they land. A live page beats a report checked into the repository, which is stale the day after it is written. GitHub restricts that page to repository maintainers.
 
 Private vulnerability reporting is enabled. To report a security issue, follow [`SECURITY.md`](SECURITY.md) - your report stays between you and the maintainers until a fix ships.
+
+<!-- tailor:social-stars:start -->
+<p align="center">
+  <a href="https://github.com/wimpysworld/sidra/stargazers"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/stars-dark.svg"><img src="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/stars-light.svg" alt="Sidra star history"></picture></a>
+</p>
+<!-- tailor:social-stars:end -->
+
+<!-- tailor:social-contributors:start -->
+<p align="center">
+  <a href="https://github.com/wimpysworld/sidra/graphs/contributors"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/contributors-dark.svg"><img src="https://raw.githubusercontent.com/wimpysworld/sidra/social-assets/contributors-light.svg" alt="Sidra contributors"></picture></a>
+</p>
+<!-- tailor:social-contributors:end -->
+
+<!-- tailor:social-footer:start -->
+<p align="center">
+  <a href="https://tailor.wimpys.world"><picture><source media="(prefers-color-scheme: dark)" srcset="pages/social/footer-dark.svg"><img src="pages/social/footer-light.svg" alt="Fitted by Tailor"></picture></a>
+</p>
+<!-- tailor:social-footer:end -->

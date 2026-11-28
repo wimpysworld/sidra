@@ -1310,8 +1310,63 @@ a.install-alt:hover {
   padding-top: 1.5rem;
 }
 .footer-bottom > p {
+  display: flex;
   flex: 1 1 16rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
   min-width: 0;
+}
+.colophon-sep {
+  color: var(--mu-muted-color);
+  font-size: 0.8rem;
+  opacity: 0.5;
+  user-select: none;
+}
+.tailor-colophon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--mu-muted-color);
+  font-size: 0.8rem;
+  text-decoration: none;
+  opacity: 0.78;
+  transition:
+    opacity 0.2s ease,
+    color 0.2s ease;
+}
+.tailor-colophon:is(:hover, :focus-visible) {
+  opacity: 1;
+  color: var(--mu-color);
+  text-decoration: none;
+}
+.tailor-colophon-shears {
+  flex: 0 0 auto;
+  display: block;
+  transform-origin: center;
+}
+.tailor-colophon:is(:hover, :focus-visible) .tailor-colophon-shears {
+  animation: tailor-colophon-snip 0.45s ease-in-out;
+}
+@keyframes tailor-colophon-snip {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(-10deg);
+  }
+  65% {
+    transform: rotate(6deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tailor-colophon {
+    transition: none;
+  }
+  .tailor-colophon:is(:hover, :focus-visible) .tailor-colophon-shears {
+    animation: none;
+  }
 }
 .footer-bottom .connection-links {
   justify-content: flex-end;

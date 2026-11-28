@@ -117,6 +117,8 @@ jobs:
               stop("wiki publication stopped: checkout does not match the source commit")
           baseline_path = wiki / baseline_name
           baseline = None
+          if baseline_path.exists() and not baseline_path.is_file():
+              stop("wiki publication stopped: wiki/.tailor-wiki-base must be a regular file")
           if baseline_path.is_file():
               baseline = git(source, "show", source_sha + ":wiki/" + baseline_name).decode().strip()
               if not re.fullmatch(r"[0-9a-f]{40}", baseline):
