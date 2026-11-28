@@ -155,6 +155,7 @@ pages:
 social:
   enabled: true
   theme: dark
+  accent: "#b83b5e"
   og:
     output: pages/images/og.png
     include_preview: false
