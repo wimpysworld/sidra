@@ -108,6 +108,29 @@ export const classicalVolumeTarget = () =>
     "amp-volume-control",
     "chrome-volume__indicator",
   );
+/** A player bar shuffle button. `click` records a click made by script. */
+export const shuffleButtonTarget = () => {
+  const button = chain("chrome-player", "button--shuffle") as FakeElement & {
+    click: ReturnType<typeof vi.fn>;
+    getBoundingClientRect: () => { bottom: number; left: number; right: number; top: number };
+  };
+  button.click = vi.fn();
+  button.getBoundingClientRect = () => ({ bottom: 730, left: 300, right: 330, top: 700 });
+  return button;
+};
+/** The Up next toggle in the player bar. A click flips its `active` class, as Apple's does. */
+export const upNextButtonTarget = (open = true) => {
+  const button = element("up-next-queue__button", null) as FakeElement & {
+    click: ReturnType<typeof vi.fn>;
+  };
+  if (open) button.tokens.push("active");
+  button.click = vi.fn(() => {
+    const index = button.tokens.indexOf("active");
+    if (index === -1) button.tokens.push("active");
+    else button.tokens.splice(index, 1);
+  });
+  return button;
+};
 export const nonVolumeTarget = () => chain("chrome-player", "chrome-player__button");
 
 /** A MusicKit stand-in, optionally with a volume getter that throws. */
@@ -173,10 +196,12 @@ export function createHarness({
   const timeouts = new Map<number, () => void>();
   let nextTimeoutId = 0;
   const messageListeners: Array<(event: unknown) => void> = [];
+  // The Up next toggle the hook finds with document.querySelector, when a test puts one on the page.
+  let upNextOnPage: unknown = null;
   const pointerOverListeners: Array<(event: unknown) => void> = [];
   // These are the registrations that assets/musicKitHook.js makes on window.
   // The wheel listener stays on the volume control to limit the non-fast-scrollable region.
-  // A document registration throws because the VM context does not expose document.
+  // A document registration throws because the fake document only answers querySelector.
   const globalRegistrations: Registration[] = [];
   const musicKitListeners = new Map<string, (...args: unknown[]) => void>();
   const mediaSession = { setPositionState: vi.fn() };
@@ -232,6 +257,7 @@ export function createHarness({
     },
     console,
     navigator,
+    document: { querySelector: () => upNextOnPage },
     setInterval: vi.fn((callback: () => void, delay: number) => {
       const id = ++nextIntervalId;
       intervals.set(id, { callback, delay });
@@ -306,6 +332,42 @@ export function createHarness({
       for (const { listener } of wheelRegistrations(target)) listener(event);
       return event;
     },
+    // Sends one click, or double click, to the window's capture listeners. The path runs from the
+    // target up through its ancestors, as composedPath() does, `trusted: false` models an event
+    // made by script, and x and y are where the pointer was.
+    dispatchClick: ({
+      target,
+      trusted = true,
+      type = "click",
+      x = 0,
+      y = 0,
+    }: {
+      target: FakeElement;
+      trusted?: boolean;
+      type?: "click" | "dblclick";
+      x?: number;
+      y?: number;
+    }) => {
+      const path: FakeElement[] = [];
+      for (let node: FakeElement | null = target; node; node = node.parent) path.push(node);
+      const event = {
+        clientX: x,
+        clientY: y,
+        composedPath: () => path,
+        isTrusted: trusted,
+        preventDefault: vi.fn(),
+        stopImmediatePropagation: vi.fn(),
+        target,
+      };
+      for (const entry of globalRegistrations.filter((registration) => registration.type === type)) {
+        entry.listener(event);
+      }
+      return event;
+    },
+    // Puts the Up next toggle on the page, or takes it off with null.
+    setUpNextButton: (button: unknown) => {
+      upNextOnPage = button;
+    },
     globalRegistrations,
     mediaSession,
     messageListeners,
@@ -336,6 +398,14 @@ export function createHarness({
         callback();
     },
     pendingTimeoutCount: () => timeouts.size,
+    // Runs the oldest pending timer only, so a test can stop between two timers in a chain.
+    runNextTimeout: () => {
+      const first = timeouts.entries().next();
+      if (first.done) return;
+      const [id, callback] = first.value;
+      timeouts.delete(id);
+      callback();
+    },
     runTimeouts: () => {
       for (const [id, callback] of timeouts) {
         timeouts.delete(id);
